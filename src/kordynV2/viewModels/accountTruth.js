@@ -10,23 +10,42 @@ const financialFact = (...values) => {
 };
 
 const finiteNumber = (value) => typeof value === "number" && Number.isFinite(value);
-const selectedPositionValue = (position, fields) => fields
-  .map((field) => position[field])
-  .find((value) => value !== undefined && value !== null);
+const DIRECT_POSITION_FIELDS = ["notional", "notionalUsdt", "marketValue"];
+const QUANTITY_POSITION_FIELDS = ["quantity", "size", "pos", "qty"];
+const MARK_POSITION_FIELDS = ["markPrice", "mark", "price", "entryPrice", "entry"];
+
+function ownFinitePositionValue(position, fields) {
+  let selected;
+  let found = false;
+  for (const field of fields) {
+    const descriptor = Object.getOwnPropertyDescriptor(position, field);
+    if (!descriptor) continue;
+    if (!Object.hasOwn(descriptor, "value") || !finiteNumber(descriptor.value)) return { valid: false };
+    if (!found) {
+      selected = descriptor.value;
+      found = true;
+    }
+  }
+  return { valid: true, found, value: selected };
+}
 
 function normalizedExposurePosition(position) {
   if (!position || typeof position !== "object" || Array.isArray(position)) return null;
-  const direct = position.notional ?? position.notionalUsdt ?? position.marketValue;
-  const quantity = selectedPositionValue(position, ["quantity", "size", "pos", "qty"]);
-  const mark = selectedPositionValue(position, ["markPrice", "mark", "price", "entryPrice", "entry"]);
-  if (direct !== undefined && direct !== null) {
-    if (!finiteNumber(direct) || direct <= 0) return null;
-    if (quantity !== undefined && (!finiteNumber(quantity) || quantity <= 0)) return null;
-    if (mark !== undefined && (!finiteNumber(mark) || mark <= 0)) return null;
-    return { notional: direct, ...(quantity === undefined ? {} : { quantity }) };
+  try {
+    const prototype = Object.getPrototypeOf(position);
+    if (prototype !== Object.prototype && prototype !== null) return null;
+    const direct = ownFinitePositionValue(position, DIRECT_POSITION_FIELDS);
+    const quantity = ownFinitePositionValue(position, QUANTITY_POSITION_FIELDS);
+    const mark = ownFinitePositionValue(position, MARK_POSITION_FIELDS);
+    if (!direct.valid || !quantity.valid || !mark.valid) return null;
+    if (direct.found) {
+      return { notional: direct.value, ...(quantity.found ? { quantity: quantity.value } : {}) };
+    }
+    if (!quantity.found || !mark.found) return null;
+    return { quantity: quantity.value, mark: mark.value };
+  } catch {
+    return null;
   }
-  if (!finiteNumber(quantity) || quantity <= 0 || !finiteNumber(mark) || mark <= 0) return null;
-  return { quantity, mark };
 }
 
 function exposureFact(data) {

@@ -77,14 +77,18 @@ test("malformed non-empty position rows cannot become authoritative zero or thro
     { notional: 600, quantity: [] },
     { notional: 600, quantity: "0" },
     { notional: 600, quantity: coerciveZero },
-    { notional: 600, quantity: 0 },
     { notional: "600", quantity: 0.01, mark: 60000 },
     { notional: { valueOf: () => 600 }, quantity: 0.01, mark: 60000 },
+    { notional: null },
+    { notional: Number.NaN },
+    { notional: Number.POSITIVE_INFINITY },
     { quantity: 0.01, mark: false },
     { quantity: 0.01, mark: [] },
     { quantity: 0.01, mark: "60000" },
     { quantity: 0.01, mark: coerciveZero },
-    { quantity: 0.01, mark: 0 }
+    { quantity: 0.01, mark: Number.NEGATIVE_INFINITY },
+    { quantity: 0.01 },
+    { mark: 60000 }
   ];
   for (const row of malformedRows) {
     assert.doesNotThrow(() => buildAccountTruth({ positions: [row] }, "full"), JSON.stringify(row));
@@ -96,6 +100,59 @@ test("well-formed direct and quantity-mark positions preserve authoritative expo
   assert.equal(buildAccountTruth({ positions: [{ positionId: "direct", notional: 600 }] }, "full").exposure, 600);
   assert.equal(buildAccountTruth({ positions: [{ positionId: "derived", quantity: 0.01, mark: 60000 }] }, "full").exposure, 600);
   assert.equal(buildAccountTruth({ positions: [] }, "full").exposure, 0);
+});
+
+test("signed and closed numeric positions preserve authoritative absolute exposure", () => {
+  assert.equal(buildAccountTruth({ positions: [{ notional: -600 }] }, "full").exposure, 600);
+  assert.equal(buildAccountTruth({ positions: [{ quantity: -0.01, mark: 60000 }] }, "full").exposure, 600);
+  assert.equal(buildAccountTruth({ positions: [{ notional: 0 }] }, "full").exposure, 0);
+  assert.equal(buildAccountTruth({ positions: [{ quantity: 0, mark: 60000 }] }, "full").exposure, 0);
+  assert.equal(buildAccountTruth({ positions: [{ quantity: 0.01, mark: 0 }] }, "full").exposure, 0);
+  const nullPrototype = Object.assign(Object.create(null), { notional: -600 });
+  assert.equal(buildAccountTruth({ positions: [nullPrototype] }, "full").exposure, 600);
+});
+
+test("class and custom-prototype position rows fail closed", () => {
+  class Position {
+    constructor() { this.notional = 600; }
+  }
+  const inherited = Object.create({ notional: 600 });
+  const customPrototype = Object.assign(Object.create({ source: "custom" }), { notional: 600 });
+  const exposures = [new Position(), inherited, customPrototype]
+    .map((row) => buildAccountTruth({ positions: [row] }, "full").exposure);
+  assert.deepEqual(exposures, ["Unavailable", "Unavailable", "Unavailable"]);
+});
+
+test("accessor position rows fail closed without invoking getters", () => {
+  let getterCalls = 0;
+  const accessorNotional = {};
+  Object.defineProperty(accessorNotional, "notional", {
+    enumerable: true,
+    get() { getterCalls += 1; return 600; }
+  });
+  const throwingQuantity = { notional: 600 };
+  Object.defineProperty(throwingQuantity, "quantity", {
+    enumerable: true,
+    get() { getterCalls += 1; throw new Error("quantity getter invoked"); }
+  });
+  const throwingMark = { quantity: 0.01 };
+  Object.defineProperty(throwingMark, "mark", {
+    enumerable: true,
+    get() { getterCalls += 1; throw new Error("mark getter invoked"); }
+  });
+
+  const outcomes = [accessorNotional, throwingQuantity, throwingMark].map((row) => {
+    let truth;
+    let threw = false;
+    try { truth = buildAccountTruth({ positions: [row] }, "full"); } catch { threw = true; }
+    return { threw, exposure: truth?.exposure };
+  });
+  assert.deepEqual(outcomes, [
+    { threw: false, exposure: "Unavailable" },
+    { threw: false, exposure: "Unavailable" },
+    { threw: false, exposure: "Unavailable" }
+  ]);
+  assert.equal(getterCalls, 0);
 });
 
 test("authoritative financial zero remains zero", () => {
