@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "runner": "tests/run-kordyn-v2-shell-browser.mjs",
+  "fixture": "tests/kordyn-v2-production-fixture.js",
+  "captures": [
+    {
+      "file": "desktop-1180x800.png",
+      "viewport": "1180x800",
+      "device": "desktop",
+      "domainId": "ai",
+      "workspaceId": "missions",
+      "sha256": "a37413c105455ed0c7ffb569fa0165cc984c6e4d80821b384fa9282269111b46",
+      "viewportGeometry": {
+        "width": 1180,
+        "height": 800
+      },
+      "document": {
+        "clientWidth": 1180,
+        "scrollWidth": 1180
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "width": 1180,
+        "height": 800
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false
+    },
+    {
+      "file": "desktop-1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "ai",
+      "workspaceId": "missions",
+      "sha256": "194892406891ef5b372e1364615eb4808e06bf22f23562028c0fe622ea6d9aee",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "width": 1440,
+        "height": 900
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false
+    },
+    {
+      "file": "mobile-390x844.png",
+      "viewport": "390x844",
+      "device": "mobile",
+      "domainId": "ai",
+      "workspaceId": "missions",
+      "sha256": "90794714012d5a81ae36de9519b936af57198a03bf7dbdfc8ca8b5b2cb972802",
+      "viewportGeometry": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "clientWidth": 390,
+        "scrollWidth": 390
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "width": 390,
+        "height": 844
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false
+    },
+    {
+      "file": "mobile-430x932.png",
+      "viewport": "430x932",
+      "device": "mobile",
+      "domainId": "ai",
+      "workspaceId": "missions",
+      "sha256": "7cabf0552fa614cd1dd0189dc44103d57abec11a9200ec193a7138b551e6506a",
+      "viewportGeometry": {
+        "width": 430,
+        "height": 932
+      },
+      "document": {
+        "clientWidth": 430,
+        "scrollWidth": 430
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "width": 430,
+        "height": 932
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false
+    }
+  ]
+}

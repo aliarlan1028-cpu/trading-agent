@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "identity": "mobile-ai-mission-home--430x932",
+  "concept": {
+    "id": "mobile-ai-mission-home",
+    "file": ".impeccable/mocks/kordyn-v2-approved/mobile-ai-mission-home.png",
+    "sha256": "6e0eda474f6658ff9dbfcbc6b18d4503203a78ddb30e38aa22b0760c1c902c9b",
+    "storedPixels": {
+      "width": 853,
+      "height": 1844
+    },
+    "normalizedViewport": "430x932"
+  },
+  "actual": {
+    "file": "mobile-430x932.png",
+    "sha256": "7cabf0552fa614cd1dd0189dc44103d57abec11a9200ec193a7138b551e6506a",
+    "runner": "tests/run-kordyn-v2-shell-browser.mjs",
+    "fixture": "tests/kordyn-v2-production-fixture.js",
+    "device": "mobile",
+    "domainId": "ai",
+    "workspaceId": "missions"
+  },
+  "viewport": {
+    "name": "430x932",
+    "width": 430,
+    "height": 932
+  },
+  "document": {
+    "clientWidth": 430,
+    "scrollWidth": 430
+  },
+  "documentOverflow": 0,
+  "shellGeometry": {
+    "left": 0,
+    "top": 0,
+    "width": 430,
+    "height": 932
+  },
+  "diagnostics": {
+    "screenshotStructure": {
+      "variance": 0.017210291749785767,
+      "edgeDensity": 0.03411852368530504,
+      "nearFlat": false
+    },
+    "pixelDifference": {
+      "metric": 0.07477595509708025,
+      "role": "diagnostic only"
+    },
+    "contentAwareComparator": {
+      "applied": false,
+      "reason": "no fixed mobile shell threshold in Foundation Plan 01"
+    }
+  },
+  "artifacts": {
+    "normalizedReference": {
+      "file": "mobile-ai-mission-home--430x932--reference.png",
+      "sha256": "f3e8a97d69a54a9754c92b89fcba0c39821e7e88fbcd2ca37f24b2ece86d2049"
+    },
+    "overlay50": {
+      "file": "mobile-ai-mission-home--430x932--overlay.png",
+      "sha256": "bcf60f299ed15335b884bca296df52dcf0d0ebeb30f0984388f736a4498aa78b"
+    },
+    "absoluteDifference": {
+      "file": "mobile-ai-mission-home--430x932--difference.png",
+      "sha256": "b6f28442caf8bbf99a6c9be2e43396a4d0572543b4778e74e68bc6aea0811c28"
+    }
+  },
+  "releaseVerdict": "human region review required"
+}

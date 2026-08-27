@@ -1,0 +1,195 @@
+{
+  "schemaVersion": 1,
+  "identity": "desktop-ai-mission-control--1180x800",
+  "concept": {
+    "id": "desktop-ai-mission-control",
+    "file": ".impeccable/mocks/kordyn-v2-approved/desktop-ai-mission-control.png",
+    "sha256": "55f988f9c87d1dce83d528bd2ad224b0951542cbab32eca018bf6c78818dbc20",
+    "storedPixels": {
+      "width": 1586,
+      "height": 992
+    },
+    "normalizedViewport": "1180x800"
+  },
+  "actual": {
+    "file": "desktop-1180x800.png",
+    "sha256": "a37413c105455ed0c7ffb569fa0165cc984c6e4d80821b384fa9282269111b46",
+    "runner": "tests/run-kordyn-v2-shell-browser.mjs",
+    "fixture": "tests/kordyn-v2-production-fixture.js",
+    "device": "desktop",
+    "domainId": "ai",
+    "workspaceId": "missions"
+  },
+  "viewport": {
+    "name": "1180x800",
+    "width": 1180,
+    "height": 800
+  },
+  "document": {
+    "clientWidth": 1180,
+    "scrollWidth": 1180
+  },
+  "documentOverflow": 0,
+  "shellGeometry": {
+    "left": 0,
+    "top": 0,
+    "width": 1180,
+    "height": 800
+  },
+  "diagnostics": {
+    "screenshotStructure": {
+      "variance": 0.014922617629021778,
+      "edgeDensity": 0.02951247590398532,
+      "nearFlat": false
+    },
+    "pixelDifference": {
+      "metric": 0.05475477456519331,
+      "role": "diagnostic only"
+    },
+    "contentAwareComparator": {
+      "metric": 0.04310438951516365,
+      "threshold": 0.0475,
+      "regions": {
+        "whole-frame": 0.05475477456519331,
+        "identity-rail": 0.032060984278948934,
+        "workbench-footer": 0.039163948261987484,
+        "command-support": 0.04557214480239523
+      },
+      "maeAccepted": true,
+      "structure": {
+        "accepted": true,
+        "bounds": {
+          "luminanceVarianceRatio": {
+            "minimum": 0.35,
+            "maximum": 2.5
+          },
+          "colorVarianceRatio": {
+            "minimum": 0.35,
+            "maximum": 2.5
+          },
+          "edgeCosine": {
+            "minimum": 0.15
+          },
+          "edgeDensityRatio": {
+            "minimum": 0.45,
+            "maximum": 1.8
+          }
+        },
+        "regions": {
+          "whole-frame": {
+            "accepted": true,
+            "luminanceVariance": {
+              "actual": 0.013820256070591425,
+              "reference": 0.012083730220794741
+            },
+            "luminanceVarianceRatio": 1.143707763916172,
+            "colorVariance": {
+              "actual": 0.014922617629021778,
+              "reference": 0.012846723868057587
+            },
+            "colorVarianceRatio": 1.1615893501163939,
+            "edgeCosine": 0.2545369157254679,
+            "edgeDensity": {
+              "actual": 0.02960302771909366,
+              "reference": 0.03273131877846829
+            },
+            "edgeDensityRatio": 0.9044251445978241
+          },
+          "identity-rail": {
+            "accepted": true,
+            "luminanceVariance": {
+              "actual": 0.004855654745339378,
+              "reference": 0.006494573100170285
+            },
+            "luminanceVarianceRatio": 0.7476480240421136,
+            "colorVariance": {
+              "actual": 0.004701860407819418,
+              "reference": 0.006500831048897628
+            },
+            "colorVarianceRatio": 0.7232706668506225,
+            "edgeCosine": 0.18707294969962382,
+            "edgeDensity": {
+              "actual": 0.015815693811821872,
+              "reference": 0.02418434871684748
+            },
+            "edgeDensityRatio": 0.653964016025134
+          },
+          "workbench-footer": {
+            "accepted": true,
+            "luminanceVariance": {
+              "actual": 0.0043185039304306635,
+              "reference": 0.007945797479249415
+            },
+            "luminanceVarianceRatio": 0.5434953435081261,
+            "colorVariance": {
+              "actual": 0.004410144000137022,
+              "reference": 0.007893299532716955
+            },
+            "colorVarianceRatio": 0.5587199601202775,
+            "edgeCosine": 0.1787578817021395,
+            "edgeDensity": {
+              "actual": 0.020135745643190164,
+              "reference": 0.025842440220037188
+            },
+            "edgeDensityRatio": 0.7791735405690411
+          },
+          "command-bar": {
+            "accepted": true,
+            "luminanceVariance": {
+              "actual": 0.009142601878673785,
+              "reference": 0.006883251571974005
+            },
+            "luminanceVarianceRatio": 1.3282388102592384,
+            "colorVariance": {
+              "actual": 0.014176822357713064,
+              "reference": 0.009435127632506021
+            },
+            "colorVarianceRatio": 1.50255756041613,
+            "edgeCosine": 0.2919705775426945,
+            "edgeDensity": {
+              "actual": 0.028786484854942736,
+              "reference": 0.0310198048545491
+            },
+            "edgeDensityRatio": 0.9280034155573083
+          },
+          "support": {
+            "accepted": true,
+            "luminanceVariance": {
+              "actual": 0.01575394741986116,
+              "reference": 0.014499739143816935
+            },
+            "luminanceVarianceRatio": 1.0864986786040942,
+            "colorVariance": {
+              "actual": 0.01989684191608686,
+              "reference": 0.018826864974500396
+            },
+            "colorVarianceRatio": 1.0568324542102825,
+            "edgeCosine": 0.22374980796282473,
+            "edgeDensity": {
+              "actual": 0.02854860575052456,
+              "reference": 0.029151789594340165
+            },
+            "edgeDensityRatio": 0.9793088571161781
+          }
+        }
+      },
+      "accepted": true,
+      "fixedShellThreshold": true
+    }
+  },
+  "artifacts": {
+    "normalizedReference": {
+      "file": "desktop-ai-mission-control--1180x800--reference.png",
+      "sha256": "2d7c30866a5992a36763d0c389fd81965a450a27551929cdf61e7055c5aa5031"
+    },
+    "overlay50": {
+      "file": "desktop-ai-mission-control--1180x800--overlay.png",
+      "sha256": "e515c516b53e22adf41fb9cdb66162e350aa277a7bdd2961519b9fb59729fb49"
+    },
+    "absoluteDifference": {
+      "file": "desktop-ai-mission-control--1180x800--difference.png",
+      "sha256": "8eb75bfb104a76dcda9b0503d0f0789dcae3dc30bdb9c8974bba0cb519ec56f2"
+    }
+  },
+  "releaseVerdict": "human region review required"
+}

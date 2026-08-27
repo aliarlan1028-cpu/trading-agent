@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "identity": "mobile-ai-mission-home--390x844",
+  "concept": {
+    "id": "mobile-ai-mission-home",
+    "file": ".impeccable/mocks/kordyn-v2-approved/mobile-ai-mission-home.png",
+    "sha256": "6e0eda474f6658ff9dbfcbc6b18d4503203a78ddb30e38aa22b0760c1c902c9b",
+    "storedPixels": {
+      "width": 853,
+      "height": 1844
+    },
+    "normalizedViewport": "390x844"
+  },
+  "actual": {
+    "file": "mobile-390x844.png",
+    "sha256": "90794714012d5a81ae36de9519b936af57198a03bf7dbdfc8ca8b5b2cb972802",
+    "runner": "tests/run-kordyn-v2-shell-browser.mjs",
+    "fixture": "tests/kordyn-v2-production-fixture.js",
+    "device": "mobile",
+    "domainId": "ai",
+    "workspaceId": "missions"
+  },
+  "viewport": {
+    "name": "390x844",
+    "width": 390,
+    "height": 844
+  },
+  "document": {
+    "clientWidth": 390,
+    "scrollWidth": 390
+  },
+  "documentOverflow": 0,
+  "shellGeometry": {
+    "left": 0,
+    "top": 0,
+    "width": 390,
+    "height": 844
+  },
+  "diagnostics": {
+    "screenshotStructure": {
+      "variance": 0.019516632887325854,
+      "edgeDensity": 0.036663258259107906,
+      "nearFlat": false
+    },
+    "pixelDifference": {
+      "metric": 0.08056920090513622,
+      "role": "diagnostic only"
+    },
+    "contentAwareComparator": {
+      "applied": false,
+      "reason": "no fixed mobile shell threshold in Foundation Plan 01"
+    }
+  },
+  "artifacts": {
+    "normalizedReference": {
+      "file": "mobile-ai-mission-home--390x844--reference.png",
+      "sha256": "2d2c24912b9843d1de183dbb66ebbbc9fd39c928874558c918eb51e406d6faff"
+    },
+    "overlay50": {
+      "file": "mobile-ai-mission-home--390x844--overlay.png",
+      "sha256": "5e964987c53acfdad1c5a929f0da23b44dd4fe0cef317271c7a9a293349b8256"
+    },
+    "absoluteDifference": {
+      "file": "mobile-ai-mission-home--390x844--difference.png",
+      "sha256": "d3a9b379b0b514d22e7b3a8d8c1ffe4d19c0fb9bf4911dc11cd6fb1cd27a964a"
+    }
+  },
+  "releaseVerdict": "human region review required"
+}

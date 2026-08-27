@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { spawn } from "node:child_process";
 import os from "node:os";
@@ -14,8 +15,11 @@ const chromeBinary = process.env.CHROME_BIN || "/Applications/Google Chrome.app/
 const screenshotDir = process.env.KORDYN_V2_SCREENSHOT_DIR
   ? path.resolve(rootDir, process.env.KORDYN_V2_SCREENSHOT_DIR)
   : null;
-const mobileOnly = process.argv.includes("--mobile-only");
-const desktopOnly = process.argv.includes("--desktop-only");
+const requestedMobileOnly = process.argv.includes("--mobile-only");
+const requestedDesktopOnly = process.argv.includes("--desktop-only");
+const runMobileAfterDesktop = !requestedMobileOnly && !requestedDesktopOnly;
+const mobileOnly = requestedMobileOnly;
+const desktopOnly = requestedDesktopOnly || runMobileAfterDesktop;
 const desktopViewports = [[1440, 900], [1180, 800]];
 const mobileViewports = [[390, 844], [430, 932]];
 const domains = [
@@ -35,6 +39,93 @@ const destinationCases = [
   { domain: "governance", workspace: "overview", title: "运行总览", kind: "boundary" }
 ];
 const contractFailures = [];
+const legacyStyleProbeSource = `(() => {
+  const legacyFiles = ${JSON.stringify([
+    "styles.css",
+    "product-foundation.css",
+    "workspace.css",
+    "workspace-additions.css",
+    "product-system.css",
+    "conceptPages.css",
+    "conceptSettings.css",
+    "zero-base-mobile.css",
+    "zero-base-system.css",
+    "zero-base-workbenches.css"
+  ])};
+  const owners = [];
+  for (const sheet of document.styleSheets) {
+    if (sheet.href) owners.push(sheet.href);
+    const owner = sheet.ownerNode;
+    if (owner?.getAttribute) {
+      owners.push(owner.getAttribute('data-vite-dev-id') || '');
+      owners.push(owner.getAttribute('href') || '');
+    }
+  }
+  for (const owner of document.querySelectorAll('style[data-vite-dev-id], link[rel="stylesheet"]')) {
+    owners.push(owner.getAttribute('data-vite-dev-id') || '');
+    owners.push(owner.getAttribute('href') || '');
+  }
+  return owners.some((value) => {
+    const clean = String(value).split('?')[0].split('#')[0].replaceAll('\\\\', '/');
+    return clean.includes('productStyles') || legacyFiles.some((file) => clean === file || clean.endsWith('/' + file));
+  });
+})()`;
+let captureEvidenceRows = [];
+
+function screenshotSha256(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+async function initializeCaptureEvidence() {
+  if (!screenshotDir || !mobileOnly) return;
+  try {
+    const existing = JSON.parse(await readFile(path.join(screenshotDir, "capture-evidence.json"), "utf8"));
+    if (existing?.schemaVersion === 1
+      && existing.runner === "tests/run-kordyn-v2-shell-browser.mjs"
+      && existing.fixture === "tests/kordyn-v2-production-fixture.js"
+      && Array.isArray(existing.captures)) {
+      captureEvidenceRows = existing.captures.filter((capture) => capture?.device !== "mobile");
+    }
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+}
+
+function recordCaptureEvidence({ file, viewport, device, width, height, sha256, geometry }) {
+  if (!screenshotDir) return;
+  const [clientWidth, scrollWidth] = geometry.document;
+  captureEvidenceRows = captureEvidenceRows.filter((capture) => capture.file !== file);
+  captureEvidenceRows.push({
+    file,
+    viewport,
+    device,
+    domainId: geometry.domain,
+    workspaceId: geometry.workspace,
+    sha256,
+    viewportGeometry: { width, height },
+    document: { clientWidth, scrollWidth },
+    shell: {
+      left: geometry.root.left,
+      top: geometry.root.top,
+      width: geometry.root.width,
+      height: geometry.root.height
+    },
+    noProductionWrites: geometry.actions === 0,
+    legacyProductStyles: geometry.legacyStyles === true
+  });
+}
+
+async function writeCaptureEvidence() {
+  if (!screenshotDir) return;
+  await mkdir(screenshotDir, { recursive: true });
+  const evidence = {
+    schemaVersion: 1,
+    runner: "tests/run-kordyn-v2-shell-browser.mjs",
+    fixture: "tests/kordyn-v2-production-fixture.js",
+    captures: captureEvidenceRows.slice().sort((left, right) => left.file.localeCompare(right.file))
+  };
+  await writeFile(path.join(screenshotDir, "capture-evidence.json"), `${JSON.stringify(evidence, null, 2)}\n`);
+}
 
 function contractEqual(label, actual, expected) {
   if (JSON.stringify(actual) === JSON.stringify(expected)) return;
@@ -199,7 +290,7 @@ async function captureMobile(cdp, width, height, filename) {
     outputPath = path.join(screenshotDir, filename);
     await writeFile(outputPath, bytes);
   }
-  return { outputPath, width: metadata.width, height: metadata.height };
+  return { outputPath, width: metadata.width, height: metadata.height, sha256: screenshotSha256(bytes) };
 }
 
 async function capture(cdp, width, height, filename = `desktop-${width}x${height}.png`) {
@@ -218,7 +309,7 @@ async function capture(cdp, width, height, filename = `desktop-${width}x${height
     outputPath = path.join(screenshotDir, filename);
     await writeFile(outputPath, bytes);
   }
-  return { outputPath, ...fidelity };
+  return { outputPath, sha256: screenshotSha256(bytes), ...fidelity };
 }
 
 async function readGeometry(cdp) {
@@ -254,7 +345,7 @@ async function readGeometry(cdp) {
       workspace:root.dataset.kordynV2Workspace,
       selectedId:root.dataset.kordynV2SelectedId,
       actions:window.__kordynV2BrowserCalls.actions,
-      legacyStyles:[...document.styleSheets].some((sheet) => /styles\.css|productStyles/i.test(sheet.href || "")),
+      legacyStyles:${legacyStyleProbeSource},
       landmarks:{
         identity:maybeBox('[data-kordyn-v2-identity]'),
         notification:maybeBox('[data-kordyn-v2-notification]'),
@@ -916,9 +1007,26 @@ async function readMobileGeometry(cdp) {
       domain:root.dataset.kordynV2Domain,
       workspace:root.dataset.kordynV2Workspace,
       actions:window.__kordynV2BrowserCalls.actions,
+      legacyStyles:${legacyStyleProbeSource},
       paddingBottom:Number.parseFloat(getComputedStyle(root).paddingBottom) || 0
     };
   })()`);
+}
+
+async function verifyLegacyStyleOwnershipProbe(cdp, read, label) {
+  await evaluate(cdp, `(() => {
+    const sentinel = document.createElement('style');
+    sentinel.dataset.viteDevId = '/src/styles.css';
+    sentinel.dataset.kordynV2LegacySentinel = 'true';
+    sentinel.textContent = ':root{}';
+    document.head.append(sentinel);
+    return true;
+  })()`);
+  const injected = await read(cdp);
+  assert.equal(injected.legacyStyles, true, `${label}: Vite data-vite-dev-id legacy owner is detected`);
+  await evaluate(cdp, "document.querySelector('[data-kordyn-v2-legacy-sentinel]')?.remove() || true");
+  const restored = await read(cdp);
+  assert.equal(restored.legacyStyles, false, `${label}: removing the legacy owner restores a clean V2 graph`);
 }
 
 async function assertMobileSheet(cdp, width, navTop, panel) {
@@ -1016,6 +1124,15 @@ async function verifyMobileViewport(cdp, pageUrl, width, height) {
   assert.equal(base.actions, 0, `${width}: mobile navigation invokes no production action`);
 
   const baseScreenshot = await captureMobile(cdp, width, height, `mobile-${width}x${height}.png`);
+  recordCaptureEvidence({
+    file: `mobile-${width}x${height}.png`,
+    viewport: `${width}x${height}`,
+    device: "mobile",
+    width,
+    height,
+    sha256: baseScreenshot.sha256,
+    geometry: base
+  });
   await click(cdp, '[data-kordyn-v2-context-trigger]');
   await assertMobileSheet(cdp, width, base.nav.top, "context");
   await pressKey(cdp, "Escape");
@@ -1274,7 +1391,8 @@ async function stopProcess(child) {
   }
 }
 
-assert.ok((mobileOnly || desktopOnly) && mobileOnly !== desktopOnly, "choose exactly one of --desktop-only or --mobile-only");
+assert.ok(!requestedMobileOnly || !requestedDesktopOnly, "choose at most one of --desktop-only or --mobile-only");
+await initializeCaptureEvidence();
 const vitePort = await freePort();
 const chromePort = await freePort();
 const pageUrl = `http://127.0.0.1:${vitePort}/tests/kordyn-v2-shell-browser.html`;
@@ -1305,6 +1423,7 @@ try {
 
   if (mobileOnly) {
     const transition = await verifyViewportTransition(cdp, pageUrl);
+    await verifyLegacyStyleOwnershipProbe(cdp, readMobileGeometry, "mobile stylesheet ownership probe");
     const mobileResults = [];
     for (const [width, height] of mobileViewports) {
       mobileResults.push(await verifyMobileViewport(cdp, pageUrl, width, height));
@@ -1322,6 +1441,8 @@ try {
     process.stdout.write(`KORDYN V2 mobile shell browser PASS ${mobileResults.map((row) => `${row.width}x${row.height}:nav=4,focus=3,overflow=0,targets=44`).join(" ")} states=5 long-content=${longContentResults.length} screenshots=${mobileResults.filter((row) => row.baseScreenshot.outputPath).length + mobileResults.filter((row) => row.sheetScreenshot?.outputPath).length + mobileResults.filter((row) => row.supportScreenshot?.outputPath).length + longContentResults.filter((row) => row.screenshot?.outputPath).length}\n`);
     process.stdout.write(`KORDYN V2 mobile geometry ${mobileResults.map((row) => `${row.width}:stateBottom=${Math.round(row.base.state.bottom)},navTop=${Math.round(row.base.nav.top)},reserve=${Math.round(row.base.paddingBottom)},workspaceMin=${row.minimumWorkspaceTarget.toFixed(1)},sheet=${Math.round(row.proof.sheet.top)}-${Math.round(row.proof.sheet.bottom)},proofScroll=${row.proof.sheetScroll.clientHeight}/${row.proof.sheetScroll.scrollHeight}`).join(" | ")} transition=${transition.domain}/${transition.workspace}:${transition.sections.map((item) => item.section).join(",")}\n`);
   } else {
+  await setViewport(cdp, pageUrl, 1440, 900);
+  await verifyLegacyStyleOwnershipProbe(cdp, readGeometry, "desktop stylesheet ownership probe");
   const results = [];
   for (const [width, height] of desktopViewports) {
     await setViewport(cdp, pageUrl, width, height);
@@ -1382,6 +1503,15 @@ try {
     const supportScreenshot = await verifyDesktopAiSupport(cdp, width, height);
 
     const screenshot = await capture(cdp, width, height);
+    recordCaptureEvidence({
+      file: `desktop-${width}x${height}.png`,
+      viewport: `${width}x${height}`,
+      device: "desktop",
+      width,
+      height,
+      sha256: screenshot.sha256,
+      geometry
+    });
     contractTrue(
       `${width}: pinned-reference weighted RGB MAE stays within the fidelity floor`,
       screenshot.metric <= screenshot.threshold,
@@ -1468,4 +1598,19 @@ try {
   cdp?.close();
   await Promise.all([stopProcess(chrome), stopProcess(vite)]);
   await rm(profileDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+}
+
+await writeCaptureEvidence();
+
+if (runMobileAfterDesktop) {
+  const mobile = spawn(process.execPath, [fileURLToPath(import.meta.url), "--mobile-only"], {
+    cwd: rootDir,
+    env: process.env,
+    stdio: "inherit"
+  });
+  const status = await new Promise((resolve, reject) => {
+    mobile.once("error", reject);
+    mobile.once("exit", (code, signal) => resolve(signal ? 1 : (code ?? 1)));
+  });
+  assert.equal(status, 0, "combined shell capture mobile phase");
 }
