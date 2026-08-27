@@ -15,7 +15,7 @@ process.on("exit", () => { try { fs.rmSync(outFile, { force: true }); } catch { 
 require("esbuild").buildSync({
   stdin: {
     contents: `
-      export { buildAccountTruth } from "./src/kordynV2/viewModels/accountTruth.js";
+      export { buildAccountTruth, materializeJsonResponse } from "./src/kordynV2/viewModels/accountTruth.js";
       export { createV2Selection } from "./src/kordynV2/viewModels/selection.js";
       export { normalizeResourceState } from "./src/kordynV2/viewModels/state.js";
     `,
@@ -30,7 +30,15 @@ require("esbuild").buildSync({
   outfile: outFile,
   logLevel: "silent"
 });
-const { buildAccountTruth, createV2Selection, normalizeResourceState } = require(outFile);
+const {
+  buildAccountTruth: buildUntrustedAccountTruth,
+  createV2Selection,
+  materializeJsonResponse,
+  normalizeResourceState
+} = require(outFile);
+const buildAccountTruth = (data = {}, mode = "full") => (
+  buildUntrustedAccountTruth(materializeJsonResponse(data), mode)
+);
 
 test("unknown is not converted to zero and stale retains its source", () => {
   assert.deepEqual(buildAccountTruth({}, "full"), {
@@ -227,7 +235,8 @@ test("accessor position rows fail closed without invoking getters", () => {
 test("proxy-backed position rows fail closed before traps can forge descriptors", () => {
   const trapCalls = { getPrototypeOf: 0, getOwnPropertyDescriptor: 0, ownKeys: 0, get: 0 };
   const sideEffects = [];
-  const row = new Proxy({}, {
+  const data = materializeJsonResponse({ positions: [{}] });
+  const row = new Proxy(data.positions[0], {
     getPrototypeOf() {
       trapCalls.getPrototypeOf += 1;
       sideEffects.push("getPrototypeOf");
@@ -254,7 +263,8 @@ test("proxy-backed position rows fail closed before traps can forge descriptors"
   });
 
   let truth;
-  assert.doesNotThrow(() => { truth = buildAccountTruth({ positions: [row] }, "full"); });
+  data.positions[0] = row;
+  assert.doesNotThrow(() => { truth = buildUntrustedAccountTruth(data, "full"); });
   assert.deepEqual({ exposure: truth.exposure, trapCalls, sideEffects }, {
     exposure: "Unavailable",
     trapCalls: { getPrototypeOf: 0, getOwnPropertyDescriptor: 0, ownKeys: 0, get: 0 },

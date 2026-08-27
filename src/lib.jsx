@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getLang, t } from "./i18n.js";
+import { materializeJsonResponse } from "./jsonResponseProvenance.js";
 import { acceptCoreSnapshot, acceptSectionSnapshot, clearSnapshotStore, createSnapshotStore, markSnapshotResource, observeSnapshotInvalidation, projectSnapshotStore, shouldRetryStaleSnapshot } from "./snapshotStore.js";
 import { connectionSecurityStatus, shouldAttemptNativeFallback } from "./connectionSecurity.js";
 
@@ -793,7 +794,7 @@ export function useApi() {
   }[section] || []);
 
   function publishSnapshot(section = activeSectionRef.current) {
-    setData(projectSnapshotStore(snapshotStoreRef.current, section, supplementalSectionsFor(section)));
+    setData(materializeJsonResponse(projectSnapshotStore(snapshotStoreRef.current, section, supplementalSectionsFor(section))));
   }
 
   function resetSnapshotIdentity({ clearData = true } = {}) {
@@ -905,7 +906,7 @@ export function useApi() {
       return null;
     }
     if (!response.ok) throw new Error(`API ${response.status}`);
-    return response.json();
+    return materializeJsonResponse(await response.json());
   }
 
   async function ensureSection(section = "chat", options = {}) {
@@ -936,7 +937,7 @@ export function useApi() {
           return null;
         }
         if (!response.ok) throw new Error(`API ${response.status}`);
-        const json = await response.json();
+        const json = materializeJsonResponse(await response.json());
         if (!isCurrentRequest(context)) return null;
         if (!acceptSectionSnapshot(snapshotStoreRef.current, selected, json, context.minimumRevision)) {
           markSnapshotResource(snapshotStoreRef.current, selected, "not_loaded");
@@ -1046,7 +1047,7 @@ export function useApi() {
       }
       const text = await response.text();
       if (!isCurrentRequest(context)) return { ok: false, error: "request_identity_changed" };
-      const json = text ? JSON.parse(text) : {};
+      const json = materializeJsonResponse(text ? JSON.parse(text) : {});
       if (!response.ok) {
         const requestError = new Error(json.error || `${t("请求失败", "Request failed")} ${response.status}`);
         requestError.status = response.status;
@@ -1276,7 +1277,7 @@ export function useApi() {
       if (!source) return;
       source.onmessage = (event) => {
         try {
-          const u = JSON.parse(event.data);
+          const u = materializeJsonResponse(JSON.parse(event.data));
           if (u?.type === "core_invalidated") {
             if (!observeSnapshotInvalidation(snapshotStoreRef.current, u)) return;
             scheduleInvalidationSync(false);
@@ -1322,7 +1323,7 @@ export function useApi() {
         try {
           const res = await fetch(apiUrl("/api/markets", apiBase), { headers: headers() });
           if (res.ok) {
-            const markets = await res.json();
+            const markets = materializeJsonResponse(await res.json());
             if (Array.isArray(markets)) {
               for (const m of markets) if (m && m.symbol && m.price != null) emitLivePrice(m.symbol, m.price);
               const byId = Object.fromEntries(markets.map((m) => [m.symbol, m]));
