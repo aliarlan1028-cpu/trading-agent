@@ -1,0 +1,9 @@
+.kordynV2Root {
+  --kordyn-v2-canvas: #090d16;
+  --kordyn-v2-surface: #111827;
+  --kordyn-v2-border: #293449;
+  --kordyn-v2-text: #f5f7fb;
+  --kordyn-v2-muted: #9aa8bd;
+  --kordyn-v2-accent: #668cff;
+  --kordyn-v2-font: "Public Sans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+}

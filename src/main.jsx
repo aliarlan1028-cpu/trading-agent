@@ -16,6 +16,7 @@ import { AppFrame } from "./appFrame.jsx";
 import { LandingPage } from "./landing.jsx";
 import { uiConfirm } from "./confirm.jsx";
 import { resolveDesktopRoute } from "./productArchitecture.js";
+import { resolveKordynUiVersion } from "./kordynV2/cutover.js";
 import { resolveZeroBaseDestination, zeroBaseLocationForRoute } from "./zeroBaseArchitecture.js";
 import { ZeroBaseDesktopShell } from "./zeroBaseShell.jsx";
 import { ZeroBaseToday } from "./zeroBaseToday.jsx";
@@ -33,6 +34,8 @@ const ResearchCenter = lazyNamed(() => import("./workspacePages.jsx"), "Research
 const RiskCenter = lazyNamed(() => import("./workspacePages.jsx"), "RiskCenter");
 const OperationsCenter = lazyNamed(() => import("./workspacePages.jsx"), "OperationsCenter");
 const SettingsConcept = lazyNamed(() => import("./workspacePages.jsx"), "SettingsConcept");
+const KordynV2Root = lazy(() => import("./kordynV2/entry.jsx"));
+const uiVersion = resolveKordynUiVersion(import.meta.env);
 
 if (isNativeApp()) {
   document.documentElement.classList.add("nativeApp");
@@ -299,7 +302,7 @@ function App() {
   const isMobileViewport = useIsMobileViewport();
   const { data, loading, action, toast, authRequired, login, registerAccount, notify, download, refresh, ensureSection, apiBase, setApiBase, connectionError, busy, isNativeApp, publicInfo } = useApi();
   useEffect(() => {
-    if (authRequired || loading || productStylesState === "ready") return undefined;
+    if (uiVersion !== "legacy" || authRequired || loading || productStylesState === "ready") return undefined;
     let current = true;
     setProductStylesState("loading");
     import("./productStyles.js")
@@ -367,9 +370,15 @@ function App() {
   const shellTrace = useMemo(() => buildShellTrace(data || {}, activeProductWorkspace, selectedShellObject), [data, activeProductWorkspace, selectedShellObject]);
 
   if (authRequired) return <AppFrame><LandingPage login={login} registerAccount={registerAccount} toast={toast} apiBase={apiBase} setApiBase={setApiBase} isNativeApp={isNativeApp} publicInfo={publicInfo} /></AppFrame>;
-  if (!loading && productStylesState !== "ready") return <AppFrame authenticated><div className="authenticatedEntryLoading" data-authenticated-state="styles"><div><Activity size={24}/><span><b>{productStylesState === "failed" ? t("界面资源加载失败", "Interface assets failed to load") : t("正在准备交易工作区", "Preparing the trading workspace")}</b><small>{productStylesState === "failed" ? t("网络恢复后重试，不会影响服务器中的任务。", "Retry after the network recovers. Server-side tasks are unaffected.") : t("仅在登录后加载完整工作区资源。", "Full workspace assets load only after sign-in.")}</small></span>{productStylesState === "failed" && <button type="button" onClick={() => setProductStylesAttempt((attempt) => attempt + 1)}>{t("重试", "Retry")}</button>}</div></div></AppFrame>;
+  if (!loading && uiVersion === "legacy" && productStylesState !== "ready") return <AppFrame authenticated><div className="authenticatedEntryLoading" data-authenticated-state="styles"><div><Activity size={24}/><span><b>{productStylesState === "failed" ? t("界面资源加载失败", "Interface assets failed to load") : t("正在准备交易工作区", "Preparing the trading workspace")}</b><small>{productStylesState === "failed" ? t("网络恢复后重试，不会影响服务器中的任务。", "Retry after the network recovers. Server-side tasks are unaffected.") : t("仅在登录后加载完整工作区资源。", "Full workspace assets load only after sign-in.")}</small></span>{productStylesState === "failed" && <button type="button" onClick={() => setProductStylesAttempt((attempt) => attempt + 1)}>{t("重试", "Retry")}</button>}</div></div></AppFrame>;
   if (!loading && !data) return <AppFrame authenticated><ConnectionScreen apiBase={apiBase} setApiBase={setApiBase} refresh={refresh} toast={toast} connectionError={connectionError} isNativeApp={isNativeApp} /></AppFrame>;
   if (loading || !data) return <AppFrame authenticated><div className="authenticatedStateScreen" data-authenticated-state="startup"><div className="authenticatedStatePanel loading"><Activity size={28} /><span>{t("正在启动 Trader Agent...", "Starting Trader Agent...")}</span></div></div></AppFrame>;
+
+  if (uiVersion === "v2") {
+    return <AppFrame authenticated><Suspense fallback={<AuthenticatedV2BootState />}>
+      <KordynV2Root api={{ data, action, toast, busy, notify, download, refresh, ensureSection, connectionError }} lang={lang} switchLang={switchLang} />
+    </Suspense></AppFrame>;
+  }
 
   if (isNativeApp || isMobileViewport) {
     // key={lang}:切换语言时整树 remount,让 mobile.jsx 里的 t() 立即全量重渲染(同桌面外壳)。
@@ -395,6 +404,10 @@ function App() {
       <Suspense fallback={<PageSkeleton />}>{content}</Suspense>
     </ZeroBaseDesktopShell></AppFrame>
   );
+}
+
+function AuthenticatedV2BootState() {
+  return <div className="authenticatedStateScreen" data-authenticated-state="v2-startup"><div className="authenticatedStatePanel loading"><Activity size={28} /><span>{t("正在加载 KORDYN V2...", "Loading KORDYN V2...")}</span></div></div>;
 }
 
 function ConnectionScreen({ apiBase, setApiBase, refresh, toast, connectionError, isNativeApp }) {
