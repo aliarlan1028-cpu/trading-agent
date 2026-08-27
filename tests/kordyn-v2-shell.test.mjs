@@ -41,6 +41,7 @@ test("Desktop shell follows the approved four-domain composition", () => {
     available: 13870.1,
     exposure: 6102.4,
     freshness: "2026-08-27T14:32:00+08:00",
+    freshnessState: "fresh",
     runtime: "full_auto_small",
     risk: "normal"
   };

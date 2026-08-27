@@ -71,7 +71,7 @@ const buildAccountTruth = (data = {}, mode = "full") => (
 test("unknown is not converted to zero and stale retains its source", () => {
   assert.deepEqual(buildAccountTruth({}, "full"), {
     mode: "full", equity: "Unavailable", available: "Unavailable", exposure: "Unavailable",
-    freshness: "Unavailable", runtime: "Unavailable", risk: "Unavailable"
+    freshness: "Unavailable", freshnessState: "Unavailable", runtime: "Unavailable", risk: "Unavailable"
   });
   const state = normalizeResourceState({ resourceState: "stale", data: { asOf: "2026-08-26T00:00:00Z", source: "OKX" } });
   assert.deepEqual(
@@ -322,7 +322,12 @@ test("Full Truth maps deployed portfolio, position, runtime, freshness, and risk
       runtimeStatus: "opening_paused",
       label: "暂停新开仓"
     },
-    system: { requestedOperatingMode: "full_auto", killSwitch: false, riskStatus: "暂停新开仓" },
+    system: {
+      requestedOperatingMode: "full_auto",
+      killSwitch: false,
+      riskStatus: "暂停新开仓",
+      dataFreshnessState: "fresh"
+    },
     portfolioRisk: {
       equity: 10240.5,
       budgetPct: 1,
@@ -339,6 +344,7 @@ test("Full Truth maps deployed portfolio, position, runtime, freshness, and risk
     available: 7130,
     exposure: 600,
     freshness: "2026-08-26T11:59:00Z",
+    freshnessState: "fresh",
     runtime: "reduce_only · requested full_auto",
     risk: "账户对账锁定"
   });

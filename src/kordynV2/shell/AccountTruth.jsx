@@ -1,6 +1,11 @@
 import { CircleDollarSign, Clock3, Menu, Radar, ShieldCheck, WalletCards } from "lucide-react";
 
 const unavailable = "Unavailable";
+const GOOD_RISK_STATES = Object.freeze(["normal", "ok", "healthy"]);
+const ADVERSE_RISK_STATES = Object.freeze([
+  "critical", "high", "danger", "elevated", "breached", "blocked", "failed", "error",
+  "kill_switch", "reduce_only", "emergency", "halted"
+]);
 const money = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2
@@ -30,7 +35,9 @@ function runtimeText(value) {
 function riskText(value) {
   const risk = primitiveText(value);
   if (risk === unavailable) return unavailable;
-  return ["normal", "ok", "healthy"].includes(risk.toLowerCase()) ? "风险正常" : risk;
+  const normalized = risk.toLowerCase();
+  if (GOOD_RISK_STATES.includes(normalized)) return "风险正常";
+  return ADVERSE_RISK_STATES.includes(normalized) ? risk : unavailable;
 }
 
 function freshnessText(value) {
@@ -58,13 +65,18 @@ function runtimeTone(value) {
 function riskTone(value) {
   const risk = primitiveText(value).toLowerCase();
   if (risk === unavailable.toLowerCase()) return "unavailable";
-  return ["normal", "ok", "healthy"].includes(risk) ? "mint" : "danger";
+  if (GOOD_RISK_STATES.includes(risk)) return "mint";
+  if (ADVERSE_RISK_STATES.includes(risk)) return "danger";
+  return "unavailable";
 }
 
 function realtimeTone(truth, state) {
   const kind = typeof state?.kind === "string" ? state.kind : "not_loaded";
   if (["failed", "forbidden", "stale", "degraded", "disabled"].includes(kind)) return "danger";
-  if (kind === "ready" && freshnessText(truth.freshness) !== unavailable) return "mint";
+  if (kind !== "ready") return "unavailable";
+  const freshnessState = primitiveText(truth.freshnessState).toLowerCase();
+  if (["fresh", "realtime", "current", "live"].includes(freshnessState)) return "mint";
+  if (["stale", "failed", "error", "disconnected", "offline", "degraded", "delayed"].includes(freshnessState)) return "danger";
   return "unavailable";
 }
 

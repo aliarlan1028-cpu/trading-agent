@@ -87,22 +87,24 @@ const QUEUE_GROUPS = Object.freeze([
   { id: "analysis", label: "正在分析" },
   { id: "monitoring", label: "正在监控" },
   { id: "execution", label: "执行中" },
-  { id: "complete", label: "已完成" }
+  { id: "complete", label: "已完成" },
+  { id: "unavailable", label: "事实待定" }
 ]);
 
 function rowIdentity(row, ...fields) {
   return fields.map((field) => safeText(row?.[field], "")).find(Boolean) || "";
 }
 
-function groupForStatus(status, fallback) {
+function groupForStatus(status) {
   const value = normalizedStatus(status);
   if (["completed", "complete", "closed", "done", "success"].includes(value)) return "complete";
   if (["submitted", "approved", "executing", "open", "filled", "protecting"].includes(value)) return "execution";
   if (["active", "armed", "monitoring", "awaiting_approval", "waiting"].includes(value)) return "monitoring";
-  return fallback;
+  if (["running", "analyzing", "analysis", "scanning", "researching"].includes(value)) return "analysis";
+  return "unavailable";
 }
 
-function missionRow(source, type, fallbackGroup) {
+function missionRow(source, type) {
   const id = rowIdentity(source, "id", "runId", "positionId", "symbol");
   if (!id) return null;
   const symbol = optionalText(source?.symbol, source?.instId);
@@ -122,7 +124,7 @@ function missionRow(source, type, fallbackGroup) {
     symbol,
     subtitle: firstText(source?.summary, source?.rationale, source?.thesis, source?.status),
     status: firstText(source?.status, source?.state),
-    group: groupForStatus(source?.status ?? source?.state, fallbackGroup),
+    group: groupForStatus(source?.status ?? source?.state),
     source,
     candidate: { id, type }
   };
@@ -130,9 +132,9 @@ function missionRow(source, type, fallbackGroup) {
 
 function buildMissionRows(data) {
   return [
-    ...asList(data?.agentRuns).map((row) => missionRow(row, "Agent run", "analysis")),
-    ...asList(data?.watchTriggers).map((row) => missionRow(row, "Watch", "monitoring")),
-    ...asList(data?.tradePlans).map((row) => missionRow(row, "Trade plan", "monitoring"))
+    ...asList(data?.agentRuns).map((row) => missionRow(row, "Agent run")),
+    ...asList(data?.watchTriggers).map((row) => missionRow(row, "Watch")),
+    ...asList(data?.tradePlans).map((row) => missionRow(row, "Trade plan"))
   ].filter(Boolean).slice(0, 10);
 }
 
@@ -332,7 +334,7 @@ function MissionFocus({ data, row, selection, onOpenProof }) {
 
 function AttentionRail({ data, selection, onSelect }) {
   const attention = [...asList(data?.pendingActions), ...asList(data?.riskIncidents)].slice(0, 2);
-  const attentionKnown = Array.isArray(data?.pendingActions) || Array.isArray(data?.riskIncidents);
+  const attentionComplete = Array.isArray(data?.pendingActions) && Array.isArray(data?.riskIncidents);
   const latestRun = asList(data?.agentRuns)[0];
   const relationshipFacts = [
     ["行情快照", collectionCount(data?.markets)],
@@ -343,8 +345,11 @@ function AttentionRail({ data, selection, onSelect }) {
   ];
   return (
     <aside className="kordynV2AttentionRail">
-      <section className="kordynV2AttentionCard is-urgent">
-        <header><h2>需要你</h2><span>{attention.length ? "高" : attentionKnown ? "0" : unavailable}</span></header>
+      <section
+        className="kordynV2AttentionCard is-urgent"
+        data-kordyn-v2-attention-completeness={attentionComplete ? "complete" : "unavailable"}
+      >
+        <header><h2>需要你</h2><span>{attentionComplete ? attention.length ? "高" : "0" : unavailable}</span></header>
         {attention.length ? attention.map((item, index) => {
           const candidate = attentionCandidate(item, data);
           const Item = candidate ? "button" : "div";
@@ -362,7 +367,7 @@ function AttentionRail({ data, selection, onSelect }) {
               {candidate && <ArrowRight size={17} aria-hidden="true" />}
             </Item>
           );
-        }) : <p>{attentionKnown ? "当前没有待处理的权威事项。" : unavailable}</p>}
+        }) : <p>{attentionComplete ? "当前没有待处理的权威事项。" : unavailable}</p>}
       </section>
       <section className="kordynV2AttentionCard is-context">
         <header><h2>关联上下文</h2></header>

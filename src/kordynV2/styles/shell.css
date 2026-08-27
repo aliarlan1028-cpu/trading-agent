@@ -600,6 +600,10 @@ body:has(.kordynV2Root) {
   background: var(--kordyn-v2-dim);
 }
 
+.kordynV2QueueGroup h3 span[data-tone="unavailable"] {
+  background: var(--kordyn-v2-dim);
+}
+
 .kordynV2QueueGroup h3 em {
   color: var(--kordyn-v2-muted);
   font-style: normal;

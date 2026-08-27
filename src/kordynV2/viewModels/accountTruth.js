@@ -92,6 +92,7 @@ function unavailableAccountTruth(mode) {
     available: unavailable,
     exposure: unavailable,
     freshness: unavailable,
+    freshnessState: unavailable,
     runtime: unavailable,
     risk: unavailable
   });
@@ -167,6 +168,28 @@ function freshnessFact(data, portfolioRead) {
     }
   }
   return latestValue;
+}
+
+function freshnessStateFact(systemRead, marketStatusRead) {
+  if (readIsInvalid(systemRead, marketStatusRead)) return unavailable;
+  const systemState = systemRead.kind === "value"
+    ? optionalStringRead(systemRead.value, "dataFreshnessState")
+    : missingRead();
+  const marketState = marketStatusRead.kind === "value"
+    ? optionalStringRead(marketStatusRead.value, "dataFreshnessState")
+    : missingRead();
+  const systemStale = systemRead.kind === "value"
+    ? optionalBooleanRead(systemRead.value, "dataStale")
+    : missingRead();
+  const marketStale = marketStatusRead.kind === "value"
+    ? optionalBooleanRead(marketStatusRead.value, "dataStale")
+    : missingRead();
+  if (readIsInvalid(systemState, marketState, systemStale, marketStale)) return unavailable;
+  if (systemState.kind === "value") return systemState.value;
+  if (marketState.kind === "value") return marketState.value;
+  if (systemStale.kind === "value") return systemStale.value ? "stale" : "fresh";
+  if (marketStale.kind === "value") return marketStale.value ? "stale" : "fresh";
+  return unavailable;
 }
 
 function validBlockerDetails(automation) {
@@ -341,6 +364,7 @@ export function buildAccountTruth(data = {}, mode = "full") {
   const risk = nestedRecordRead(data, "portfolioRisk");
   const automation = nestedRecordRead(data, "automationState");
   const system = nestedRecordRead(data, "system");
+  const marketStatus = nestedRecordRead(data, "marketStatus");
   const currentRiskSnapshot = nestedRecordRead(data, "currentRiskSnapshot");
   return Object.freeze({
     mode,
@@ -348,6 +372,7 @@ export function buildAccountTruth(data = {}, mode = "full") {
     available: financialFact(responseValue(portfolio.value, "availableMarginUsdt")),
     exposure: exposureFact(data),
     freshness: freshnessFact(data, portfolio),
+    freshnessState: freshnessStateFact(system, marketStatus),
     runtime: runtimeFact(automation, system),
     risk: riskFact(system, currentRiskSnapshot, risk)
   });

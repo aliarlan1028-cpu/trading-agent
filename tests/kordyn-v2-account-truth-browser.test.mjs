@@ -393,3 +393,102 @@ test("browser Account Truth rejects post-parse freshness and risk leaves without
     getterCalls: 0
   });
 });
+
+test("browser Account Truth projects freshness state only from strict provenance-gated leaves", () => {
+  const serialized = vm.runInNewContext(`
+    (() => {
+      const { buildAccountTruth } = __kordynAccountTruth;
+      const parseLoaderJson = __kordynParseJsonResponseText;
+      const makeCounters = () => ({
+        getPrototypeOf: 0,
+        getOwnPropertyDescriptor: 0,
+        ownKeys: 0,
+        get: 0
+      });
+      const wrap = (target, counters) => new Proxy(target, {
+        getPrototypeOf() { counters.getPrototypeOf += 1; return Object.prototype; },
+        getOwnPropertyDescriptor(value, field) {
+          counters.getOwnPropertyDescriptor += 1;
+          return Reflect.getOwnPropertyDescriptor(value, field);
+        },
+        ownKeys(value) { counters.ownKeys += 1; return Reflect.ownKeys(value); },
+        get(value, field, receiver) {
+          counters.get += 1;
+          return Reflect.get(value, field, receiver);
+        }
+      });
+      const read = (data) => {
+        try {
+          return { threw: false, value: buildAccountTruth(data, "full").freshnessState };
+        } catch (error) {
+          return { threw: true, value: null, error: String(error) };
+        }
+      };
+
+      const facts = {
+        systemFresh: read(parseLoaderJson('{"system":{"dataFreshnessState":"fresh"}}')),
+        marketStale: read(parseLoaderJson('{"marketStatus":{"dataFreshnessState":"stale"}}')),
+        explicitStale: read(parseLoaderJson('{"system":{"dataStale":true}}')),
+        explicitFresh: read(parseLoaderJson('{"marketStatus":{"dataStale":false}}')),
+        missing: read(parseLoaderJson('{}')),
+        pending: read(parseLoaderJson('{"system":{"dataFreshnessState":"pending"}}')),
+        novel: read(parseLoaderJson('{"system":{"dataFreshnessState":"quantum"}}'))
+      };
+
+      const proxyLeafData = parseLoaderJson('{"system":{"dataFreshnessState":"fresh"}}');
+      const proxyLeafCounters = makeCounters();
+      proxyLeafData.system.dataFreshnessState = wrap({}, proxyLeafCounters);
+      const proxyLeaf = read(proxyLeafData);
+
+      const accessorLeafData = parseLoaderJson('{"system":{"dataFreshnessState":"fresh"}}');
+      let accessorLeafCalls = 0;
+      Object.defineProperty(accessorLeafData.system, "dataFreshnessState", {
+        configurable: true,
+        enumerable: true,
+        get() { accessorLeafCalls += 1; throw new Error("freshness getter invoked"); }
+      });
+      const accessorLeaf = read(accessorLeafData);
+
+      const proxyBooleanData = parseLoaderJson('{"marketStatus":{"dataStale":false}}');
+      const proxyBooleanCounters = makeCounters();
+      proxyBooleanData.marketStatus.dataStale = wrap({}, proxyBooleanCounters);
+      const proxyBoolean = read(proxyBooleanData);
+
+      const nestedProxyData = parseLoaderJson('{"system":{"dataFreshnessState":"fresh"}}');
+      const nestedProxyCounters = makeCounters();
+      nestedProxyData.system = wrap(nestedProxyData.system, nestedProxyCounters);
+      const nestedProxy = read(nestedProxyData);
+
+      return JSON.stringify({
+        facts,
+        proxyLeaf, proxyLeafCounters,
+        accessorLeaf, accessorLeafCalls,
+        proxyBoolean, proxyBooleanCounters,
+        nestedProxy, nestedProxyCounters
+      });
+    })()
+  `, browserContext);
+  const result = JSON.parse(serialized);
+  const zeroCallbacks = { getPrototypeOf: 0, getOwnPropertyDescriptor: 0, ownKeys: 0, get: 0 };
+  assert.deepEqual(result.facts, {
+    systemFresh: { threw: false, value: "fresh" },
+    marketStale: { threw: false, value: "stale" },
+    explicitStale: { threw: false, value: "stale" },
+    explicitFresh: { threw: false, value: "fresh" },
+    missing: { threw: false, value: "Unavailable" },
+    pending: { threw: false, value: "pending" },
+    novel: { threw: false, value: "quantum" }
+  });
+  assert.deepEqual({ outcome: result.proxyLeaf, callbacks: result.proxyLeafCounters }, {
+    outcome: { threw: false, value: "Unavailable" }, callbacks: zeroCallbacks
+  });
+  assert.deepEqual({ outcome: result.accessorLeaf, getterCalls: result.accessorLeafCalls }, {
+    outcome: { threw: false, value: "Unavailable" }, getterCalls: 0
+  });
+  assert.deepEqual({ outcome: result.proxyBoolean, callbacks: result.proxyBooleanCounters }, {
+    outcome: { threw: false, value: "Unavailable" }, callbacks: zeroCallbacks
+  });
+  assert.deepEqual({ outcome: result.nestedProxy, callbacks: result.nestedProxyCounters }, {
+    outcome: { threw: false, value: "Unavailable" }, callbacks: zeroCallbacks
+  });
+});

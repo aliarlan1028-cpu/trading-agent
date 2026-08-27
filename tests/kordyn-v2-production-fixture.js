@@ -37,7 +37,8 @@ export const KORDYN_V2_PRODUCTION_FIXTURE_JSON = JSON.stringify({
     autonomyEnabled: true,
     liveTradingEnabled: true,
     requestedOperatingMode: "full_auto",
-    riskStatus: "normal"
+    riskStatus: "normal",
+    dataFreshnessState: "fresh"
   },
   portfolioRisk: { status: "normal" },
   currentRiskSnapshot: {
@@ -151,7 +152,7 @@ export const KORDYN_V2_ADVERSE_HEALTH_FIXTURE_JSON = JSON.stringify({
     { id: "snapshot-adverse", status: "critical", createdAt: "2026-08-27T06:45:11Z" }
   ],
   automationState: { mode: "halted", runtimeStatus: "failed", blockerDetails: [] },
-  system: { killSwitch: true, riskStatus: "critical" },
+  system: { killSwitch: true, riskStatus: "critical", dataFreshnessState: "stale" },
   portfolioRisk: { status: "critical" },
   currentRiskSnapshot: {
     controls: { killSwitch: true, reduceOnly: true, riskStatus: "critical" }
@@ -170,4 +171,109 @@ export const KORDYN_V2_UNRESOLVED_ATTENTION_FIXTURE_JSON = JSON.stringify({
   pendingActions: [
     { id: "action-missing", objectId: "watch-missing", objectType: "Watch", title: "未解析事项", status: "pending" }
   ]
+});
+
+export const KORDYN_V2_UNKNOWN_QUEUE_FIXTURE_JSON = JSON.stringify({
+  revision: 47,
+  source: "Read-only queue truth projection",
+  asOf: "2026-08-27T06:48:11Z",
+  user: { id: "fixture-user-queue-unknown", name: "K0" },
+  resourceState: { chat: "loaded" },
+  agentRuns: [
+    { id: "agent-status-missing", title: "Agent status missing" },
+    { id: "agent-status-novel", title: "Agent status novel", status: "calibrating" }
+  ],
+  watchTriggers: [
+    { id: "watch-status-missing", title: "Watch status missing" }
+  ],
+  tradePlans: [
+    { id: "plan-status-missing", title: "Plan status missing" }
+  ],
+  pendingActions: [],
+  riskIncidents: []
+});
+
+export const KORDYN_V2_ATTENTION_PENDING_ONLY_EMPTY_FIXTURE_JSON = JSON.stringify({
+  revision: 48,
+  source: "Read-only partial attention projection",
+  user: { id: "fixture-user-attention-pending-only", name: "K0" },
+  resourceState: { chat: "loaded" },
+  pendingActions: []
+});
+
+export const KORDYN_V2_ATTENTION_RISK_ONLY_EMPTY_FIXTURE_JSON = JSON.stringify({
+  revision: 49,
+  source: "Read-only partial attention projection",
+  user: { id: "fixture-user-attention-risk-only", name: "K0" },
+  resourceState: { chat: "loaded" },
+  riskIncidents: []
+});
+
+export const KORDYN_V2_ATTENTION_BOTH_EMPTY_FIXTURE_JSON = JSON.stringify({
+  revision: 50,
+  source: "Read-only complete attention projection",
+  user: { id: "fixture-user-attention-both", name: "K0" },
+  resourceState: { chat: "loaded" },
+  pendingActions: [],
+  riskIncidents: []
+});
+
+export const KORDYN_V2_ATTENTION_PRESENT_PARTIAL_FIXTURE_JSON = JSON.stringify({
+  revision: 51,
+  source: "Read-only partial attention projection",
+  user: { id: "fixture-user-attention-present", name: "K0" },
+  resourceState: { chat: "loaded" },
+  watchTriggers: [
+    { id: "watch-attention-present", title: "Authoritative watch", status: "active" }
+  ],
+  pendingActions: [
+    {
+      id: "action-attention-present",
+      objectId: "watch-attention-present",
+      objectType: "Watch",
+      title: "Authoritative pending item",
+      status: "pending"
+    }
+  ]
+});
+
+export const KORDYN_V2_STALE_HEALTH_FIXTURE_JSON = JSON.stringify({
+  revision: 52,
+  source: "Read-only stale health projection",
+  user: { id: "fixture-user-health-stale", name: "K0" },
+  resourceState: { chat: "loaded" },
+  portfolio: { marginSyncedAt: "2026-08-27T06:45:11Z" },
+  automationState: { mode: "observe", runtimeStatus: "normal", blockerDetails: [] },
+  system: { killSwitch: false, riskStatus: "normal", dataFreshnessState: "stale" },
+  portfolioRisk: { status: "normal" }
+});
+
+export const KORDYN_V2_MISSING_HEALTH_FIXTURE_JSON = JSON.stringify({
+  revision: 53,
+  source: "Read-only missing health projection",
+  user: { id: "fixture-user-health-missing", name: "K0" },
+  resourceState: { chat: "loaded" },
+  portfolio: { marginSyncedAt: "2026-08-27T06:45:11Z" }
+});
+
+export const KORDYN_V2_PENDING_HEALTH_FIXTURE_JSON = JSON.stringify({
+  revision: 54,
+  source: "Read-only pending health projection",
+  user: { id: "fixture-user-health-pending", name: "K0" },
+  resourceState: { chat: "loaded" },
+  portfolio: { marginSyncedAt: "2026-08-27T06:45:11Z" },
+  automationState: { mode: "observe", runtimeStatus: "normal", blockerDetails: [] },
+  system: { killSwitch: false, riskStatus: "pending", dataFreshnessState: "pending" },
+  portfolioRisk: { status: "pending" }
+});
+
+export const KORDYN_V2_NOVEL_HEALTH_FIXTURE_JSON = JSON.stringify({
+  revision: 55,
+  source: "Read-only novel health projection",
+  user: { id: "fixture-user-health-novel", name: "K0" },
+  resourceState: { chat: "loaded" },
+  portfolio: { marginSyncedAt: "2026-08-27T06:45:11Z" },
+  automationState: { mode: "observe", runtimeStatus: "normal", blockerDetails: [] },
+  system: { killSwitch: false, riskStatus: "quantum", dataFreshnessState: "quantum" },
+  portfolioRisk: { status: "quantum" }
 });

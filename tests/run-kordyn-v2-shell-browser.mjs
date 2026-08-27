@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { spawn } from "node:child_process";
 import os from "node:os";
@@ -8,17 +7,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import WebSocket from "ws";
+import { evaluateKordynV2VisualContract } from "./helpers/kordyn-v2-visual-contract.mjs";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const chromeBinary = process.env.CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const screenshotDir = process.env.KORDYN_V2_SCREENSHOT_DIR
   ? path.resolve(rootDir, process.env.KORDYN_V2_SCREENSHOT_DIR)
   : null;
-const approvedReferencePath = path.join(
-  rootDir,
-  ".impeccable/mocks/kordyn-v2-approved/desktop-ai-mission-control.png"
-);
-const approvedReferenceSha = "55f988f9c87d1dce83d528bd2ad224b0951542cbab32eca018bf6c78818dbc20";
 const viewports = [[1440, 900], [1180, 800]];
 const domains = [
   ["ai", "missions"],
@@ -174,57 +169,6 @@ async function setViewport(cdp, url, width, height) {
   );
 }
 
-const fidelityRegions = Object.freeze([
-  { name: "whole-frame", left: 0, top: 0, width: 1, height: 1, weight: 0.20 },
-  { name: "identity-rail", left: 0.76, top: 0, width: 0.24, height: 0.09, weight: 0.20 },
-  { name: "workbench-footer", left: 0.31, top: 0.72, width: 0.47, height: 0.15, weight: 0.25 },
-  { name: "command-support", left: 0.14, top: 0.86, width: 0.85, height: 0.13, weight: 0.35 }
-]);
-
-function regionMeanAbsoluteError(actual, reference, imageWidth, imageHeight, region) {
-  const left = Math.floor(region.left * imageWidth);
-  const top = Math.floor(region.top * imageHeight);
-  const right = Math.floor((region.left + region.width) * imageWidth);
-  const bottom = Math.floor((region.top + region.height) * imageHeight);
-  let difference = 0;
-  let samples = 0;
-  for (let y = top; y < bottom; y += 1) {
-    for (let x = left; x < right; x += 1) {
-      const pixel = (y * imageWidth + x) * 3;
-      for (let channel = 0; channel < 3; channel += 1) {
-        difference += Math.abs(actual[pixel + channel] - reference[pixel + channel]);
-        samples += 1;
-      }
-    }
-  }
-  return difference / samples / 255;
-}
-
-async function referenceFidelity(bytes, width, height) {
-  const referenceBytes = await readFile(approvedReferencePath);
-  assert.equal(
-    createHash("sha256").update(referenceBytes).digest("hex"),
-    approvedReferenceSha,
-    "approved desktop reference SHA"
-  );
-  const actual = await sharp(bytes).removeAlpha().raw().toBuffer();
-  const reference = await sharp(referenceBytes)
-    .resize(width, height, { fit: "fill" })
-    .removeAlpha()
-    .raw()
-    .toBuffer();
-  const regions = Object.fromEntries(fidelityRegions.map((region) => [
-    region.name,
-    regionMeanAbsoluteError(actual, reference, width, height, region)
-  ]));
-  const metric = fidelityRegions.reduce(
-    (total, region) => total + regions[region.name] * region.weight,
-    0
-  );
-  const threshold = width === 1440 ? 0.0415 : 0.0475;
-  return { metric, threshold, regions };
-}
-
 async function capture(cdp, width, height, filename = `desktop-${width}x${height}.png`) {
   const result = await cdp.send("Page.captureScreenshot", {
     format: "png",
@@ -234,7 +178,7 @@ async function capture(cdp, width, height, filename = `desktop-${width}x${height
   const bytes = Buffer.from(result.data, "base64");
   const metadata = await sharp(bytes).metadata();
   assert.deepEqual([metadata.width, metadata.height], [width, height], `${width}: screenshot dimensions`);
-  const fidelity = await referenceFidelity(bytes, width, height);
+  const fidelity = await evaluateKordynV2VisualContract(bytes, width, height);
   let outputPath = null;
   if (screenshotDir) {
     await mkdir(screenshotDir, { recursive: true });
@@ -317,23 +261,45 @@ async function verifyFidelityLandmarks(cdp, geometry, width, height) {
   const semantics = await evaluate(cdp, `(() => {
     const read = (selector) => {
       const node = document.querySelector(selector);
-      return node ? {
+      if (!node) return null;
+      const style = getComputedStyle(node);
+      const rect = node.getBoundingClientRect();
+      const opacity = Number.parseFloat(style.opacity);
+      return {
         tag:node.tagName,
         disabled:node.matches(':disabled'),
         ariaDisabled:node.getAttribute('aria-disabled'),
         hasPopup:node.getAttribute('aria-haspopup'),
         text:node.textContent.trim(),
-        name:node.getAttribute('aria-label') || ''
-      } : null;
+        name:node.getAttribute('aria-label') || '',
+        paint:{
+          display:style.display,
+          visibility:style.visibility,
+          opacity,
+          width:rect.width,
+          height:rect.height,
+          painted:style.display !== 'none' && style.visibility === 'visible' && opacity >= 0.5 && rect.width >= 24 && rect.height >= 24
+        }
+      };
     };
     return {
       identity:read('[data-kordyn-v2-identity]'),
       notification:read('[data-kordyn-v2-notification]'),
       audit:read('[data-kordyn-v2-audit-control]'),
       poster:read('[data-kordyn-v2-poster-control]'),
-      assistant:read('[data-kordyn-v2-assistant-reserve]')
+      assistant:read('[data-kordyn-v2-assistant-reserve]'),
+      workbenchFooter:read('[data-kordyn-v2-workbench-footer]'),
+      prompt:read('.kordynV2MissionPrompt')
     };
   })()`);
+
+  for (const name of ["identity", "workbenchFooter", "prompt", "assistant"]) {
+    contractTrue(
+      `${width}: ${name} landmark is computed and visibly painted`,
+      semantics[name]?.paint?.painted === true,
+      `received ${JSON.stringify(semantics[name]?.paint)}`
+    );
+  }
 
   contractTrue(
     `${width}: authenticated identity uses fixture truth`,
@@ -609,11 +575,12 @@ async function readHealth(cdp) {
   })()`);
 }
 
-async function verifyHealth(cdp, pageUrl, scenario, expectedTone) {
+async function verifyHealth(cdp, pageUrl, scenario, expectedTones) {
   const url = scenario === "default" ? pageUrl : `${pageUrl}?scenario=${scenario}`;
   await setViewport(cdp, url, 1440, 900);
   const health = await readHealth(cdp);
   for (const [kind, indicator] of Object.entries(health)) {
+    const expectedTone = expectedTones[kind];
     contractEqual(`${scenario}: ${kind} health tone`, indicator.tone, expectedTone);
     contractEqual(`${scenario}: ${kind} semantic role`, indicator.role, "status");
     contractTrue(`${scenario}: ${kind} accessible name`, Boolean(indicator.name), `received ${JSON.stringify(indicator)}`);
@@ -624,6 +591,64 @@ async function verifyHealth(cdp, pageUrl, scenario, expectedTone) {
         `received ${JSON.stringify(indicator)}`
       );
     }
+  }
+}
+
+async function readQueueGroups(cdp) {
+  return await evaluate(cdp, `(() => [...document.querySelectorAll('.kordynV2QueueGroup')].map((group) => ({
+    label:group.querySelector('h3')?.childNodes?.[1]?.textContent?.trim() || group.querySelector('h3')?.textContent?.replace(/\\s*\\(\\d+\\)\\s*$/, '').trim() || null,
+    targets:[...group.querySelectorAll('[data-kordyn-v2-object-target]')].map((node) => node.getAttribute('data-kordyn-v2-object-target'))
+  })))()`);
+}
+
+async function verifyUnknownQueue(cdp, pageUrl) {
+  await setViewport(cdp, pageUrl, 1440, 900);
+  contractEqual("recognized queue facts retain their explicit activity groups", await readQueueGroups(cdp), [
+    { label: "正在分析", targets: ["run-btc-analysis"] },
+    { label: "正在监控", targets: ["watch-eth-retest", "watch-sol-allowlist"] },
+    { label: "执行中", targets: ["plan-eth-follow"] },
+    { label: "已完成", targets: ["run-btc-complete", "plan-sol-complete"] }
+  ]);
+  await setViewport(cdp, `${pageUrl}?scenario=queue-unknown`, 1440, 900);
+  const groups = await readQueueGroups(cdp);
+  contractEqual("status-less and novel queue facts render only in truthful unavailable group", groups, [
+    {
+      label: "事实待定",
+      targets: [
+        "agent-status-missing",
+        "agent-status-novel",
+        "watch-status-missing",
+        "plan-status-missing"
+      ]
+    }
+  ]);
+  const positiveTargets = groups
+    .filter((group) => ["正在分析", "正在监控", "执行中", "已完成"].includes(group.label))
+    .flatMap((group) => group.targets);
+  contractEqual("unknown queue facts never imply positive activity", positiveTargets, []);
+}
+
+async function readAttentionSummary(cdp) {
+  return await evaluate(cdp, `(() => {
+    const card = document.querySelector('.kordynV2AttentionCard.is-urgent');
+    return {
+      aggregate:card?.querySelector(':scope > header span')?.textContent?.trim() || null,
+      empty:card?.querySelector(':scope > p')?.textContent?.trim() || null,
+      items:[...card.querySelectorAll('.kordynV2AttentionItem')].map((node) => node.querySelector('strong')?.textContent?.trim() || null)
+    };
+  })()`);
+}
+
+async function verifyAttentionCompleteness(cdp, pageUrl) {
+  const cases = [
+    ["attention-pending-only-empty", { aggregate: "Unavailable", empty: "Unavailable", items: [] }],
+    ["attention-risk-only-empty", { aggregate: "Unavailable", empty: "Unavailable", items: [] }],
+    ["attention-both-empty", { aggregate: "0", empty: "当前没有待处理的权威事项。", items: [] }],
+    ["attention-present-partial", { aggregate: "Unavailable", empty: null, items: ["Authoritative pending item"] }]
+  ];
+  for (const [scenario, expected] of cases) {
+    await setViewport(cdp, `${pageUrl}?scenario=${scenario}`, 1440, 900);
+    contractEqual(`${scenario}: attention aggregate preserves collection completeness`, await readAttentionSummary(cdp), expected);
   }
 }
 
@@ -807,14 +832,52 @@ try {
       screenshot.metric <= screenshot.threshold,
       `metric=${screenshot.metric.toFixed(6)} threshold=${screenshot.threshold.toFixed(6)} regions=${JSON.stringify(Object.fromEntries(Object.entries(screenshot.regions).map(([name, value]) => [name, Number(value.toFixed(6))])))}`
     );
+    contractTrue(
+      `${width}: combined pinned-reference visual contract rejects structure-free frames`,
+      screenshot.accepted,
+      `maeAccepted=${screenshot.maeAccepted} structure=${JSON.stringify(Object.fromEntries(Object.entries(screenshot.structure.regions).map(([name, value]) => [name, {
+        accepted:value.accepted,
+        luminance:Number(value.luminanceVarianceRatio.toFixed(4)),
+        color:Number(value.colorVarianceRatio.toFixed(4)),
+        edge:Number(value.edgeCosine.toFixed(4)),
+        density:Number(value.edgeDensityRatio.toFixed(4))
+      }])))}`
+    );
+    for (const name of ["identity-rail", "workbench-footer", "command-bar", "support"]) {
+      contractTrue(
+        `${width}: ${name} screenshot region retains nontrivial painted structure`,
+        screenshot.structure.regions[name]?.accepted,
+        `received ${JSON.stringify(screenshot.structure.regions[name])}`
+      );
+    }
     results.push({ width, height, navigation, geometry, screenshot });
   }
 
   await verifyUnknownMission(cdp, pageUrl);
   await verifyUnresolvedAttention(cdp, pageUrl);
-  await verifyHealth(cdp, pageUrl, "default", "mint");
-  await verifyHealth(cdp, pageUrl, "health-unknown", "unavailable");
-  await verifyHealth(cdp, pageUrl, "health-adverse", "danger");
+  await verifyUnknownQueue(cdp, pageUrl);
+  await verifyAttentionCompleteness(cdp, pageUrl);
+  await verifyHealth(cdp, pageUrl, "default", {
+    connection: "mint", runtime: "mint", risk: "mint", realtime: "mint"
+  });
+  await verifyHealth(cdp, pageUrl, "health-adverse", {
+    connection: "danger", runtime: "danger", risk: "danger", realtime: "danger"
+  });
+  await verifyHealth(cdp, pageUrl, "health-missing", {
+    connection: "mint", runtime: "unavailable", risk: "unavailable", realtime: "unavailable"
+  });
+  await verifyHealth(cdp, pageUrl, "health-pending", {
+    connection: "mint", runtime: "mint", risk: "unavailable", realtime: "unavailable"
+  });
+  await verifyHealth(cdp, pageUrl, "health-novel", {
+    connection: "mint", runtime: "mint", risk: "unavailable", realtime: "unavailable"
+  });
+  await verifyHealth(cdp, pageUrl, "health-stale", {
+    connection: "mint", runtime: "mint", risk: "mint", realtime: "danger"
+  });
+  await verifyHealth(cdp, pageUrl, "health-unknown", {
+    connection: "unavailable", runtime: "unavailable", risk: "unavailable", realtime: "unavailable"
+  });
   let independentHero = null;
   if (screenshotDir) {
     await setViewport(cdp, pageUrl, 1440, 900);
@@ -826,8 +889,8 @@ try {
     independentHero = await capture(cdp, 1440, 900, "hero-repro.png");
     contractTrue(
       "independent 1440 evidence meets pinned-reference fidelity floor",
-      independentHero.metric <= independentHero.threshold,
-      `metric=${independentHero.metric.toFixed(6)} threshold=${independentHero.threshold.toFixed(6)}`
+      independentHero.accepted,
+      `metric=${independentHero.metric.toFixed(6)} threshold=${independentHero.threshold.toFixed(6)} structure=${independentHero.structure.accepted}`
     );
   }
   assert.equal(
@@ -842,6 +905,7 @@ try {
     const box = (value) => [value.left, value.top, value.right, value.bottom].map(Math.round).join(",");
     return `${row.width}:identity=${box(identity)} notification=${box(notification)} footer=${box(workbenchFooter)} continuity=${Math.round(workbenchFooter.top - decisionSummary.bottom)} prompt=${box(prompt)} assistant=${box(assistant)} runtime-gap=${Math.round(evidenceDock.left - runtime.right)}`;
   }).join(" | ")}\n`);
+  process.stdout.write(`KORDYN V2 structure ${results.map((row) => `${row.width}:${Object.entries(row.screenshot.structure.regions).map(([name, value]) => `${name}=l${value.luminanceVarianceRatio.toFixed(3)}/c${value.colorVarianceRatio.toFixed(3)}/e${value.edgeCosine.toFixed(3)}/d${value.edgeDensityRatio.toFixed(3)}`).join(",")}`).join(" | ")}\n`);
 } finally {
   cdp?.close();
   await Promise.all([stopProcess(chrome), stopProcess(vite)]);
