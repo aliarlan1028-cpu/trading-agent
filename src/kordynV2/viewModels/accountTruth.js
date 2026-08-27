@@ -14,24 +14,35 @@ const DIRECT_POSITION_FIELDS = ["notional", "notionalUsdt", "marketValue"];
 const QUANTITY_POSITION_FIELDS = ["quantity", "size", "pos", "qty"];
 const MARK_POSITION_FIELDS = ["markPrice", "mark", "price", "entryPrice", "entry"];
 
+// Node exposes a trap-free Proxy brand check. Browser ECMAScript has no
+// equivalent, so browser bundles fall back to the non-coercive checks below.
+const intrinsicIsProxy = (() => {
+  try {
+    const getBuiltinModule = globalThis.process?.getBuiltinModule;
+    if (typeof getBuiltinModule !== "function") return null;
+    const isProxy = globalThis.process.getBuiltinModule("node:util")?.types?.isProxy;
+    return typeof isProxy === "function" ? isProxy : null;
+  } catch {
+    return null;
+  }
+})();
+
 function ownFinitePositionValue(position, fields) {
-  let selected;
-  let found = false;
   for (const field of fields) {
     const descriptor = Object.getOwnPropertyDescriptor(position, field);
     if (!descriptor) continue;
-    if (!Object.hasOwn(descriptor, "value") || !finiteNumber(descriptor.value)) return { valid: false };
-    if (!found) {
-      selected = descriptor.value;
-      found = true;
-    }
+    if (!Object.hasOwn(descriptor, "value")) return { valid: false };
+    if (descriptor.value === null || descriptor.value === undefined) continue;
+    if (!finiteNumber(descriptor.value)) return { valid: false };
+    return { valid: true, found: true, value: descriptor.value };
   }
-  return { valid: true, found, value: selected };
+  return { valid: true, found: false, value: undefined };
 }
 
 function normalizedExposurePosition(position) {
   if (!position || typeof position !== "object" || Array.isArray(position)) return null;
   try {
+    if (intrinsicIsProxy?.(position)) return null;
     const prototype = Object.getPrototypeOf(position);
     if (prototype !== Object.prototype && prototype !== null) return null;
     const direct = ownFinitePositionValue(position, DIRECT_POSITION_FIELDS);
@@ -39,7 +50,7 @@ function normalizedExposurePosition(position) {
     const mark = ownFinitePositionValue(position, MARK_POSITION_FIELDS);
     if (!direct.valid || !quantity.valid || !mark.valid) return null;
     if (direct.found) {
-      return { notional: direct.value, ...(quantity.found ? { quantity: quantity.value } : {}) };
+      return { notional: direct.value };
     }
     if (!quantity.found || !mark.found) return null;
     return { quantity: quantity.value, mark: mark.value };

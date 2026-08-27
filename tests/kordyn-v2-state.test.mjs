@@ -112,6 +112,75 @@ test("signed and closed numeric positions preserve authoritative absolute exposu
   assert.equal(buildAccountTruth({ positions: [nullPrototype] }, "full").exposure, 600);
 });
 
+test("direct notional remains authoritative when an explicit quantity is zero", () => {
+  assert.equal(buildAccountTruth({
+    positions: [{ notional: 600, quantity: 0, mark: 60000 }]
+  }, "full").exposure, 600);
+});
+
+test("direct notional aliases use the first non-nullish value", () => {
+  let ignoredAccessorCalls = 0;
+  const ignoredAccessor = { notional: 600 };
+  Object.defineProperty(ignoredAccessor, "notionalUsdt", {
+    enumerable: true,
+    get() { ignoredAccessorCalls += 1; throw new Error("ignored notional alias invoked"); }
+  });
+
+  const cases = [
+    [{ notional: 600, notionalUsdt: "ignored", marketValue: Number.NaN }, 600],
+    [{ notional: null, notionalUsdt: -600, marketValue: "ignored" }, 600],
+    [{ notional: undefined, notionalUsdt: 0 }, 0],
+    [{ notional: "600", notionalUsdt: 600 }, "Unavailable"],
+    [ignoredAccessor, 600]
+  ];
+  for (const [row, expected] of cases) {
+    assert.equal(buildAccountTruth({ positions: [row] }, "full").exposure, expected);
+  }
+  assert.equal(ignoredAccessorCalls, 0);
+});
+
+test("quantity aliases use the first non-nullish value", () => {
+  let ignoredAccessorCalls = 0;
+  const ignoredAccessor = { quantity: 0.01, mark: 60000 };
+  Object.defineProperty(ignoredAccessor, "size", {
+    enumerable: true,
+    get() { ignoredAccessorCalls += 1; throw new Error("ignored quantity alias invoked"); }
+  });
+
+  const cases = [
+    [{ quantity: 0.01, size: "ignored", pos: Number.NaN, mark: 60000 }, 600],
+    [{ quantity: null, size: -0.01, pos: "ignored", mark: 60000 }, 600],
+    [{ quantity: undefined, size: 0, mark: 60000 }, 0],
+    [{ quantity: "0.01", size: 0.01, mark: 60000 }, "Unavailable"],
+    [ignoredAccessor, 600]
+  ];
+  for (const [row, expected] of cases) {
+    assert.equal(buildAccountTruth({ positions: [row] }, "full").exposure, expected);
+  }
+  assert.equal(ignoredAccessorCalls, 0);
+});
+
+test("mark aliases use the first non-nullish value", () => {
+  let ignoredAccessorCalls = 0;
+  const ignoredAccessor = { quantity: 0.01, markPrice: 60000 };
+  Object.defineProperty(ignoredAccessor, "mark", {
+    enumerable: true,
+    get() { ignoredAccessorCalls += 1; throw new Error("ignored mark alias invoked"); }
+  });
+
+  const cases = [
+    [{ quantity: 0.01, markPrice: 60000, mark: "ignored", price: Number.NaN }, 600],
+    [{ quantity: -0.01, markPrice: null, mark: 60000, price: "ignored" }, 600],
+    [{ quantity: 0.01, markPrice: undefined, mark: 0 }, 0],
+    [{ quantity: 0.01, markPrice: "60000", mark: 60000 }, "Unavailable"],
+    [ignoredAccessor, 600]
+  ];
+  for (const [row, expected] of cases) {
+    assert.equal(buildAccountTruth({ positions: [row] }, "full").exposure, expected);
+  }
+  assert.equal(ignoredAccessorCalls, 0);
+});
+
 test("class and custom-prototype position rows fail closed", () => {
   class Position {
     constructor() { this.notional = 600; }
@@ -153,6 +222,44 @@ test("accessor position rows fail closed without invoking getters", () => {
     { threw: false, exposure: "Unavailable" }
   ]);
   assert.equal(getterCalls, 0);
+});
+
+test("proxy-backed position rows fail closed before traps can forge descriptors", () => {
+  const trapCalls = { getPrototypeOf: 0, getOwnPropertyDescriptor: 0, ownKeys: 0, get: 0 };
+  const sideEffects = [];
+  const row = new Proxy({}, {
+    getPrototypeOf() {
+      trapCalls.getPrototypeOf += 1;
+      sideEffects.push("getPrototypeOf");
+      return Object.prototype;
+    },
+    getOwnPropertyDescriptor(_target, field) {
+      trapCalls.getOwnPropertyDescriptor += 1;
+      sideEffects.push(`descriptor:${String(field)}`);
+      if (field === "notional") {
+        return { configurable: true, enumerable: true, writable: true, value: 600 };
+      }
+      return undefined;
+    },
+    ownKeys() {
+      trapCalls.ownKeys += 1;
+      sideEffects.push("ownKeys");
+      return [];
+    },
+    get(target, field, receiver) {
+      trapCalls.get += 1;
+      sideEffects.push(`get:${String(field)}`);
+      return Reflect.get(target, field, receiver);
+    }
+  });
+
+  let truth;
+  assert.doesNotThrow(() => { truth = buildAccountTruth({ positions: [row] }, "full"); });
+  assert.deepEqual({ exposure: truth.exposure, trapCalls, sideEffects }, {
+    exposure: "Unavailable",
+    trapCalls: { getPrototypeOf: 0, getOwnPropertyDescriptor: 0, ownKeys: 0, get: 0 },
+    sideEffects: []
+  });
 });
 
 test("authoritative financial zero remains zero", () => {
