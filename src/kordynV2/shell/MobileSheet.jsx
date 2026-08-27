@@ -1,5 +1,6 @@
-import { Braces, FileCheck2, X } from "lucide-react";
+import { Bot, Braces, FileCheck2, X } from "lucide-react";
 import { useEffect, useRef } from "react";
+import { AiSupport } from "./AiSupport.jsx";
 
 const unavailable = "Unavailable";
 const safeText = (value) => (
@@ -16,11 +17,12 @@ const CONTEXT_FIELDS = Object.freeze([
   ["版本", "version"]
 ]);
 
-export function MobileSheet({ panel, selection, onClose }) {
+export function MobileSheet({ panel, selection, supportContext, onSupportNavigate, onClose }) {
   const dialogRef = useRef(null);
+  const supportedPanel = panel === "context" || panel === "proof" || panel === "support";
 
   useEffect(() => {
-    if (!panel) return undefined;
+    if (!supportedPanel) return undefined;
     const frame = window.requestAnimationFrame(() => {
       dialogRef.current?.querySelector("[data-kordyn-v2-mobile-sheet-close]")?.focus();
     });
@@ -42,9 +44,9 @@ export function MobileSheet({ panel, selection, onClose }) {
       document.removeEventListener("pointerdown", retainDialogFocus, true);
       document.removeEventListener("mousedown", retainDialogFocus, true);
     };
-  }, [onClose, panel]);
+  }, [onClose, supportedPanel]);
 
-  if (!panel) return null;
+  if (!supportedPanel) return null;
 
   const onDialogKeyDown = (event) => {
     if (event.key !== "Tab") return;
@@ -66,8 +68,12 @@ export function MobileSheet({ panel, selection, onClose }) {
   const context = selection?.context || {};
   const stages = Array.isArray(selection?.trace?.stages) ? selection.trace.stages : [];
   const selectedId = safeText(selection?.object?.id);
-  const title = panel === "context" ? "关联上下文" : "决策证据链";
-  const PanelIcon = panel === "context" ? Braces : FileCheck2;
+  const title = panel === "context"
+    ? "关联上下文"
+    : panel === "proof"
+      ? "决策证据链"
+      : "AI 客服 · 只读助理";
+  const PanelIcon = panel === "context" ? Braces : panel === "proof" ? FileCheck2 : Bot;
 
   return (
     <div
@@ -97,8 +103,11 @@ export function MobileSheet({ panel, selection, onClose }) {
           </button>
         </header>
         <div className="kordynV2MobileSheetScroll">
-          <p className="kordynV2MobileSheetIdentity">{safeText(selection?.object?.type)} / {selectedId}</p>
-          {panel === "context" ? (
+          {panel === "support" ? (
+            <AiSupport context={supportContext} onNavigate={onSupportNavigate} presentation="content" />
+          ) : <>
+            <p className="kordynV2MobileSheetIdentity">{safeText(selection?.object?.type)} / {selectedId}</p>
+            {panel === "context" ? (
             <dl className="kordynV2MobileContextFacts">
               {CONTEXT_FIELDS.map(([label, key]) => (
                 <div key={key}>
@@ -107,7 +116,7 @@ export function MobileSheet({ panel, selection, onClose }) {
                 </div>
               ))}
             </dl>
-          ) : (
+            ) : (
             <ol className="kordynV2MobileProofStages">
               {stages.length ? stages.map((stage, index) => (
                 <li key={safeText(stage?.id) === unavailable ? index : safeText(stage.id)} data-stage-state={safeText(stage?.status).toLowerCase()}>
@@ -117,7 +126,8 @@ export function MobileSheet({ panel, selection, onClose }) {
                 </li>
               )) : <li className="is-empty">当前对象没有可用的阶段证据。</li>}
             </ol>
-          )}
+            )}
+          </>}
         </div>
       </section>
     </div>

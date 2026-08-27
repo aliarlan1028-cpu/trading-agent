@@ -1,5 +1,6 @@
 import { resolveDesktopRoute, resolveMobileRoute } from "../../productArchitecture.js";
 import { KORDYN_V2_WORKSPACES } from "./domains.js";
+import { registerAiSupportLocation } from "../viewModels/aiSupportProjection.js";
 
 const DEFAULT_DOMAIN_ID = "ai";
 const DEFAULT_WORKSPACE_ID = "missions";
@@ -16,24 +17,24 @@ const locationFor = (domainId, workspaceId, device, recognized) => {
   const resolved = device === "mobile"
     ? resolveMobileRoute(workspace.legacyRoute)
     : resolveDesktopRoute(workspace.legacyRoute);
-  return Object.freeze({
+  return registerAiSupportLocation(Object.freeze({
     domainId,
     workspaceId,
     legacyRoute: workspace.legacyRoute,
     resourceSection: resolved.section,
     objectId: resolved.objectId,
     recognized
-  });
+  }));
 };
 
-const DEFAULT_LOCATION = Object.freeze({
+const DEFAULT_LOCATION = registerAiSupportLocation(Object.freeze({
   domainId: DEFAULT_DOMAIN_ID,
   workspaceId: DEFAULT_WORKSPACE_ID,
   legacyRoute: "chat",
   resourceSection: "chat",
   objectId: "",
   recognized: false
-});
+}));
 
 const V2_LOCATION_BY_ROUTE = Object.freeze({
   chat: Object.freeze({ domainId: "ai", workspaceId: "dialog" }),

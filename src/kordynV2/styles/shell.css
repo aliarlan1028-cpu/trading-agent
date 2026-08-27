@@ -1148,11 +1148,14 @@ body:has(.kordynV2Root) {
   text-align: left;
 }
 
-.kordynV2AssistantReserve {
+.kordynV2AiSupport {
   position: absolute;
   z-index: 7;
   right: 18px;
   bottom: 25px;
+}
+
+.kordynV2AiSupportTrigger {
   width: 238px;
   min-height: 54px;
   padding: 0 17px;
@@ -1164,13 +1167,19 @@ body:has(.kordynV2Root) {
   border-radius: 28px;
   color: #d7d2ff;
   background: linear-gradient(100deg, rgba(87, 71, 159, 0.58), rgba(54, 44, 111, 0.5));
-  box-shadow: 0 0 28px rgba(132, 114, 255, 0.09);
-  opacity: 0.72;
-  cursor: not-allowed;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.26), 0 0 28px rgba(132, 114, 255, 0.12);
+  cursor: pointer;
   text-align: left;
 }
 
-.kordynV2AssistantReserve > span {
+.kordynV2AiSupportTrigger:hover,
+.kordynV2AiSupportTrigger[aria-expanded="true"] {
+  border-color: rgba(159, 145, 255, 0.82);
+  color: #fff;
+  background: linear-gradient(100deg, rgba(97, 77, 181, 0.76), rgba(57, 45, 121, 0.72));
+}
+
+.kordynV2AiSupportTrigger > span {
   min-width: 0;
   display: flex;
   align-items: baseline;
@@ -1179,15 +1188,299 @@ body:has(.kordynV2Root) {
   white-space: nowrap;
 }
 
-.kordynV2AssistantReserve strong {
+.kordynV2AiSupportTrigger strong {
   font-size: 12px;
 }
 
-.kordynV2AssistantReserve small {
+.kordynV2AiSupportTrigger small {
   overflow: hidden;
   color: #a9a1d2;
   font-size: 9px;
   text-overflow: ellipsis;
+}
+
+.kordynV2AiSupportPanel {
+  position: absolute;
+  right: 0;
+  bottom: 66px;
+  width: min(360px, calc(100vw - var(--kordyn-v2-nav-width) - 30px));
+  max-height: min(520px, calc(100vh - var(--kordyn-v2-header-height) - 92px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid rgba(126, 118, 232, 0.46);
+  border-radius: 18px;
+  color: var(--kordyn-v2-text);
+  background: linear-gradient(155deg, #101a34 0%, #091325 56%, #070f1d 100%);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.46), 0 0 30px rgba(132, 114, 255, 0.1);
+}
+
+.kordynV2AiSupportPanel > header {
+  min-height: 54px;
+  padding: 0 9px 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(135, 160, 194, 0.15);
+}
+
+.kordynV2AiSupportPanel > header > span {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #dcd8ff;
+}
+
+.kordynV2AiSupportPanel > header button {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  color: var(--kordyn-v2-text-soft);
+  background: transparent;
+  cursor: pointer;
+}
+
+.kordynV2AiSupportPanel > header button:hover {
+  color: #fff;
+  background: rgba(132, 114, 255, 0.14);
+}
+
+.kordynV2AiSupportScroll {
+  min-height: 0;
+  padding: 14px 16px 18px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #3c4674 transparent;
+}
+
+.kordynV2AiSupportContent {
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.kordynV2AiSupportIdentity {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.kordynV2AiSupportIdentity > span {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(144, 129, 255, 0.45);
+  border-radius: 14px;
+  color: #dcd8ff;
+  background: linear-gradient(145deg, rgba(114, 94, 218, 0.5), rgba(45, 59, 130, 0.45));
+  box-shadow: 0 8px 24px rgba(44, 36, 105, 0.24);
+}
+
+.kordynV2AiSupportIdentity > div {
+  display: grid;
+  gap: 3px;
+}
+
+.kordynV2AiSupportIdentity strong {
+  font-size: 16px;
+}
+
+.kordynV2AiSupportIdentity em {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #b9b1f0;
+  font-size: 11px;
+  font-style: normal;
+}
+
+.kordynV2AiSupportIdentity i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--kordyn-v2-mint);
+  box-shadow: 0 0 9px rgba(32, 215, 148, 0.56);
+}
+
+.kordynV2AiSupportBoundary {
+  margin: 0;
+  padding: 11px 12px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  border: 1px solid rgba(132, 114, 255, 0.24);
+  border-radius: 10px;
+  color: #c8c3eb;
+  background: rgba(82, 67, 154, 0.13);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.kordynV2AiSupportScope {
+  display: grid;
+  border-top: 1px solid rgba(135, 160, 194, 0.12);
+}
+
+.kordynV2AiSupportScope > div,
+.kordynV2AiSupportFacts > div {
+  min-height: 46px;
+  display: grid;
+  grid-template-columns: 17px 66px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid rgba(135, 160, 194, 0.12);
+}
+
+.kordynV2AiSupportScope svg,
+.kordynV2AiSupportFacts svg {
+  color: var(--kordyn-v2-cobalt-soft);
+}
+
+.kordynV2AiSupportScope span,
+.kordynV2AiSupportFacts dt {
+  color: var(--kordyn-v2-muted);
+  font-size: 10px;
+}
+
+.kordynV2AiSupportScope strong,
+.kordynV2AiSupportFacts dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--kordyn-v2-text-soft);
+  font-size: 11px;
+  font-weight: 560;
+}
+
+.kordynV2AiSupportState {
+  padding: 13px;
+  border: 1px solid var(--kordyn-v2-border);
+  border-radius: 11px;
+  background: rgba(5, 14, 27, 0.68);
+}
+
+.kordynV2AiSupportState > header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--kordyn-v2-cobalt-soft);
+}
+
+.kordynV2AiSupportState > header strong {
+  font-family: var(--kordyn-v2-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.kordynV2AiSupportState p {
+  margin: 9px 0 6px;
+  color: var(--kordyn-v2-text-soft);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.kordynV2AiSupportState small {
+  display: block;
+  color: var(--kordyn-v2-muted);
+  font-size: 10px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.kordynV2AiSupportState[data-kordyn-v2-ai-support-state="failed"] > header,
+.kordynV2AiSupportState[data-kordyn-v2-ai-support-state="forbidden"] > header {
+  color: var(--kordyn-v2-danger);
+}
+
+.kordynV2AiSupportState[data-kordyn-v2-ai-support-state="stale"] > header,
+.kordynV2AiSupportState[data-kordyn-v2-ai-support-state="degraded"] > header {
+  color: var(--kordyn-v2-amber);
+}
+
+.kordynV2AiSupportFacts {
+  margin: 0;
+}
+
+.kordynV2AiSupportFacts > div {
+  grid-template-columns: 82px minmax(0, 1fr);
+}
+
+.kordynV2AiSupportFacts dt {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.kordynV2AiSupportFacts dd {
+  font-family: var(--kordyn-v2-mono);
+  font-size: 9px;
+}
+
+.kordynV2AiSupportQuestions {
+  display: grid;
+  gap: 7px;
+}
+
+.kordynV2AiSupportQuestions strong {
+  color: var(--kordyn-v2-text-soft);
+  font-size: 11px;
+}
+
+.kordynV2AiSupportQuestions p {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: #bcc8dc;
+  background: rgba(31, 54, 91, 0.36);
+  font-size: 11px;
+}
+
+.kordynV2AiSupportSuggestions {
+  display: grid;
+  gap: 8px;
+}
+
+.kordynV2AiSupportSuggestions button {
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 10px 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid rgba(75, 127, 221, 0.3);
+  border-radius: 10px;
+  color: var(--kordyn-v2-text-soft);
+  background: rgba(15, 31, 57, 0.66);
+  cursor: pointer;
+  text-align: left;
+}
+
+.kordynV2AiSupportSuggestions button:hover {
+  border-color: rgba(83, 137, 255, 0.64);
+  color: #fff;
+  background: rgba(30, 60, 117, 0.5);
+}
+
+.kordynV2AiSupportSuggestions button > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.kordynV2AiSupportSuggestions small,
+.kordynV2AiSupportSuggestions > p {
+  margin: 0;
+  color: var(--kordyn-v2-muted);
+  font-size: 9px;
 }
 
 .kordynV2MissionPrompt span {
@@ -1711,12 +2004,20 @@ body:has(.kordynV2Root) {
     min-height: 54px;
   }
 
-  .kordynV2AssistantReserve {
+  .kordynV2AiSupport {
     right: 14px;
     bottom: 19px;
+  }
+
+  .kordynV2AiSupportTrigger {
     width: 195px;
     min-height: 52px;
     padding-inline: 13px;
+  }
+
+  .kordynV2AiSupportPanel {
+    width: 330px;
+    bottom: 62px;
   }
 
   .kordynV2WorkbenchFooter {
@@ -1808,7 +2109,7 @@ body:has(.kordynV2Root) {
     min-height: 60px;
   }
 
-  .kordynV2AssistantReserve {
+  .kordynV2AiSupportTrigger {
     min-height: 46px;
   }
 }

@@ -311,6 +311,55 @@
     box-shadow: 0 0 12px rgba(52, 120, 255, 0.65);
   }
 
+  .kordynV2MobileSupportTrigger {
+    position: fixed;
+    z-index: 25;
+    right: 12px;
+    bottom: calc(var(--v2-mobile-nav-height) + env(safe-area-inset-bottom) + 12px);
+    width: 122px;
+    min-width: 44px;
+    min-height: 52px;
+    padding: 0 12px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    border: 1px solid rgba(145, 130, 255, 0.55);
+    border-radius: 26px;
+    color: #e5e2ff;
+    background: linear-gradient(120deg, rgba(93, 76, 176, 0.92), rgba(40, 53, 117, 0.94));
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), 0 0 24px rgba(132, 114, 255, 0.15);
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .kordynV2MobileSupportTrigger[aria-expanded="true"] {
+    border-color: #a99cff;
+    background: linear-gradient(120deg, rgba(107, 87, 203, 0.96), rgba(47, 63, 137, 0.96));
+  }
+
+  .kordynV2MobileSupportTrigger > span {
+    min-width: 0;
+    display: grid;
+    gap: 1px;
+  }
+
+  .kordynV2MobileSupportTrigger strong,
+  .kordynV2MobileSupportTrigger small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .kordynV2MobileSupportTrigger strong {
+    font-size: 11px;
+  }
+
+  .kordynV2MobileSupportTrigger small {
+    color: #bab3ec;
+    font-size: 9px;
+  }
+
   .kordynV2MobileSheetScrim {
     position: fixed;
     z-index: 40;
@@ -333,6 +382,12 @@
     border-radius: 24px 24px 0 0;
     background: linear-gradient(150deg, #0d1930 0%, #071120 58%, #050d19 100%);
     box-shadow: 0 -20px 54px rgba(0, 0, 0, 0.42), 0 0 34px rgba(52, 120, 255, 0.08);
+  }
+
+  .kordynV2MobileSheet[data-kordyn-v2-mobile-sheet="support"] {
+    max-height: min(74dvh, calc(100dvh - var(--v2-mobile-nav-height) - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 12px));
+    border-color: rgba(139, 126, 241, 0.42);
+    background: linear-gradient(150deg, #111b37 0%, #0a1428 56%, #070f1d 100%);
   }
 
   .kordynV2MobileSheetHandle {
@@ -383,6 +438,15 @@
     overscroll-behavior: contain;
     scrollbar-width: thin;
     scrollbar-color: #334a6b transparent;
+  }
+
+  .kordynV2MobileSheet[data-kordyn-v2-mobile-sheet="support"] .kordynV2MobileSheetScroll {
+    padding-top: 16px;
+  }
+
+  .kordynV2MobileSheet .kordynV2AiSupportSuggestions button {
+    min-width: 44px;
+    min-height: 52px;
   }
 
   .kordynV2MobileSheetIdentity {

@@ -261,7 +261,7 @@ async function readGeometry(cdp) {
         workbenchFooter:maybeBox('[data-kordyn-v2-workbench-footer]'),
         audit:maybeBox('[data-kordyn-v2-audit-control]'),
         poster:maybeBox('[data-kordyn-v2-poster-control]'),
-        assistant:maybeBox('[data-kordyn-v2-assistant-reserve]'),
+        assistant:maybeBox('[data-kordyn-v2-ai-support-trigger]'),
         prompt:maybeBox('.kordynV2MissionPrompt'),
         evidenceDock:maybeBox('.kordynV2EvidenceDock'),
         runtime:maybeBox('.kordynV2WorkspaceHeading > em'),
@@ -320,7 +320,7 @@ async function verifyFidelityLandmarks(cdp, geometry, width, height) {
       notification:read('[data-kordyn-v2-notification]'),
       audit:read('[data-kordyn-v2-audit-control]'),
       poster:read('[data-kordyn-v2-poster-control]'),
-      assistant:read('[data-kordyn-v2-assistant-reserve]'),
+      assistant:read('[data-kordyn-v2-ai-support-trigger]'),
       workbenchFooter:read('[data-kordyn-v2-workbench-footer]'),
       prompt:read('.kordynV2MissionPrompt')
     };
@@ -355,8 +355,8 @@ async function verifyFidelityLandmarks(cdp, geometry, width, height) {
     `received ${JSON.stringify(semantics.poster)}`
   );
   contractTrue(
-    `${width}: reserved assistant is truthfully disabled`,
-    semantics.assistant?.tag === "BUTTON" && semantics.assistant.disabled && /Unavailable|待开放|只读/i.test(`${semantics.assistant.text} ${semantics.assistant.name}`),
+    `${width}: read-only assistant is an available dialog control`,
+    semantics.assistant?.tag === "BUTTON" && !semantics.assistant.disabled && semantics.assistant.hasPopup === "dialog" && /AI 客服|只读助理/i.test(`${semantics.assistant.text} ${semantics.assistant.name}`),
     `received ${JSON.stringify(semantics.assistant)}`
   );
 
@@ -438,6 +438,59 @@ async function verifyFidelityLandmarks(cdp, geometry, width, height) {
     landmarks.runtime && landmarks.evidenceDock && !rectanglesOverlap(landmarks.runtime, landmarks.evidenceDock) && landmarks.runtime.right + 10 <= landmarks.evidenceDock.left,
     `received runtime=${JSON.stringify(landmarks.runtime)} evidence=${JSON.stringify(landmarks.evidenceDock)}`
   );
+}
+
+async function verifyDesktopAiSupport(cdp, width, height) {
+  const trigger = '[data-kordyn-v2-ai-support-trigger]';
+  await evaluate(cdp, `(() => { const node = document.querySelector(${JSON.stringify(trigger)}); node?.focus(); return document.activeElement === node; })()`);
+  await pressKey(cdp, "Enter");
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-ai-support-panel]')", `${width}: desktop AI support opens`);
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-ai-support-panel]')?.contains(document.activeElement)", `${width}: desktop AI support receives focus`);
+  const opened = await evaluate(cdp, `(() => {
+    const trigger = document.querySelector('[data-kordyn-v2-ai-support-trigger]');
+    const panel = document.querySelector('[data-kordyn-v2-ai-support-panel]');
+    const scroll = panel?.querySelector('[data-kordyn-v2-ai-support-scroll]');
+    const rect = panel?.getBoundingClientRect();
+    return {
+      expanded:trigger?.getAttribute('aria-expanded'),
+      role:panel?.getAttribute('role'),
+      ariaModal:panel?.getAttribute('aria-modal'),
+      label:panel?.textContent?.includes('只读助理') || false,
+      boundary:panel?.textContent?.includes('不能下单、授权或修改配置') || false,
+      scope:panel?.textContent?.includes('AI 交易员') && panel?.textContent?.includes('任务'),
+      selection:panel?.textContent?.includes('watch-eth-retest') || false,
+      state:panel?.textContent?.includes('ready') || false,
+      focusInPanel:panel?.contains(document.activeElement) || false,
+      bounds:rect ? {left:rect.left,top:rect.top,right:rect.right,bottom:rect.bottom,width:rect.width,height:rect.height} : null,
+      scroll:scroll ? {clientHeight:scroll.clientHeight,scrollHeight:scroll.scrollHeight} : null,
+      targets:[...panel.querySelectorAll('[data-kordyn-v2-ai-support-target]')].map((node) => node.getAttribute('data-kordyn-v2-ai-support-target')),
+      actions:window.__kordynV2BrowserCalls.actions
+    };
+  })()`);
+  assert.deepEqual(opened.targets, ["governance/overview"], `${width}: ready support offers only its registered governance destination`);
+  assert.equal(opened.expanded, "true", `${width}: support trigger publishes expanded state`);
+  assert.equal(opened.role, "dialog", `${width}: support panel declares dialog semantics`);
+  assert.equal(opened.ariaModal, null, `${width}: desktop support truthfully remains modeless`);
+  assert.equal(opened.label && opened.boundary && opened.scope && opened.selection && opened.state && opened.focusInPanel, true, `${width}: support exposes governed current context`);
+  assert.ok(opened.bounds.left >= 0 && opened.bounds.top >= 0 && opened.bounds.right <= width && opened.bounds.bottom <= height, `${width}: support panel is viewport bounded`);
+  assert.ok(opened.bounds.width <= 380 && opened.bounds.height < height, `${width}: support panel remains compact`);
+  assert.ok(opened.scroll.scrollHeight > opened.scroll.clientHeight, `${width}: long support content scrolls inside the bounded panel`);
+  assert.equal(opened.actions, 0, `${width}: opening support invokes no production action`);
+
+  const screenshot = await captureMobile(cdp, width, height, `desktop-${width}x${height}-ai-support-open.png`);
+  await evaluate(cdp, `(() => {
+    const scroll = document.querySelector('[data-kordyn-v2-ai-support-scroll]');
+    scroll.scrollTop = scroll.scrollHeight;
+    return new Promise((resolve) => requestAnimationFrame(resolve));
+  })()`);
+  await click(cdp, '[data-kordyn-v2-ai-support-target="governance/overview"]');
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=desktop]')?.dataset.kordynV2Domain === 'governance' && document.querySelector('[data-kordyn-v2-shell=desktop]')?.dataset.kordynV2Workspace === 'overview'", `${width}: support registered navigation`);
+  assert.equal(await evaluate(cdp, "window.__kordynV2BrowserCalls.actions"), 0, `${width}: support navigation is zero-write`);
+  await pressKey(cdp, "Escape");
+  await waitForExpression(cdp, "!document.querySelector('[data-kordyn-v2-ai-support-panel]') && document.activeElement === document.querySelector('[data-kordyn-v2-ai-support-trigger]')", `${width}: support Escape close and focus return`);
+  await click(cdp, '[data-kordyn-v2-domain-target="ai"]');
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=desktop]')?.dataset.kordynV2Workspace === 'missions'", `${width}: support returns to AI mission workspace`);
+  return screenshot;
 }
 
 async function verifyDialog(cdp, panel) {
@@ -996,11 +1049,52 @@ async function verifyMobileViewport(cdp, pageUrl, width, height) {
   assert.equal(await evaluate(cdp, "document.querySelector('[data-kordyn-v2-mobile-background]').hasAttribute('inert')"), false, `${width}: Proof close removes background isolation`);
   assert.equal(await evaluate(cdp, "window.__kordynV2BrowserCalls.actions"), 0, `${width}: sheets invoke no production action`);
 
+  await click(cdp, '[data-kordyn-v2-ai-support-trigger]');
+  const support = await assertMobileSheet(cdp, width, base.nav.top, "support");
+  const supportSemantics = await evaluate(cdp, `(() => {
+    const sheet = document.querySelector('[data-kordyn-v2-mobile-sheet="support"]');
+    return {
+      label:sheet?.textContent?.includes('只读助理') || false,
+      boundary:sheet?.textContent?.includes('不能下单、授权或修改配置') || false,
+      scope:sheet?.textContent?.includes('AI 交易员') && sheet?.textContent?.includes('任务'),
+      selection:sheet?.textContent?.includes('watch-eth-retest') || false,
+      target:sheet?.querySelector('[data-kordyn-v2-ai-support-target]')?.getAttribute('data-kordyn-v2-ai-support-target') || null,
+      roots:document.querySelectorAll('[data-kordyn-v2-mobile-navigation] [data-kordyn-v2-domain-target]').length,
+      actions:window.__kordynV2BrowserCalls.actions
+    };
+  })()`);
+  assert.deepEqual(supportSemantics, {
+    label: true,
+    boundary: true,
+    scope: true,
+    selection: true,
+    target: "governance/overview",
+    roots: 4,
+    actions: 0
+  }, `${width}: APP support exposes governed current context without becoming a fifth root`);
+  assert.ok(support.sheetScroll.scrollHeight > support.sheetScroll.clientHeight, `${width}: APP support long content scrolls inside the governed sheet`);
+  if (width === 430) {
+    const supportCaptureScrollTop = await evaluate(cdp, `(() => {
+      const content = document.querySelector('[data-kordyn-v2-mobile-sheet="support"] .kordynV2MobileSheetScroll');
+      if (content) content.scrollTop = 0;
+      return content?.scrollTop ?? -1;
+    })()`);
+    assert.equal(supportCaptureScrollTop, 0, "430: support-open evidence captures the identity and boundary from the top");
+  }
+  const supportScreenshot = await captureMobile(cdp, width, height, `mobile-${width}x${height}-ai-support-open.png`);
+  await evaluate(cdp, `document.querySelector('[data-kordyn-v2-ai-support-target="governance/overview"]')?.scrollIntoView({block:'center'})`);
+  await click(cdp, '[data-kordyn-v2-ai-support-target="governance/overview"]');
+  await waitForExpression(cdp, "!document.querySelector('[data-kordyn-v2-mobile-sheet]') && document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2Domain === 'governance' && document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2Workspace === 'overview'", `${width}: APP support registered navigation and sheet close`);
+  assert.equal(await evaluate(cdp, "document.activeElement === document.querySelector('[data-kordyn-v2-ai-support-trigger]')"), true, `${width}: APP support navigation returns trigger focus`);
+  assert.equal(await evaluate(cdp, "window.__kordynV2BrowserCalls.actions"), 0, `${width}: APP support navigation invokes no production action`);
+  await click(cdp, '[data-kordyn-v2-domain-target="ai"]');
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2Workspace === 'missions'", `${width}: APP support returns to mission workspace`);
+
   await click(cdp, '[data-kordyn-v2-workspace-target="dialog"]');
   await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2Workspace === 'dialog'", `${width}: mobile dialog workspace`);
   const dialogGeometry = await readMobileGeometry(cdp);
   assert.ok(dialogGeometry.visibleTargets.every((target) => target.width >= 44 && target.height >= 44), `${width}: every visible dialog control is at least 44x44`);
-  return { width, height, base, proof, minimumWorkspaceTarget, baseScreenshot, sheetScreenshot };
+  return { width, height, base, proof, support, minimumWorkspaceTarget, baseScreenshot, sheetScreenshot, supportScreenshot };
 }
 
 async function verifyViewportTransition(cdp, pageUrl) {
@@ -1044,6 +1138,42 @@ async function verifyMobileStates(cdp, pageUrl) {
     assert.equal(state.actions, 0, `mobile ${kind}: no production action`);
     const geometry = await readMobileGeometry(cdp);
     assert.ok(geometry.visibleTargets.every((target) => target.width >= 44 && target.height >= 44), `mobile ${kind}: every visible state control is at least 44x44`);
+    const triggerSafety = await evaluate(cdp, `(() => {
+      const trigger = document.querySelector('[data-kordyn-v2-ai-support-trigger]');
+      const protectedTargets = [...document.querySelectorAll('.kordynV2StatePanel button, [data-kordyn-v2-retry]')];
+      const overlap = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+      const triggerRect = trigger?.getBoundingClientRect();
+      return {
+        trigger:Boolean(trigger),
+        target:[triggerRect?.width || 0, triggerRect?.height || 0],
+        protectedCount:protectedTargets.length,
+        overlaps:triggerRect ? protectedTargets.filter((node) => overlap(triggerRect, node.getBoundingClientRect())).length : -1
+      };
+    })()`);
+    assert.equal(triggerSafety.trigger, true, `mobile ${kind}: support trigger remains available`);
+    assert.ok(triggerSafety.target[0] >= 44 && triggerSafety.target[1] >= 44, `mobile ${kind}: support trigger remains touch sized`);
+    assert.equal(triggerSafety.overlaps, 0, `mobile ${kind}: support trigger does not cover retry or protected state controls`);
+    await click(cdp, '[data-kordyn-v2-ai-support-trigger]');
+    await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-mobile-sheet=\"support\"]')", `mobile ${kind}: support sheet opens`);
+    const supportState = await evaluate(cdp, `(() => {
+      const sheet = document.querySelector('[data-kordyn-v2-mobile-sheet="support"]');
+      return {
+        kind:sheet?.querySelector('[data-kordyn-v2-ai-support-state]')?.getAttribute('data-kordyn-v2-ai-support-state') || null,
+        selection:sheet?.textContent?.includes('未选择对象') || false,
+        boundary:sheet?.textContent?.includes('不能下单、授权或修改配置') || false,
+        isolated:document.querySelector('[data-kordyn-v2-mobile-background]')?.hasAttribute('inert') || false,
+        actions:window.__kordynV2BrowserCalls.actions
+      };
+    })()`);
+    assert.deepEqual(supportState, {
+      kind,
+      selection: true,
+      boundary: true,
+      isolated: true,
+      actions: 0
+    }, `mobile ${kind}: support explains the actual fail-closed state without hidden selection`);
+    await pressKey(cdp, "Escape");
+    await waitForExpression(cdp, "!document.querySelector('[data-kordyn-v2-mobile-sheet]') && document.activeElement === document.querySelector('[data-kordyn-v2-ai-support-trigger]')", `mobile ${kind}: support Escape close and focus return`);
   }
 }
 
@@ -1099,7 +1229,7 @@ try {
       0,
       `KORDYN V2 Task5 mobile semantic contract failures:\n- ${contractFailures.join("\n- ")}`
     );
-    process.stdout.write(`KORDYN V2 mobile shell browser PASS ${mobileResults.map((row) => `${row.width}x${row.height}:nav=4,focus=2,overflow=0,targets=44`).join(" ")} states=5 screenshots=${mobileResults.filter((row) => row.baseScreenshot.outputPath).length + mobileResults.filter((row) => row.sheetScreenshot?.outputPath).length}\n`);
+    process.stdout.write(`KORDYN V2 mobile shell browser PASS ${mobileResults.map((row) => `${row.width}x${row.height}:nav=4,focus=3,overflow=0,targets=44`).join(" ")} states=5 screenshots=${mobileResults.filter((row) => row.baseScreenshot.outputPath).length + mobileResults.filter((row) => row.sheetScreenshot?.outputPath).length + mobileResults.filter((row) => row.supportScreenshot?.outputPath).length}\n`);
     process.stdout.write(`KORDYN V2 mobile geometry ${mobileResults.map((row) => `${row.width}:stateBottom=${Math.round(row.base.state.bottom)},navTop=${Math.round(row.base.nav.top)},reserve=${Math.round(row.base.paddingBottom)},workspaceMin=${row.minimumWorkspaceTarget.toFixed(1)},sheet=${Math.round(row.proof.sheet.top)}-${Math.round(row.proof.sheet.bottom)},proofScroll=${row.proof.sheetScroll.clientHeight}/${row.proof.sheetScroll.scrollHeight}`).join(" | ")} transition=${transition.domain}/${transition.workspace}:${transition.sections.map((item) => item.section).join(",")}\n`);
   } else {
   const results = [];
@@ -1159,6 +1289,7 @@ try {
     assert.ok(geometry.canvas.scrollWidth <= geometry.canvas.clientWidth + 1, `${width}: canvas width contained`);
     assert.ok(geometry.mission.width > 0 && geometry.mission.height > 0, `${width}: mission canvas rendered`);
     await verifyFidelityLandmarks(cdp, geometry, width, height);
+    const supportScreenshot = await verifyDesktopAiSupport(cdp, width, height);
 
     const screenshot = await capture(cdp, width, height);
     contractTrue(
@@ -1184,7 +1315,7 @@ try {
         `received ${JSON.stringify(screenshot.structure.regions[name])}`
       );
     }
-    results.push({ width, height, navigation, geometry, screenshot });
+    results.push({ width, height, navigation, geometry, screenshot, supportScreenshot });
   }
 
   await verifyUnknownMission(cdp, pageUrl);
@@ -1234,7 +1365,7 @@ try {
     `KORDYN V2 Task4 semantic contract failures:\n- ${contractFailures.join("\n- ")}`
   );
 
-  process.stdout.write(`KORDYN V2 desktop shell browser PASS ${results.map((row) => `${row.width}x${row.height}:nav=4,focus=2,overflow=0,mae=${row.screenshot.metric.toFixed(6)}`).join(" ")} screenshots=${results.filter((row) => row.screenshot.outputPath).length + (independentHero?.outputPath ? 1 : 0)}${independentHero ? ` hero-mae=${independentHero.metric.toFixed(6)}` : ""}\n`);
+  process.stdout.write(`KORDYN V2 desktop shell browser PASS ${results.map((row) => `${row.width}x${row.height}:nav=4,focus=3,overflow=0,mae=${row.screenshot.metric.toFixed(6)}`).join(" ")} screenshots=${results.filter((row) => row.screenshot.outputPath).length + results.filter((row) => row.supportScreenshot?.outputPath).length + (independentHero?.outputPath ? 1 : 0)}${independentHero ? ` hero-mae=${independentHero.metric.toFixed(6)}` : ""}\n`);
   process.stdout.write(`KORDYN V2 landmarks ${results.map((row) => {
     const { identity, notification, workbenchFooter, prompt, assistant, runtime, evidenceDock, decisionSummary } = row.geometry.landmarks;
     const box = (value) => [value.left, value.top, value.right, value.bottom].map(Math.round).join(",");

@@ -1,4 +1,5 @@
 import { workspaceResourceRetainsLastValid } from "../../productShell.jsx";
+import { registerAiSupportState } from "./aiSupportProjection.js";
 
 const STATE_MESSAGES = Object.freeze({
   ready: "Current facts are available.",
@@ -52,7 +53,7 @@ export function normalizeResourceState(input) {
   const retainsLastValid = workspaceResourceRetainsLastValid(kind)
     && source !== "Unavailable"
     && lastValidAt !== "Unavailable";
-  return Object.freeze({
+  return registerAiSupportState(Object.freeze({
     kind,
     retainsLastValid,
     message: !retainsLastValid && Object.hasOwn(MISSING_PROVENANCE_MESSAGES, kind)
@@ -63,5 +64,5 @@ export function normalizeResourceState(input) {
     source,
     lastValidAt,
     data: data ?? null
-  });
+  }));
 }

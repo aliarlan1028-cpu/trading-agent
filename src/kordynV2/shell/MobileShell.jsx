@@ -1,4 +1,4 @@
-import { Braces, FileCheck2 } from "lucide-react";
+import { Bot, Braces, FileCheck2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { KORDYN_V2_DOMAINS } from "../architecture/domains.js";
 import { AccountTruth } from "./AccountTruth.jsx";
@@ -12,6 +12,7 @@ export function MobileShell({
   truth,
   state,
   selection,
+  supportContext,
   evidenceRequest,
   onNavigate,
   onRetry,
@@ -21,6 +22,7 @@ export function MobileShell({
   const returnFocusRef = useRef(null);
   const contextTriggerRef = useRef(null);
   const proofTriggerRef = useRef(null);
+  const supportTriggerRef = useRef(null);
   const selectedId = selection?.object?.id || "none";
   const domain = KORDYN_V2_DOMAINS.find((item) => item.id === location.domainId) || KORDYN_V2_DOMAINS[0];
   const mobileTruth = useMemo(() => ({
@@ -45,6 +47,11 @@ export function MobileShell({
     const focus = () => returnTarget?.focus();
     if (typeof queueMicrotask === "function") queueMicrotask(focus);
     else window.setTimeout(focus, 0);
+  };
+
+  const navigateFromSupport = (domainId, workspaceId) => {
+    closeSheet();
+    onNavigate(domainId, workspaceId);
   };
 
   return (
@@ -105,9 +112,28 @@ export function MobileShell({
             {children}
           </main>
         </StateBoundary>
+        <button
+          ref={supportTriggerRef}
+          className="kordynV2MobileSupportTrigger"
+          data-kordyn-v2-ai-support-trigger
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded={panel === "support"}
+          aria-label="AI 客服，只读助理"
+          onClick={() => openSheet("support", supportTriggerRef.current)}
+        >
+          <Bot size={22} strokeWidth={1.7} aria-hidden="true" />
+          <span><strong>AI 客服</strong><small>只读助理</small></span>
+        </button>
         <MobileBottomNavigation domainId={location.domainId} onNavigate={onNavigate} />
       </div>
-      <MobileSheet panel={panel} selection={selection} onClose={closeSheet} />
+      <MobileSheet
+        panel={panel}
+        selection={selection}
+        supportContext={supportContext}
+        onSupportNavigate={navigateFromSupport}
+        onClose={closeSheet}
+      />
     </div>
   );
 }

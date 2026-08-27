@@ -26,6 +26,7 @@ import { useV2Viewport } from "./shell/useV2Viewport.js";
 import { DestinationBoundary } from "./shell/DestinationBoundary.jsx";
 import { DialogSurface } from "./shell/DialogSurface.jsx";
 import { buildAccountTruth } from "./viewModels/accountTruth.js";
+import { buildAiSupportContext } from "./viewModels/aiSupport.js";
 import { createV2Selection } from "./viewModels/selection.js";
 import { normalizeResourceState } from "./viewModels/state.js";
 
@@ -515,6 +516,12 @@ export function KordynV2Root({ api, lang }) {
   }, []);
 
   const identity = useMemo(() => identityTruth(data), [data]);
+  const supportContext = useMemo(() => buildAiSupportContext({
+    data,
+    location,
+    selection,
+    state
+  }), [data, location, selection, state]);
 
   const destination = location.domainId === "ai" && location.workspaceId === "missions"
     ? (
@@ -542,6 +549,7 @@ export function KordynV2Root({ api, lang }) {
         state={state}
         selection={selection}
         identity={identity}
+        supportContext={supportContext}
         evidenceRequest={evidenceRequest}
         onNavigate={navigate}
         onSelect={select}

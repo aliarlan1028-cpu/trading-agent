@@ -1,5 +1,5 @@
-import { MessageCircleMore } from "lucide-react";
 import { AccountTruth } from "./AccountTruth.jsx";
+import { AiSupport } from "./AiSupport.jsx";
 import { ContextProof } from "./ContextProof.jsx";
 import { OperatorIdentity } from "./OperatorIdentity.jsx";
 import { PrimaryNavigation } from "./PrimaryNavigation.jsx";
@@ -12,6 +12,7 @@ export function DesktopShell({
   state,
   selection,
   identity,
+  supportContext,
   evidenceRequest,
   onNavigate,
   onSelect,
@@ -43,16 +44,7 @@ export function DesktopShell({
         </main>
       </StateBoundary>
       <ContextProof selection={selection} onSelect={onSelect} request={evidenceRequest} />
-      <button
-        className="kordynV2AssistantReserve"
-        data-kordyn-v2-assistant-reserve
-        type="button"
-        disabled
-        aria-label="AI 客服：只读支持待开放，Unavailable"
-      >
-        <MessageCircleMore size={21} strokeWidth={1.7} aria-hidden="true" />
-        <span><strong>AI 客服</strong><small>只读支持 · 待开放</small></span>
-      </button>
+      <AiSupport context={supportContext} onNavigate={onNavigate} />
     </div>
   );
 }
