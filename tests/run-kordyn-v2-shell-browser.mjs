@@ -847,7 +847,7 @@ async function readMobileGeometry(cdp) {
       const scrollOwner = structural.has(node) || ['auto','scroll'].includes(style.overflowX);
       return scrollOwner && style.display !== 'none' && node.clientWidth > 0 && node.scrollWidth > node.clientWidth + 1;
     }).map((node) => ({tag:node.tagName,className:typeof node.className === 'string' ? node.className : '',clientWidth:node.clientWidth,scrollWidth:node.scrollWidth}));
-    const visibleTargets = [...root.querySelectorAll('[data-kordyn-v2-mobile-navigation] button, .kordynV2MobileEvidenceDock button, [data-kordyn-v2-mobile-sheet] button')]
+    const visibleTargets = [...root.querySelectorAll('button, a[href], input, select, textarea, [role="button"], [tabindex]:not([tabindex="-1"])')]
       .filter((node) => { const rect = node.getBoundingClientRect(); const style = getComputedStyle(node); return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none'; })
       .map((node) => ({name:node.textContent.trim() || node.getAttribute('aria-label'),...box(node)}));
     const sheet = root.querySelector('[data-kordyn-v2-mobile-sheet]');
@@ -879,6 +879,30 @@ async function assertMobileSheet(cdp, width, navTop, panel) {
   assert.equal(await evaluate(cdp, "document.querySelector('[data-kordyn-v2-mobile-sheet]')?.contains(document.activeElement)"), true, `${width}: ${panel} traps forward focus`);
   await pressKey(cdp, "Tab", { shift: true });
   assert.equal(await evaluate(cdp, "document.querySelector('[data-kordyn-v2-mobile-sheet]')?.contains(document.activeElement)"), true, `${width}: ${panel} traps reverse focus`);
+  const isolation = await evaluate(cdp, `(() => {
+    const root = document.querySelector('[data-kordyn-v2-shell=mobile]');
+    const sheet = root.querySelector('[data-kordyn-v2-mobile-sheet]');
+    const background = root.querySelector('[data-kordyn-v2-mobile-background]');
+    const outside = [...root.querySelectorAll('button, a[href], input, select, textarea, [role="button"], [tabindex]:not([tabindex="-1"])')]
+      .filter((node) => !sheet.contains(node));
+    const task = root.querySelector('[data-kordyn-v2-workspace-target="missions"]');
+    task.focus();
+    return {
+      inert:background?.hasAttribute('inert') || false,
+      ariaHidden:background?.getAttribute('aria-hidden') || null,
+      isolated:Boolean(background) && outside.length > 0 && outside.every((node) => node.closest('[inert][aria-hidden="true"]') === background),
+      taskFocused:document.activeElement === task,
+      focusInSheet:sheet.contains(document.activeElement),
+      domain:root.dataset.kordynV2Domain
+    };
+  })()`);
+  assert.deepEqual(isolation, { inert: true, ariaHidden: "true", isolated: true, taskFocused: false, focusInSheet: true, domain: "ai" }, `${width}: ${panel} declaratively isolates every non-sheet control`);
+  await click(cdp, '[data-kordyn-v2-domain-target="account"]');
+  assert.deepEqual(await evaluate(cdp, `(() => {
+    const root = document.querySelector('[data-kordyn-v2-shell=mobile]');
+    const sheet = root.querySelector('[data-kordyn-v2-mobile-sheet]');
+    return {domain:root.dataset.kordynV2Domain,panel:Boolean(sheet),focusInSheet:sheet.contains(document.activeElement)};
+  })()`), { domain: "ai", panel: true, focusInSheet: true }, `${width}: ${panel} blocks pointer navigation and retains modal focus`);
   return geometry;
 }
 
@@ -944,6 +968,14 @@ async function verifyMobileViewport(cdp, pageUrl, width, height) {
   await pressKey(cdp, "Escape");
   await waitForExpression(cdp, "!document.querySelector('[data-kordyn-v2-mobile-sheet]')", `${width}: context sheet closes by Escape`);
   assert.equal(await evaluate(cdp, "document.activeElement === document.querySelector('[data-kordyn-v2-context-trigger]')"), true, `${width}: Context focus returns`);
+  assert.deepEqual(await evaluate(cdp, `(() => {
+    const background = document.querySelector('[data-kordyn-v2-mobile-background]');
+    return {inert:background.hasAttribute('inert'),ariaHidden:background.getAttribute('aria-hidden')};
+  })()`), { inert: false, ariaHidden: null }, `${width}: Context close removes background isolation`);
+  await click(cdp, '[data-kordyn-v2-domain-target="account"]');
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2Domain === 'account'", `${width}: navigation restored after Context closes`);
+  await click(cdp, '[data-kordyn-v2-domain-target="ai"]');
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2Workspace === 'missions'", `${width}: return after restored navigation`);
 
   await evaluate(cdp, "document.querySelector('[data-kordyn-v2-proof-trigger]').focus() || true");
   await pressKey(cdp, "Enter");
@@ -961,7 +993,13 @@ async function verifyMobileViewport(cdp, pageUrl, width, height) {
   await click(cdp, '[data-kordyn-v2-mobile-sheet-close]');
   await waitForExpression(cdp, "!document.querySelector('[data-kordyn-v2-mobile-sheet]')", `${width}: proof sheet closes by pointer`);
   assert.equal(await evaluate(cdp, "document.activeElement === document.querySelector('[data-kordyn-v2-proof-trigger]')"), true, `${width}: Proof focus returns`);
+  assert.equal(await evaluate(cdp, "document.querySelector('[data-kordyn-v2-mobile-background]').hasAttribute('inert')"), false, `${width}: Proof close removes background isolation`);
   assert.equal(await evaluate(cdp, "window.__kordynV2BrowserCalls.actions"), 0, `${width}: sheets invoke no production action`);
+
+  await click(cdp, '[data-kordyn-v2-workspace-target="dialog"]');
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2Workspace === 'dialog'", `${width}: mobile dialog workspace`);
+  const dialogGeometry = await readMobileGeometry(cdp);
+  assert.ok(dialogGeometry.visibleTargets.every((target) => target.width >= 44 && target.height >= 44), `${width}: every visible dialog control is at least 44x44`);
   return { width, height, base, proof, minimumWorkspaceTarget, baseScreenshot, sheetScreenshot };
 }
 
@@ -1004,6 +1042,8 @@ async function verifyMobileStates(cdp, pageUrl) {
     assert.equal(state.panel, !["stale", "degraded"].includes(kind), `mobile ${kind}: blocking presentation`);
     assert.deepEqual(state.document, [390, 390], `mobile ${kind}: no document overflow`);
     assert.equal(state.actions, 0, `mobile ${kind}: no production action`);
+    const geometry = await readMobileGeometry(cdp);
+    assert.ok(geometry.visibleTargets.every((target) => target.width >= 44 && target.height >= 44), `mobile ${kind}: every visible state control is at least 44x44`);
   }
 }
 

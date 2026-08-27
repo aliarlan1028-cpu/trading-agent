@@ -24,17 +24,29 @@ export function MobileSheet({ panel, selection, onClose }) {
     const frame = window.requestAnimationFrame(() => {
       dialogRef.current?.querySelector("[data-kordyn-v2-mobile-sheet-close]")?.focus();
     });
-    return () => window.cancelAnimationFrame(frame);
-  }, [panel]);
+    const closeOnEscape = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onClose();
+    };
+    const retainDialogFocus = (event) => {
+      if (dialogRef.current?.contains(event.target)) return;
+      event.preventDefault();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    document.addEventListener("pointerdown", retainDialogFocus, true);
+    document.addEventListener("mousedown", retainDialogFocus, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener("keydown", closeOnEscape);
+      document.removeEventListener("pointerdown", retainDialogFocus, true);
+      document.removeEventListener("mousedown", retainDialogFocus, true);
+    };
+  }, [onClose, panel]);
 
   if (!panel) return null;
 
   const onDialogKeyDown = (event) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onClose();
-      return;
-    }
     if (event.key !== "Tab") return;
     const focusable = [...dialogRef.current.querySelectorAll(
       'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'

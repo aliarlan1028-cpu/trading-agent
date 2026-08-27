@@ -55,51 +55,58 @@ export function MobileShell({
       data-kordyn-v2-workspace={location.workspaceId}
       data-kordyn-v2-selected-id={selectedId}
     >
-      <header className="kordynV2MobileHeader">
-        <div className="kordynV2MobileBrandRow">
-          <span className="kordynV2MobileBrand" aria-label="KORDYN">
-            <span aria-hidden="true"><img src="/kordyn-logo-white.svg" alt="" /></span>
-            <strong>KORDYN</strong>
-          </span>
-          <strong className="kordynV2MobileDomainTitle">{domain.label}</strong>
-        </div>
-        <AccountTruth truth={mobileTruth} state={state} />
-        <WorkspaceNavigation
-          domainId={location.domainId}
-          workspaceId={location.workspaceId}
-          onNavigate={onNavigate}
-        />
-        <div className="kordynV2MobileEvidenceDock" aria-label="对象证据工具">
-          <button
-            ref={contextTriggerRef}
-            type="button"
-            data-kordyn-v2-context-trigger
-            aria-haspopup="dialog"
-            aria-expanded={panel === "context"}
-            onClick={() => openSheet("context", contextTriggerRef.current)}
-          >
-            <Braces size={18} aria-hidden="true" />
-            Context
-          </button>
-          <button
-            ref={proofTriggerRef}
-            type="button"
-            data-kordyn-v2-proof-trigger
-            aria-haspopup="dialog"
-            aria-expanded={panel === "proof"}
-            onClick={() => openSheet("proof", proofTriggerRef.current)}
-          >
-            <FileCheck2 size={18} aria-hidden="true" />
-            Proof
-          </button>
-        </div>
-      </header>
-      <StateBoundary state={state} onRetry={onRetry}>
-        <main className="kordynV2MobileCanvas" data-kordyn-v2-work-canvas>
-          {children}
-        </main>
-      </StateBoundary>
-      <MobileBottomNavigation domainId={location.domainId} onNavigate={onNavigate} />
+      <div
+        className="kordynV2MobileBackground"
+        data-kordyn-v2-mobile-background
+        inert={panel ? "" : undefined}
+        aria-hidden={panel ? "true" : undefined}
+      >
+        <header className="kordynV2MobileHeader">
+          <div className="kordynV2MobileBrandRow">
+            <span className="kordynV2MobileBrand" aria-label="KORDYN">
+              <span aria-hidden="true"><img src="/kordyn-logo-white.svg" alt="" /></span>
+              <strong>KORDYN</strong>
+            </span>
+            <strong className="kordynV2MobileDomainTitle">{domain.label}</strong>
+          </div>
+          <AccountTruth truth={mobileTruth} state={state} />
+          <WorkspaceNavigation
+            domainId={location.domainId}
+            workspaceId={location.workspaceId}
+            onNavigate={onNavigate}
+          />
+          <div className="kordynV2MobileEvidenceDock" aria-label="对象证据工具">
+            <button
+              ref={contextTriggerRef}
+              type="button"
+              data-kordyn-v2-context-trigger
+              aria-haspopup="dialog"
+              aria-expanded={panel === "context"}
+              onClick={() => openSheet("context", contextTriggerRef.current)}
+            >
+              <Braces size={18} aria-hidden="true" />
+              Context
+            </button>
+            <button
+              ref={proofTriggerRef}
+              type="button"
+              data-kordyn-v2-proof-trigger
+              aria-haspopup="dialog"
+              aria-expanded={panel === "proof"}
+              onClick={() => openSheet("proof", proofTriggerRef.current)}
+            >
+              <FileCheck2 size={18} aria-hidden="true" />
+              Proof
+            </button>
+          </div>
+        </header>
+        <StateBoundary state={state} onRetry={onRetry}>
+          <main className="kordynV2MobileCanvas" data-kordyn-v2-work-canvas>
+            {children}
+          </main>
+        </StateBoundary>
+        <MobileBottomNavigation domainId={location.domainId} onNavigate={onNavigate} />
+      </div>
       <MobileSheet panel={panel} selection={selection} onClose={closeSheet} />
     </div>
   );

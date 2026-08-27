@@ -26,11 +26,21 @@
     padding-top: env(safe-area-inset-top);
     padding-bottom: calc(var(--v2-mobile-nav-height) + env(safe-area-inset-bottom));
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
     overflow: hidden;
     background:
       radial-gradient(circle at 76% 7%, rgba(50, 104, 200, 0.1), transparent 32%),
       linear-gradient(180deg, #020812 0%, #050d19 58%, #030914 100%);
+  }
+
+  .kordynV2MobileBackground {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: hidden;
   }
 
   .kordynV2MobileHeader {
@@ -233,7 +243,7 @@
     color: #fff;
   }
 
-  .kordynV2MobileShell > .kordynV2StateBoundary {
+  .kordynV2MobileBackground > .kordynV2StateBoundary {
     grid-area: auto;
     min-width: 0;
     min-height: 0;
