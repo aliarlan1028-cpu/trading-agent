@@ -3,9 +3,16 @@ import { KORDYN_V2_WORKSPACES } from "./domains.js";
 
 const DEFAULT_DOMAIN_ID = "ai";
 const DEFAULT_WORKSPACE_ID = "missions";
+const VALID_DEVICES = new Set(["desktop", "mobile"]);
+
+const workspaceFor = (domainId, workspaceId) => {
+  if (!Object.hasOwn(KORDYN_V2_WORKSPACES, domainId)) return null;
+  return KORDYN_V2_WORKSPACES[domainId].find((row) => row.id === workspaceId) || null;
+};
 
 const locationFor = (domainId, workspaceId, device, recognized) => {
-  const workspace = KORDYN_V2_WORKSPACES[domainId]?.find((row) => row.id === workspaceId);
+  const workspace = workspaceFor(domainId, workspaceId);
+  if (!workspace) return DEFAULT_LOCATION;
   const resolved = device === "mobile"
     ? resolveMobileRoute(workspace.legacyRoute)
     : resolveDesktopRoute(workspace.legacyRoute);
@@ -53,14 +60,16 @@ const V2_LOCATION_BY_ROUTE = Object.freeze({
 });
 
 export function v2LocationForWorkspace(domainId, workspaceId, device = "desktop") {
-  if (!new Set(["desktop", "mobile"]).has(device)) return DEFAULT_LOCATION;
-  if (!KORDYN_V2_WORKSPACES[domainId]?.some((row) => row.id === workspaceId)) return DEFAULT_LOCATION;
+  if (!VALID_DEVICES.has(device) || !workspaceFor(domainId, workspaceId)) return DEFAULT_LOCATION;
   return locationFor(domainId, workspaceId, device, true);
 }
 
 export function resolveV2Location(route, device = "desktop") {
-  if (!new Set(["desktop", "mobile"]).has(device)) return DEFAULT_LOCATION;
-  const destination = V2_LOCATION_BY_ROUTE[String(route || "").trim()];
+  if (!VALID_DEVICES.has(device)) return DEFAULT_LOCATION;
+  const requestedRoute = typeof route === "string" ? route.trim() : "";
+  const destination = Object.hasOwn(V2_LOCATION_BY_ROUTE, requestedRoute)
+    ? V2_LOCATION_BY_ROUTE[requestedRoute]
+    : null;
   if (!destination) return DEFAULT_LOCATION;
   return locationFor(destination.domainId, destination.workspaceId, device, true);
 }

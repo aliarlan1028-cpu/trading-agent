@@ -74,5 +74,7 @@ export const KORDYN_V2_CAPABILITY_OWNERSHIP = Object.freeze({
 });
 
 export function domainForCapability(id) {
-  return KORDYN_V2_CAPABILITY_OWNERSHIP[id] || null;
+  return Object.hasOwn(KORDYN_V2_CAPABILITY_OWNERSHIP, id)
+    ? KORDYN_V2_CAPABILITY_OWNERSHIP[id]
+    : null;
 }
