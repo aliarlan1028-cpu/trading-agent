@@ -37,7 +37,7 @@ test("entry CSS owns only boot, public frame, and zero-base authentication", () 
 
 test("authenticated product-style loading can reach ready and retry without cancelling itself", () => {
   assert.match(main, /productStylesAttempt/);
-  assert.match(main, /\[authRequired,\s*loading,\s*productStylesAttempt\]/);
+  assert.match(main, /\[authRequired,\s*loading,\s*productStylesAttempt,\s*uiVersion\]/);
   assert.doesNotMatch(main, /\[authRequired,\s*loading,\s*productStylesState\]/);
   assert.match(main, /setProductStylesAttempt\(\(attempt\)\s*=>\s*attempt\s*\+\s*1\)/);
 });

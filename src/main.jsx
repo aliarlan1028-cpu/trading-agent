@@ -16,6 +16,7 @@ import { AppFrame } from "./appFrame.jsx";
 import { LandingPage } from "./landing.jsx";
 import { uiConfirm } from "./confirm.jsx";
 import { resolveDesktopRoute } from "./productArchitecture.js";
+import { AuthenticatedV2Boundary } from "./kordynV2/AuthenticatedV2Boundary.jsx";
 import { resolveKordynUiVersion } from "./kordynV2/cutover.js";
 import { resolveZeroBaseDestination, zeroBaseLocationForRoute } from "./zeroBaseArchitecture.js";
 import { ZeroBaseDesktopShell } from "./zeroBaseShell.jsx";
@@ -34,8 +35,22 @@ const ResearchCenter = lazyNamed(() => import("./workspacePages.jsx"), "Research
 const RiskCenter = lazyNamed(() => import("./workspacePages.jsx"), "RiskCenter");
 const OperationsCenter = lazyNamed(() => import("./workspacePages.jsx"), "OperationsCenter");
 const SettingsConcept = lazyNamed(() => import("./workspacePages.jsx"), "SettingsConcept");
-const KordynV2Root = lazy(() => import("./kordynV2/entry.jsx"));
-const uiVersion = resolveKordynUiVersion(import.meta.env);
+const kordynV2StyleNodes = new Set();
+const loadKordynV2Root = async () => {
+  const existingStyleNodes = new Set(document.head.querySelectorAll('link[rel="stylesheet"], style'));
+  try {
+    return await import("./kordynV2/entry.jsx");
+  } finally {
+    for (const node of document.head.querySelectorAll('link[rel="stylesheet"], style')) {
+      if (!existingStyleNodes.has(node)) kordynV2StyleNodes.add(node);
+    }
+  }
+};
+const removeKordynV2Styles = () => {
+  for (const node of kordynV2StyleNodes) node.remove();
+  kordynV2StyleNodes.clear();
+};
+const KordynV2Root = lazy(loadKordynV2Root);
 
 if (isNativeApp()) {
   document.documentElement.classList.add("nativeApp");
@@ -287,6 +302,8 @@ function App() {
   const [lang, setLangState] = useState(getLang());
   const [productStylesState, setProductStylesState] = useState("idle");
   const [productStylesAttempt, setProductStylesAttempt] = useState(0);
+  const [useLegacyAfterV2Failure, setUseLegacyAfterV2Failure] = useState(false);
+  const uiVersionRef = useRef(null);
   const switchLang = (l) => { setLang(l); setLangState(l); try { action("/api/system/language", { lang: l }); } catch { /* AI 语言同步失败不影响 UI 切换 */ } };
   const [active, setActive] = useState("chat");
   const [activeZeroBaseFamily, setActiveZeroBaseFamily] = useState("today");
@@ -301,6 +318,10 @@ function App() {
   const [selectedShellObject, setSelectedShellObject] = useState(null);
   const isMobileViewport = useIsMobileViewport();
   const { data, loading, action, toast, authRequired, login, registerAccount, notify, download, refresh, ensureSection, apiBase, setApiBase, connectionError, busy, isNativeApp, publicInfo } = useApi();
+  if (!authRequired && !loading && data && uiVersionRef.current === null) {
+    uiVersionRef.current = resolveKordynUiVersion(import.meta.env);
+  }
+  const uiVersion = useLegacyAfterV2Failure ? "legacy" : uiVersionRef.current;
   useEffect(() => {
     if (uiVersion !== "legacy" || authRequired || loading || productStylesState === "ready") return undefined;
     let current = true;
@@ -309,7 +330,7 @@ function App() {
       .then(() => { if (current) setProductStylesState("ready"); })
       .catch(() => { if (current) setProductStylesState("failed"); });
     return () => { current = false; };
-  }, [authRequired, loading, productStylesAttempt]);
+  }, [authRequired, loading, productStylesAttempt, uiVersion]);
   useEffect(() => {
     if (data) ensureSection(active);
   }, [active, Boolean(data)]);
@@ -375,9 +396,14 @@ function App() {
   if (loading || !data) return <AppFrame authenticated><div className="authenticatedStateScreen" data-authenticated-state="startup"><div className="authenticatedStatePanel loading"><Activity size={28} /><span>{t("正在启动 Trader Agent...", "Starting Trader Agent...")}</span></div></div></AppFrame>;
 
   if (uiVersion === "v2") {
-    return <AppFrame authenticated><Suspense fallback={<AuthenticatedV2BootState />}>
-      <KordynV2Root api={{ data, action, toast, busy, notify, download, refresh, ensureSection, connectionError }} lang={lang} switchLang={switchLang} />
-    </Suspense></AppFrame>;
+    return <AppFrame authenticated><AuthenticatedV2Boundary
+      lang={lang}
+      onError={removeKordynV2Styles}
+      onRetry={() => window.location.reload()}
+      onUseLegacy={() => { removeKordynV2Styles(); setUseLegacyAfterV2Failure(true); }}
+    ><Suspense fallback={<AuthenticatedV2BootState />}>
+        <KordynV2Root api={{ data, action, toast, busy, notify, download, refresh, ensureSection, connectionError }} lang={lang} switchLang={switchLang} />
+      </Suspense></AuthenticatedV2Boundary></AppFrame>;
   }
 
   if (isNativeApp || isMobileViewport) {
