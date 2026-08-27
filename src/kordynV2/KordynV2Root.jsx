@@ -21,6 +21,8 @@ import { hasJsonResponseProvenance, jsonResponseArrayValues } from "../jsonRespo
 import { KORDYN_V2_DOMAINS, KORDYN_V2_WORKSPACES } from "./architecture/domains.js";
 import { v2LocationForWorkspace } from "./architecture/routes.js";
 import { DesktopShell } from "./shell/DesktopShell.jsx";
+import { MobileShell } from "./shell/MobileShell.jsx";
+import { useV2Viewport } from "./shell/useV2Viewport.js";
 import { DestinationBoundary } from "./shell/DestinationBoundary.jsx";
 import { DialogSurface } from "./shell/DialogSurface.jsx";
 import { buildAccountTruth } from "./viewModels/accountTruth.js";
@@ -432,6 +434,7 @@ function MissionControlCanvas({ data, domain, workspace, selection, onSelect, on
 }
 
 export function KordynV2Root({ api, lang }) {
+  const viewport = useV2Viewport();
   const data = api?.data || {};
   const [location, setLocation] = useState(() => v2LocationForWorkspace("ai", "missions"));
   const [selectedCandidate, setSelectedCandidate] = useState(null);
@@ -442,22 +445,32 @@ export function KordynV2Root({ api, lang }) {
     || KORDYN_V2_WORKSPACES[domain.id][0];
 
   useEffect(() => {
+    setLocation((current) => {
+      const resolved = v2LocationForWorkspace(current.domainId, current.workspaceId, viewport);
+      return resolved.resourceSection === current.resourceSection
+        && resolved.objectId === current.objectId
+        ? current
+        : resolved;
+    });
+  }, [viewport]);
+
+  useEffect(() => {
     Promise.resolve(api?.ensureSection?.(location.resourceSection)).catch(() => {});
   }, [location.resourceSection]);
 
   const navigate = useCallback((domainId, workspaceId) => {
     returnPromptFocusRef.current = false;
-    setLocation(v2LocationForWorkspace(domainId, workspaceId));
-  }, []);
+    setLocation(v2LocationForWorkspace(domainId, workspaceId, viewport));
+  }, [viewport]);
 
   const openDialog = useCallback(() => {
     returnPromptFocusRef.current = true;
-    setLocation(v2LocationForWorkspace("ai", "dialog"));
-  }, []);
+    setLocation(v2LocationForWorkspace("ai", "dialog", viewport));
+  }, [viewport]);
 
   const closeDialog = useCallback(() => {
-    setLocation(v2LocationForWorkspace("ai", "missions"));
-  }, []);
+    setLocation(v2LocationForWorkspace("ai", "missions", viewport));
+  }, [viewport]);
 
   useEffect(() => {
     if (location.domainId !== "ai" || location.workspaceId !== "missions" || !returnPromptFocusRef.current) return undefined;
@@ -519,9 +532,11 @@ export function KordynV2Root({ api, lang }) {
       ? <DialogSurface data={data} onClose={closeDialog} />
       : <DestinationBoundary domain={domain} workspace={workspace} location={location} state={state} />;
 
+  const Shell = viewport === "mobile" ? MobileShell : DesktopShell;
+
   return (
-    <div className="kordynV2Root" data-kordyn-v2-root="desktop" lang={lang === "en" ? "en" : "zh-CN"}>
-      <DesktopShell
+    <div className="kordynV2Root" data-kordyn-v2-root={viewport} lang={lang === "en" ? "en" : "zh-CN"}>
+      <Shell
         location={location}
         truth={truth}
         state={state}
@@ -533,7 +548,7 @@ export function KordynV2Root({ api, lang }) {
         onRetry={retry}
       >
         {destination}
-      </DesktopShell>
+      </Shell>
     </div>
   );
 }

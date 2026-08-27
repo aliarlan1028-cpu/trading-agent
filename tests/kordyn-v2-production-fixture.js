@@ -193,6 +193,23 @@ export const KORDYN_V2_UNKNOWN_QUEUE_FIXTURE_JSON = JSON.stringify({
   riskIncidents: []
 });
 
+const mobileStateFixture = (resourceState, revision, extras = {}) => JSON.stringify({
+  revision,
+  source: "Read-only mobile shell projection",
+  asOf: "2026-08-27T07:10:00Z",
+  lastValidSource: "Read-only mobile shell projection",
+  lastValidAt: "2026-08-27T07:10:00Z",
+  user: { id: `fixture-mobile-${resourceState}`, name: "K0" },
+  resourceState: { chat: resourceState },
+  ...extras
+});
+
+export const KORDYN_V2_MOBILE_STALE_FIXTURE_JSON = mobileStateFixture("stale", 61);
+export const KORDYN_V2_MOBILE_DEGRADED_FIXTURE_JSON = mobileStateFixture("degraded", 62);
+export const KORDYN_V2_MOBILE_FORBIDDEN_FIXTURE_JSON = mobileStateFixture("forbidden", 63);
+export const KORDYN_V2_MOBILE_DISABLED_FIXTURE_JSON = mobileStateFixture("disabled", 64);
+export const KORDYN_V2_MOBILE_FAILED_FIXTURE_JSON = mobileStateFixture("failed", 65);
+
 export const KORDYN_V2_ATTENTION_PENDING_ONLY_EMPTY_FIXTURE_JSON = JSON.stringify({
   revision: 48,
   source: "Read-only partial attention projection",

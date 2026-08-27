@@ -16,6 +16,7 @@ require("esbuild").buildSync({
   stdin: {
     contents: `
       export { DesktopShell } from "./src/kordynV2/shell/DesktopShell.jsx";
+      export { MobileShell } from "./src/kordynV2/shell/MobileShell.jsx";
       export { buildShellTrace } from "./src/productShell.jsx";
     `,
     resolveDir: rootDir,
@@ -32,7 +33,23 @@ require("esbuild").buildSync({
 
 const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
-const { DesktopShell, buildShellTrace } = require(outFile);
+const { DesktopShell, MobileShell, buildShellTrace } = require(outFile);
+
+const readyTruth = Object.freeze({
+  mode: "compact",
+  equity: 28640.72,
+  exposure: 6102.4,
+  freshness: "2026-08-27T14:32:00+08:00",
+  freshnessState: "fresh",
+  runtime: "full_auto_small",
+  risk: "normal"
+});
+
+const canonicalSelection = Object.freeze({
+  object: { id: "mission-eth-retest", type: "Mission", label: "ETH 突破回踩机会" },
+  context: { objectId: "mission-eth-retest", title: "ETH 突破回踩机会" },
+  trace: { objectId: "mission-eth-retest", stages: [] }
+});
 
 test("Desktop shell follows the approved four-domain composition", () => {
   const truth = {
@@ -71,6 +88,54 @@ test("Desktop shell follows the approved four-domain composition", () => {
     assert.match(html, new RegExp(label));
   }
   assert.doesNotMatch(html, /今日|更多/);
+});
+
+test("APP shell exposes exactly four full-label roots without a catch-all destination", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(
+      MobileShell,
+      {
+        location: { domainId: "ai", workspaceId: "missions" },
+        truth: readyTruth,
+        state: { kind: "ready" },
+        selection: canonicalSelection,
+        onNavigate: () => {},
+        onSelect: () => {}
+      },
+      React.createElement("main")
+    )
+  );
+
+  assert.match(html, /data-kordyn-v2-shell="mobile"/);
+  assert.equal((html.match(/data-kordyn-v2-domain-target=/g) || []).length, 4);
+  assert.equal((html.match(/data-kordyn-v2-workspace-target=/g) || []).length, 5);
+  assert.equal((html.match(/aria-current="page"/g) || []).length, 2);
+  for (const label of ["AI 交易员", "账户交易", "智能资产", "系统治理", "任务", "情报", "观察哨", "事件日历", "对话"]) {
+    assert.match(html, new RegExp(label));
+  }
+  assert.doesNotMatch(html, /今日|更多/);
+});
+
+test("APP shell keeps unknown and adverse truth fail-closed", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(
+      MobileShell,
+      {
+        location: { domainId: "governance", workspaceId: "overview" },
+        truth: { mode: "critical", runtime: "calibrating", risk: "pending", freshnessState: "novel" },
+        state: { kind: "degraded", retainsLastValid: true, message: "部分降级", source: "Unavailable", lastValidAt: "Unavailable" },
+        selection: null,
+        onNavigate: () => {},
+        onSelect: () => {}
+      },
+      React.createElement("main")
+    )
+  );
+
+  assert.match(html, /data-kordyn-v2-state="degraded"/);
+  assert.match(html, /data-health-tone="unavailable"/);
+  assert.match(html, />Unavailable</);
+  assert.doesNotMatch(html, /风险正常|运行正常|实时正常/);
 });
 
 test("Trace identity gives explicit object identity precedence over a record id", () => {

@@ -1,0 +1,674 @@
+@media (max-width: 767px) {
+  html:has(.kordynV2Root),
+  body:has(.kordynV2Root) {
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .kordynV2Root {
+    --v2-mobile-nav-height: 74px;
+    min-width: 0;
+    min-height: 0;
+    font-size: 14px;
+  }
+
+  .kordynV2DesktopShell {
+    display: none;
+  }
+
+  .kordynV2MobileShell {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: calc(var(--v2-mobile-nav-height) + env(safe-area-inset-bottom));
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 76% 7%, rgba(50, 104, 200, 0.1), transparent 32%),
+      linear-gradient(180deg, #020812 0%, #050d19 58%, #030914 100%);
+  }
+
+  .kordynV2MobileHeader {
+    position: relative;
+    z-index: 3;
+    min-width: 0;
+    border-bottom: 1px solid var(--kordyn-v2-border);
+    background: rgba(3, 9, 20, 0.97);
+  }
+
+  .kordynV2MobileBrandRow {
+    min-height: 54px;
+    padding: 0 15px;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .kordynV2MobileBrand {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--kordyn-v2-text);
+    font-size: 14px;
+    letter-spacing: -0.02em;
+  }
+
+  .kordynV2MobileBrand > span {
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(75, 127, 221, 0.25);
+    border-radius: 8px;
+    background: #07182b;
+  }
+
+  .kordynV2MobileBrand img {
+    width: 19px;
+    height: 19px;
+    object-fit: contain;
+  }
+
+  .kordynV2MobileDomainTitle {
+    grid-column: 2;
+    color: var(--kordyn-v2-text);
+    font-size: 18px;
+    font-weight: 660;
+    letter-spacing: -0.03em;
+    white-space: nowrap;
+  }
+
+  .kordynV2MobileHeader .kordynV2AccountTruth {
+    position: relative;
+    width: calc(100% - 24px);
+    min-height: 62px;
+    margin: 0 12px 10px;
+    padding: 8px 11px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 7px 9px;
+    border: 1px solid var(--kordyn-v2-border);
+    border-radius: 13px;
+    background: rgba(9, 19, 33, 0.78);
+    overflow: hidden;
+  }
+
+  .kordynV2MobileHeader .kordynV2AccountTruth[data-kordyn-v2-account-truth-mode="critical"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .kordynV2MobileHeader .kordynV2TruthMenu {
+    display: none;
+  }
+
+  .kordynV2MobileHeader .kordynV2TruthFact {
+    min-width: 0;
+    min-height: 39px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-content: center;
+    column-gap: 5px;
+    row-gap: 2px;
+    white-space: normal;
+  }
+
+  .kordynV2MobileHeader .kordynV2TruthFact svg {
+    display: block;
+    grid-row: 1 / 3;
+    width: 14px;
+  }
+
+  .kordynV2MobileHeader .kordynV2TruthFact::before {
+    display: none;
+  }
+
+  .kordynV2MobileHeader .kordynV2TruthFact span {
+    overflow: hidden;
+    color: var(--kordyn-v2-muted);
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .kordynV2MobileHeader .kordynV2TruthFact strong {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .kordynV2MobileHeader .kordynV2TruthFact[data-health-tone="mint"] svg {
+    color: var(--kordyn-v2-mint);
+  }
+
+  .kordynV2MobileHeader .kordynV2TruthFact[data-health-tone="danger"] svg {
+    color: var(--kordyn-v2-danger);
+  }
+
+  .kordynV2MobileHeader .kordynV2TruthPulse {
+    position: absolute;
+    top: 9px;
+    right: 9px;
+    width: 6px;
+    height: 6px;
+  }
+
+  .kordynV2MobileHeader .kordynV2WorkspaceNavigation {
+    width: calc(100% - 24px);
+    min-height: 46px;
+    margin: 0 12px;
+    padding: 3px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    align-items: stretch;
+    gap: 3px;
+    border: 1px solid var(--kordyn-v2-border);
+    border-radius: 13px;
+    background: rgba(9, 19, 33, 0.7);
+    overflow: hidden;
+  }
+
+  .kordynV2MobileShell[data-kordyn-v2-domain="ai"] .kordynV2WorkspaceNavigation,
+  .kordynV2MobileShell[data-kordyn-v2-domain="assets"] .kordynV2WorkspaceNavigation {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .kordynV2MobileHeader .kordynV2WorkspaceNavigation button {
+    min-width: 0;
+    min-height: 44px;
+    padding: 5px 4px;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    color: var(--kordyn-v2-muted);
+    background: transparent;
+    font-size: 11px;
+    line-height: 1.15;
+    white-space: normal;
+  }
+
+  .kordynV2MobileHeader .kordynV2WorkspaceNavigation button::after {
+    display: none;
+  }
+
+  .kordynV2MobileHeader .kordynV2WorkspaceNavigation button[aria-current="page"] {
+    border-color: rgba(69, 122, 255, 0.52);
+    color: #fff;
+    background: linear-gradient(135deg, rgba(48, 89, 183, 0.72), rgba(28, 48, 100, 0.66));
+    box-shadow: 0 0 16px rgba(52, 120, 255, 0.12);
+  }
+
+  .kordynV2MobileEvidenceDock {
+    min-height: 52px;
+    padding: 4px 12px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .kordynV2MobileEvidenceDock button {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border: 1px solid var(--kordyn-v2-border);
+    border-radius: 10px;
+    color: var(--kordyn-v2-text-soft);
+    background: rgba(8, 18, 32, 0.7);
+    cursor: pointer;
+  }
+
+  .kordynV2MobileEvidenceDock button[aria-expanded="true"] {
+    border-color: var(--kordyn-v2-cobalt);
+    color: #fff;
+  }
+
+  .kordynV2MobileShell > .kordynV2StateBoundary {
+    grid-area: auto;
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #25354c transparent;
+  }
+
+  .kordynV2MobileCanvas {
+    width: 100%;
+    min-width: 0;
+    min-height: 100%;
+  }
+
+  .kordynV2MobileBottomNavigation {
+    position: fixed;
+    z-index: 20;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: calc(var(--v2-mobile-nav-height) + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    border-top: 1px solid var(--kordyn-v2-border);
+    background: rgba(4, 13, 24, 0.98);
+    box-shadow: 0 -12px 38px rgba(0, 0, 0, 0.22);
+  }
+
+  .kordynV2MobileBottomNavigation button {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 8px 3px 7px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border: 0;
+    border-radius: 0;
+    color: var(--kordyn-v2-muted);
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .kordynV2MobileBottomNavigation button span {
+    font-size: 10px;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .kordynV2MobileBottomNavigation button[aria-current="page"] {
+    color: var(--kordyn-v2-cobalt-soft);
+    background: linear-gradient(180deg, rgba(52, 120, 255, 0.1), transparent);
+  }
+
+  .kordynV2MobileBottomNavigation button[aria-current="page"]::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    width: 44px;
+    height: 2px;
+    background: var(--kordyn-v2-cobalt);
+    box-shadow: 0 0 12px rgba(52, 120, 255, 0.65);
+  }
+
+  .kordynV2MobileSheetScrim {
+    position: fixed;
+    z-index: 40;
+    inset: env(safe-area-inset-top) 0 calc(var(--v2-mobile-nav-height) + env(safe-area-inset-bottom));
+    display: flex;
+    align-items: flex-end;
+    background: rgba(0, 4, 11, 0.72);
+  }
+
+  .kordynV2MobileSheet {
+    width: 100%;
+    max-height: min(66dvh, calc(100dvh - var(--v2-mobile-nav-height) - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 12px));
+    min-height: 280px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    overflow: hidden;
+    border: 1px solid rgba(109, 137, 201, 0.36);
+    border-bottom: 0;
+    border-radius: 24px 24px 0 0;
+    background: linear-gradient(150deg, #0d1930 0%, #071120 58%, #050d19 100%);
+    box-shadow: 0 -20px 54px rgba(0, 0, 0, 0.42), 0 0 34px rgba(52, 120, 255, 0.08);
+  }
+
+  .kordynV2MobileSheetHandle {
+    width: 54px;
+    height: 5px;
+    margin: 9px auto 2px;
+    border-radius: 4px;
+    background: #64748c;
+  }
+
+  .kordynV2MobileSheet > header {
+    min-height: 56px;
+    padding: 0 14px 0 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom: 1px solid var(--kordyn-v2-border);
+  }
+
+  .kordynV2MobileSheet > header > span {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+
+  .kordynV2MobileSheet > header svg {
+    color: var(--kordyn-v2-cobalt-soft);
+  }
+
+  .kordynV2MobileSheet > header button {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--kordyn-v2-border);
+    border-radius: 50%;
+    color: var(--kordyn-v2-text-soft);
+    background: rgba(7, 16, 28, 0.8);
+    cursor: pointer;
+  }
+
+  .kordynV2MobileSheetScroll {
+    min-width: 0;
+    min-height: 0;
+    padding: 0 18px 20px;
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #334a6b transparent;
+  }
+
+  .kordynV2MobileSheetIdentity {
+    margin: 14px 0;
+    color: var(--kordyn-v2-muted);
+    font-family: var(--kordyn-v2-mono);
+    font-size: 11px;
+    overflow-wrap: anywhere;
+  }
+
+  .kordynV2MobileContextFacts {
+    margin: 0;
+  }
+
+  .kordynV2MobileContextFacts div {
+    min-height: 52px;
+    display: grid;
+    grid-template-columns: 78px minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid rgba(135, 160, 194, 0.12);
+  }
+
+  .kordynV2MobileContextFacts dt,
+  .kordynV2MobileContextFacts dd {
+    margin: 0;
+  }
+
+  .kordynV2MobileContextFacts dt {
+    color: var(--kordyn-v2-muted);
+    font-size: 12px;
+  }
+
+  .kordynV2MobileContextFacts dd {
+    color: var(--kordyn-v2-text-soft);
+    font-size: 13px;
+    overflow-wrap: anywhere;
+  }
+
+  .kordynV2MobileProofStages {
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 8px;
+    list-style: none;
+  }
+
+  .kordynV2MobileProofStages li {
+    min-height: 66px;
+    padding: 10px;
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 9px;
+    border: 1px solid var(--kordyn-v2-border);
+    border-radius: 10px;
+    background: rgba(6, 15, 27, 0.64);
+  }
+
+  .kordynV2MobileProofStages li > span {
+    color: var(--kordyn-v2-cobalt-soft);
+    font-family: var(--kordyn-v2-mono);
+    font-size: 10px;
+  }
+
+  .kordynV2MobileProofStages li div {
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+  }
+
+  .kordynV2MobileProofStages li strong,
+  .kordynV2MobileProofStages li small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .kordynV2MobileProofStages li small,
+  .kordynV2MobileProofStages li em {
+    color: var(--kordyn-v2-muted);
+    font-size: 10px;
+    font-style: normal;
+  }
+
+  .kordynV2MobileProofStages li[data-stage-state="complete"] em {
+    color: var(--kordyn-v2-mint);
+  }
+
+  .kordynV2MobileProofStages li.is-empty {
+    display: block;
+    color: var(--kordyn-v2-muted);
+    line-height: 1.6;
+  }
+
+  .kordynV2MobileShell .kordynV2RetainedNotice {
+    position: sticky;
+    top: 0;
+    inset-inline: auto;
+    min-height: 52px;
+    margin: 8px 12px 0;
+    padding: 8px 10px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 4px 8px;
+  }
+
+  .kordynV2MobileShell .kordynV2RetainedNotice small {
+    grid-column: 2;
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .kordynV2MobileShell .kordynV2StatePanel {
+    width: calc(100% - 24px);
+    min-height: 150px;
+    margin: 20px 12px;
+    padding: 18px;
+    grid-template-columns: auto minmax(0, 1fr);
+    border-radius: 14px;
+  }
+
+  .kordynV2MobileShell .kordynV2StatePanel button {
+    grid-column: 1 / -1;
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  .kordynV2MobileShell .kordynV2MissionControl {
+    height: auto;
+    min-height: 100%;
+    padding: 14px 12px 22px;
+    display: block;
+  }
+
+  .kordynV2MobileShell .kordynV2WorkspaceHeading {
+    min-height: 42px;
+    padding: 0 2px 10px;
+  }
+
+  .kordynV2MobileShell .kordynV2WorkspaceHeading h1 {
+    font-size: 20px;
+  }
+
+  .kordynV2MobileShell .kordynV2WorkspaceHeading em {
+    max-width: 46%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .kordynV2MobileShell .kordynV2MissionGrid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 0;
+  }
+
+  .kordynV2MobileShell .kordynV2MissionFocus {
+    order: 1;
+    min-height: 620px;
+    padding: 12px;
+    grid-template-rows: auto auto auto auto auto;
+    border-radius: 14px;
+  }
+
+  .kordynV2MobileShell .kordynV2AttentionRail {
+    order: 2;
+    overflow: visible;
+  }
+
+  .kordynV2MobileShell .kordynV2MissionQueue {
+    order: 3;
+    min-height: 360px;
+    border-radius: 14px;
+  }
+
+  .kordynV2MobileShell .kordynV2MissionQueue,
+  .kordynV2MobileShell .kordynV2MissionFocus,
+  .kordynV2MobileShell .kordynV2AttentionCard {
+    border-color: rgba(116, 148, 194, 0.22);
+    background: linear-gradient(150deg, rgba(12, 25, 43, 0.94), rgba(6, 15, 27, 0.96));
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.16);
+  }
+
+  .kordynV2MobileShell .kordynV2MissionTitle {
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+  }
+
+  .kordynV2MobileShell .kordynV2MissionTitle h2 {
+    font-size: 17px;
+  }
+
+  .kordynV2MobileShell .kordynV2MissionPipeline {
+    min-height: 110px;
+  }
+
+  .kordynV2MobileShell .kordynV2PipelineStage > span {
+    width: 40px;
+    height: 40px;
+  }
+
+  .kordynV2MobileShell .kordynV2PipelineStage > strong {
+    max-width: 58px;
+    text-align: center;
+    white-space: normal;
+  }
+
+  .kordynV2MobileShell .kordynV2PipelineStage > svg {
+    top: 31px;
+  }
+
+  .kordynV2MobileShell .kordynV2MissionPipeline::before {
+    top: 38px;
+  }
+
+  .kordynV2MobileShell .kordynV2DecisionSummary {
+    min-height: 310px;
+  }
+
+  .kordynV2MobileShell .kordynV2DecisionFact {
+    grid-template-columns: 20px 86px minmax(0, 1fr);
+  }
+
+  .kordynV2MobileShell .kordynV2WorkbenchFooter {
+    min-height: 130px;
+    padding-top: 10px;
+    grid-template-columns: 1fr 1fr;
+    align-items: stretch;
+  }
+
+  .kordynV2MobileShell .kordynV2WorkbenchIdentity {
+    grid-column: 1 / -1;
+    order: 3;
+    min-height: 34px;
+  }
+
+  .kordynV2MobileShell .kordynV2WorkbenchFooter button {
+    min-width: 44px;
+    min-height: 48px;
+  }
+
+  .kordynV2MobileShell .kordynV2MissionPrompt {
+    width: 100%;
+    min-height: 58px;
+    margin: 14px 0 0;
+    border-radius: 16px;
+  }
+
+  .kordynV2MobileShell .kordynV2DestinationBoundary,
+  .kordynV2MobileShell .kordynV2DialogSurface {
+    height: auto;
+    min-height: 100%;
+    padding: 18px 14px 28px;
+  }
+
+  .kordynV2MobileShell .kordynV2DestinationBoundary > header,
+  .kordynV2MobileShell .kordynV2DialogSurface > header {
+    min-height: 58px;
+  }
+
+  .kordynV2MobileShell .kordynV2DestinationBoundary h1,
+  .kordynV2MobileShell .kordynV2DialogSurface h1 {
+    font-size: 23px;
+  }
+
+  .kordynV2MobileShell .kordynV2DestinationBoundary dl {
+    grid-template-columns: 1fr;
+  }
+
+  .kordynV2MobileShell .kordynV2DialogSurface > button,
+  .kordynV2MobileShell .kordynV2DialogSurface form button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .kordynV2MobileShell button:focus-visible,
+  .kordynV2MobileSheet button:focus-visible {
+    outline: 2px solid #8ab0ff;
+    outline-offset: 2px;
+  }
+}
+
+@media (max-width: 374px) {
+  .kordynV2MobileHeader .kordynV2AccountTruth {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kordynV2MobileShell *,
+  .kordynV2MobileSheet * {
+    scroll-behavior: auto;
+    transition-duration: 0.01ms;
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+}
