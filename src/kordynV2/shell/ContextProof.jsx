@@ -16,12 +16,18 @@ const CONTEXT_FIELDS = Object.freeze([
   ["版本", "version"]
 ]);
 
-export function ContextProof({ selection }) {
+export function ContextProof({ selection, request }) {
   const [panel, setPanel] = useState(null);
   const dialogRef = useRef(null);
   const contextTriggerRef = useRef(null);
   const proofTriggerRef = useRef(null);
   const returnFocusRef = useRef(null);
+
+  useEffect(() => {
+    if (!request?.token || !["context", "proof"].includes(request.panel)) return;
+    returnFocusRef.current = request.trigger;
+    setPanel(request.panel);
+  }, [request?.panel, request?.token, request?.trigger]);
 
   useEffect(() => {
     if (!panel) return undefined;

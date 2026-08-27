@@ -14,7 +14,10 @@ fs.mkdirSync(cacheDir, { recursive: true });
 process.on("exit", () => { try { fs.rmSync(outFile, { force: true }); } catch { /* noop */ } });
 require("esbuild").buildSync({
   stdin: {
-    contents: `export { DesktopShell } from "./src/kordynV2/shell/DesktopShell.jsx";`,
+    contents: `
+      export { DesktopShell } from "./src/kordynV2/shell/DesktopShell.jsx";
+      export { buildShellTrace } from "./src/productShell.jsx";
+    `,
     resolveDir: rootDir,
     loader: "jsx"
   },
@@ -29,7 +32,7 @@ require("esbuild").buildSync({
 
 const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
-const { DesktopShell } = require(outFile);
+const { DesktopShell, buildShellTrace } = require(outFile);
 
 test("Desktop shell follows the approved four-domain composition", () => {
   const truth = {
@@ -67,4 +70,51 @@ test("Desktop shell follows the approved four-domain composition", () => {
     assert.match(html, new RegExp(label));
   }
   assert.doesNotMatch(html, /今日|更多/);
+});
+
+test("Trace identity gives explicit object identity precedence over a record id", () => {
+  const selected = { id: "watch-target", type: "Watch", workspaceId: "ai" };
+  const matched = buildShellTrace({
+    resourceState: { chat: "loaded" },
+    traces: [{
+      id: "trace-record-1",
+      objectId: "watch-target",
+      objectType: "Watch",
+      workspaceId: "ai",
+      stage: "Sense",
+      status: "complete",
+      evidenceId: "explicit-object-match"
+    }]
+  }, "ai", selected);
+  assert.equal(matched.find((stage) => stage.id === "sense")?.evidence, "explicit-object-match");
+
+  const conflict = buildShellTrace({
+    resourceState: { chat: "loaded" },
+    traces: [{
+      id: "watch-target",
+      objectId: "watch-other",
+      objectType: "Watch",
+      workspaceId: "ai",
+      stage: "Sense",
+      status: "complete",
+      evidenceId: "conflicting-object"
+    }]
+  }, "ai", selected);
+  assert.notEqual(conflict.find((stage) => stage.id === "sense")?.evidence, "conflicting-object");
+});
+
+test("Trace identity retains id-only legacy row matching", () => {
+  const selected = { id: "watch-target", type: "Watch", workspaceId: "ai" };
+  const stages = buildShellTrace({
+    resourceState: { chat: "loaded" },
+    traces: [{
+      id: "watch-target",
+      objectType: "Watch",
+      workspaceId: "ai",
+      stage: "Guard",
+      status: "complete",
+      evidenceId: "legacy-id-match"
+    }]
+  }, "ai", selected);
+  assert.equal(stages.find((stage) => stage.id === "guard")?.evidence, "legacy-id-match");
 });

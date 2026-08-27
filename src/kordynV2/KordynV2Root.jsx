@@ -7,6 +7,7 @@ import {
   ChartNoAxesCombined,
   CircleCheck,
   Clock3,
+  Download,
   Globe2,
   Link2,
   Radio,
@@ -15,10 +16,13 @@ import {
   Sparkles,
   UserRoundCheck
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { hasJsonResponseProvenance, jsonResponseArrayValues } from "../jsonResponseProvenance.js";
 import { KORDYN_V2_DOMAINS, KORDYN_V2_WORKSPACES } from "./architecture/domains.js";
 import { v2LocationForWorkspace } from "./architecture/routes.js";
 import { DesktopShell } from "./shell/DesktopShell.jsx";
+import { DestinationBoundary } from "./shell/DestinationBoundary.jsx";
+import { DialogSurface } from "./shell/DialogSurface.jsx";
 import { buildAccountTruth } from "./viewModels/accountTruth.js";
 import { createV2Selection } from "./viewModels/selection.js";
 import { normalizeResourceState } from "./viewModels/state.js";
@@ -72,11 +76,11 @@ function durationText(value) {
 }
 
 const PIPELINE = Object.freeze([
-  { label: "全市场快扫", icon: Globe2 },
-  { label: "检验市场结构", icon: ChartNoAxesCombined },
-  { label: "核对账户", icon: UserRoundCheck },
-  { label: "硬风控", icon: ShieldCheck },
-  { label: "等待回踩", icon: Clock3 }
+  { stageId: "sense", label: "全市场快扫", icon: Globe2 },
+  { stageId: "plan", label: "检验市场结构", icon: ChartNoAxesCombined },
+  { stageId: "execute", label: "核对账户", icon: UserRoundCheck },
+  { stageId: "guard", label: "硬风控", icon: ShieldCheck },
+  { stageId: "monitor", label: "等待回踩", icon: Clock3 }
 ]);
 
 const QUEUE_GROUPS = Object.freeze([
@@ -154,7 +158,8 @@ function statusTone(status) {
   if (["failed", "blocked", "rejected", "error"].includes(normalized)) return "danger";
   if (["active", "armed", "running", "monitoring", "approved"].includes(normalized)) return "mint";
   if (["completed", "complete", "closed", "done", "success"].includes(normalized)) return "violet";
-  return "cobalt";
+  if (["waiting", "pending", "queued", "awaiting_approval"].includes(normalized)) return "cobalt";
+  return "unavailable";
 }
 
 function MissionQueue({ rows, selectedId, onSelect }) {
@@ -214,35 +219,77 @@ function selectedPositionImpact(data, symbol) {
     .join(" ") || unavailable;
 }
 
-function MissionFocus({ data, row, selection }) {
+function collectionCount(value) {
+  return Array.isArray(value) ? value.length : unavailable;
+}
+
+function ownJsonData(record, key) {
+  if (!hasJsonResponseProvenance(record)) return undefined;
+  const descriptor = Object.getOwnPropertyDescriptor(record, key);
+  return descriptor && Object.hasOwn(descriptor, "value") ? descriptor.value : undefined;
+}
+
+function identityTruth(data) {
+  const user = ownJsonData(data, "user");
+  const explicitCount = ownJsonData(data, "notificationCount");
+  const notifications = jsonResponseArrayValues(ownJsonData(data, "notifications"));
+  return {
+    name: optionalText(
+      ownJsonData(user, "displayName"),
+      ownJsonData(user, "name"),
+      ownJsonData(user, "id")
+    ),
+    notificationCount: Number.isInteger(explicitCount) && explicitCount >= 0
+      ? explicitCount
+      : notifications?.length
+  };
+}
+
+function attentionCandidate(item, data) {
+  const id = optionalText(item?.objectId, item?.entityId, item?.targetId);
+  const type = optionalText(item?.objectType, item?.entityType, item?.targetType);
+  if (!id || !type) return null;
+  const candidate = { id, type };
+  return createV2Selection({ data, candidate }) ? candidate : null;
+}
+
+function MissionFocus({ data, row, selection, onOpenProof }) {
   const source = row?.source || selection?.object?.raw || {};
   const title = firstText(row?.title, selection?.object?.title, selection?.context?.title);
   const symbol = optionalText(row?.symbol, source?.symbol, source?.instId);
   const traceStages = asList(selection?.trace?.stages);
+  const traceByStage = new Map(traceStages.map((stage) => [safeText(stage?.id, "").toLowerCase(), stage]));
   const capabilityValue = asList(source?.capabilities).map((item) => safeText(item, "")).filter(Boolean).join(" / ") || firstText(source?.capability, source?.tools);
   const eventValue = firstText(source?.eventWindow, source?.event, source?.timeframe);
-  const stageStatus = (index) => firstText(traceStages[index]?.status, index < 4 ? "complete" : "waiting");
+  const missionStatus = firstText(row?.status, selection?.context?.status);
+  const missionSignal = firstText(source?.summary, source?.displayThesis, source?.thesis, source?.rationale);
+  const stageStatus = (stageId) => firstText(traceByStage.get(stageId)?.status);
 
   return (
     <article className="kordynV2MissionFocus" data-kordyn-v2-mission-focus>
       <header className="kordynV2MissionTitle">
         <span className="kordynV2MissionSymbol">{safeText(symbol, "AI").slice(0, 3)}</span>
         <h2>{title}</h2>
-        <em>{statusLabel(optionalText(row?.status, selection?.context?.status, "active"))}</em>
+        <em data-status-tone={statusTone(missionStatus)}>{statusLabel(missionStatus)}</em>
       </header>
       <div className="kordynV2MissionPipeline" aria-label="任务阶段">
-        {PIPELINE.map(({ label, icon: Icon }, index) => {
-          const stageState = stageStatus(index);
+        {PIPELINE.map(({ stageId, label, icon: Icon }) => {
+          const stageState = stageStatus(stageId);
           return (
-            <div key={label} className="kordynV2PipelineStage" data-stage-state={normalizedStatus(stageState)}>
+            <div
+              key={stageId}
+              className="kordynV2PipelineStage"
+              data-stage-id={stageId}
+              data-stage-state={normalizedStatus(stageState)}
+            >
               <span><Icon size={20} strokeWidth={1.7} aria-hidden="true" /></span>
               <strong>{label}</strong>
-              {index < 4 && <CircleCheck size={14} aria-label={stageState} />}
+              {normalizedStatus(stageState) === "complete" && <CircleCheck size={14} aria-label="complete" />}
             </div>
           );
         })}
       </div>
-      <p className="kordynV2MissionSignal"><Activity size={19} aria-hidden="true" />{firstText(source?.summary, source?.displayThesis, source?.thesis, source?.rationale, "当前对象正在等待新的权威事实。")}</p>
+      <p className="kordynV2MissionSignal" data-status-tone={missionSignal === unavailable ? "unavailable" : "cobalt"}><Activity size={19} aria-hidden="true" />{missionSignal}</p>
       <section className="kordynV2DecisionSummary">
         <h3>决策摘要</h3>
         <FactRow icon={ChartNoAxesCombined} label="策略" value={firstText(source?.strategyName, source?.strategy, source?.strategyProductId)} />
@@ -251,35 +298,71 @@ function MissionFocus({ data, row, selection }) {
         <FactRow icon={CalendarClock} label="事件" value={eventValue} />
         <FactRow icon={Link2} label="持仓影响" value={selectedPositionImpact(data, symbol)} />
       </section>
-      <footer className="kordynV2MissionMeta">
-        <span><Link2 size={15} aria-hidden="true" /> 对象 {safeText(selection?.object?.id)}</span>
-        <span>证据 {safeText(selection?.context?.evidence)}</span>
+      <footer className="kordynV2WorkbenchFooter" data-kordyn-v2-workbench-footer>
+        <button
+          data-kordyn-v2-audit-control
+          type="button"
+          aria-haspopup="dialog"
+          onClick={(event) => onOpenProof(event.currentTarget)}
+        >
+          <Link2 size={16} aria-hidden="true" />
+          <span>审计链</span>
+          <ArrowRight size={15} aria-hidden="true" />
+        </button>
+        <span
+          className="kordynV2WorkbenchIdentity"
+          title={`对象 ${safeText(selection?.object?.id)} · 证据 ${safeText(selection?.context?.evidence)}`}
+        >
+          {safeText(selection?.object?.id)}
+        </span>
+        <button
+          data-kordyn-v2-poster-control
+          type="button"
+          disabled
+          aria-label={`生成海报 PNG：${unavailable}`}
+        >
+          <Download size={16} aria-hidden="true" />
+          <span>生成海报</span>
+          <small>PNG · {unavailable}</small>
+        </button>
       </footer>
     </article>
   );
 }
 
-function AttentionRail({ data, selection }) {
+function AttentionRail({ data, selection, onSelect }) {
   const attention = [...asList(data?.pendingActions), ...asList(data?.riskIncidents)].slice(0, 2);
+  const attentionKnown = Array.isArray(data?.pendingActions) || Array.isArray(data?.riskIncidents);
   const latestRun = asList(data?.agentRuns)[0];
   const relationshipFacts = [
-    ["行情快照", asList(data?.markets).length],
-    ["市场结构", asList(data?.marketStructures).length],
-    ["链上数据", asList(data?.onchainSignals).length],
-    ["知识来源", asList(data?.knowledge?.sources).length],
-    ["交易对照", asList(data?.executionOrders).length]
+    ["行情快照", collectionCount(data?.markets)],
+    ["市场结构", collectionCount(data?.marketStructures)],
+    ["链上数据", collectionCount(data?.onchainSignals)],
+    ["知识来源", collectionCount(data?.knowledge?.sources)],
+    ["交易对照", collectionCount(data?.executionOrders)]
   ];
   return (
     <aside className="kordynV2AttentionRail">
       <section className="kordynV2AttentionCard is-urgent">
-        <header><h2>需要你</h2><span>{attention.length ? "高" : "0"}</span></header>
-        {attention.length ? attention.map((item, index) => (
-          <div className="kordynV2AttentionItem" key={rowIdentity(item, "id", "title") || index}>
-            <strong>{firstText(item?.title, item?.type, item?.id)}</strong>
-            <small>{firstText(item?.summary, item?.detail, item?.status)}</small>
-            <ArrowRight size={17} aria-hidden="true" />
-          </div>
-        )) : <p>当前没有待处理的权威事项。</p>}
+        <header><h2>需要你</h2><span>{attention.length ? "高" : attentionKnown ? "0" : unavailable}</span></header>
+        {attention.length ? attention.map((item, index) => {
+          const candidate = attentionCandidate(item, data);
+          const Item = candidate ? "button" : "div";
+          return (
+            <Item
+              className={`kordynV2AttentionItem${candidate ? "" : " is-unavailable"}`}
+              key={rowIdentity(item, "id", "title") || index}
+              type={candidate ? "button" : undefined}
+              data-kordyn-v2-attention-target={candidate?.id}
+              aria-label={candidate ? `打开 ${firstText(item?.title, item?.type, item?.id)}` : `${firstText(item?.title, item?.type, item?.id)}：${unavailable}`}
+              onClick={candidate ? () => onSelect(candidate) : undefined}
+            >
+              <strong>{firstText(item?.title, item?.type, item?.id)}</strong>
+              <small>{firstText(item?.summary, item?.detail, item?.status)}</small>
+              {candidate && <ArrowRight size={17} aria-hidden="true" />}
+            </Item>
+          );
+        }) : <p>{attentionKnown ? "当前没有待处理的权威事项。" : unavailable}</p>}
       </section>
       <section className="kordynV2AttentionCard is-context">
         <header><h2>关联上下文</h2></header>
@@ -301,22 +384,40 @@ function AttentionRail({ data, selection }) {
   );
 }
 
-function MissionControlCanvas({ data, domain, workspace, selection, onSelect, onNavigate }) {
+function automationHealth(data) {
+  const label = firstText(data?.automationState?.label, data?.automationState?.mode);
+  const fact = optionalText(data?.automationState?.runtimeStatus, data?.automationState?.mode, data?.automationState?.label).toLowerCase();
+  if (!fact) return { label: unavailable, tone: "unavailable" };
+  if (["halted", "paused", "reduce_only", "failed", "error", "blocked", "emergency", "kill"].some((token) => fact.includes(token))) {
+    return { label, tone: "danger" };
+  }
+  if (["normal", "full_auto", "semi_auto", "observe", "running", "active"].some((token) => fact.includes(token))) {
+    return { label, tone: "mint" };
+  }
+  return { label, tone: "unavailable" };
+}
+
+function MissionControlCanvas({ data, domain, workspace, selection, onSelect, onOpenDialog, onOpenProof }) {
   const rows = useMemo(() => buildMissionRows(data), [data]);
   const selectedId = safeText(selection?.object?.id, "");
   const selectedRow = rows.find((row) => row.id === selectedId) || rows[0] || null;
+  const automation = automationHealth(data);
   return (
-    <div className="kordynV2MissionControl">
+    <div
+      className="kordynV2MissionControl"
+      data-kordyn-v2-destination={`${domain.id}/${workspace.id}`}
+      data-kordyn-v2-mission-control
+    >
       <div className="kordynV2WorkspaceHeading">
-        <span><small>{domain.label}</small><h1>{domain.id === "ai" ? "AI 交易员" : workspace.label}</h1></span>
-        <em><span /> {firstText(data?.automationState?.label, data?.automationState?.mode, "运行状态不可用")}</em>
+        <span><small>{domain.label}</small><h1 data-kordyn-v2-destination-title>{domain.id === "ai" ? "AI 交易员" : workspace.label}</h1></span>
+        <em data-health-tone={automation.tone} role="status" aria-label={`自动化状态：${automation.label}`}><span /> {automation.label}</em>
       </div>
       <div className="kordynV2MissionGrid">
         <MissionQueue rows={rows} selectedId={selectedId} onSelect={onSelect} />
-        <MissionFocus data={data} row={selectedRow} selection={selection} />
-        <AttentionRail data={data} selection={selection} />
+        <MissionFocus data={data} row={selectedRow} selection={selection} onOpenProof={onOpenProof} />
+        <AttentionRail data={data} selection={selection} onSelect={onSelect} />
       </div>
-      <button className="kordynV2MissionPrompt" type="button" onClick={() => onNavigate("ai", "dialog")}>
+      <button className="kordynV2MissionPrompt" data-kordyn-v2-dialog-trigger type="button" onClick={onOpenDialog}>
         <Sparkles size={22} aria-hidden="true" />
         <span>告诉 AI 交易员你的目标，或检查当前任务…</span>
         <Send size={18} aria-hidden="true" />
@@ -329,6 +430,8 @@ export function KordynV2Root({ api, lang }) {
   const data = api?.data || {};
   const [location, setLocation] = useState(() => v2LocationForWorkspace("ai", "missions"));
   const [selectedCandidate, setSelectedCandidate] = useState(null);
+  const [evidenceRequest, setEvidenceRequest] = useState(null);
+  const returnPromptFocusRef = useRef(false);
   const domain = KORDYN_V2_DOMAINS.find((item) => item.id === location.domainId) || KORDYN_V2_DOMAINS[0];
   const workspace = (KORDYN_V2_WORKSPACES[domain.id] || []).find((item) => item.id === location.workspaceId)
     || KORDYN_V2_WORKSPACES[domain.id][0];
@@ -338,8 +441,27 @@ export function KordynV2Root({ api, lang }) {
   }, [location.resourceSection]);
 
   const navigate = useCallback((domainId, workspaceId) => {
+    returnPromptFocusRef.current = false;
     setLocation(v2LocationForWorkspace(domainId, workspaceId));
   }, []);
+
+  const openDialog = useCallback(() => {
+    returnPromptFocusRef.current = true;
+    setLocation(v2LocationForWorkspace("ai", "dialog"));
+  }, []);
+
+  const closeDialog = useCallback(() => {
+    setLocation(v2LocationForWorkspace("ai", "missions"));
+  }, []);
+
+  useEffect(() => {
+    if (location.domainId !== "ai" || location.workspaceId !== "missions" || !returnPromptFocusRef.current) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      document.querySelector("[data-kordyn-v2-dialog-trigger]")?.focus();
+      returnPromptFocusRef.current = false;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [location.domainId, location.workspaceId]);
 
   const defaultCandidate = useMemo(() => firstSelectionCandidate(data), [data]);
   const selection = useMemo(() => {
@@ -366,6 +488,32 @@ export function KordynV2Root({ api, lang }) {
     Promise.resolve(api?.ensureSection?.(location.resourceSection, { force: true })).catch(() => {});
   }, [api, location.resourceSection]);
 
+  const requestProof = useCallback((trigger) => {
+    setEvidenceRequest((current) => ({
+      panel: "proof",
+      token: (current?.token || 0) + 1,
+      trigger
+    }));
+  }, []);
+
+  const identity = useMemo(() => identityTruth(data), [data]);
+
+  const destination = location.domainId === "ai" && location.workspaceId === "missions"
+    ? (
+      <MissionControlCanvas
+        data={data}
+        domain={domain}
+        workspace={workspace}
+        selection={selection}
+        onSelect={select}
+        onOpenDialog={openDialog}
+        onOpenProof={requestProof}
+      />
+    )
+    : location.domainId === "ai" && location.workspaceId === "dialog"
+      ? <DialogSurface data={data} onClose={closeDialog} />
+      : <DestinationBoundary domain={domain} workspace={workspace} location={location} state={state} />;
+
   return (
     <div className="kordynV2Root" data-kordyn-v2-root="desktop" lang={lang === "en" ? "en" : "zh-CN"}>
       <DesktopShell
@@ -373,18 +521,13 @@ export function KordynV2Root({ api, lang }) {
         truth={truth}
         state={state}
         selection={selection}
+        identity={identity}
+        evidenceRequest={evidenceRequest}
         onNavigate={navigate}
         onSelect={select}
         onRetry={retry}
       >
-        <MissionControlCanvas
-          data={data}
-          domain={domain}
-          workspace={workspace}
-          selection={selection}
-          onSelect={select}
-          onNavigate={navigate}
-        />
+        {destination}
       </DesktopShell>
     </div>
   );

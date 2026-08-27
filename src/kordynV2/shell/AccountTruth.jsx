@@ -43,6 +43,31 @@ function freshnessText(value) {
   }).format(new Date(freshness));
 }
 
+function runtimeTone(value) {
+  const runtime = primitiveText(value).toLowerCase();
+  if (runtime === unavailable.toLowerCase()) return "unavailable";
+  if (["halted", "paused", "reduce_only", "failed", "error", "blocked", "emergency", "kill"].some((token) => runtime.includes(token))) {
+    return "danger";
+  }
+  if (["full_auto", "semi_auto", "observe", "running", "active", "normal"].some((token) => runtime.includes(token))) {
+    return "mint";
+  }
+  return "unavailable";
+}
+
+function riskTone(value) {
+  const risk = primitiveText(value).toLowerCase();
+  if (risk === unavailable.toLowerCase()) return "unavailable";
+  return ["normal", "ok", "healthy"].includes(risk) ? "mint" : "danger";
+}
+
+function realtimeTone(truth, state) {
+  const kind = typeof state?.kind === "string" ? state.kind : "not_loaded";
+  if (["failed", "forbidden", "stale", "degraded", "disabled"].includes(kind)) return "danger";
+  if (kind === "ready" && freshnessText(truth.freshness) !== unavailable) return "mint";
+  return "unavailable";
+}
+
 const FACTS = Object.freeze([
   { key: "equity", label: "总权益", icon: CircleDollarSign, value: (truth) => numericText(truth.equity), modes: ["full", "compact"] },
   { key: "available", label: "可用", icon: WalletCards, value: (truth) => numericText(truth.available), modes: ["full"] },
@@ -52,23 +77,42 @@ const FACTS = Object.freeze([
   { key: "freshness", label: "数据", icon: Clock3, value: (truth) => freshnessText(truth.freshness), modes: ["full", "compact", "critical"] }
 ]);
 
-export function AccountTruth({ truth = {} }) {
+export function AccountTruth({ truth = {}, state }) {
   const mode = ["full", "compact", "critical"].includes(truth.mode) ? truth.mode : "full";
   const facts = FACTS.filter((fact) => fact.modes.includes(mode));
+  const realtime = realtimeTone(truth, state);
   return (
     <section className="kordynV2AccountTruth" data-kordyn-v2-account-truth-mode={mode} aria-label="账户事实">
       <span className="kordynV2TruthMenu" aria-hidden="true"><Menu size={20} /></span>
       {facts.map((fact) => {
         const Icon = fact.icon;
+        const value = fact.value(truth);
+        const healthTone = fact.key === "runtime"
+          ? runtimeTone(truth.runtime)
+          : fact.key === "risk"
+            ? riskTone(truth.risk)
+            : null;
         return (
-          <div className={`kordynV2TruthFact is-${fact.key}`} key={fact.key} data-kordyn-v2-truth-fact={fact.key}>
+          <div
+            className={`kordynV2TruthFact is-${fact.key}`}
+            key={fact.key}
+            data-kordyn-v2-truth-fact={fact.key}
+            data-health-tone={healthTone || undefined}
+            role={healthTone ? "status" : undefined}
+            aria-label={healthTone ? `${fact.label}状态：${value}` : undefined}
+          >
             <Icon size={16} strokeWidth={1.8} aria-hidden="true" />
             <span>{fact.label}</span>
-            <strong>{fact.value(truth)}</strong>
+            <strong>{value}</strong>
           </div>
         );
       })}
-      <span className="kordynV2TruthPulse" aria-label="实时连接正常" />
+      <span
+        className="kordynV2TruthPulse"
+        data-health-tone={realtime}
+        role="status"
+        aria-label={`实时连接：${realtime === "mint" ? "正常" : realtime === "danger" ? "异常" : unavailable}`}
+      />
     </section>
   );
 }

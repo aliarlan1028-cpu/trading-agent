@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { spawn } from "node:child_process";
 import os from "node:os";
@@ -13,6 +14,11 @@ const chromeBinary = process.env.CHROME_BIN || "/Applications/Google Chrome.app/
 const screenshotDir = process.env.KORDYN_V2_SCREENSHOT_DIR
   ? path.resolve(rootDir, process.env.KORDYN_V2_SCREENSHOT_DIR)
   : null;
+const approvedReferencePath = path.join(
+  rootDir,
+  ".impeccable/mocks/kordyn-v2-approved/desktop-ai-mission-control.png"
+);
+const approvedReferenceSha = "55f988f9c87d1dce83d528bd2ad224b0951542cbab32eca018bf6c78818dbc20";
 const viewports = [[1440, 900], [1180, 800]];
 const domains = [
   ["ai", "missions"],
@@ -20,6 +26,27 @@ const domains = [
   ["assets", "relationships"],
   ["governance", "overview"]
 ];
+const destinationCases = [
+  { domain: "ai", workspace: "missions", title: "AI 交易员", kind: "mission" },
+  { domain: "ai", workspace: "intelligence", title: "情报", kind: "boundary" },
+  { domain: "ai", workspace: "watch", title: "观察哨", kind: "boundary" },
+  { domain: "ai", workspace: "events", title: "事件日历", kind: "boundary" },
+  { domain: "ai", workspace: "dialog", title: "对话", kind: "dialog" },
+  { domain: "account", workspace: "market", title: "市场", kind: "boundary" },
+  { domain: "assets", workspace: "relationships", title: "关系总览", kind: "boundary" },
+  { domain: "governance", workspace: "overview", title: "运行总览", kind: "boundary" }
+];
+const contractFailures = [];
+
+function contractEqual(label, actual, expected) {
+  if (JSON.stringify(actual) === JSON.stringify(expected)) return;
+  contractFailures.push(`${label}: expected ${JSON.stringify(expected)}, received ${JSON.stringify(actual)}`);
+}
+
+function contractTrue(label, value, evidence) {
+  if (value) return;
+  contractFailures.push(`${label}: ${evidence}`);
+}
 
 async function freePort() {
   return await new Promise((resolve, reject) => {
@@ -112,10 +139,21 @@ async function click(cdp, selector) {
 }
 
 async function pressKey(cdp, key, { shift = false } = {}) {
-  const virtualKey = ({ Enter: 13, Escape: 27, Tab: 9 })[key] || 0;
+  const eventKey = key === "Space" ? " " : key;
+  const eventCode = key === "Space" ? "Space" : key;
+  const virtualKey = ({ Enter: 13, Escape: 27, Tab: 9, Space: 32 })[key] || 0;
   const modifiers = shift ? 8 : 0;
-  await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key, code: key, windowsVirtualKeyCode: virtualKey, modifiers });
-  await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key, code: key, windowsVirtualKeyCode: virtualKey, modifiers });
+  const textValue = key === "Enter" ? "\r" : key === "Space" ? " " : undefined;
+  await cdp.send("Input.dispatchKeyEvent", {
+    type: "keyDown",
+    key: eventKey,
+    code: eventCode,
+    windowsVirtualKeyCode: virtualKey,
+    modifiers,
+    text: textValue,
+    unmodifiedText: textValue
+  });
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: eventKey, code: eventCode, windowsVirtualKeyCode: virtualKey, modifiers });
   await new Promise((resolve) => setTimeout(resolve, 80));
 }
 
@@ -136,9 +174,58 @@ async function setViewport(cdp, url, width, height) {
   );
 }
 
-async function capture(cdp, width, height) {
-  if (!screenshotDir) return null;
-  await mkdir(screenshotDir, { recursive: true });
+const fidelityRegions = Object.freeze([
+  { name: "whole-frame", left: 0, top: 0, width: 1, height: 1, weight: 0.20 },
+  { name: "identity-rail", left: 0.76, top: 0, width: 0.24, height: 0.09, weight: 0.20 },
+  { name: "workbench-footer", left: 0.31, top: 0.72, width: 0.47, height: 0.15, weight: 0.25 },
+  { name: "command-support", left: 0.14, top: 0.86, width: 0.85, height: 0.13, weight: 0.35 }
+]);
+
+function regionMeanAbsoluteError(actual, reference, imageWidth, imageHeight, region) {
+  const left = Math.floor(region.left * imageWidth);
+  const top = Math.floor(region.top * imageHeight);
+  const right = Math.floor((region.left + region.width) * imageWidth);
+  const bottom = Math.floor((region.top + region.height) * imageHeight);
+  let difference = 0;
+  let samples = 0;
+  for (let y = top; y < bottom; y += 1) {
+    for (let x = left; x < right; x += 1) {
+      const pixel = (y * imageWidth + x) * 3;
+      for (let channel = 0; channel < 3; channel += 1) {
+        difference += Math.abs(actual[pixel + channel] - reference[pixel + channel]);
+        samples += 1;
+      }
+    }
+  }
+  return difference / samples / 255;
+}
+
+async function referenceFidelity(bytes, width, height) {
+  const referenceBytes = await readFile(approvedReferencePath);
+  assert.equal(
+    createHash("sha256").update(referenceBytes).digest("hex"),
+    approvedReferenceSha,
+    "approved desktop reference SHA"
+  );
+  const actual = await sharp(bytes).removeAlpha().raw().toBuffer();
+  const reference = await sharp(referenceBytes)
+    .resize(width, height, { fit: "fill" })
+    .removeAlpha()
+    .raw()
+    .toBuffer();
+  const regions = Object.fromEntries(fidelityRegions.map((region) => [
+    region.name,
+    regionMeanAbsoluteError(actual, reference, width, height, region)
+  ]));
+  const metric = fidelityRegions.reduce(
+    (total, region) => total + regions[region.name] * region.weight,
+    0
+  );
+  const threshold = width === 1440 ? 0.0415 : 0.0475;
+  return { metric, threshold, regions };
+}
+
+async function capture(cdp, width, height, filename = `desktop-${width}x${height}.png`) {
   const result = await cdp.send("Page.captureScreenshot", {
     format: "png",
     fromSurface: true,
@@ -147,9 +234,14 @@ async function capture(cdp, width, height) {
   const bytes = Buffer.from(result.data, "base64");
   const metadata = await sharp(bytes).metadata();
   assert.deepEqual([metadata.width, metadata.height], [width, height], `${width}: screenshot dimensions`);
-  const outputPath = path.join(screenshotDir, `desktop-${width}x${height}.png`);
-  await writeFile(outputPath, bytes);
-  return outputPath;
+  const fidelity = await referenceFidelity(bytes, width, height);
+  let outputPath = null;
+  if (screenshotDir) {
+    await mkdir(screenshotDir, { recursive: true });
+    outputPath = path.join(screenshotDir, filename);
+    await writeFile(outputPath, bytes);
+  }
+  return { outputPath, ...fidelity };
 }
 
 async function readGeometry(cdp) {
@@ -169,6 +261,10 @@ async function readGeometry(cdp) {
         clientHeight:node.clientHeight, scrollHeight:node.scrollHeight
       };
     };
+    const maybeBox = (selector) => {
+      const node = root.querySelector(selector);
+      return node ? box(node) : null;
+    };
     const localButtons = [...local.querySelectorAll('[data-kordyn-v2-workspace-target]')].map(box);
     return {
       viewport:[innerWidth,innerHeight],
@@ -181,9 +277,168 @@ async function readGeometry(cdp) {
       workspace:root.dataset.kordynV2Workspace,
       selectedId:root.dataset.kordynV2SelectedId,
       actions:window.__kordynV2BrowserCalls.actions,
-      legacyStyles:[...document.styleSheets].some((sheet) => /styles\.css|productStyles/i.test(sheet.href || ""))
+      legacyStyles:[...document.styleSheets].some((sheet) => /styles\.css|productStyles/i.test(sheet.href || "")),
+      landmarks:{
+        identity:maybeBox('[data-kordyn-v2-identity]'),
+        notification:maybeBox('[data-kordyn-v2-notification]'),
+        workbenchFooter:maybeBox('[data-kordyn-v2-workbench-footer]'),
+        audit:maybeBox('[data-kordyn-v2-audit-control]'),
+        poster:maybeBox('[data-kordyn-v2-poster-control]'),
+        assistant:maybeBox('[data-kordyn-v2-assistant-reserve]'),
+        prompt:maybeBox('.kordynV2MissionPrompt'),
+        evidenceDock:maybeBox('.kordynV2EvidenceDock'),
+        runtime:maybeBox('.kordynV2WorkspaceHeading > em'),
+        missionFocus:maybeBox('[data-kordyn-v2-mission-focus]'),
+        decisionSummary:maybeBox('.kordynV2DecisionSummary'),
+        lastDecisionFact:maybeBox('.kordynV2DecisionFact:last-child')
+      }
     };
   })()`);
+}
+
+function ranges(value, minimum, maximum) {
+  return typeof value === "number" && value >= minimum && value <= maximum;
+}
+
+function rectanglesOverlap(first, second) {
+  if (!first || !second) return true;
+  return first.left < second.right
+    && first.right > second.left
+    && first.top < second.bottom
+    && first.bottom > second.top;
+}
+
+async function verifyFidelityLandmarks(cdp, geometry, width, height) {
+  const { landmarks } = geometry;
+  for (const name of ["identity", "notification", "workbenchFooter", "audit", "poster", "assistant"]) {
+    contractTrue(`${width}: ${name} comp landmark exists`, Boolean(landmarks[name]), `received ${JSON.stringify(landmarks[name])}`);
+  }
+
+  const semantics = await evaluate(cdp, `(() => {
+    const read = (selector) => {
+      const node = document.querySelector(selector);
+      return node ? {
+        tag:node.tagName,
+        disabled:node.matches(':disabled'),
+        ariaDisabled:node.getAttribute('aria-disabled'),
+        hasPopup:node.getAttribute('aria-haspopup'),
+        text:node.textContent.trim(),
+        name:node.getAttribute('aria-label') || ''
+      } : null;
+    };
+    return {
+      identity:read('[data-kordyn-v2-identity]'),
+      notification:read('[data-kordyn-v2-notification]'),
+      audit:read('[data-kordyn-v2-audit-control]'),
+      poster:read('[data-kordyn-v2-poster-control]'),
+      assistant:read('[data-kordyn-v2-assistant-reserve]')
+    };
+  })()`);
+
+  contractTrue(
+    `${width}: authenticated identity uses fixture truth`,
+    semantics.identity?.text.includes("K0"),
+    `received ${JSON.stringify(semantics.identity)}`
+  );
+  contractTrue(
+    `${width}: absent notification facts stay unavailable`,
+    semantics.notification?.text.includes("Unavailable") && semantics.notification.disabled,
+    `received ${JSON.stringify(semantics.notification)}`
+  );
+  contractTrue(
+    `${width}: audit chain is a real Proof control`,
+    semantics.audit?.tag === "BUTTON" && !semantics.audit.disabled && semantics.audit.hasPopup === "dialog",
+    `received ${JSON.stringify(semantics.audit)}`
+  );
+  contractTrue(
+    `${width}: poster capability is truthfully disabled`,
+    semantics.poster?.tag === "BUTTON" && semantics.poster.disabled && /Unavailable/i.test(`${semantics.poster.text} ${semantics.poster.name}`),
+    `received ${JSON.stringify(semantics.poster)}`
+  );
+  contractTrue(
+    `${width}: reserved assistant is truthfully disabled`,
+    semantics.assistant?.tag === "BUTTON" && semantics.assistant.disabled && /Unavailable|待开放|只读/i.test(`${semantics.assistant.text} ${semantics.assistant.name}`),
+    `received ${JSON.stringify(semantics.assistant)}`
+  );
+
+  if (semantics.audit) {
+    await click(cdp, '[data-kordyn-v2-audit-control]');
+    const auditOpened = await evaluate(cdp, `(() => ({
+      proof:Boolean(document.querySelector('[data-kordyn-v2-overlay="proof"]')),
+      focused:Boolean(document.querySelector('[data-kordyn-v2-overlay="proof"]')?.contains(document.activeElement)),
+      actions:window.__kordynV2BrowserCalls.actions
+    }))()`);
+    contractEqual(`${width}: audit chain opens read-only Proof without a write`, auditOpened, {
+      proof: true,
+      focused: true,
+      actions: 0
+    });
+    if (auditOpened.proof) {
+      await pressKey(cdp, "Escape");
+      contractEqual(
+        `${width}: audit Proof returns focus to footer control`,
+        await evaluate(cdp, "document.activeElement === document.querySelector('[data-kordyn-v2-audit-control]')"),
+        true
+      );
+      await evaluate(cdp, "document.activeElement?.blur() || true");
+    }
+  }
+
+  const expected = width === 1440
+    ? { promptLeft:[238, 285], promptRight:[1090, 1170], assistantLeft:[1170, 1210], assistantWidth:[210, 250] }
+    : { promptLeft:[195, 230], promptRight:[915, 945], assistantLeft:[955, 985], assistantWidth:[175, 205] };
+  contractTrue(
+    `${width}: identity occupies the top-right truth rail`,
+    landmarks.identity && ranges(landmarks.identity.top, 0, 2) && ranges(width - landmarks.identity.right, 0, 2) && landmarks.identity.height >= 60,
+    `received ${JSON.stringify(landmarks.identity)}`
+  );
+  contractTrue(
+    `${width}: notification keeps a 44px top-rail target`,
+    landmarks.notification && landmarks.notification.width >= 44 && landmarks.notification.height >= 44 && landmarks.notification.right <= landmarks.identity.left + 1,
+    `received notification=${JSON.stringify(landmarks.notification)} identity=${JSON.stringify(landmarks.identity)}`
+  );
+  contractTrue(
+    `${width}: workbench footer is continuous with mission focus`,
+    landmarks.workbenchFooter && landmarks.missionFocus && landmarks.decisionSummary
+      && landmarks.workbenchFooter.left >= landmarks.missionFocus.left
+      && landmarks.workbenchFooter.right <= landmarks.missionFocus.right
+      && landmarks.workbenchFooter.bottom <= landmarks.missionFocus.bottom
+      && landmarks.workbenchFooter.height >= 44
+      && landmarks.workbenchFooter.top - landmarks.decisionSummary.bottom <= 14,
+    `received footer=${JSON.stringify(landmarks.workbenchFooter)} focus=${JSON.stringify(landmarks.missionFocus)} summary=${JSON.stringify(landmarks.decisionSummary)}`
+  );
+  contractTrue(
+    `${width}: decision facts fill the continuous workbench field`,
+    landmarks.lastDecisionFact && landmarks.decisionSummary
+      && landmarks.decisionSummary.bottom - landmarks.lastDecisionFact.bottom <= 4,
+    `received summary=${JSON.stringify(landmarks.decisionSummary)} lastFact=${JSON.stringify(landmarks.lastDecisionFact)}`
+  );
+  contractTrue(
+    `${width}: command bar aligns with the comp workbench inset`,
+    landmarks.prompt
+      && ranges(landmarks.prompt.left, ...expected.promptLeft)
+      && ranges(landmarks.prompt.right, ...expected.promptRight)
+      && landmarks.prompt.bottom <= height - 18,
+    `received ${JSON.stringify(landmarks.prompt)}`
+  );
+  contractTrue(
+    `${width}: assistant reserves the lower-right lane`,
+    landmarks.assistant
+      && ranges(landmarks.assistant.left, ...expected.assistantLeft)
+      && ranges(landmarks.assistant.width, ...expected.assistantWidth)
+      && ranges(height - landmarks.assistant.bottom, 16, 34),
+    `received ${JSON.stringify(landmarks.assistant)}`
+  );
+  contractTrue(
+    `${width}: command and assistant lanes do not overlap`,
+    landmarks.prompt && landmarks.assistant && landmarks.prompt.right + 14 <= landmarks.assistant.left,
+    `received prompt=${JSON.stringify(landmarks.prompt)} assistant=${JSON.stringify(landmarks.assistant)}`
+  );
+  contractTrue(
+    `${width}: Context and Proof reserve space beside runtime`,
+    landmarks.runtime && landmarks.evidenceDock && !rectanglesOverlap(landmarks.runtime, landmarks.evidenceDock) && landmarks.runtime.right + 10 <= landmarks.evidenceDock.left,
+    `received runtime=${JSON.stringify(landmarks.runtime)} evidence=${JSON.stringify(landmarks.evidenceDock)}`
+  );
 }
 
 async function verifyDialog(cdp, panel) {
@@ -215,6 +470,237 @@ async function verifyDialog(cdp, panel) {
     `!document.querySelector('[data-kordyn-v2-overlay=${panel}]') && document.activeElement === document.querySelector(${JSON.stringify(trigger)})`,
     `${panel} Escape close and focus return`
   );
+}
+
+async function readDestination(cdp) {
+  return await evaluate(cdp, `(() => {
+    const root = document.querySelector('[data-kordyn-v2-shell="desktop"]');
+    const surface = root?.querySelector('[data-kordyn-v2-destination]');
+    const dialog = root?.querySelector('[data-kordyn-v2-dialog-surface][role="dialog"]');
+    return {
+      destination:surface?.getAttribute('data-kordyn-v2-destination') || null,
+      mission:Boolean(root?.querySelector('[data-kordyn-v2-mission-control]')),
+      boundary:Boolean(root?.querySelector('[data-kordyn-v2-destination-boundary]')),
+      dialog:Boolean(dialog),
+      dialogFocused:Boolean(dialog?.contains(document.activeElement)),
+      title:root?.querySelector('[data-kordyn-v2-destination-title]')?.textContent?.trim() || null
+    };
+  })()`);
+}
+
+async function verifyDestinations(cdp, width) {
+  for (const destination of destinationCases) {
+    await click(cdp, `[data-kordyn-v2-domain-target="${destination.domain}"]`);
+    await waitForExpression(
+      cdp,
+      `document.querySelector('[data-kordyn-v2-shell="desktop"]')?.dataset.kordynV2Domain === '${destination.domain}'`,
+      `${width}: ${destination.domain} domain`
+    );
+    if (destination.workspace !== domains.find(([domain]) => domain === destination.domain)?.[1]) {
+      await click(cdp, `[data-kordyn-v2-workspace-target="${destination.workspace}"]`);
+    }
+    await waitForExpression(
+      cdp,
+      `document.querySelector('[data-kordyn-v2-shell="desktop"]')?.dataset.kordynV2Workspace === '${destination.workspace}'`,
+      `${width}: ${destination.domain}/${destination.workspace} destination`
+    );
+    const actual = await readDestination(cdp);
+    contractEqual(`${width}: ${destination.domain}/${destination.workspace} honest destination`, actual, {
+      destination: `${destination.domain}/${destination.workspace}`,
+      mission: destination.kind === "mission",
+      boundary: destination.kind === "boundary",
+      dialog: destination.kind === "dialog",
+      dialogFocused: destination.kind === "dialog",
+      title: destination.title
+    });
+  }
+
+  await click(cdp, '[data-kordyn-v2-domain-target="ai"]');
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=desktop]')?.dataset.kordynV2Workspace === 'missions'", `${width}: mission prompt origin`);
+  await click(cdp, ".kordynV2MissionPrompt");
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=desktop]')?.dataset.kordynV2Workspace === 'dialog'", `${width}: mission prompt dialog route`);
+  const promptDestination = await readDestination(cdp);
+  contractTrue(
+    `${width}: mission prompt opens dialog surface`,
+    promptDestination.destination === "ai/dialog" && promptDestination.dialog && promptDestination.dialogFocused && !promptDestination.mission,
+    `received ${JSON.stringify(promptDestination)}`
+  );
+  if (promptDestination.dialog) {
+    await pressKey(cdp, "Escape");
+    await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=desktop]')?.dataset.kordynV2Workspace === 'missions'", `${width}: dialog Escape close`);
+    contractEqual(
+      `${width}: dialog Escape returns focus to mission prompt`,
+      await evaluate(cdp, "document.activeElement === document.querySelector('[data-kordyn-v2-dialog-trigger]')"),
+      true
+    );
+  }
+}
+
+async function verifyUrgentSelection(cdp, width) {
+  await click(cdp, '[data-kordyn-v2-domain-target="ai"]');
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=desktop]')?.dataset.kordynV2Workspace === 'missions'", `${width}: urgent selection origin`);
+  const before = await evaluate(cdp, `(() => {
+    const item = document.querySelector('.kordynV2AttentionItem');
+    window.__kordynV2UrgentActivationClicks = 0;
+    item?.addEventListener('click', () => { window.__kordynV2UrgentActivationClicks += 1; }, { once:true });
+    item?.focus();
+    return {
+      tag:item?.tagName || null,
+      target:item?.getAttribute('data-kordyn-v2-attention-target') || null,
+      focused:document.activeElement === item
+    };
+  })()`);
+  contractEqual(`${width}: urgent row is canonical button`, before, {
+    tag: "BUTTON",
+    target: "watch-sol-allowlist",
+    focused: true
+  });
+  if (before.tag) {
+    await pressKey(cdp, "Enter");
+    await new Promise((resolve) => setTimeout(resolve, 180));
+  }
+  const after = await evaluate(cdp, `(() => ({
+    selectedId:document.querySelector('[data-kordyn-v2-shell="desktop"]')?.dataset.kordynV2SelectedId || null,
+    missionTitle:document.querySelector('.kordynV2MissionTitle h2')?.textContent?.trim() || null,
+    actions:window.__kordynV2BrowserCalls.actions,
+    activationClicks:window.__kordynV2UrgentActivationClicks
+  }))()`);
+  contractEqual(`${width}: urgent row selects authoritative object without a write`, after, {
+    selectedId: "watch-sol-allowlist",
+    missionTitle: "SOL 白名单机会",
+    actions: 0,
+    activationClicks: 1
+  });
+
+  await click(cdp, '[data-kordyn-v2-object-target="watch-eth-retest"]');
+  await evaluate(cdp, `(() => {
+    const item = document.querySelector('.kordynV2AttentionItem');
+    window.__kordynV2UrgentSpaceClicks = 0;
+    item?.addEventListener('click', () => { window.__kordynV2UrgentSpaceClicks += 1; }, { once:true });
+    item?.focus();
+  })()`);
+  await pressKey(cdp, "Space");
+  const afterSpace = await evaluate(cdp, `(() => ({
+    selectedId:document.querySelector('[data-kordyn-v2-shell="desktop"]')?.dataset.kordynV2SelectedId || null,
+    actions:window.__kordynV2BrowserCalls.actions,
+    activationClicks:window.__kordynV2UrgentSpaceClicks
+  }))()`);
+  contractEqual(`${width}: urgent row supports Space without a write`, afterSpace, {
+    selectedId: "watch-sol-allowlist",
+    actions: 0,
+    activationClicks: 1
+  });
+}
+
+async function readHealth(cdp) {
+  return await evaluate(cdp, `(() => {
+    const nodes = {
+      connection:document.querySelector('.kordynV2PrimaryFooter'),
+      runtime:document.querySelector('.kordynV2TruthFact.is-runtime'),
+      risk:document.querySelector('.kordynV2TruthFact.is-risk'),
+      realtime:document.querySelector('.kordynV2TruthPulse')
+    };
+    return Object.fromEntries(Object.entries(nodes).map(([key, node]) => [key, {
+      text:node?.textContent?.trim() || "",
+      tone:node?.getAttribute('data-health-tone') || null,
+      role:node?.getAttribute('role') || null,
+      name:node?.getAttribute('aria-label') || ""
+    }]));
+  })()`);
+}
+
+async function verifyHealth(cdp, pageUrl, scenario, expectedTone) {
+  const url = scenario === "default" ? pageUrl : `${pageUrl}?scenario=${scenario}`;
+  await setViewport(cdp, url, 1440, 900);
+  const health = await readHealth(cdp);
+  for (const [kind, indicator] of Object.entries(health)) {
+    contractEqual(`${scenario}: ${kind} health tone`, indicator.tone, expectedTone);
+    contractEqual(`${scenario}: ${kind} semantic role`, indicator.role, "status");
+    contractTrue(`${scenario}: ${kind} accessible name`, Boolean(indicator.name), `received ${JSON.stringify(indicator)}`);
+    if (expectedTone === "unavailable") {
+      contractTrue(
+        `${scenario}: ${kind} names unavailable truth`,
+        `${indicator.text} ${indicator.name}`.includes("Unavailable"),
+        `received ${JSON.stringify(indicator)}`
+      );
+    }
+  }
+}
+
+async function readMissionSemantics(cdp) {
+  return await evaluate(cdp, `(() => ({
+    missionStatus:document.querySelector('.kordynV2MissionTitle em')?.textContent?.trim() || null,
+    signal:document.querySelector('.kordynV2MissionSignal')?.textContent?.trim() || null,
+    relationships:[...document.querySelectorAll('.kordynV2AttentionCard.is-context dd')].map((node) => node.textContent.trim()),
+    stages:[...document.querySelectorAll('.kordynV2PipelineStage')].map((node) => ({
+      id:node.getAttribute('data-stage-id'),
+      label:node.querySelector('strong')?.textContent?.trim() || null,
+      status:node.getAttribute('data-stage-state'),
+      completeMark:Boolean(node.querySelector(':scope > svg'))
+    }))
+  }))()`);
+}
+
+async function verifyUnknownMission(cdp, pageUrl) {
+  await setViewport(cdp, `${pageUrl}?scenario=mission-empty`, 1440, 900);
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-mission-focus]')", "empty mission facts");
+  const empty = await readMissionSemantics(cdp);
+  contractEqual("unknown mission status remains unavailable", empty.missionStatus, "Unavailable");
+  contractEqual("unknown mission signal remains unavailable", empty.signal, "Unavailable");
+  contractEqual("absent relationship collections remain unavailable", empty.relationships, [
+    "Unavailable", "Unavailable", "Unavailable", "Unavailable", "Unavailable"
+  ]);
+  contractEqual("missing pipeline facts remain unavailable", empty.stages, [
+    { id: "sense", label: "全市场快扫", status: "unavailable", completeMark: false },
+    { id: "plan", label: "检验市场结构", status: "unavailable", completeMark: false },
+    { id: "execute", label: "核对账户", status: "unavailable", completeMark: false },
+    { id: "guard", label: "硬风控", status: "unavailable", completeMark: false },
+    { id: "monitor", label: "等待回踩", status: "unavailable", completeMark: false }
+  ]);
+
+  await setViewport(cdp, `${pageUrl}?scenario=facts-unknown`, 1440, 900);
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-mission-focus]')", "explicit mission trace facts");
+  const explicit = await readMissionSemantics(cdp);
+  contractEqual("visible pipeline maps explicit canonical stage identities", explicit.stages, [
+    { id: "sense", label: "全市场快扫", status: "blocked", completeMark: false },
+    { id: "plan", label: "检验市场结构", status: "complete", completeMark: true },
+    { id: "execute", label: "核对账户", status: "waiting", completeMark: false },
+    { id: "guard", label: "硬风控", status: "unavailable", completeMark: false },
+    { id: "monitor", label: "等待回踩", status: "complete", completeMark: true }
+  ]);
+}
+
+async function verifyDefaultMissionStages(cdp, width) {
+  const stages = await readMissionSemantics(cdp);
+  contractEqual(`${width}: pinned ETH trace renders explicit stage facts`, stages.stages, [
+    { id: "sense", label: "全市场快扫", status: "complete", completeMark: true },
+    { id: "plan", label: "检验市场结构", status: "complete", completeMark: true },
+    { id: "execute", label: "核对账户", status: "waiting", completeMark: false },
+    { id: "guard", label: "硬风控", status: "complete", completeMark: true },
+    { id: "monitor", label: "等待回踩", status: "waiting", completeMark: false }
+  ]);
+}
+
+async function verifyUnresolvedAttention(cdp, pageUrl) {
+  await setViewport(cdp, `${pageUrl}?scenario=attention-unresolved`, 1440, 900);
+  await waitForExpression(cdp, "document.querySelector('.kordynV2AttentionItem')", "unresolved attention boundary");
+  const actual = await evaluate(cdp, `(() => {
+    const item = document.querySelector('.kordynV2AttentionItem');
+    return {
+      tag:item?.tagName || null,
+      target:item?.getAttribute('data-kordyn-v2-attention-target') || null,
+      name:item?.getAttribute('aria-label') || "",
+      selectedId:document.querySelector('[data-kordyn-v2-shell="desktop"]')?.dataset.kordynV2SelectedId || null,
+      actions:window.__kordynV2BrowserCalls.actions
+    };
+  })()`);
+  contractEqual("unresolved urgent identity fails closed without actionable semantics", actual, {
+    tag: "DIV",
+    target: null,
+    name: "未解析事项：Unavailable",
+    selectedId: "watch-eth-retest",
+    actions: 0
+  });
 }
 
 async function stopProcess(child) {
@@ -280,8 +766,16 @@ try {
       navigation.push(`${domain}/${workspace}`);
     }
 
+    if (width === 1440) {
+      await verifyDestinations(cdp, width);
+      await verifyUrgentSelection(cdp, width);
+    }
+
     await click(cdp, '[data-kordyn-v2-domain-target="ai"]');
     await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=desktop]')?.dataset.kordynV2Workspace === 'missions'", `${width}: return to AI missions`);
+    await click(cdp, '[data-kordyn-v2-object-target="watch-eth-retest"]');
+    await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=desktop]')?.dataset.kordynV2SelectedId === 'watch-eth-retest'", `${width}: pinned visual object selection`);
+    await verifyDefaultMissionStages(cdp, width);
     await verifyDialog(cdp, "context");
     await verifyDialog(cdp, "proof");
 
@@ -305,12 +799,49 @@ try {
     assert.ok(geometry.localButtons.length >= 5 && geometry.localButtons.every((button) => button.width > 0 && button.bottom <= geometry.local.bottom + 1), `${width}: local targets visible`);
     assert.ok(geometry.canvas.scrollWidth <= geometry.canvas.clientWidth + 1, `${width}: canvas width contained`);
     assert.ok(geometry.mission.width > 0 && geometry.mission.height > 0, `${width}: mission canvas rendered`);
+    await verifyFidelityLandmarks(cdp, geometry, width, height);
 
     const screenshot = await capture(cdp, width, height);
+    contractTrue(
+      `${width}: pinned-reference weighted RGB MAE stays within the fidelity floor`,
+      screenshot.metric <= screenshot.threshold,
+      `metric=${screenshot.metric.toFixed(6)} threshold=${screenshot.threshold.toFixed(6)} regions=${JSON.stringify(Object.fromEntries(Object.entries(screenshot.regions).map(([name, value]) => [name, Number(value.toFixed(6))])))}`
+    );
     results.push({ width, height, navigation, geometry, screenshot });
   }
 
-  process.stdout.write(`KORDYN V2 desktop shell browser PASS ${results.map((row) => `${row.width}x${row.height}:nav=4,focus=2,overflow=0`).join(" ")} screenshots=${results.filter((row) => row.screenshot).length}\n`);
+  await verifyUnknownMission(cdp, pageUrl);
+  await verifyUnresolvedAttention(cdp, pageUrl);
+  await verifyHealth(cdp, pageUrl, "default", "mint");
+  await verifyHealth(cdp, pageUrl, "health-unknown", "unavailable");
+  await verifyHealth(cdp, pageUrl, "health-adverse", "danger");
+  let independentHero = null;
+  if (screenshotDir) {
+    await setViewport(cdp, pageUrl, 1440, 900);
+    await waitForExpression(
+      cdp,
+      "document.querySelector('[data-kordyn-v2-shell=desktop]')?.dataset.kordynV2SelectedId === 'watch-eth-retest'",
+      "independent 1440 evidence selection"
+    );
+    independentHero = await capture(cdp, 1440, 900, "hero-repro.png");
+    contractTrue(
+      "independent 1440 evidence meets pinned-reference fidelity floor",
+      independentHero.metric <= independentHero.threshold,
+      `metric=${independentHero.metric.toFixed(6)} threshold=${independentHero.threshold.toFixed(6)}`
+    );
+  }
+  assert.equal(
+    contractFailures.length,
+    0,
+    `KORDYN V2 Task4 semantic contract failures:\n- ${contractFailures.join("\n- ")}`
+  );
+
+  process.stdout.write(`KORDYN V2 desktop shell browser PASS ${results.map((row) => `${row.width}x${row.height}:nav=4,focus=2,overflow=0,mae=${row.screenshot.metric.toFixed(6)}`).join(" ")} screenshots=${results.filter((row) => row.screenshot.outputPath).length + (independentHero?.outputPath ? 1 : 0)}${independentHero ? ` hero-mae=${independentHero.metric.toFixed(6)}` : ""}\n`);
+  process.stdout.write(`KORDYN V2 landmarks ${results.map((row) => {
+    const { identity, notification, workbenchFooter, prompt, assistant, runtime, evidenceDock, decisionSummary } = row.geometry.landmarks;
+    const box = (value) => [value.left, value.top, value.right, value.bottom].map(Math.round).join(",");
+    return `${row.width}:identity=${box(identity)} notification=${box(notification)} footer=${box(workbenchFooter)} continuity=${Math.round(workbenchFooter.top - decisionSummary.bottom)} prompt=${box(prompt)} assistant=${box(assistant)} runtime-gap=${Math.round(evidenceDock.left - runtime.right)}`;
+  }).join(" | ")}\n`);
 } finally {
   cdp?.close();
   await Promise.all([stopProcess(chrome), stopProcess(vite)]);

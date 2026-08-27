@@ -68,7 +68,7 @@ export const KORDYN_V2_PRODUCTION_FIXTURE_JSON = JSON.stringify({
     ]
   },
   pendingActions: [
-    { id: "action-sol-allowlist", title: "SOL 白名单机会", detail: "一次性授权", status: "pending", severity: "high" }
+    { id: "action-sol-allowlist", objectId: "watch-sol-allowlist", objectType: "Watch", title: "SOL 白名单机会", detail: "一次性授权", status: "pending", severity: "high" }
   ],
   agentRuns: [
     { id: "run-btc-analysis", title: "BTC 趋势延续结构", symbol: "BTC/USDT", status: "running", summary: "全市场快扫中", createdAt: "2026-08-27T06:21:07Z", updatedAt: "2026-08-27T06:32:11Z", durationMs: 664000 },
@@ -105,5 +105,69 @@ export const KORDYN_V2_PRODUCTION_FIXTURE_JSON = JSON.stringify({
     { id: "trace-execute", workspaceId: "ai", objectType: "Watch", objectId: "watch-eth-retest", stage: "Execute", status: "waiting", detail: "No order submitted", evidenceId: "watch-eth-retest" },
     { id: "trace-monitor", workspaceId: "ai", objectType: "Watch", objectId: "watch-eth-retest", stage: "Monitor", status: "waiting", detail: "Waiting for retest", evidenceId: "watch-eth-retest" },
     { id: "trace-review", workspaceId: "ai", objectType: "Watch", objectId: "watch-eth-retest", stage: "Review", status: "waiting", detail: "Review begins after outcome", evidenceId: "watch-eth-retest" }
+  ]
+});
+
+export const KORDYN_V2_UNKNOWN_FACTS_FIXTURE_JSON = JSON.stringify({
+  revision: 42,
+  source: "Read-only mission projection",
+  asOf: "2026-08-27T06:42:11Z",
+  user: { id: "fixture-user-unknown", name: "K0" },
+  resourceState: { chat: "loaded" },
+  watchTriggers: [
+    { id: "watch-unknown", title: "ETH 事实待定", symbol: "ETH/USDT" }
+  ],
+  traces: [
+    { evidenceId: "evidence-monitor", workspaceId: "ai", objectType: "Watch", objectId: "watch-unknown", stage: "Monitor", status: "complete", detail: "Monitor fact is explicit" },
+    { evidenceId: "evidence-plan", workspaceId: "ai", objectType: "Watch", objectId: "watch-unknown", stage: "Plan", status: "complete", detail: "Plan fact is explicit" },
+    { evidenceId: "evidence-sense", workspaceId: "ai", objectType: "Watch", objectId: "watch-unknown", stage: "Sense", status: "blocked", detail: "Sense fact is explicit" },
+    { evidenceId: "evidence-execute", workspaceId: "ai", objectType: "Watch", objectId: "watch-unknown", stage: "Execute", status: "waiting", detail: "Execute fact is explicit" },
+    { evidenceId: "evidence-guard", workspaceId: "ai", objectType: "Watch", objectId: "watch-unknown", stage: "Guard", detail: "Guard status is absent" }
+  ]
+});
+
+export const KORDYN_V2_EMPTY_MISSION_FIXTURE_JSON = JSON.stringify({
+  revision: 45,
+  source: "Read-only empty mission projection",
+  asOf: "2026-08-27T06:43:11Z",
+  user: { id: "fixture-user-empty", name: "K0" },
+  resourceState: { chat: "loaded" }
+});
+
+export const KORDYN_V2_UNKNOWN_HEALTH_FIXTURE_JSON = JSON.stringify({
+  revision: 43,
+  user: { id: "fixture-user-health-unknown", name: "K0" },
+  resourceState: { chat: "not_loaded" }
+});
+
+export const KORDYN_V2_ADVERSE_HEALTH_FIXTURE_JSON = JSON.stringify({
+  revision: 44,
+  source: "Read-only degraded projection",
+  asOf: "2026-08-27T06:45:11Z",
+  user: { id: "fixture-user-health-adverse", name: "K0" },
+  resourceState: { chat: "loaded" },
+  portfolio: { marginSyncedAt: "2026-08-27T06:45:11Z" },
+  accountSnapshots: [
+    { id: "snapshot-adverse", status: "critical", createdAt: "2026-08-27T06:45:11Z" }
+  ],
+  automationState: { mode: "halted", runtimeStatus: "failed", blockerDetails: [] },
+  system: { killSwitch: true, riskStatus: "critical" },
+  portfolioRisk: { status: "critical" },
+  currentRiskSnapshot: {
+    controls: { killSwitch: true, reduceOnly: true, riskStatus: "critical" }
+  }
+});
+
+export const KORDYN_V2_UNRESOLVED_ATTENTION_FIXTURE_JSON = JSON.stringify({
+  revision: 46,
+  source: "Read-only attention projection",
+  asOf: "2026-08-27T06:47:11Z",
+  user: { id: "fixture-user-attention-unresolved", name: "K0" },
+  resourceState: { chat: "loaded" },
+  watchTriggers: [
+    { id: "watch-eth-retest", title: "ETH 突破回踩机会", symbol: "ETH/USDT", status: "active" }
+  ],
+  pendingActions: [
+    { id: "action-missing", objectId: "watch-missing", objectType: "Watch", title: "未解析事项", status: "pending" }
   ]
 });

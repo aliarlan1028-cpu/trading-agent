@@ -330,7 +330,8 @@ const collectionTrace = (value, detail) => !Array.isArray(value)
   ? { status: "unavailable", detail: unavailable }
   : { status: "waiting", detail: value.length ? `${value.length} fact${value.length === 1 ? "" : "s"} available; no scoped stage result` : detail };
 
-const TRACE_PRIMARY_FIELDS = Object.freeze(["objectId", "entityId", "id"]);
+const TRACE_EXPLICIT_PRIMARY_FIELDS = Object.freeze(["objectId", "entityId"]);
+const TRACE_FALLBACK_PRIMARY_FIELDS = Object.freeze(["id"]);
 const TRACE_RUN_FIELDS = Object.freeze(["runId", "agentRunId", "agent_run_id", "sourceRunId"]);
 const TRACE_RELATED_FIELDS = Object.freeze([
   "planId", "tradePlanId", "orderId", "executionOrderId", "positionId", "taskId",
@@ -348,6 +349,11 @@ function declaredTypedIdentities(value, fields) {
   });
 }
 
+function declaredPrimaryIdentities(value) {
+  const explicit = declaredTypedIdentities(value, TRACE_EXPLICIT_PRIMARY_FIELDS);
+  return explicit.length ? explicit : declaredTypedIdentities(value, TRACE_FALLBACK_PRIMARY_FIELDS);
+}
+
 function traceIdentityMatches(row, selectedObject) {
   const declaredType = firstValue(row?.objectType, row?.entityType, row?.raw?.objectType, row?.raw?.entityType);
   if (declaredType != null && String(declaredType) !== String(selectedObject?.type || "")) return false;
@@ -359,7 +365,7 @@ function traceIdentityMatches(row, selectedObject) {
     selectedObject?.raw?.entityId,
     selectedObject?.raw?.id
   );
-  const primary = declaredTypedIdentities(row, TRACE_PRIMARY_FIELDS);
+  const primary = declaredPrimaryIdentities(row);
   const runs = declaredTypedIdentities(row, TRACE_RUN_FIELDS);
   const related = declaredTypedIdentities(row, TRACE_RELATED_FIELDS);
   let matched = false;
@@ -387,7 +393,8 @@ function scopedTraceRows(rows, workspaceId, selectedObject) {
     const rowWorkspace = firstValue(row.workspaceId, row.workspace, row.productWorkspace);
     if (String(rowWorkspace || "") !== String(workspaceId)) return false;
     if (selectedObject) return traceIdentityMatches(row, selectedObject);
-    return declaredTypedIdentities(row, [...TRACE_PRIMARY_FIELDS, ...TRACE_RUN_FIELDS, ...TRACE_RELATED_FIELDS]).length === 0;
+    return declaredPrimaryIdentities(row).length === 0
+      && declaredTypedIdentities(row, [...TRACE_RUN_FIELDS, ...TRACE_RELATED_FIELDS]).length === 0;
   });
 }
 

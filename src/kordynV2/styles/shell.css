@@ -164,20 +164,33 @@ body:has(.kordynV2Root) {
   height: 7px;
   flex: 0 0 auto;
   border-radius: 50%;
+  background: var(--kordyn-v2-dim);
+  box-shadow: none;
+}
+
+.kordynV2PrimaryFooter[data-health-tone="mint"] .kordynV2Presence,
+.kordynV2WorkspaceHeading em[data-health-tone="mint"] > span {
   background: var(--kordyn-v2-mint);
   box-shadow: 0 0 10px rgba(32, 215, 148, 0.6);
+}
+
+.kordynV2PrimaryFooter[data-health-tone="danger"] .kordynV2Presence,
+.kordynV2WorkspaceHeading em[data-health-tone="danger"] > span {
+  background: var(--kordyn-v2-danger);
+  box-shadow: 0 0 10px rgba(255, 89, 104, 0.44);
 }
 
 .kordynV2DesktopHeader {
   grid-area: header;
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   grid-template-rows: var(--kordyn-v2-truth-height) var(--kordyn-v2-local-height);
   background: rgba(3, 10, 20, 0.96);
 }
 
 .kordynV2WorkspaceNavigation {
+  grid-column: 1 / -1;
   grid-row: 2;
   min-width: 0;
   display: flex;
@@ -223,6 +236,7 @@ body:has(.kordynV2Root) {
 }
 
 .kordynV2AccountTruth {
+  grid-column: 1;
   grid-row: 1;
   min-width: 0;
   padding: 0 17px;
@@ -232,6 +246,67 @@ body:has(.kordynV2Root) {
   border-bottom: 1px solid var(--kordyn-v2-border);
   font-variant-numeric: tabular-nums;
   overflow: hidden;
+}
+
+.kordynV2OperatorCluster {
+  grid-column: 2;
+  grid-row: 1;
+  height: 100%;
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--kordyn-v2-border);
+  border-left: 1px solid rgba(135, 160, 194, 0.1);
+  background: rgba(4, 13, 24, 0.78);
+}
+
+.kordynV2Notification {
+  position: relative;
+  width: 55px;
+  min-width: 55px;
+  min-height: 44px;
+  padding: 0 8px;
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  border: 0;
+  border-right: 1px solid rgba(135, 160, 194, 0.1);
+  color: var(--kordyn-v2-muted);
+  background: transparent;
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.kordynV2Notification span {
+  max-width: 52px;
+  overflow: hidden;
+  color: var(--kordyn-v2-dim);
+  font-family: var(--kordyn-v2-mono);
+  font-size: 7px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kordynV2OperatorIdentity {
+  min-width: 96px;
+  padding: 0 14px 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.kordynV2OperatorAvatar {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--kordyn-v2-border-strong);
+  border-radius: 50%;
+  color: var(--kordyn-v2-text-soft);
+  background: var(--kordyn-v2-field);
+  font-family: var(--kordyn-v2-mono);
+  font-size: 11px;
 }
 
 .kordynV2TruthMenu {
@@ -277,8 +352,18 @@ body:has(.kordynV2Root) {
   height: 8px;
   flex: 0 0 auto;
   border-radius: 50%;
+  background: var(--kordyn-v2-dim);
+  box-shadow: none;
+}
+
+.kordynV2TruthFact[data-health-tone="mint"]::before {
   background: var(--kordyn-v2-mint);
   box-shadow: 0 0 10px rgba(32, 215, 148, 0.45);
+}
+
+.kordynV2TruthFact[data-health-tone="danger"]::before {
+  background: var(--kordyn-v2-danger);
+  box-shadow: 0 0 10px rgba(255, 89, 104, 0.38);
 }
 
 .kordynV2TruthPulse {
@@ -287,8 +372,18 @@ body:has(.kordynV2Root) {
   margin-left: auto;
   flex: 0 0 auto;
   border-radius: 50%;
+  background: var(--kordyn-v2-dim);
+  box-shadow: none;
+}
+
+.kordynV2TruthPulse[data-health-tone="mint"] {
   background: var(--kordyn-v2-mint);
   box-shadow: 0 0 12px rgba(32, 215, 148, 0.54);
+}
+
+.kordynV2TruthPulse[data-health-tone="danger"] {
+  background: var(--kordyn-v2-danger);
+  box-shadow: 0 0 12px rgba(255, 89, 104, 0.42);
 }
 
 .kordynV2StateBoundary {
@@ -381,7 +476,7 @@ body:has(.kordynV2Root) {
 
 .kordynV2WorkspaceHeading {
   min-height: 36px;
-  padding-left: 8px;
+  padding: 0 190px 0 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -406,7 +501,6 @@ body:has(.kordynV2Root) {
 }
 
 .kordynV2WorkspaceHeading em {
-  padding-right: 154px;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -607,6 +701,10 @@ body:has(.kordynV2Root) {
   background: var(--kordyn-v2-danger);
 }
 
+.kordynV2QueueGroup button > i.tone-unavailable {
+  background: var(--kordyn-v2-dim);
+}
+
 .kordynV2EmptyQueue {
   margin: 22px 16px;
   color: var(--kordyn-v2-muted);
@@ -619,7 +717,7 @@ body:has(.kordynV2Root) {
   min-height: 0;
   padding: 11px 14px 12px;
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto minmax(0, 1fr) 60px;
   overflow: hidden;
 }
 
@@ -662,12 +760,27 @@ body:has(.kordynV2Root) {
   padding: 4px 8px;
   overflow: hidden;
   border-radius: 5px;
-  color: var(--kordyn-v2-mint);
-  background: rgba(32, 215, 148, 0.1);
+  color: var(--kordyn-v2-muted);
+  background: rgba(135, 160, 194, 0.08);
   font-size: 10px;
   font-style: normal;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.kordynV2MissionTitle em[data-status-tone="mint"] {
+  color: var(--kordyn-v2-mint);
+  background: rgba(32, 215, 148, 0.1);
+}
+
+.kordynV2MissionTitle em[data-status-tone="danger"] {
+  color: #ff8b95;
+  background: rgba(255, 89, 104, 0.1);
+}
+
+.kordynV2MissionTitle em[data-status-tone="cobalt"] {
+  color: var(--kordyn-v2-cobalt-soft);
+  background: rgba(52, 120, 255, 0.1);
 }
 
 .kordynV2MissionPipeline {
@@ -687,8 +800,8 @@ body:has(.kordynV2Root) {
   right: 10%;
   left: 10%;
   height: 2px;
-  background: linear-gradient(90deg, var(--kordyn-v2-mint) 0 72%, var(--kordyn-v2-cobalt) 72% 100%);
-  opacity: 0.85;
+  background: var(--kordyn-v2-border-strong);
+  opacity: 0.6;
 }
 
 .kordynV2PipelineStage {
@@ -705,16 +818,27 @@ body:has(.kordynV2Root) {
   height: 47px;
   display: grid;
   place-items: center;
-  border: 1.5px solid var(--kordyn-v2-mint);
+  border: 1.5px solid var(--kordyn-v2-border-strong);
   border-radius: 50%;
   color: var(--kordyn-v2-text);
   background: var(--kordyn-v2-field-deep);
+  box-shadow: none;
+}
+
+.kordynV2PipelineStage[data-stage-state="complete"] > span {
+  border-color: var(--kordyn-v2-mint);
   box-shadow: 0 0 18px rgba(32, 215, 148, 0.08);
 }
 
-.kordynV2PipelineStage:last-child > span {
+.kordynV2PipelineStage[data-stage-state="waiting"] > span {
   border-color: var(--kordyn-v2-cobalt-soft);
   box-shadow: 0 0 18px rgba(52, 120, 255, 0.1);
+}
+
+.kordynV2PipelineStage[data-stage-state="blocked"] > span {
+  border-color: var(--kordyn-v2-danger);
+  color: #ff9ba3;
+  box-shadow: 0 0 18px rgba(255, 89, 104, 0.08);
 }
 
 .kordynV2PipelineStage > strong {
@@ -749,10 +873,16 @@ body:has(.kordynV2Root) {
   white-space: nowrap;
 }
 
+.kordynV2MissionSignal[data-status-tone="unavailable"] {
+  color: var(--kordyn-v2-muted);
+}
+
 .kordynV2DecisionSummary {
   min-height: 0;
   padding: 0 12px;
-  align-self: start;
+  display: grid;
+  grid-template-rows: repeat(6, minmax(0, 1fr));
+  align-self: stretch;
   border: 1px solid rgba(135, 160, 194, 0.13);
   border-radius: 6px;
   background: rgba(4, 11, 20, 0.22);
@@ -800,27 +930,67 @@ body:has(.kordynV2Root) {
   white-space: nowrap;
 }
 
-.kordynV2MissionMeta {
-  min-height: 42px;
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 12px;
+.kordynV2WorkbenchFooter {
+  min-width: 0;
+  min-height: 60px;
+  display: grid;
+  grid-template-columns: minmax(144px, auto) minmax(0, 1fr) minmax(150px, auto);
+  align-items: start;
+  gap: 10px;
   color: var(--kordyn-v2-muted);
   font-size: 10px;
 }
 
-.kordynV2MissionMeta span {
+.kordynV2WorkbenchFooter button {
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--kordyn-v2-border-strong);
+  border-radius: 5px;
+  color: var(--kordyn-v2-text-soft);
+  background: rgba(4, 11, 20, 0.34);
+}
+
+.kordynV2WorkbenchFooter button:not(:disabled) {
+  cursor: pointer;
+}
+
+.kordynV2WorkbenchFooter button:not(:disabled):hover {
+  color: #fff;
+  border-color: rgba(84, 135, 255, 0.48);
+}
+
+.kordynV2WorkbenchFooter button[data-kordyn-v2-audit-control] svg:last-child {
+  margin-left: auto;
+}
+
+.kordynV2WorkbenchFooter button[data-kordyn-v2-poster-control] {
+  justify-content: flex-end;
+  opacity: 0.68;
+  cursor: not-allowed;
+}
+
+.kordynV2WorkbenchFooter button small {
+  overflow: hidden;
+  color: var(--kordyn-v2-dim);
+  font-family: var(--kordyn-v2-mono);
+  font-size: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kordynV2WorkbenchIdentity {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
-  min-height: 32px;
-  padding: 0 10px;
   overflow: hidden;
-  border: 1px solid rgba(135, 160, 194, 0.13);
-  border-radius: 5px;
-  background: rgba(4, 11, 20, 0.2);
+  color: var(--kordyn-v2-dim);
+  font-family: var(--kordyn-v2-mono);
+  font-size: 8px;
+  justify-content: center;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -859,6 +1029,7 @@ body:has(.kordynV2Root) {
 }
 
 .kordynV2AttentionItem {
+  width: calc(100% - 22px);
   min-height: 66px;
   margin: 10px 11px 0;
   padding: 9px 10px;
@@ -868,7 +1039,16 @@ body:has(.kordynV2Root) {
   align-items: center;
   border: 1px solid var(--kordyn-v2-danger);
   border-radius: 6px;
+  color: inherit;
   background: rgba(255, 89, 104, 0.06);
+  cursor: pointer;
+  text-align: left;
+}
+
+.kordynV2AttentionItem.is-unavailable {
+  border-color: var(--kordyn-v2-border);
+  background: rgba(135, 160, 194, 0.04);
+  cursor: default;
 }
 
 .kordynV2AttentionItem strong,
@@ -946,10 +1126,10 @@ body:has(.kordynV2Root) {
 }
 
 .kordynV2MissionPrompt {
-  width: min(880px, 72%);
+  width: calc(100% - 356px);
   min-height: 68px;
-  margin-top: 8px;
-  justify-self: center;
+  margin: 8px 0 0 70px;
+  justify-self: start;
   padding: 0 15px 0 21px;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) 36px;
@@ -962,6 +1142,48 @@ body:has(.kordynV2Root) {
   box-shadow: 0 0 28px rgba(52, 120, 255, 0.06);
   cursor: pointer;
   text-align: left;
+}
+
+.kordynV2AssistantReserve {
+  position: absolute;
+  z-index: 7;
+  right: 18px;
+  bottom: 25px;
+  width: 238px;
+  min-height: 54px;
+  padding: 0 17px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 11px;
+  border: 1px solid rgba(132, 114, 255, 0.46);
+  border-radius: 28px;
+  color: #d7d2ff;
+  background: linear-gradient(100deg, rgba(87, 71, 159, 0.58), rgba(54, 44, 111, 0.5));
+  box-shadow: 0 0 28px rgba(132, 114, 255, 0.09);
+  opacity: 0.72;
+  cursor: not-allowed;
+  text-align: left;
+}
+
+.kordynV2AssistantReserve > span {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.kordynV2AssistantReserve strong {
+  font-size: 12px;
+}
+
+.kordynV2AssistantReserve small {
+  overflow: hidden;
+  color: #a9a1d2;
+  font-size: 9px;
+  text-overflow: ellipsis;
 }
 
 .kordynV2MissionPrompt span {
@@ -981,6 +1203,218 @@ body:has(.kordynV2Root) {
   color: #fff;
   background: var(--kordyn-v2-cobalt);
   box-shadow: 0 0 18px rgba(52, 120, 255, 0.35);
+}
+
+.kordynV2DestinationBoundary,
+.kordynV2DialogSurface {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 28px 34px;
+  overflow: auto;
+}
+
+.kordynV2DestinationBoundary > header,
+.kordynV2DialogSurface > header {
+  min-height: 62px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border-bottom: 1px solid var(--kordyn-v2-border);
+}
+
+.kordynV2DestinationBoundary > header span {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.kordynV2DestinationBoundary h1,
+.kordynV2DialogSurface h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 660;
+  letter-spacing: -0.03em;
+}
+
+.kordynV2DestinationBoundary > header small,
+.kordynV2DestinationBoundary > header em {
+  color: var(--kordyn-v2-muted);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.kordynV2DestinationBoundary > header em[data-state="ready"] {
+  color: var(--kordyn-v2-mint);
+}
+
+.kordynV2DestinationBoundary > header em[data-state="failed"],
+.kordynV2DestinationBoundary > header em[data-state="forbidden"] {
+  color: #ff8b95;
+}
+
+.kordynV2DestinationNotice {
+  width: min(720px, 100%);
+  margin-top: 54px;
+  padding: 22px 0;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 14px;
+  border-bottom: 1px solid var(--kordyn-v2-border);
+}
+
+.kordynV2DestinationNotice svg {
+  color: var(--kordyn-v2-cobalt-soft);
+}
+
+.kordynV2DestinationNotice strong {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 15px;
+}
+
+.kordynV2DestinationNotice p {
+  max-width: 68ch;
+  margin: 0;
+  color: var(--kordyn-v2-muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.kordynV2DestinationBoundary > dl {
+  width: min(720px, 100%);
+  margin: 18px 0 0;
+}
+
+.kordynV2DestinationBoundary > dl div {
+  min-height: 45px;
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  align-items: center;
+  gap: 18px;
+  border-bottom: 1px solid rgba(135, 160, 194, 0.1);
+}
+
+.kordynV2DestinationBoundary dt,
+.kordynV2DestinationBoundary dd {
+  margin: 0;
+}
+
+.kordynV2DestinationBoundary dt {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--kordyn-v2-muted);
+  font-size: 11px;
+}
+
+.kordynV2DestinationBoundary dd {
+  overflow: hidden;
+  color: var(--kordyn-v2-text-soft);
+  font-family: var(--kordyn-v2-mono);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kordynV2DialogSurface {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.kordynV2DialogSurface > header > span {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.kordynV2DialogSurface > header > span svg {
+  color: var(--kordyn-v2-cobalt-soft);
+}
+
+.kordynV2DialogSurface > header > button {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--kordyn-v2-border);
+  border-radius: 7px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.kordynV2DialogTranscript {
+  width: min(820px, 100%);
+  min-height: 0;
+  padding: 28px 0;
+  overflow: auto;
+}
+
+.kordynV2DialogTranscript > p,
+.kordynV2DialogTranscript article {
+  width: min(620px, 90%);
+  margin: 0 0 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--kordyn-v2-border);
+  border-radius: 10px;
+  background: var(--kordyn-v2-field);
+}
+
+.kordynV2DialogTranscript > p {
+  display: grid;
+  gap: 7px;
+}
+
+.kordynV2DialogTranscript span,
+.kordynV2DialogTranscript small {
+  color: var(--kordyn-v2-muted);
+  font-size: 11px;
+}
+
+.kordynV2DialogTranscript article p {
+  margin: 6px 0 0;
+  color: var(--kordyn-v2-text-soft);
+  line-height: 1.6;
+}
+
+.kordynV2DialogSurface > footer {
+  width: min(820px, 100%);
+  padding-top: 16px;
+  border-top: 1px solid var(--kordyn-v2-border);
+}
+
+.kordynV2DialogSurface > footer > label,
+.kordynV2DialogSurface > footer > small {
+  display: block;
+  color: var(--kordyn-v2-muted);
+  font-size: 10px;
+}
+
+.kordynV2DialogSurface > footer > span {
+  margin: 8px 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  gap: 8px;
+}
+
+.kordynV2DialogSurface textarea {
+  min-height: 58px;
+  padding: 12px;
+  resize: none;
+  border: 1px solid var(--kordyn-v2-border);
+  border-radius: 8px;
+  color: var(--kordyn-v2-muted);
+  background: var(--kordyn-v2-field-deep);
+  font: inherit;
+}
+
+.kordynV2DialogSurface > footer button {
+  border: 1px solid var(--kordyn-v2-border);
+  border-radius: 8px;
+  color: var(--kordyn-v2-dim);
+  background: var(--kordyn-v2-field);
 }
 
 .kordynV2EvidenceDock {
@@ -1206,7 +1640,22 @@ body:has(.kordynV2Root) {
 
   .kordynV2AccountTruth {
     padding-inline: 12px;
-    gap: 12px;
+    gap: 10px;
+  }
+
+  .kordynV2Notification {
+    width: 48px;
+    min-width: 48px;
+  }
+
+  .kordynV2OperatorIdentity {
+    min-width: 79px;
+    padding-inline: 8px;
+  }
+
+  .kordynV2OperatorAvatar {
+    width: 28px;
+    height: 28px;
   }
 
   .kordynV2TruthFact {
@@ -1219,7 +1668,7 @@ body:has(.kordynV2Root) {
   }
 
   .kordynV2MissionControl {
-    padding: 13px 14px 10px;
+    padding: 13px 14px 27px;
     gap: 9px;
   }
 
@@ -1232,8 +1681,8 @@ body:has(.kordynV2Root) {
     font-size: 20px;
   }
 
-  .kordynV2WorkspaceHeading em {
-    padding-right: 132px;
+  .kordynV2WorkspaceHeading {
+    padding-right: 180px;
   }
 
   .kordynV2MissionFocus {
@@ -1253,8 +1702,26 @@ body:has(.kordynV2Root) {
   }
 
   .kordynV2MissionPrompt {
-    width: min(720px, 75%);
+    width: calc(100% - 285px);
+    margin-left: 50px;
     min-height: 54px;
+  }
+
+  .kordynV2AssistantReserve {
+    right: 14px;
+    bottom: 19px;
+    width: 195px;
+    min-height: 52px;
+    padding-inline: 13px;
+  }
+
+  .kordynV2WorkbenchFooter {
+    grid-template-columns: minmax(100px, auto) minmax(0, 1fr) minmax(138px, auto);
+    gap: 7px;
+  }
+
+  .kordynV2WorkbenchFooter button {
+    padding-inline: 9px;
   }
 
   .kordynV2EvidenceDock {
@@ -1287,7 +1754,7 @@ body:has(.kordynV2Root) {
 
   .kordynV2MissionFocus {
     padding-top: 7px;
-    grid-template-rows: auto 92px 43px minmax(0, 1fr) 32px;
+    grid-template-rows: auto 92px 43px minmax(0, 1fr) 50px;
   }
 
   .kordynV2MissionPipeline {
@@ -1317,8 +1784,8 @@ body:has(.kordynV2Root) {
     min-height: 33px;
   }
 
-  .kordynV2MissionMeta {
-    min-height: 32px;
+  .kordynV2WorkbenchFooter {
+    min-height: 50px;
   }
 
   .kordynV2AttentionRail {
@@ -1334,7 +1801,11 @@ body:has(.kordynV2Root) {
   }
 
   .kordynV2MissionPrompt {
-    min-height: 50px;
+    min-height: 60px;
+  }
+
+  .kordynV2AssistantReserve {
+    min-height: 46px;
   }
 }
 

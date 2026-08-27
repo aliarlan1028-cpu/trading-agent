@@ -8,7 +8,17 @@ const DOMAIN_ICONS = Object.freeze({
   governance: ShieldCheck
 });
 
-export function PrimaryNavigation({ domainId, onNavigate }) {
+function connectionHealth(state) {
+  const kind = typeof state?.kind === "string" ? state.kind : "not_loaded";
+  if (kind === "ready") return { tone: "mint", label: "系统在线" };
+  if (["failed", "forbidden", "stale", "degraded", "disabled"].includes(kind)) {
+    return { tone: "danger", label: "系统异常" };
+  }
+  return { tone: "unavailable", label: "Unavailable" };
+}
+
+export function PrimaryNavigation({ domainId, state, onNavigate }) {
+  const health = connectionHealth(state);
   return (
     <aside className="kordynV2PrimaryNavigation" data-kordyn-v2-primary-nav>
       <div className="kordynV2Brand" aria-label="KORDYN">
@@ -36,9 +46,14 @@ export function PrimaryNavigation({ domainId, onNavigate }) {
           );
         })}
       </nav>
-      <footer className="kordynV2PrimaryFooter">
+      <footer
+        className="kordynV2PrimaryFooter"
+        data-health-tone={health.tone}
+        role="status"
+        aria-label={`连接状态：${health.label}`}
+      >
         <span className="kordynV2Presence" aria-hidden="true" />
-        <span>系统在线</span>
+        <span>{health.label}</span>
       </footer>
     </aside>
   );
