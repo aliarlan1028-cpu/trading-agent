@@ -346,7 +346,7 @@ test("Full Truth maps deployed portfolio, position, runtime, freshness, and risk
     freshness: "2026-08-26T11:59:00Z",
     freshnessState: "fresh",
     runtime: "reduce_only · requested full_auto",
-    risk: "账户对账锁定"
+    risk: "reduce_only"
   });
 });
 
@@ -370,7 +370,7 @@ test("kill-switch truth overrides a requested trading mode", () => {
     positions: []
   }, "full");
   assert.equal(truth.runtime, "halted · requested full_auto");
-  assert.equal(truth.risk, "紧急停止");
+  assert.equal(truth.risk, "kill_switch");
   assert.equal(truth.exposure, 0);
 });
 

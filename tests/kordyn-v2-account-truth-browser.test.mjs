@@ -381,7 +381,7 @@ test("browser Account Truth rejects post-parse freshness and risk leaves without
     callbacks: zeroCallbacks
   });
   assert.deepEqual({ outcome: result.controlsAccessor, getterCalls: result.controlsGetterCalls }, {
-    outcome: unavailable,
+    outcome: { threw: false, unavailable: false, valueType: "string" },
     getterCalls: 0
   });
   assert.deepEqual({ outcome: result.snapshotProxy, callbacks: result.snapshotProxyCounters }, {
@@ -476,8 +476,8 @@ test("browser Account Truth projects freshness state only from strict provenance
     explicitStale: { threw: false, value: "stale" },
     explicitFresh: { threw: false, value: "fresh" },
     missing: { threw: false, value: "Unavailable" },
-    pending: { threw: false, value: "pending" },
-    novel: { threw: false, value: "quantum" }
+    pending: { threw: false, value: "Unavailable" },
+    novel: { threw: false, value: "Unavailable" }
   });
   assert.deepEqual({ outcome: result.proxyLeaf, callbacks: result.proxyLeafCounters }, {
     outcome: { threw: false, value: "Unavailable" }, callbacks: zeroCallbacks
@@ -490,5 +490,161 @@ test("browser Account Truth projects freshness state only from strict provenance
   });
   assert.deepEqual({ outcome: result.nestedProxy, callbacks: result.nestedProxyCounters }, {
     outcome: { threw: false, value: "Unavailable" }, callbacks: zeroCallbacks
+  });
+});
+
+test("browser Account Truth resolves authoritative risk contradictions by hard-control and adverse precedence", () => {
+  const serialized = vm.runInNewContext(`
+    (() => {
+      const { buildAccountTruth } = __kordynAccountTruth;
+      const parseLoaderJson = __kordynParseJsonResponseText;
+      const risk = (json) => buildAccountTruth(parseLoaderJson(json), "full").risk;
+      const makeCounters = () => ({
+        getPrototypeOf: 0,
+        getOwnPropertyDescriptor: 0,
+        ownKeys: 0,
+        get: 0
+      });
+      const wrap = (target, counters) => new Proxy(target, {
+        getPrototypeOf() { counters.getPrototypeOf += 1; return Object.prototype; },
+        getOwnPropertyDescriptor(value, field) {
+          counters.getOwnPropertyDescriptor += 1;
+          return Reflect.getOwnPropertyDescriptor(value, field);
+        },
+        ownKeys(value) { counters.ownKeys += 1; return Reflect.ownKeys(value); },
+        get(value, field, receiver) {
+          counters.get += 1;
+          return Reflect.get(value, field, receiver);
+        }
+      });
+      const safely = (data) => {
+        try { return { threw: false, value: buildAccountTruth(data, "full").risk }; }
+        catch (error) { return { threw: true, value: null, error: String(error) }; }
+      };
+
+      const facts = {
+        killNormal: risk('{"system":{"killSwitch":true,"riskStatus":"normal"},"portfolioRisk":{"status":"normal"}}'),
+        reduceNormal: risk('{"system":{"reduceOnlyMode":true,"riskStatus":"normal"},"portfolioRisk":{"status":"normal"}}'),
+        adverseConflict: risk('{"system":{"riskStatus":"normal"},"portfolioRisk":{"status":"critical"}}'),
+        adverseWithNovel: risk('{"system":{"riskStatus":"quantum"},"portfolioRisk":{"status":"critical"}}'),
+        reconciliationLock: risk('{"portfolioRisk":{"status":"账户对账锁定"}}'),
+        emergencyStop: risk('{"portfolioRisk":{"status":"紧急停止"}}'),
+        normalOnly: risk('{"system":{"riskStatus":"normal"},"portfolioRisk":{"status":"ok"}}'),
+        pendingOnly: risk('{"system":{"riskStatus":"pending"},"portfolioRisk":{"status":"pending"}}'),
+        novelOnly: risk('{"system":{"riskStatus":"quantum"},"portfolioRisk":{"status":"quantum"}}'),
+        normalNovelConflict: risk('{"system":{"riskStatus":"normal"},"portfolioRisk":{"status":"quantum"}}')
+      };
+
+      const proxyData = parseLoaderJson('{"system":{"killSwitch":true,"riskStatus":"normal"},"portfolioRisk":{"status":"normal"}}');
+      const proxyCounters = makeCounters();
+      proxyData.system.killSwitch = wrap({}, proxyCounters);
+      const proxy = safely(proxyData);
+
+      const accessorData = parseLoaderJson('{"system":{"riskStatus":"normal"},"portfolioRisk":{"status":"critical"}}');
+      let accessorCalls = 0;
+      Object.defineProperty(accessorData.system, "riskStatus", {
+        configurable: true,
+        enumerable: true,
+        get() { accessorCalls += 1; throw new Error("risk getter invoked"); }
+      });
+      const accessor = safely(accessorData);
+
+      return JSON.stringify({ facts, proxy, proxyCounters, accessor, accessorCalls });
+    })()
+  `, browserContext);
+  const result = JSON.parse(serialized);
+  const zeroCallbacks = { getPrototypeOf: 0, getOwnPropertyDescriptor: 0, ownKeys: 0, get: 0 };
+  assert.deepEqual(result.facts, {
+    killNormal: "kill_switch",
+    reduceNormal: "reduce_only",
+    adverseConflict: "critical",
+    adverseWithNovel: "critical",
+    reconciliationLock: "账户对账锁定",
+    emergencyStop: "紧急停止",
+    normalOnly: "normal",
+    pendingOnly: "Unavailable",
+    novelOnly: "Unavailable",
+    normalNovelConflict: "Unavailable"
+  });
+  assert.deepEqual({ outcome: result.proxy, callbacks: result.proxyCounters }, {
+    outcome: { threw: false, value: "Unavailable" }, callbacks: zeroCallbacks
+  });
+  assert.deepEqual({ outcome: result.accessor, getterCalls: result.accessorCalls }, {
+    outcome: { threw: false, value: "Unavailable" }, getterCalls: 0
+  });
+});
+
+test("browser Account Truth resolves authoritative freshness contradictions by stale precedence", () => {
+  const serialized = vm.runInNewContext(`
+    (() => {
+      const { buildAccountTruth } = __kordynAccountTruth;
+      const parseLoaderJson = __kordynParseJsonResponseText;
+      const freshnessState = (json) => buildAccountTruth(parseLoaderJson(json), "full").freshnessState;
+      const makeCounters = () => ({
+        getPrototypeOf: 0,
+        getOwnPropertyDescriptor: 0,
+        ownKeys: 0,
+        get: 0
+      });
+      const wrap = (target, counters) => new Proxy(target, {
+        getPrototypeOf() { counters.getPrototypeOf += 1; return Object.prototype; },
+        getOwnPropertyDescriptor(value, field) {
+          counters.getOwnPropertyDescriptor += 1;
+          return Reflect.getOwnPropertyDescriptor(value, field);
+        },
+        ownKeys(value) { counters.ownKeys += 1; return Reflect.ownKeys(value); },
+        get(value, field, receiver) {
+          counters.get += 1;
+          return Reflect.get(value, field, receiver);
+        }
+      });
+      const safely = (data) => {
+        try { return { threw: false, value: buildAccountTruth(data, "full").freshnessState }; }
+        catch (error) { return { threw: true, value: null, error: String(error) }; }
+      };
+
+      const facts = {
+        freshButStale: freshnessState('{"system":{"dataFreshnessState":"fresh","dataStale":true}}'),
+        crossSourceStale: freshnessState('{"system":{"dataFreshnessState":"fresh"},"marketStatus":{"dataFreshnessState":"stale"}}'),
+        staleButFalse: freshnessState('{"system":{"dataFreshnessState":"stale","dataStale":false}}'),
+        pendingButFalse: freshnessState('{"system":{"dataFreshnessState":"pending","dataStale":false}}'),
+        novelButFalse: freshnessState('{"system":{"dataFreshnessState":"quantum","dataStale":false}}'),
+        freshPendingConflict: freshnessState('{"system":{"dataFreshnessState":"fresh"},"marketStatus":{"dataFreshnessState":"pending"}}'),
+        consistentFresh: freshnessState('{"system":{"dataFreshnessState":"fresh","dataStale":false},"marketStatus":{"dataFreshnessState":"fresh","dataStale":false}}')
+      };
+
+      const proxyData = parseLoaderJson('{"system":{"dataFreshnessState":"fresh","dataStale":true}}');
+      const proxyCounters = makeCounters();
+      proxyData.system.dataStale = wrap({}, proxyCounters);
+      const proxy = safely(proxyData);
+
+      const accessorData = parseLoaderJson('{"system":{"dataFreshnessState":"fresh"},"marketStatus":{"dataFreshnessState":"stale"}}');
+      let accessorCalls = 0;
+      Object.defineProperty(accessorData.marketStatus, "dataFreshnessState", {
+        configurable: true,
+        enumerable: true,
+        get() { accessorCalls += 1; throw new Error("freshness getter invoked"); }
+      });
+      const accessor = safely(accessorData);
+
+      return JSON.stringify({ facts, proxy, proxyCounters, accessor, accessorCalls });
+    })()
+  `, browserContext);
+  const result = JSON.parse(serialized);
+  const zeroCallbacks = { getPrototypeOf: 0, getOwnPropertyDescriptor: 0, ownKeys: 0, get: 0 };
+  assert.deepEqual(result.facts, {
+    freshButStale: "stale",
+    crossSourceStale: "stale",
+    staleButFalse: "stale",
+    pendingButFalse: "Unavailable",
+    novelButFalse: "Unavailable",
+    freshPendingConflict: "Unavailable",
+    consistentFresh: "fresh"
+  });
+  assert.deepEqual({ outcome: result.proxy, callbacks: result.proxyCounters }, {
+    outcome: { threw: false, value: "Unavailable" }, callbacks: zeroCallbacks
+  });
+  assert.deepEqual({ outcome: result.accessor, getterCalls: result.accessorCalls }, {
+    outcome: { threw: false, value: "Unavailable" }, getterCalls: 0
   });
 });

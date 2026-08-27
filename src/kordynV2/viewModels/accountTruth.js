@@ -5,6 +5,15 @@ import {
 import { buildPositionView } from "../../viewData.js";
 
 const unavailable = "Unavailable";
+export const NORMAL_RISK_STATES = Object.freeze(["normal", "ok", "healthy"]);
+export const ADVERSE_RISK_STATES = Object.freeze([
+  "critical", "high", "danger", "elevated", "breached", "blocked", "failed", "error",
+  "kill_switch", "reduce_only", "emergency", "halted", "账户对账锁定", "紧急停止"
+]);
+export const FRESH_DATA_STATES = Object.freeze(["fresh", "realtime", "current", "live"]);
+export const ADVERSE_DATA_STATES = Object.freeze([
+  "stale", "failed", "error", "disconnected", "offline", "degraded", "delayed"
+]);
 const firstKnown = (...values) => values.find((value) => value !== undefined && value !== null && value !== "");
 const fact = (...values) => firstKnown(...values, unavailable);
 const financialFact = (...values) => {
@@ -83,6 +92,10 @@ function optionalTimestampRead(record, field) {
 
 function readIsInvalid(...reads) {
   return reads.some((read) => read.kind === "invalid");
+}
+
+function normalizedPrimitiveState(value) {
+  return typeof value === "string" ? value.toLowerCase() : "";
 }
 
 function unavailableAccountTruth(mode) {
@@ -185,11 +198,17 @@ function freshnessStateFact(systemRead, marketStatusRead) {
     ? optionalBooleanRead(marketStatusRead.value, "dataStale")
     : missingRead();
   if (readIsInvalid(systemState, marketState, systemStale, marketStale)) return unavailable;
-  if (systemState.kind === "value") return systemState.value;
-  if (marketState.kind === "value") return marketState.value;
-  if (systemStale.kind === "value") return systemStale.value ? "stale" : "fresh";
-  if (marketStale.kind === "value") return marketStale.value ? "stale" : "fresh";
-  return unavailable;
+  const states = [systemState, marketState]
+    .filter((read) => read.kind === "value")
+    .map((read) => normalizedPrimitiveState(read.value));
+  const staleFlags = [systemStale, marketStale]
+    .filter((read) => read.kind === "value")
+    .map((read) => read.value);
+  if (staleFlags.includes(true)) return "stale";
+  const adverse = states.find((state) => ADVERSE_DATA_STATES.includes(state));
+  if (adverse) return adverse;
+  if (states.some((state) => !FRESH_DATA_STATES.includes(state))) return unavailable;
+  return states.length || staleFlags.includes(false) ? "fresh" : unavailable;
 }
 
 function validBlockerDetails(automation) {
@@ -340,22 +359,31 @@ function riskFact(systemRead, currentRiskSnapshotRead, portfolioRiskRead) {
   if (readIsInvalid(
     controlKillSwitch,
     controlReduceOnly,
-    controlStatus,
     systemKillSwitch,
-    systemReduceOnly,
+    systemReduceOnly
+  )) {
+    return unavailable;
+  }
+
+  if (controlKillSwitch.value === true || systemKillSwitch.value === true) return "kill_switch";
+  if (controlReduceOnly.value === true || systemReduceOnly.value === true) return "reduce_only";
+
+  if (readIsInvalid(
+    controlStatus,
     systemStatus,
     portfolioStatus
   )) {
     return unavailable;
   }
-
-  if (controlKillSwitch.value === true || systemKillSwitch.value === true) {
-    return fact(controlStatus.value, systemStatus.value, "kill_switch");
+  const statuses = [controlStatus, systemStatus, portfolioStatus]
+    .filter((read) => read.kind === "value")
+    .map((read) => ({ raw: read.value, normalized: normalizedPrimitiveState(read.value) }));
+  const adverse = statuses.find((status) => ADVERSE_RISK_STATES.includes(status.normalized));
+  if (adverse) return adverse.raw;
+  if (!statuses.length || statuses.some((status) => !NORMAL_RISK_STATES.includes(status.normalized))) {
+    return unavailable;
   }
-  if (controlReduceOnly.value === true || systemReduceOnly.value === true) {
-    return fact(controlStatus.value, systemStatus.value, "reduce_only");
-  }
-  return fact(controlStatus.value, systemStatus.value, portfolioStatus.value);
+  return "normal";
 }
 
 export function buildAccountTruth(data = {}, mode = "full") {

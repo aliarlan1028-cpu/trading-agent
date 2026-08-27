@@ -277,3 +277,76 @@ export const KORDYN_V2_NOVEL_HEALTH_FIXTURE_JSON = JSON.stringify({
   system: { killSwitch: false, riskStatus: "quantum", dataFreshnessState: "quantum" },
   portfolioRisk: { status: "quantum" }
 });
+
+function contradictionHealthFixture(revision, { system, marketStatus, portfolioRisk, controls }) {
+  return JSON.stringify({
+    revision,
+    source: "Read-only contradictory health projection",
+    user: { id: `fixture-user-health-contradiction-${revision}`, name: "K0" },
+    resourceState: { chat: "loaded" },
+    portfolio: { marginSyncedAt: "2026-08-27T06:50:11Z" },
+    automationState: { mode: "observe", runtimeStatus: "normal", blockerDetails: [] },
+    system,
+    ...(marketStatus ? { marketStatus } : {}),
+    ...(portfolioRisk ? { portfolioRisk } : {}),
+    ...(controls ? { currentRiskSnapshot: { controls } } : {})
+  });
+}
+
+export const KORDYN_V2_KILL_NORMAL_CONTRADICTION_FIXTURE_JSON = contradictionHealthFixture(56, {
+  system: {
+    killSwitch: true,
+    riskStatus: "normal",
+    dataFreshnessState: "fresh",
+    dataStale: false
+  },
+  portfolioRisk: { status: "normal" }
+});
+
+export const KORDYN_V2_REDUCE_NORMAL_CONTRADICTION_FIXTURE_JSON = contradictionHealthFixture(57, {
+  system: {
+    reduceOnlyMode: true,
+    riskStatus: "normal",
+    dataFreshnessState: "fresh",
+    dataStale: false
+  },
+  portfolioRisk: { status: "normal" }
+});
+
+export const KORDYN_V2_ADVERSE_SOURCE_CONTRADICTION_FIXTURE_JSON = contradictionHealthFixture(58, {
+  system: { riskStatus: "normal", dataFreshnessState: "fresh" },
+  marketStatus: { dataFreshnessState: "stale" },
+  portfolioRisk: { status: "critical" }
+});
+
+export const KORDYN_V2_RECONCILIATION_STALE_CONTRADICTION_FIXTURE_JSON = contradictionHealthFixture(59, {
+  system: { dataFreshnessState: "fresh", dataStale: true },
+  portfolioRisk: { status: "账户对账锁定" }
+});
+
+export const KORDYN_V2_EMERGENCY_STALE_CONTRADICTION_FIXTURE_JSON = contradictionHealthFixture(60, {
+  system: { dataFreshnessState: "stale", dataStale: false },
+  portfolioRisk: { status: "紧急停止" }
+});
+
+export const KORDYN_V2_CONSISTENT_NORMAL_FRESH_FIXTURE_JSON = contradictionHealthFixture(61, {
+  system: { riskStatus: "normal", dataFreshnessState: "fresh", dataStale: false },
+  marketStatus: { dataFreshnessState: "fresh", dataStale: false },
+  portfolioRisk: { status: "ok" }
+});
+
+export const KORDYN_V2_PENDING_FALSE_CONTRADICTION_FIXTURE_JSON = contradictionHealthFixture(62, {
+  system: { riskStatus: "pending", dataFreshnessState: "pending", dataStale: false },
+  portfolioRisk: { status: "pending" }
+});
+
+export const KORDYN_V2_NOVEL_FALSE_CONTRADICTION_FIXTURE_JSON = contradictionHealthFixture(63, {
+  system: { riskStatus: "quantum", dataFreshnessState: "quantum", dataStale: false },
+  portfolioRisk: { status: "quantum" }
+});
+
+export const KORDYN_V2_NORMAL_NOVEL_CONTRADICTION_FIXTURE_JSON = contradictionHealthFixture(64, {
+  system: { riskStatus: "normal", dataFreshnessState: "fresh", dataStale: false },
+  marketStatus: { dataFreshnessState: "fresh", dataStale: false },
+  portfolioRisk: { status: "quantum" }
+});

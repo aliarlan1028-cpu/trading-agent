@@ -592,6 +592,65 @@ async function verifyHealth(cdp, pageUrl, scenario, expectedTones) {
       );
     }
   }
+  return health;
+}
+
+async function verifyContradictionHealth(cdp, pageUrl) {
+  const cases = [
+    {
+      scenario: "health-kill-normal",
+      tones: { connection: "mint", runtime: "danger", risk: "danger", realtime: "mint" },
+      riskLabel: /kill_switch|紧急停止/i
+    },
+    {
+      scenario: "health-reduce-normal",
+      tones: { connection: "mint", runtime: "mint", risk: "danger", realtime: "mint" },
+      riskLabel: /reduce_only|仅减仓/i
+    },
+    {
+      scenario: "health-adverse-source-conflict",
+      tones: { connection: "mint", runtime: "mint", risk: "danger", realtime: "danger" },
+      riskLabel: /critical|严重|高风险/i
+    },
+    {
+      scenario: "health-reconciliation-stale",
+      tones: { connection: "mint", runtime: "mint", risk: "danger", realtime: "danger" },
+      riskLabel: /账户对账锁定/
+    },
+    {
+      scenario: "health-emergency-stale",
+      tones: { connection: "mint", runtime: "mint", risk: "danger", realtime: "danger" },
+      riskLabel: /紧急停止/
+    },
+    {
+      scenario: "health-consistent-normal-fresh",
+      tones: { connection: "mint", runtime: "mint", risk: "mint", realtime: "mint" },
+      riskLabel: /风险正常/
+    },
+    {
+      scenario: "health-pending-false",
+      tones: { connection: "mint", runtime: "mint", risk: "unavailable", realtime: "unavailable" },
+      riskLabel: /Unavailable/
+    },
+    {
+      scenario: "health-novel-false",
+      tones: { connection: "mint", runtime: "mint", risk: "unavailable", realtime: "unavailable" },
+      riskLabel: /Unavailable/
+    },
+    {
+      scenario: "health-normal-novel-conflict",
+      tones: { connection: "mint", runtime: "mint", risk: "unavailable", realtime: "mint" },
+      riskLabel: /Unavailable/
+    }
+  ];
+  for (const contract of cases) {
+    const health = await verifyHealth(cdp, pageUrl, contract.scenario, contract.tones);
+    contractTrue(
+      `${contract.scenario}: risk presentation preserves authoritative precedence`,
+      contract.riskLabel.test(`${health.risk.text} ${health.risk.name}`),
+      `received ${JSON.stringify(health.risk)}`
+    );
+  }
 }
 
 async function readQueueGroups(cdp) {
@@ -878,6 +937,7 @@ try {
   await verifyHealth(cdp, pageUrl, "health-unknown", {
     connection: "unavailable", runtime: "unavailable", risk: "unavailable", realtime: "unavailable"
   });
+  await verifyContradictionHealth(cdp, pageUrl);
   let independentHero = null;
   if (screenshotDir) {
     await setViewport(cdp, pageUrl, 1440, 900);

@@ -1,11 +1,12 @@
 import { CircleDollarSign, Clock3, Menu, Radar, ShieldCheck, WalletCards } from "lucide-react";
+import {
+  ADVERSE_DATA_STATES,
+  ADVERSE_RISK_STATES,
+  FRESH_DATA_STATES,
+  NORMAL_RISK_STATES
+} from "../viewModels/accountTruth.js";
 
 const unavailable = "Unavailable";
-const GOOD_RISK_STATES = Object.freeze(["normal", "ok", "healthy"]);
-const ADVERSE_RISK_STATES = Object.freeze([
-  "critical", "high", "danger", "elevated", "breached", "blocked", "failed", "error",
-  "kill_switch", "reduce_only", "emergency", "halted"
-]);
 const money = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2
@@ -36,7 +37,7 @@ function riskText(value) {
   const risk = primitiveText(value);
   if (risk === unavailable) return unavailable;
   const normalized = risk.toLowerCase();
-  if (GOOD_RISK_STATES.includes(normalized)) return "风险正常";
+  if (NORMAL_RISK_STATES.includes(normalized)) return "风险正常";
   return ADVERSE_RISK_STATES.includes(normalized) ? risk : unavailable;
 }
 
@@ -65,7 +66,7 @@ function runtimeTone(value) {
 function riskTone(value) {
   const risk = primitiveText(value).toLowerCase();
   if (risk === unavailable.toLowerCase()) return "unavailable";
-  if (GOOD_RISK_STATES.includes(risk)) return "mint";
+  if (NORMAL_RISK_STATES.includes(risk)) return "mint";
   if (ADVERSE_RISK_STATES.includes(risk)) return "danger";
   return "unavailable";
 }
@@ -75,8 +76,8 @@ function realtimeTone(truth, state) {
   if (["failed", "forbidden", "stale", "degraded", "disabled"].includes(kind)) return "danger";
   if (kind !== "ready") return "unavailable";
   const freshnessState = primitiveText(truth.freshnessState).toLowerCase();
-  if (["fresh", "realtime", "current", "live"].includes(freshnessState)) return "mint";
-  if (["stale", "failed", "error", "disconnected", "offline", "degraded", "delayed"].includes(freshnessState)) return "danger";
+  if (FRESH_DATA_STATES.includes(freshnessState)) return "mint";
+  if (ADVERSE_DATA_STATES.includes(freshnessState)) return "danger";
   return "unavailable";
 }
 
