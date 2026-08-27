@@ -18,6 +18,11 @@ const STATE_MESSAGES = Object.freeze({
   "large-list": "The complete authoritative list is available."
 });
 
+const MISSING_PROVENANCE_MESSAGES = Object.freeze({
+  stale: "Data is stale; no last-valid facts with source and time are available.",
+  degraded: "The source is degraded; no last-valid facts with source and time are available."
+});
+
 const normalizedKind = (resourceState, { error, forbidden } = {}) => {
   const state = typeof resourceState === "string" ? resourceState.trim().toLowerCase() : "not_loaded";
   if (forbidden || state === "forbidden") return "forbidden";
@@ -50,7 +55,9 @@ export function normalizeResourceState(input) {
   return Object.freeze({
     kind,
     retainsLastValid,
-    message: STATE_MESSAGES[kind],
+    message: !retainsLastValid && Object.hasOwn(MISSING_PROVENANCE_MESSAGES, kind)
+      ? MISSING_PROVENANCE_MESSAGES[kind]
+      : STATE_MESSAGES[kind],
     retryable: ["not_loaded", "loading", "stale", "degraded", "failed"].includes(kind),
     actionOutcome: actionOutcome ?? null,
     source,

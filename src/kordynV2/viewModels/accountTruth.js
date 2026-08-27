@@ -10,19 +10,30 @@ const financialFact = (...values) => {
 };
 
 const finiteNumber = (value) => typeof value === "number" && Number.isFinite(value);
-const positionHasAuthoritativeNotional = (position = {}) => {
+const selectedPositionValue = (position, fields) => fields
+  .map((field) => position[field])
+  .find((value) => value !== undefined && value !== null);
+
+function normalizedExposurePosition(position) {
+  if (!position || typeof position !== "object" || Array.isArray(position)) return null;
   const direct = position.notional ?? position.notionalUsdt ?? position.marketValue;
-  if (finiteNumber(direct)) return true;
-  const quantity = position.quantity ?? position.size ?? position.pos ?? position.qty;
-  if (finiteNumber(quantity) && quantity === 0) return true;
-  const mark = position.markPrice ?? position.mark ?? position.price ?? position.entryPrice ?? position.entry;
-  return finiteNumber(quantity) && finiteNumber(mark);
-};
+  const quantity = selectedPositionValue(position, ["quantity", "size", "pos", "qty"]);
+  const mark = selectedPositionValue(position, ["markPrice", "mark", "price", "entryPrice", "entry"]);
+  if (direct !== undefined && direct !== null) {
+    if (!finiteNumber(direct) || direct <= 0) return null;
+    if (quantity !== undefined && (!finiteNumber(quantity) || quantity <= 0)) return null;
+    if (mark !== undefined && (!finiteNumber(mark) || mark <= 0)) return null;
+    return { notional: direct, ...(quantity === undefined ? {} : { quantity }) };
+  }
+  if (!finiteNumber(quantity) || quantity <= 0 || !finiteNumber(mark) || mark <= 0) return null;
+  return { quantity, mark };
+}
 
 function exposureFact(data) {
   if (!Array.isArray(data.positions)) return unavailable;
-  if (!data.positions.every(positionHasAuthoritativeNotional)) return unavailable;
-  const positionView = buildPositionView(data);
+  const positions = data.positions.map(normalizedExposurePosition);
+  if (positions.some((position) => position === null)) return unavailable;
+  const positionView = buildPositionView({ positions });
   return financialFact(positionView.exposureUsdt);
 }
 

@@ -68,6 +68,36 @@ test("malformed financial representations are unavailable", () => {
   }
 });
 
+test("malformed non-empty position rows cannot become authoritative zero or throw", () => {
+  const coerciveZero = { valueOf: () => 0 };
+  const malformedRows = [
+    null,
+    [],
+    { notional: 600, quantity: false },
+    { notional: 600, quantity: [] },
+    { notional: 600, quantity: "0" },
+    { notional: 600, quantity: coerciveZero },
+    { notional: 600, quantity: 0 },
+    { notional: "600", quantity: 0.01, mark: 60000 },
+    { notional: { valueOf: () => 600 }, quantity: 0.01, mark: 60000 },
+    { quantity: 0.01, mark: false },
+    { quantity: 0.01, mark: [] },
+    { quantity: 0.01, mark: "60000" },
+    { quantity: 0.01, mark: coerciveZero },
+    { quantity: 0.01, mark: 0 }
+  ];
+  for (const row of malformedRows) {
+    assert.doesNotThrow(() => buildAccountTruth({ positions: [row] }, "full"), JSON.stringify(row));
+    assert.equal(buildAccountTruth({ positions: [row] }, "full").exposure, "Unavailable", JSON.stringify(row));
+  }
+});
+
+test("well-formed direct and quantity-mark positions preserve authoritative exposure", () => {
+  assert.equal(buildAccountTruth({ positions: [{ positionId: "direct", notional: 600 }] }, "full").exposure, 600);
+  assert.equal(buildAccountTruth({ positions: [{ positionId: "derived", quantity: 0.01, mark: 60000 }] }, "full").exposure, 600);
+  assert.equal(buildAccountTruth({ positions: [] }, "full").exposure, 0);
+});
+
 test("authoritative financial zero remains zero", () => {
   const truth = buildAccountTruth({
     portfolio: { totalEquityUsdt: 0, availableMarginUsdt: 0 },
@@ -156,6 +186,21 @@ test("stale and degraded retain only real last-valid provenance", () => {
       assert.equal(missing.kind, kind);
       assert.equal(missing.retainsLastValid, false, `${kind} ${JSON.stringify(data)}`);
     }
+  }
+});
+
+test("stale and degraded copy claims retention only when provenance is retained", () => {
+  for (const kind of ["stale", "degraded"]) {
+    const retained = normalizeResourceState({
+      resourceState: kind,
+      data: { source: "OKX", asOf: "2026-08-26T00:00:00Z" }
+    });
+    assert.match(retained.message, /retain/i, kind);
+
+    const unavailable = normalizeResourceState({ resourceState: kind });
+    assert.equal(unavailable.retainsLastValid, false, kind);
+    assert.doesNotMatch(unavailable.message, /retain/i, kind);
+    assert.match(unavailable.message, /unavailable|no last-valid/i, kind);
   }
 });
 
