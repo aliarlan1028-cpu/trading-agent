@@ -1,9 +1,26 @@
 .kordynV2Root {
-  --kordyn-v2-canvas: #090d16;
-  --kordyn-v2-surface: #111827;
-  --kordyn-v2-border: #293449;
-  --kordyn-v2-text: #f5f7fb;
-  --kordyn-v2-muted: #9aa8bd;
-  --kordyn-v2-accent: #668cff;
-  --kordyn-v2-font: "Public Sans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --kordyn-v2-canvas: #030914;
+  --kordyn-v2-canvas-soft: #050d19;
+  --kordyn-v2-navigation: #04101c;
+  --kordyn-v2-field: #091321;
+  --kordyn-v2-field-raised: #0d1827;
+  --kordyn-v2-field-deep: #07101c;
+  --kordyn-v2-border: rgba(135, 160, 194, 0.18);
+  --kordyn-v2-border-strong: rgba(135, 164, 205, 0.28);
+  --kordyn-v2-text: #f2f6fd;
+  --kordyn-v2-text-soft: #c2cede;
+  --kordyn-v2-muted: #8290a6;
+  --kordyn-v2-dim: #58667b;
+  --kordyn-v2-cobalt: #3478ff;
+  --kordyn-v2-cobalt-soft: #6a99ff;
+  --kordyn-v2-mint: #20d794;
+  --kordyn-v2-violet: #8472ff;
+  --kordyn-v2-danger: #ff5968;
+  --kordyn-v2-amber: #f4ad56;
+  --kordyn-v2-nav-width: 156px;
+  --kordyn-v2-truth-height: 68px;
+  --kordyn-v2-local-height: 52px;
+  --kordyn-v2-header-height: calc(var(--kordyn-v2-truth-height) + var(--kordyn-v2-local-height));
+  --kordyn-v2-font: Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --kordyn-v2-mono: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
 }
