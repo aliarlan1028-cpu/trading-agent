@@ -63,6 +63,25 @@ test("Flatten and Kill remain distinct deployed protected actions", async () => 
   ]);
 });
 
+test("Kill accepts only boolean state and preserves both deployed boolean payloads", async () => {
+  const calls = [];
+  const actions = createV2Actions({
+    action: async (...args) => { calls.push(["action", ...args]); return { accepted: true }; },
+    confirm: async (...args) => { calls.push(["confirm", ...args]); return true; }
+  });
+  await actions.global.setKillSwitch(true, "stop");
+  await actions.global.setKillSwitch(false, "resume");
+  assert.deepEqual(calls.filter(([type]) => type === "action"), [
+    ["action", "/api/risk/kill-switch", { enabled: true, reason: "stop" }],
+    ["action", "/api/risk/kill-switch", { enabled: false, reason: "resume" }]
+  ]);
+
+  calls.length = 0;
+  const result = await actions.global.setKillSwitch("false", "malformed");
+  assert.deepEqual(result, { ok: false, error: "invalid_kill_switch_state" });
+  assert.deepEqual(calls, []);
+});
+
 test("V2 action namespaces and global actions are stable and frozen", () => {
   const actions = createV2Actions({ action: async () => ({}), confirm: async () => false });
   assert.deepEqual(Object.keys(actions), ["ai", "account", "assets", "governance", "global"]);

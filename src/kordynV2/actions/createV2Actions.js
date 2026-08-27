@@ -1,6 +1,7 @@
 import { uiConfirm } from "../../confirm.jsx";
 
 const cancelled = Object.freeze({ ok: false, cancelled: true });
+const invalidKillSwitchState = Object.freeze({ ok: false, error: "invalid_kill_switch_state" });
 const unavailableAction = async () => ({ ok: false, error: "action_unavailable" });
 const noOp = () => undefined;
 
@@ -29,14 +30,17 @@ export function createV2Actions({
     "/api/risk/emergency-flatten",
     {}
   );
-  const setKillSwitch = (enabled, reason = "") => protect(
-    enabled
+  const setKillSwitch = (enabled, reason = "") => {
+    if (typeof enabled !== "boolean") return invalidKillSwitchState;
+    return protect(
+      enabled
       ? "Activate the emergency stop and block all new trades?"
       : "Request clearing the emergency stop after backend revalidation?",
-    { danger: enabled, title: enabled ? "Emergency stop" : "Clear emergency stop" },
-    "/api/risk/kill-switch",
-    { enabled: Boolean(enabled), reason: String(reason ?? "") }
-  );
+      { danger: enabled, title: enabled ? "Emergency stop" : "Clear emergency stop" },
+      "/api/risk/kill-switch",
+      { enabled, reason: String(reason ?? "") }
+    );
+  };
   const runNavigate = (...args) => navigate(...args);
   const runDownload = (...args) => download(...args);
 

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { load } from "cheerio";
 
+const PLACEHOLDER = /^(?:unavailable|unknown|none|null|undefined|n\/?a|—|-)$/i;
+const actualProvenance = (value) => typeof value === "string" && value.trim() !== "" && !PLACEHOLDER.test(value.trim());
+
 export function assertStateContract(markup, expectedState) {
   assert.equal(typeof markup, "string");
   assert.doesNotMatch(markup, /undefined|NaN/);
@@ -16,7 +19,9 @@ export function assertStateContract(markup, expectedState) {
   if (["stale", "degraded"].includes(expectedState)) {
     const source = root.find("[data-kordyn-v2-last-valid-source]").addBack("[data-kordyn-v2-last-valid-source]").first();
     const time = root.find("[data-kordyn-v2-last-valid-at]").addBack("[data-kordyn-v2-last-valid-at]").first();
-    assert.ok(source.attr("data-kordyn-v2-last-valid-source")?.trim(), "last-valid source must not be empty");
-    assert.ok(time.attr("data-kordyn-v2-last-valid-at")?.trim(), "last-valid time must not be empty");
+    const sourceValue = source.attr("data-kordyn-v2-last-valid-source");
+    const timeValue = time.attr("data-kordyn-v2-last-valid-at");
+    assert.ok(actualProvenance(sourceValue), "last-valid source must be real, not a placeholder");
+    assert.ok(actualProvenance(timeValue) && Number.isFinite(Date.parse(timeValue)), "last-valid time must be a real timestamp, not a placeholder");
   }
 }

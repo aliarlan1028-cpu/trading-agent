@@ -19,21 +19,34 @@ const STATE_MESSAGES = Object.freeze({
 });
 
 const normalizedKind = (resourceState, { error, forbidden } = {}) => {
-  if (forbidden || String(resourceState || "").toLowerCase() === "forbidden") return "forbidden";
+  const state = typeof resourceState === "string" ? resourceState.trim().toLowerCase() : "not_loaded";
+  if (forbidden || state === "forbidden") return "forbidden";
   if (error) return "failed";
-  const state = String(resourceState || "not_loaded").toLowerCase();
   if (["loaded", "ready"].includes(state)) return "ready";
   if (["error", "failed"].includes(state)) return "failed";
   return Object.hasOwn(STATE_MESSAGES, state) ? state : "not_loaded";
 };
 
-const firstKnown = (...values) => values.find((value) => value !== undefined && value !== null && value !== "");
+const PLACEHOLDER = /^(?:unavailable|unknown|none|null|undefined|n\/?a|—|-)$/i;
+const provenanceText = (value) => {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  return text && !PLACEHOLDER.test(text) ? text : null;
+};
+const firstProvenance = (...values) => values.map(provenanceText).find(Boolean) || "Unavailable";
+const firstTimestamp = (...values) => values
+  .map(provenanceText)
+  .find((value) => value && Number.isFinite(Date.parse(value))) || "Unavailable";
 
-export function normalizeResourceState({ resourceState, data, error, forbidden, actionOutcome } = {}) {
+export function normalizeResourceState(input) {
+  const options = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+  const { resourceState, data, error, forbidden, actionOutcome } = options;
   const kind = normalizedKind(resourceState, { error, forbidden });
-  const retainsLastValid = workspaceResourceRetainsLastValid(kind);
-  const source = firstKnown(data?.lastValidSource, data?.source, data?.sourceName, "Unavailable");
-  const lastValidAt = firstKnown(data?.lastValidAt, data?.asOf, data?.updatedAt, data?.createdAt, "Unavailable");
+  const source = firstProvenance(data?.lastValidSource, data?.source, data?.sourceName);
+  const lastValidAt = firstTimestamp(data?.lastValidAt, data?.asOf, data?.updatedAt, data?.createdAt);
+  const retainsLastValid = workspaceResourceRetainsLastValid(kind)
+    && source !== "Unavailable"
+    && lastValidAt !== "Unavailable";
   return Object.freeze({
     kind,
     retainsLastValid,
