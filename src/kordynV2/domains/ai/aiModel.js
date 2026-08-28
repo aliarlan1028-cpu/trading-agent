@@ -2,6 +2,7 @@ import { buildPatrolView } from "../../../patrolView.js";
 import { buildEventRows } from "../../../viewData.js";
 
 const unavailable = "Unavailable";
+const invalidArrayShape = Symbol("kordynV2.invalidArrayShape");
 const hasOwn = (value, key) => Boolean(value && Object.hasOwn(value, key));
 const nonEmptyText = (value) => typeof value === "string" && value.trim().length > 0;
 const canonicalIdentifier = (value) => nonEmptyText(value)
@@ -26,7 +27,7 @@ function plainRecord(value) {
   }
 }
 
-function cloneData(value, seen = new WeakMap()) {
+function cloneData(value, seen = new WeakMap(), retainArrayShapeMarker = true) {
   if (value === null || ["string", "number", "boolean", "undefined"].includes(typeof value)) return value;
   const array = arrayClassification(value);
   if (array === null) return undefined;
@@ -39,18 +40,28 @@ function cloneData(value, seen = new WeakMap()) {
     if (!Number.isInteger(length) || length < 0 || length > 0xffffffff) return undefined;
     const copy = new Array(length);
     seen.set(value, copy);
-    const keys = Object.keys(descriptors);
+    const keys = Reflect.ownKeys(descriptors);
+    let hasInvalidShape = Object.hasOwn(descriptors, invalidArrayShape);
     for (let offset = 0; offset < keys.length; offset += 1) {
       const key = keys[offset];
+      if (key === invalidArrayShape || key === "length") continue;
       const descriptor = descriptors[key];
-      const index = /^(?:0|[1-9]\d*)$/u.test(key) ? Number(key) : -1;
-      if (!descriptor.enumerable || !("value" in descriptor) || !Number.isInteger(index) || index < 0 || index >= length) continue;
+      if (!descriptor.enumerable) continue;
+      const index = typeof key === "string" && /^(?:0|[1-9]\d*)$/u.test(key) ? Number(key) : -1;
+      if (!Number.isInteger(index) || index < 0 || index >= length) {
+        hasInvalidShape = true;
+        continue;
+      }
+      if (!("value" in descriptor)) continue;
       Object.defineProperty(copy, key, {
         configurable: true,
         enumerable: true,
-        value: cloneData(descriptor.value, seen),
+        value: cloneData(descriptor.value, seen, retainArrayShapeMarker),
         writable: true
       });
+    }
+    if (retainArrayShapeMarker && hasInvalidShape) {
+      Object.defineProperty(copy, invalidArrayShape, { value: true });
     }
     return copy;
   }
@@ -65,7 +76,7 @@ function cloneData(value, seen = new WeakMap()) {
     Object.defineProperty(copy, key, {
       configurable: true,
       enumerable: true,
-      value: cloneData(descriptor.value, seen),
+      value: cloneData(descriptor.value, seen, retainArrayShapeMarker),
       writable: true
     });
   }
@@ -87,7 +98,7 @@ function deepFreeze(value, seen = new WeakSet()) {
   return Object.freeze(value);
 }
 
-const freezeProjection = (value) => deepFreeze(cloneData(value));
+const freezeProjection = (value) => deepFreeze(cloneData(value, new WeakMap(), false));
 
 function validEventInput(row) {
   return plainRecord(row) && [row.title, row.shortTitle, row.name].some(nonEmptyText);
@@ -118,7 +129,9 @@ function normalizedEventCandidate(row, provenance) {
     const normalized = buildEventRows(provenance === "official"
       ? { marketCalendarEvents: [row] }
       : { events: [row] });
-    return plainRecord(normalized[0]) ? { provenance, row: normalized[0] } : null;
+    return plainRecord(normalized[0])
+      ? { provenance, row: normalized[0], fingerprint: canonicalFingerprint(normalized[0]) }
+      : null;
   } catch {
     return null;
   }
@@ -128,38 +141,110 @@ function identitySet(candidates) {
   return new Set(candidates.map((candidate) => eventIdentity(candidate.row)).filter((identity) => identity !== null));
 }
 
-function stableEventScalar(value) {
-  if (value === null) return "0:";
-  if (typeof value === "string") return `1:${value}`;
-  if (typeof value === "number" && Number.isFinite(value)) return `2:${value}`;
-  if (typeof value === "boolean") return value ? "3:1" : "3:0";
-  return "4:";
+function fingerprintPrimitive(value) {
+  if (value === null) return "n;";
+  if (value === undefined) return "u;";
+  if (typeof value === "string") return `s${value.length}:${value}`;
+  if (typeof value === "boolean") return value ? "b1;" : "b0;";
+  if (typeof value === "number") {
+    if (Number.isNaN(value)) return "dNaN;";
+    if (value === Infinity) return "d+Inf;";
+    if (value === -Infinity) return "d-Inf;";
+    if (Object.is(value, -0)) return "d-0;";
+    return `d${value};`;
+  }
+  if (typeof value === "bigint") return `g${value};`;
+  return `x${typeof value};`;
 }
 
-function eventCandidateStableKey(candidate) {
-  const row = candidate.row;
-  const fields = [
-    eventMoment(row),
-    eventIdentity(row),
-    row.title,
-    row.shortTitle,
-    row.name,
-    row.scheduledKey,
-    row.sourceName,
-    row.source,
-    row.description,
-    row.impact,
-    row.importance,
-    row.timePrecision,
-    row.createdAt
-  ];
-  return [candidate.provenance === "canonical" ? "0" : "1", ...fields.map(stableEventScalar)].join("\u0001");
+function canonicalFingerprint(root) {
+  const chunks = [];
+  const seen = new WeakMap();
+  let nextReference = 0;
+  const stack = [{ kind: "value", value: root }];
+
+  try {
+    while (stack.length) {
+      const frame = stack.pop();
+      if (frame.kind === "text") {
+        chunks.push(frame.value);
+        continue;
+      }
+      const value = frame.value;
+      if (value === null || typeof value !== "object") {
+        chunks.push(fingerprintPrimitive(value));
+        continue;
+      }
+      if (seen.has(value)) {
+        chunks.push(`r${seen.get(value)};`);
+        continue;
+      }
+      const reference = nextReference;
+      nextReference += 1;
+      seen.set(value, reference);
+      const descriptors = Object.getOwnPropertyDescriptors(value);
+      const array = arrayClassification(value);
+      if (array === null) {
+        chunks.push(`x-array-${reference};`);
+        continue;
+      }
+      if (array) {
+        const lengthDescriptor = Object.hasOwn(descriptors, "length") ? descriptors.length : null;
+        const length = lengthDescriptor && "value" in lengthDescriptor ? lengthDescriptor.value : null;
+        if (!Number.isInteger(length) || length < 0 || length > 0xffffffff) {
+          chunks.push(`x-length-${reference};`);
+          continue;
+        }
+        chunks.push(`a${reference}:${length}[`);
+        stack.push({ kind: "text", value: "]" });
+        for (let index = length - 1; index >= 0; index -= 1) {
+          const descriptor = descriptors[index];
+          if (!descriptor) {
+            stack.push({ kind: "text", value: "h;" });
+          } else if (!descriptor.enumerable || !("value" in descriptor)) {
+            stack.push({ kind: "text", value: "x;" });
+          } else {
+            stack.push({ kind: "value", value: descriptor.value });
+            stack.push({ kind: "text", value: "i:" });
+          }
+        }
+        continue;
+      }
+
+      const descriptorKeys = Reflect.ownKeys(descriptors);
+      const keys = [];
+      for (let offset = 0; offset < descriptorKeys.length; offset += 1) {
+        const key = descriptorKeys[offset];
+        if (typeof key === "string" && descriptors[key].enumerable && "value" in descriptors[key]) keys.push(key);
+      }
+      keys.sort();
+      chunks.push(`o${reference}:${keys.length}{`);
+      stack.push({ kind: "text", value: "}" });
+      for (let offset = keys.length - 1; offset >= 0; offset -= 1) {
+        const key = keys[offset];
+        stack.push({ kind: "value", value: descriptors[key].value });
+        stack.push({ kind: "text", value: `k${key.length}:${key}=` });
+      }
+    }
+  } catch {
+    return "x-fingerprint;";
+  }
+  return chunks.join("");
+}
+
+function compareText(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function compareEventCandidates(left, right) {
-  const leftKey = eventCandidateStableKey(left);
-  const rightKey = eventCandidateStableKey(right);
-  return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+  const provenanceOrder = Number(left.provenance !== "canonical") - Number(right.provenance !== "canonical");
+  if (provenanceOrder !== 0) return provenanceOrder;
+  const leftIdentity = eventIdentity(left.row);
+  const rightIdentity = eventIdentity(right.row);
+  const identityPresenceOrder = Number(leftIdentity === null) - Number(rightIdentity === null);
+  if (identityPresenceOrder !== 0) return identityPresenceOrder;
+  const identityOrder = compareText(leftIdentity || "", rightIdentity || "");
+  return identityOrder !== 0 ? identityOrder : compareText(left.fingerprint, right.fingerprint);
 }
 
 function selectEventCandidate(group) {
@@ -355,6 +440,7 @@ function linkedPlanFor(run, plans) {
 
 function countEvidenceIds(value) {
   if (arrayClassification(value) !== true) return unavailable;
+  if (hasOwn(value, invalidArrayShape)) return unavailable;
   let descriptors;
   try { descriptors = Object.getOwnPropertyDescriptors(value); } catch { return unavailable; }
   const lengthDescriptor = Object.hasOwn(descriptors, "length") ? descriptors.length : null;
@@ -437,7 +523,7 @@ function missionFor(run, plans, traces) {
 }
 
 function intelligenceProjection(row, { id, kind, source }) {
-  const safeRow = cloneData(row);
+  const safeRow = cloneData(row, new WeakMap(), false);
   const canonicalId = canonicalIdentifier(id) ? id : null;
   return deepFreeze({
     ...(plainRecord(safeRow) ? safeRow : {}),

@@ -296,6 +296,47 @@ test("evidence ID counts require a dense own data-descriptor array", () => {
   ]);
 });
 
+test("evidence ID counts reject enumerable array metadata without invoking accessors", () => {
+  let getterCalls = 0;
+  const enumerableSymbol = Symbol("unexpected evidence metadata");
+  const idsWithMetadata = ["evidence-extra"];
+  idsWithMetadata.metadata = "unexpected";
+  Object.defineProperty(idsWithMetadata, enumerableSymbol, {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return "unexpected";
+    }
+  });
+
+  const allowedNonEnumerable = ["evidence-standard"];
+  Object.defineProperty(allowedNonEnumerable, Symbol.iterator, {
+    configurable: true,
+    enumerable: false,
+    get() {
+      getterCalls += 1;
+      throw new Error("iterator getter must not run");
+    }
+  });
+  const projectedSymbols = ["BTC/USDT"];
+  projectedSymbols.metadata = "must not project";
+
+  const model = buildAiDomainModel({
+    agentRuns: [
+      { id: "run-extra-array-property", evidenceIds: idsWithMetadata },
+      { id: "run-non-enumerable-array-property", evidenceIds: allowedNonEnumerable }
+    ],
+    newsFeed: [{ id: "news-array-shape", title: "Array marker boundary", symbols: projectedSymbols }]
+  });
+
+  assert.equal(getterCalls, 0);
+  assert.deepEqual(model.missions.map((mission) => [mission.id, mission.evidenceCount]), [
+    ["run-extra-array-property", "Unavailable"],
+    ["run-non-enumerable-array-property", 1]
+  ]);
+  assert.deepEqual(Reflect.ownKeys(model.intelligence[0].symbols), ["0", "length"]);
+});
+
 test("malformed trace object metadata fails closed while valid trace evidence survives", () => {
   const revoked = Proxy.revocable({}, {});
   revoked.revoke();
@@ -567,6 +608,49 @@ test("semantic event duplicates prefer the one uniquely identified row in either
     assert.equal(model.events[0].selectable, true);
     assert.equal(intelligenceEvents.length, 1);
     assert.equal(intelligenceEvents[0], model.events[0]);
+  }
+});
+
+test("same-ID event selection is deterministic across every projected nested fact", () => {
+  const due = "2026-09-04T12:30:00.000Z";
+  const firstCycle = { label: "A" };
+  firstCycle.self = firstCycle;
+  const secondCycle = { label: "Z" };
+  secondCycle.self = secondCycle;
+  const first = {
+    id: "event-complete-truth",
+    title: "CPI",
+    due,
+    impact: 80,
+    relatedSymbols: ["BTC/USDT"],
+    constraints: { bucket: "A", thresholds: [0.3, 0.7] },
+    cycle: firstCycle
+  };
+  const second = {
+    id: "event-complete-truth",
+    title: "CPI",
+    due,
+    impact: 80,
+    relatedSymbols: ["ETH/USDT"],
+    constraints: { bucket: "Z", thresholds: [0.4, 0.8] },
+    cycle: secondCycle
+  };
+  const forward = buildAiDomainModel({ events: [first, second] });
+  const reverse = buildAiDomainModel({ events: [second, first] });
+
+  assert.equal(forward.events.length, 1);
+  assert.equal(reverse.events.length, 1);
+  assert.deepEqual(forward.events[0], reverse.events[0]);
+  assert.deepEqual(forward.events[0].relatedSymbols, ["BTC/USDT"]);
+  assert.equal(forward.events[0].constraints.bucket, "A");
+  assert.deepEqual(forward.events[0].constraints.thresholds, [0.3, 0.7]);
+  assert.equal(forward.events[0].cycle.label, "A");
+  assert.equal(forward.events[0].cycle.self, forward.events[0].cycle);
+  for (const model of [forward, reverse]) {
+    assert.equal(model.events[0].id, "event-complete-truth");
+    assert.equal(model.events[0].identity, "event-complete-truth");
+    assert.equal(model.events[0].selectable, true);
+    assert.equal(model.intelligence.find((row) => row.kind === "event"), model.events[0]);
   }
 });
 
