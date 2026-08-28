@@ -1479,17 +1479,29 @@ async function verifyMobileReviewStates(cdp, pageUrl) {
   await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-mobile-recent]')", "partial Recent projection");
   const recent = await evaluate(cdp, `(() => {
     const section = document.querySelector('[data-kordyn-v2-mobile-recent]');
+    const warning = section?.querySelector('[data-kordyn-v2-recent-partial-warning]');
+    const row = section?.querySelector(':scope > div');
+    const visible = (node) => {
+      if (!node) return false;
+      const rect = node.getBoundingClientRect();
+      const style = getComputedStyle(node);
+      return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+    };
     return {
       completeness:section?.getAttribute('data-kordyn-v2-recent-completeness') || null,
-      empty:section?.querySelector(':scope > p')?.textContent.trim() || null,
+      warning:warning?.textContent.trim() || null,
+      warningVisible:visible(warning),
       rows:section?.querySelectorAll(':scope > div').length || 0,
+      rowVisible:visible(row),
       actions:window.__kordynV2BrowserCalls.actions
     };
   })()`);
-  contractEqual("partial Recent sources fail closed instead of claiming authoritative empty", recent, {
+  contractEqual("partial Recent keeps known rows but visibly discloses unavailable completeness", recent, {
     completeness: "unavailable",
-    empty: "Unavailable",
-    rows: 0,
+    warning: "Unavailable",
+    warningVisible: true,
+    rows: 1,
+    rowVisible: true,
     actions: 0
   });
 
@@ -1516,6 +1528,82 @@ async function verifyMobileReviewStates(cdp, pageUrl) {
     { id: "execute", label: "执行", status: "waiting", connector: "unavailable" },
     { id: "monitor", label: "等待回踩", status: "complete", connector: "none" }
   ]);
+}
+
+async function verifyMobileSelectionDisclosure(cdp, pageUrl) {
+  await setViewport(cdp, `${pageUrl}?scenario=selection-outside-slice`, 390, 844, "mobile");
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-attention-target=watch-canonical-outside]')", "outside-slice canonical attention target");
+  await click(cdp, '[data-kordyn-v2-attention-target="watch-canonical-outside"]');
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2SelectedId === 'watch-canonical-outside'", "outside-slice canonical selection");
+
+  const mission = await evaluate(cdp, `(() => ({
+    selectedId:document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2SelectedId || null,
+    symbol:document.querySelector('.kordynV2MobileMissionSymbol')?.textContent.trim() || null,
+    title:document.querySelector('.kordynV2MobileMissionCopy strong')?.textContent.trim() || null,
+    signal:document.querySelector('.kordynV2MobileMissionCopy small')?.textContent.trim() || null,
+    facts:[...document.querySelectorAll('.kordynV2MobileMissionFacts dd')].map((node) => node.textContent.trim()),
+    stages:[...document.querySelectorAll('.kordynV2MobileMissionStages > div')].map((node) => [node.getAttribute('data-stage-id'),node.getAttribute('data-stage-state')]),
+    actions:window.__kordynV2BrowserCalls.actions
+  }))()`);
+  contractEqual("explicit outside-slice selection owns the visible Mission projection", mission, {
+    selectedId: "watch-canonical-outside",
+    symbol: "LIN",
+    title: "LINK canonical outside-slice Mission",
+    signal: "Canonical LINK thesis from the explicit selection",
+    facts: ["normal", "Canonical Strategy 11", "CPI · 12h"],
+    stages: [["sense", "complete"], ["plan", "complete"], ["guard", "complete"], ["execute", "waiting"], ["monitor", "waiting"]],
+    actions: 0
+  });
+
+  await click(cdp, '[data-kordyn-v2-mobile-evidence-trigger]');
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-mobile-sheet=evidence]')", "outside-slice governed Details");
+  const readDisclosure = async () => await evaluate(cdp, `(() => ({
+    selectedId:document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2SelectedId || null,
+    identity:document.querySelector('.kordynV2MobileSheetIdentity')?.textContent.trim() || null,
+    active:document.querySelector('[data-kordyn-v2-evidence-tab][aria-selected=true]')?.getAttribute('data-kordyn-v2-evidence-tab') || null,
+    facts:[...document.querySelectorAll('.kordynV2MobileDecisionFacts > div')].map((row) => [row.querySelector('dt')?.textContent.trim(),row.querySelector('dd')?.textContent.trim()]),
+    proofOwnsSelection:["Canonical target sense","Canonical target plan","Canonical target guard","Canonical target execute"].every((value) => [...document.querySelectorAll('.kordynV2MobileProofStages li small')].some((node) => node.textContent.trim() === value)),
+    proofContainsUnrelated:[...document.querySelectorAll('.kordynV2MobileProofStages li small')].some((node) => node.textContent.includes('Unrelated visible row')),
+    actions:window.__kordynV2BrowserCalls.actions
+  }))()`);
+  contractEqual("governed Details uses exactly the outside-slice canonical selection", await readDisclosure(), {
+    selectedId: "watch-canonical-outside",
+    identity: "Watch / watch-canonical-outside",
+    active: "details",
+    facts: [
+      ["策略", "Canonical Strategy 11"],
+      ["知识来源", "Canonical Knowledge 11"],
+      ["能力", "行情 / 市场结构 / 审计"],
+      ["事件", "CPI · 12h"],
+      ["持仓影响", "short 3.5"]
+    ],
+    proofOwnsSelection: false,
+    proofContainsUnrelated: false,
+    actions: 0
+  });
+
+  await click(cdp, '[data-kordyn-v2-evidence-tab="context"]');
+  contractEqual("governed Context preserves the outside-slice canonical identity", await readDisclosure(), {
+    selectedId: "watch-canonical-outside",
+    identity: "Watch / watch-canonical-outside",
+    active: "context",
+    facts: [],
+    proofOwnsSelection: false,
+    proofContainsUnrelated: false,
+    actions: 0
+  });
+
+  await click(cdp, '[data-kordyn-v2-evidence-tab="proof"]');
+  contractEqual("governed Proof preserves the outside-slice canonical identity and trace", await readDisclosure(), {
+    selectedId: "watch-canonical-outside",
+    identity: "Watch / watch-canonical-outside",
+    active: "proof",
+    facts: [],
+    proofOwnsSelection: true,
+    proofContainsUnrelated: false,
+    actions: 0
+  });
+  await pressKey(cdp, "Escape");
 }
 
 async function verifyDesktopLongContentSupport(cdp, pageUrl) {
@@ -1637,6 +1725,7 @@ try {
     }
     await verifyMobileStates(cdp, pageUrl);
     await verifyMobileReviewStates(cdp, pageUrl);
+    await verifyMobileSelectionDisclosure(cdp, pageUrl);
     const longContentResults = [];
     for (const [width, height] of mobileViewports) {
       longContentResults.push(await verifyMobileLongContentSupport(cdp, pageUrl, width, height));

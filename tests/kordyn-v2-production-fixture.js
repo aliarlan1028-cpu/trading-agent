@@ -276,12 +276,75 @@ export const KORDYN_V2_PARTIAL_RECENT_FIXTURE_JSON = JSON.stringify({
   asOf: "2026-08-27T07:20:00Z",
   user: { id: "fixture-user-recent-partial", name: "K0" },
   resourceState: { chat: "loaded" },
-  agentRuns: [],
+  agentRuns: [
+    { id: "run-recent-known-complete", title: "BTC known completion", symbol: "BTC/USDT", status: "completed", summary: "+0.42%" }
+  ],
   watchTriggers: [
     { id: "watch-recent-partial", title: "ETH active watch", symbol: "ETH/USDT", status: "active" }
   ],
   pendingActions: [],
   riskIncidents: []
+});
+
+export const KORDYN_V2_SELECTION_OUTSIDE_SLICE_FIXTURE_JSON = JSON.stringify({
+  revision: 68,
+  source: "Read-only canonical selection projection",
+  asOf: "2026-08-27T07:24:00Z",
+  user: { id: "fixture-user-selection-outside", name: "K0" },
+  resourceState: { chat: "loaded" },
+  portfolio: {
+    totalEquityUsdt: 28640.72,
+    availableMarginUsdt: 13870.1,
+    marginSyncedAt: "2026-08-27T07:24:00Z",
+    source: "Read-only canonical selection projection"
+  },
+  positions: [
+    { id: "position-link", positionId: "position-link", symbol: "LINK/USDT", direction: "short", quantity: 3.5, notionalUsdt: 84.63, status: "open" }
+  ],
+  automationState: { mode: "observe", runtimeStatus: "normal", blockerDetails: [] },
+  system: { killSwitch: false, reduceOnlyMode: false, riskStatus: "normal", dataFreshnessState: "fresh" },
+  portfolioRisk: { status: "normal" },
+  currentRiskSnapshot: { controls: { killSwitch: false, reduceOnly: false, riskStatus: "normal" } },
+  agentRuns: Array.from({ length: 10 }, (_, index) => ({
+    id: `run-slice-${index + 1}`,
+    title: `Sliced Agent run ${index + 1}`,
+    symbol: "BTC/USDT",
+    status: "running",
+    summary: `Unrelated visible row ${index + 1}`
+  })),
+  watchTriggers: [
+    { id: "watch-default-outside", title: "Default outside-slice watch", symbol: "ETH/USDT", status: "active" },
+    {
+      id: "watch-canonical-outside",
+      title: "LINK canonical outside-slice Mission",
+      symbol: "LINK/USDT",
+      status: "active",
+      thesis: "Canonical LINK thesis from the explicit selection",
+      strategyName: "Canonical Strategy 11",
+      knowledgeSource: "Canonical Knowledge 11",
+      capabilities: ["行情", "市场结构", "审计"],
+      eventWindow: "CPI · 12h"
+    }
+  ],
+  tradePlans: [],
+  pendingActions: [
+    {
+      id: "action-select-canonical-outside",
+      objectId: "watch-canonical-outside",
+      objectType: "Watch",
+      title: "Select canonical outside-slice Mission",
+      detail: "Read-only selection regression",
+      status: "pending",
+      severity: "high"
+    }
+  ],
+  riskIncidents: [],
+  traces: [
+    { id: "trace-canonical-sense", workspaceId: "ai", objectType: "Watch", objectId: "watch-canonical-outside", stage: "Sense", status: "complete", detail: "Canonical target sense", evidenceId: "evidence-canonical-sense" },
+    { id: "trace-canonical-plan", workspaceId: "ai", objectType: "Watch", objectId: "watch-canonical-outside", stage: "Plan", status: "complete", detail: "Canonical target plan", evidenceId: "evidence-canonical-plan" },
+    { id: "trace-canonical-guard", workspaceId: "ai", objectType: "Watch", objectId: "watch-canonical-outside", stage: "Guard", status: "complete", detail: "Canonical target guard", evidenceId: "evidence-canonical-guard" },
+    { id: "trace-canonical-execute", workspaceId: "ai", objectType: "Watch", objectId: "watch-canonical-outside", stage: "Execute", status: "waiting", detail: "Canonical target execute", evidenceId: "evidence-canonical-execute" }
+  ]
 });
 
 export const KORDYN_V2_STALE_HEALTH_FIXTURE_JSON = JSON.stringify({

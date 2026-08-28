@@ -465,7 +465,9 @@ function positionPnlFact(positions) {
 function MobileMissionHome({ data, truth, selection, onSelect, onOpenDialog, onOpenProof }) {
   const rows = useMemo(() => buildMissionRows(data), [data]);
   const selectedId = safeText(selection?.object?.id, "");
-  const selectedRow = rows.find((row) => row.id === selectedId) || rows[0] || null;
+  const selectedRow = selectedId
+    ? rows.find((row) => row.id === selectedId) || null
+    : rows[0] || null;
   const source = selectedRow?.source || selection?.object?.raw || {};
   const title = firstText(selectedRow?.title, selection?.object?.title, selection?.context?.title);
   const symbol = optionalText(selectedRow?.symbol, source?.symbol, source?.instId);
@@ -588,13 +590,16 @@ function MobileMissionHome({ data, truth, selection, onSelect, onOpenDialog, onO
         data-kordyn-v2-recent-completeness={completedProjectionAvailable ? "complete" : "unavailable"}
       >
         <h2>最近完成</h2>
+        {!completedProjectionAvailable && (
+          <p data-kordyn-v2-recent-partial-warning role="status">{unavailable}</p>
+        )}
         {completed.length ? completed.map((row) => (
           <div key={`${row.type}:${row.id}`}>
             <CircleCheck size={18} aria-hidden="true" />
             <span><strong>{row.title}</strong><small>{row.subtitle}</small></span>
             <em>{statusLabel(row.status)}</em>
           </div>
-        )) : <p>{completedProjectionAvailable ? "当前没有已完成的 Mission 或 Agent 运行。" : unavailable}</p>}
+        )) : completedProjectionAvailable ? <p>当前没有已完成的 Mission 或 Agent 运行。</p> : null}
       </section>
 
       <button className="kordynV2MissionPrompt" data-kordyn-v2-dialog-trigger type="button" onClick={onOpenDialog}>
