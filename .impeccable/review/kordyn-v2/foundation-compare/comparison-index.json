@@ -134,18 +134,18 @@
         },
         "overlay50": {
           "file": "mobile-ai-mission-home--390x844--overlay.png",
-          "sha256": "ac9df3cb58b2255ddbd7567b44c062cb9e40680f4a0fe933d830c39b8953e411"
+          "sha256": "110982c2d4df5b135412fb40a010d24a8286193d84ad8fc853f29f014d8e6384"
         },
         "absoluteDifference": {
           "file": "mobile-ai-mission-home--390x844--difference.png",
-          "sha256": "d3ba025b84670c3431423ea8b643b42fde44a5472666f76f9319b3790b678490"
+          "sha256": "e844e04611d46d68793426e8c63362bdb6fc9c0f64ebe4403ab5ecb85c124e48"
         },
         "geometry": {
           "file": "mobile-ai-mission-home--390x844--geometry.json",
-          "sha256": "490b4059dc08c6c83b61a73d63ebba3ab5907b05fdd51457fb27a337942837df"
+          "sha256": "fde007c8913e180ecaa07fb9ebec3a0b9094c12a211b3e1ab567f8b4c546d454"
         }
       },
-      "pixelDifference": 0.07927340101998591,
+      "pixelDifference": 0.07915717727120013,
       "releaseVerdict": "human region review required"
     },
     {
@@ -160,18 +160,18 @@
         },
         "overlay50": {
           "file": "mobile-ai-mission-home--430x932--overlay.png",
-          "sha256": "71d1ab1eef0811fe477db9c56d5a1c932d0e3bce7859a994c2c5e2b038a3c941"
+          "sha256": "8c59aef5bd5274c5fb1cc55f60a5fe6a79b76d925ebb4b7d60888fefce5d0c29"
         },
         "absoluteDifference": {
           "file": "mobile-ai-mission-home--430x932--difference.png",
-          "sha256": "a33734cc90697260aa49bcf36c503d222311c7383ad16333c7e8c97bb591c0fc"
+          "sha256": "c7b1a244b997e2d68e06b08100f26d509b2667b5981e8fbfede00afb40192ffd"
         },
         "geometry": {
           "file": "mobile-ai-mission-home--430x932--geometry.json",
-          "sha256": "bdc82b74737f50e6ed57a0af6387f8b64df72847797e469b465c00901e2b5d0a"
+          "sha256": "6661f5d1a710803366e880da34069e56c07198a24d6aacc416c8964d54c20738"
         }
       },
-      "pixelDifference": 0.07838120642674344,
+      "pixelDifference": 0.07831707337757607,
       "releaseVerdict": "human region review required"
     }
   ],

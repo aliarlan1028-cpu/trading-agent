@@ -58,6 +58,10 @@ function statusLabel(value) {
   })[status] || safeText(value);
 }
 
+function mobileStatusLabel(value) {
+  return normalizedStatus(value) === "waiting" ? "等待" : statusLabel(value);
+}
+
 function clockText(value) {
   if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) return unavailable;
   return new Intl.DateTimeFormat("zh-CN", {
@@ -512,7 +516,7 @@ function MobileMissionHome({ data, truth, selection, onSelect, onOpenDialog, onO
               <strong>{title}</strong>
               <small>{missionSignal}</small>
             </span>
-            <em data-status-tone={statusTone(missionStatus)}>{statusLabel(missionStatus)}</em>
+            <em data-status-tone={statusTone(missionStatus)}>{mobileStatusLabel(missionStatus)}</em>
             <button
               type="button"
               data-kordyn-v2-mobile-evidence-trigger
@@ -535,7 +539,7 @@ function MobileMissionHome({ data, truth, selection, onSelect, onOpenDialog, onO
                 <div key={stageId} data-stage-id={stageId} data-stage-state={normalized} data-stage-connector={connector}>
                   <span>{complete ? <CircleCheck size={16} aria-label="complete" /> : index + 1}</span>
                   <strong>{label}</strong>
-                  <small>{statusLabel(currentStatus)}</small>
+                  <small>{mobileStatusLabel(currentStatus)}</small>
                 </div>
               );
             })}
@@ -597,7 +601,7 @@ function MobileMissionHome({ data, truth, selection, onSelect, onOpenDialog, onO
           <div key={`${row.type}:${row.id}`}>
             <CircleCheck size={18} aria-hidden="true" />
             <span><strong>{row.title}</strong><small>{row.subtitle}</small></span>
-            <em>{statusLabel(row.status)}</em>
+            <em>{mobileStatusLabel(row.status)}</em>
           </div>
         )) : completedProjectionAvailable ? <p>当前没有已完成的 Mission 或 Agent 运行。</p> : null}
       </section>
@@ -689,10 +693,11 @@ export function KordynV2Root({ api, lang }) {
     setEvidenceRequest((current) => ({
       panel,
       details: Array.isArray(request?.details) ? request.details : null,
+      selection,
       token: (current?.token || 0) + 1,
       trigger
     }));
-  }, []);
+  }, [selection]);
 
   const identity = useMemo(() => identityTruth(data), [data]);
   const supportContext = useMemo(() => buildAiSupportContext({

@@ -134,7 +134,7 @@ export function MobileShell({
       </div>
       <MobileSheet
         panel={panel}
-        selection={selection}
+        selection={panel === "evidence" ? evidenceRequest?.selection : selection}
         supportContext={supportContext}
         initialEvidenceTab={evidenceTab}
         evidenceDetails={evidenceRequest?.details}

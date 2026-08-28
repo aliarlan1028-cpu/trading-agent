@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import KordynV2Root from "../src/kordynV2/entry.jsx";
 import { parseJsonResponseText } from "../src/jsonResponseProvenance.js";
@@ -11,6 +11,8 @@ import {
   KORDYN_V2_ATTENTION_RISK_ONLY_EMPTY_FIXTURE_JSON,
   KORDYN_V2_CONSISTENT_NORMAL_FRESH_FIXTURE_JSON,
   KORDYN_V2_EMPTY_MISSION_FIXTURE_JSON,
+  KORDYN_V2_EVIDENCE_REFRESH_INITIAL_FIXTURE_JSON,
+  KORDYN_V2_EVIDENCE_REFRESH_NEXT_FIXTURE_JSON,
   KORDYN_V2_EMERGENCY_STALE_CONTRADICTION_FIXTURE_JSON,
   KORDYN_V2_KILL_NORMAL_CONTRADICTION_FIXTURE_JSON,
   KORDYN_V2_LONG_CONTENT_FIXTURE_JSON,
@@ -26,6 +28,8 @@ import {
   KORDYN_V2_PENDING_FALSE_CONTRADICTION_FIXTURE_JSON,
   KORDYN_V2_PENDING_HEALTH_FIXTURE_JSON,
   KORDYN_V2_PARTIAL_RECENT_FIXTURE_JSON,
+  KORDYN_V2_POSITION_MIRRORS_FIXTURE_JSON,
+  KORDYN_V2_POSITION_MIRRORS_RAW_COUNT,
   KORDYN_V2_PRODUCTION_FIXTURE_JSON,
   KORDYN_V2_RECONCILIATION_STALE_CONTRADICTION_FIXTURE_JSON,
   KORDYN_V2_REDUCE_NORMAL_CONTRADICTION_FIXTURE_JSON,
@@ -69,25 +73,46 @@ const fixtureJson = ({
   "attention-both-empty": KORDYN_V2_ATTENTION_BOTH_EMPTY_FIXTURE_JSON,
   "attention-present-partial": KORDYN_V2_ATTENTION_PRESENT_PARTIAL_FIXTURE_JSON,
   "recent-partial": KORDYN_V2_PARTIAL_RECENT_FIXTURE_JSON,
+  "position-mirrors": KORDYN_V2_POSITION_MIRRORS_FIXTURE_JSON,
+  "evidence-refresh": KORDYN_V2_EVIDENCE_REFRESH_INITIAL_FIXTURE_JSON,
+  "evidence-refresh-null": KORDYN_V2_EMPTY_MISSION_FIXTURE_JSON,
   "selection-outside-slice": KORDYN_V2_SELECTION_OUTSIDE_SLICE_FIXTURE_JSON
 })[scenario] || KORDYN_V2_PRODUCTION_FIXTURE_JSON;
 const data = parseJsonResponseText(fixtureJson);
+const refreshedData = ["evidence-refresh", "evidence-refresh-null"].includes(scenario)
+  ? parseJsonResponseText(KORDYN_V2_EVIDENCE_REFRESH_NEXT_FIXTURE_JSON)
+  : null;
 const calls = { actions: 0, sections: [] };
-const api = {
-  data,
-  action: async () => { calls.actions += 1; return { ok: true }; },
-  ensureSection: async (section, options = {}) => {
-    calls.sections.push({ section, force: options.force === true });
-    return data;
-  },
-  refresh: async () => data,
-  notify: () => {},
-  toast: "",
-  busy: false,
-  connectionError: scenario === "health-adverse" ? "fixture transport unavailable" : ""
-};
 
 window.__kordynV2BrowserCalls = calls;
 window.__kordynV2BrowserScenario = scenario;
-createRoot(document.getElementById("root")).render(<KordynV2Root api={api} lang="zh" switchLang={() => {}} />);
+window.__kordynV2RawPositionMirrorCount = KORDYN_V2_POSITION_MIRRORS_RAW_COUNT;
+
+function BrowserHarness() {
+  const [browserData, setBrowserData] = useState(data);
+  const api = useMemo(() => ({
+    data: browserData,
+    action: async () => { calls.actions += 1; return { ok: true }; },
+    ensureSection: async (section, options = {}) => {
+      calls.sections.push({ section, force: options.force === true });
+      return browserData;
+    },
+    refresh: async () => browserData,
+    notify: () => {},
+    toast: "",
+    busy: false,
+    connectionError: scenario === "health-adverse" ? "fixture transport unavailable" : ""
+  }), [browserData]);
+
+  useEffect(() => {
+    window.__kordynV2ApplyLiveRefresh = refreshedData
+      ? () => setBrowserData(refreshedData)
+      : null;
+    return () => { window.__kordynV2ApplyLiveRefresh = null; };
+  }, []);
+
+  return <KordynV2Root api={api} lang="zh" switchLang={() => {}} />;
+}
+
+createRoot(document.getElementById("root")).render(<BrowserHarness />);
 window.requestAnimationFrame(() => { window.__kordynV2ShellReady = true; });

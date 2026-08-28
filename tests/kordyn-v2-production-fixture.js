@@ -1,3 +1,5 @@
+import { normalizePositionsForUi } from "../server/positionView.mjs";
+
 export const KORDYN_V2_PRODUCTION_FIXTURE_JSON = JSON.stringify({
   revision: 41,
   source: "Read-only exchange projection",
@@ -344,6 +346,137 @@ export const KORDYN_V2_SELECTION_OUTSIDE_SLICE_FIXTURE_JSON = JSON.stringify({
     { id: "trace-canonical-plan", workspaceId: "ai", objectType: "Watch", objectId: "watch-canonical-outside", stage: "Plan", status: "complete", detail: "Canonical target plan", evidenceId: "evidence-canonical-plan" },
     { id: "trace-canonical-guard", workspaceId: "ai", objectType: "Watch", objectId: "watch-canonical-outside", stage: "Guard", status: "complete", detail: "Canonical target guard", evidenceId: "evidence-canonical-guard" },
     { id: "trace-canonical-execute", workspaceId: "ai", objectType: "Watch", objectId: "watch-canonical-outside", stage: "Execute", status: "waiting", detail: "Canonical target execute", evidenceId: "evidence-canonical-execute" }
+  ]
+});
+
+const productionPositionMirrors = [
+  {
+    id: "engine-btc-long",
+    accountId: "fixture-account",
+    exchange: "OKX",
+    source: "execution_engine",
+    symbol: "BTC/USDT",
+    direction: "long",
+    quantity: 0.05,
+    unrealizedPnl: 8.5,
+    status: "open",
+    updatedAt: "2026-08-27T07:29:50Z"
+  },
+  {
+    id: "rest-btc-long",
+    accountId: "fixture-account",
+    exchange: "OKX",
+    source: "exchange_rest",
+    instId: "BTC-USDT-SWAP",
+    posSide: "long",
+    coinSize: 0.05,
+    markPx: 68000,
+    pnl: 123.45,
+    status: "open",
+    exchangeObservedAt: "2026-08-27T07:30:00Z"
+  },
+  {
+    id: "ws-btc-long",
+    accountId: "fixture-account",
+    exchange: "OKX",
+    source: "exchange_ws",
+    instId: "BTC-USDT-SWAP",
+    posSide: "long",
+    coinSize: 0.05,
+    markPx: 67950,
+    pnl: 120.25,
+    status: "open",
+    exchangeObservedAt: "2026-08-27T07:29:59Z"
+  }
+];
+
+export const KORDYN_V2_POSITION_MIRRORS_RAW_COUNT = productionPositionMirrors.length;
+export const KORDYN_V2_POSITION_MIRRORS_FIXTURE_JSON = JSON.stringify({
+  revision: 69,
+  source: "Server-normalized production position projection",
+  asOf: "2026-08-27T07:30:00Z",
+  user: { id: "fixture-user-position-mirrors", name: "K0" },
+  resourceState: { chat: "loaded" },
+  portfolio: {
+    totalEquityUsdt: 28640.72,
+    availableMarginUsdt: 13870.1,
+    marginSyncedAt: "2026-08-27T07:30:00Z",
+    source: "Server-normalized production position projection"
+  },
+  positions: normalizePositionsForUi(productionPositionMirrors),
+  accountSnapshots: [{ id: "snapshot-position-mirrors", status: "ok", createdAt: "2026-08-27T07:30:00Z" }],
+  automationState: { mode: "observe", runtimeStatus: "normal", blockerDetails: [] },
+  system: { killSwitch: false, reduceOnlyMode: false, riskStatus: "normal", dataFreshnessState: "fresh" },
+  portfolioRisk: { status: "normal" },
+  currentRiskSnapshot: { controls: { killSwitch: false, reduceOnly: false, riskStatus: "normal" } },
+  watchTriggers: [{ id: "watch-position-mirrors", title: "BTC production position audit", symbol: "BTC/USDT", status: "active" }],
+  agentRuns: [],
+  tradePlans: [],
+  pendingActions: [],
+  riskIncidents: [],
+  traces: []
+});
+
+const evidenceRefreshBase = {
+  source: "Read-only evidence refresh projection",
+  user: { id: "fixture-user-evidence-refresh", name: "K0" },
+  resourceState: { chat: "loaded" },
+  portfolio: {
+    totalEquityUsdt: 28640.72,
+    availableMarginUsdt: 13870.1,
+    marginSyncedAt: "2026-08-27T07:31:00Z",
+    source: "Read-only evidence refresh projection"
+  },
+  positions: [],
+  accountSnapshots: [{ id: "snapshot-evidence-refresh", status: "ok", createdAt: "2026-08-27T07:31:00Z" }],
+  automationState: { mode: "observe", runtimeStatus: "normal", blockerDetails: [] },
+  system: { killSwitch: false, reduceOnlyMode: false, riskStatus: "normal", dataFreshnessState: "fresh" },
+  portfolioRisk: { status: "normal" },
+  currentRiskSnapshot: { controls: { killSwitch: false, reduceOnly: false, riskStatus: "normal" } },
+  agentRuns: [],
+  tradePlans: [],
+  pendingActions: [],
+  riskIncidents: []
+};
+
+export const KORDYN_V2_EVIDENCE_REFRESH_INITIAL_FIXTURE_JSON = JSON.stringify({
+  ...evidenceRefreshBase,
+  revision: 70,
+  watchTriggers: [{
+    id: "watch-evidence-rev-a",
+    title: "ETH evidence revision A",
+    symbol: "ETH/USDT",
+    status: "active",
+    version: "revision-a",
+    thesis: "Immutable thesis A",
+    strategyName: "Immutable Strategy A",
+    knowledgeSource: "Immutable Knowledge A",
+    capabilities: ["行情 A", "风控 A"],
+    eventWindow: "A window"
+  }],
+  traces: [
+    { id: "trace-a-sense", workspaceId: "ai", objectType: "Watch", objectId: "watch-evidence-rev-a", stage: "Sense", status: "complete", detail: "Immutable proof A", evidenceId: "evidence-a" }
+  ]
+});
+
+export const KORDYN_V2_EVIDENCE_REFRESH_NEXT_FIXTURE_JSON = JSON.stringify({
+  ...evidenceRefreshBase,
+  revision: 71,
+  asOf: "2026-08-27T07:32:00Z",
+  watchTriggers: [{
+    id: "watch-evidence-rev-b",
+    title: "BTC evidence revision B",
+    symbol: "BTC/USDT",
+    status: "active",
+    version: "revision-b",
+    thesis: "Fresh thesis B",
+    strategyName: "Fresh Strategy B",
+    knowledgeSource: "Fresh Knowledge B",
+    capabilities: ["行情 B", "风控 B"],
+    eventWindow: "B window"
+  }],
+  traces: [
+    { id: "trace-b-sense", workspaceId: "ai", objectType: "Watch", objectId: "watch-evidence-rev-b", stage: "Sense", status: "complete", detail: "Fresh proof B", evidenceId: "evidence-b" }
   ]
 });
 

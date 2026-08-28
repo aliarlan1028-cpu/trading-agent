@@ -1042,6 +1042,7 @@ async function readMobileGeometry(cdp) {
         stageProjection:[...root.querySelectorAll('.kordynV2MobileMissionStages > [data-stage-id]')].map((node) => ({
           id:node.getAttribute('data-stage-id'),
           label:node.querySelector('strong')?.textContent.trim() || null,
+          statusText:node.querySelector('small')?.textContent.trim() || null,
           status:node.getAttribute('data-stage-state'),
           connector:node.getAttribute('data-stage-connector'),
           connectorPaint:getComputedStyle(node, '::after').backgroundColor
@@ -1475,6 +1476,34 @@ async function verifyMobileStates(cdp, pageUrl) {
 }
 
 async function verifyMobileReviewStates(cdp, pageUrl) {
+  await setViewport(cdp, `${pageUrl}?scenario=position-mirrors`, 390, 844, "mobile");
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-mobile-account-impact]')", "server-normalized production position projection");
+  const positionImpact = await evaluate(cdp, `(() => {
+    const section = document.querySelector('[data-kordyn-v2-mobile-account-impact]');
+    const facts = Object.fromEntries([...section.querySelectorAll(':scope > dl > div')].map((row) => [row.querySelector('dt')?.textContent.trim(), row.querySelector('dd')?.textContent.trim()]));
+    const row = section.querySelector('.kordynV2MobilePositionRow');
+    return {
+      rawMirrorCount:window.__kordynV2RawPositionMirrorCount,
+      facts,
+      positionRows:section.querySelectorAll('.kordynV2MobilePositionRow').length,
+      symbol:row?.querySelector('span:nth-child(2) strong')?.textContent.trim() || null,
+      quantity:row?.querySelector('span:nth-child(2) small')?.textContent.trim() || null,
+      notional:row?.querySelector('span:nth-child(3) strong')?.textContent.trim() || null,
+      fabricatesZero:[...section.querySelectorAll('dd, strong')].some((node) => node.textContent.trim() === '0.00'),
+      actions:window.__kordynV2BrowserCalls.actions
+    };
+  })()`);
+  contractEqual("server overview projection dedupes REST/WS/engine mirrors before real Root Account Impact", positionImpact, {
+    rawMirrorCount: 3,
+    facts: { "持仓数量": "1", "总持仓价值": "3,400.00", "未实现盈亏": "123.45" },
+    positionRows: 1,
+    symbol: "BTC/USDT",
+    quantity: "多 · 0.05",
+    notional: "3,400.00",
+    fabricatesZero: false,
+    actions: 0
+  });
+
   await setViewport(cdp, `${pageUrl}?scenario=recent-partial`, 390, 844, "mobile");
   await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-mobile-recent]')", "partial Recent projection");
   const recent = await evaluate(cdp, `(() => {
@@ -1528,6 +1557,94 @@ async function verifyMobileReviewStates(cdp, pageUrl) {
     { id: "execute", label: "执行", status: "waiting", connector: "unavailable" },
     { id: "monitor", label: "等待回踩", status: "complete", connector: "none" }
   ]);
+  contractEqual("canonical waiting is translated in the Chinese Mobile Mission while semantics stay waiting", partial.foundation.stageProjection.find((stage) => stage.id === "execute"), {
+    ...partial.foundation.stageProjection.find((stage) => stage.id === "execute"),
+    statusText: "等待",
+    status: "waiting"
+  });
+}
+
+async function verifyMobileEvidenceRefreshSnapshot(cdp, pageUrl) {
+  await setViewport(cdp, `${pageUrl}?scenario=evidence-refresh`, 390, 844, "mobile");
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2SelectedId === 'watch-evidence-rev-a'", "initial evidence selection revision A");
+  await click(cdp, '[data-kordyn-v2-mobile-evidence-trigger]');
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-mobile-sheet=evidence]')", "revision A evidence sheet");
+  await evaluate(cdp, "window.__kordynV2ApplyLiveRefresh()");
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2SelectedId === 'watch-evidence-rev-b'", "background selection refreshes to revision B");
+
+  const readEvidence = async () => await evaluate(cdp, `(() => ({
+    shellSelectedId:document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2SelectedId || null,
+    identity:document.querySelector('.kordynV2MobileSheetIdentity')?.textContent.trim() || null,
+    active:document.querySelector('[data-kordyn-v2-evidence-tab][aria-selected=true]')?.getAttribute('data-kordyn-v2-evidence-tab') || null,
+    details:[...document.querySelectorAll('.kordynV2MobileDecisionFacts dd')].map((node) => node.textContent.trim()),
+    context:Object.fromEntries([...document.querySelectorAll('.kordynV2MobileContextFacts > div')].map((row) => [row.querySelector('dt')?.textContent.trim(), row.querySelector('dd')?.textContent.trim()])),
+    proof:[...document.querySelectorAll('.kordynV2MobileProofStages li')].map((row) => row.textContent.trim()),
+    inert:document.querySelector('[data-kordyn-v2-mobile-background]')?.hasAttribute('inert') || false,
+    actions:window.__kordynV2BrowserCalls.actions
+  }))()`);
+
+  contractEqual("open evidence keeps one immutable selection snapshot after live Root refresh", await readEvidence(), {
+    shellSelectedId: "watch-evidence-rev-b",
+    identity: "Watch / watch-evidence-rev-a",
+    active: "details",
+    details: ["Immutable Strategy A", "Immutable Knowledge A", "行情 A / 风控 A", "A window", "Unavailable"],
+    context: {},
+    proof: [],
+    inert: true,
+    actions: 0
+  });
+  await click(cdp, '[data-kordyn-v2-evidence-tab="context"]');
+  const contextA = await readEvidence();
+  contractEqual("open evidence Context retains revision A", {
+    identity: contextA.identity,
+    object: contextA.context["对象"],
+    version: contextA.context["版本"],
+    actions: contextA.actions
+  }, { identity: "Watch / watch-evidence-rev-a", object: "watch-evidence-rev-a", version: "revision-a", actions: 0 });
+  await click(cdp, '[data-kordyn-v2-evidence-tab="proof"]');
+  const proofA = await readEvidence();
+  contractEqual("open evidence Proof retains revision A", {
+    identity: proofA.identity,
+    ownsA: proofA.proof.some((row) => row.includes("Immutable proof A")),
+    ownsB: proofA.proof.some((row) => row.includes("Fresh proof B")),
+    actions: proofA.actions
+  }, { identity: "Watch / watch-evidence-rev-a", ownsA: true, ownsB: false, actions: 0 });
+  await pressKey(cdp, "Escape");
+  await waitForExpression(cdp, "!document.querySelector('[data-kordyn-v2-mobile-sheet]') && document.activeElement === document.querySelector('[data-kordyn-v2-mobile-evidence-trigger]')", "snapshot evidence focus return");
+  await click(cdp, '[data-kordyn-v2-mobile-evidence-trigger]');
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-mobile-sheet=evidence]')", "reopened revision B evidence sheet");
+  const reopened = await readEvidence();
+  contractEqual("reopened evidence atomically adopts refreshed revision B", {
+    identity: reopened.identity,
+    details: reopened.details,
+    inert: reopened.inert,
+    actions: reopened.actions
+  }, {
+    identity: "Watch / watch-evidence-rev-b",
+    details: ["Fresh Strategy B", "Fresh Knowledge B", "行情 B / 风控 B", "B window", "Unavailable"],
+    inert: true,
+    actions: 0
+  });
+  await pressKey(cdp, "Escape");
+
+  await setViewport(cdp, `${pageUrl}?scenario=evidence-refresh-null`, 390, 844, "mobile");
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2SelectedId === 'none'", "initial null evidence selection");
+  await click(cdp, '[data-kordyn-v2-mobile-evidence-trigger]');
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-mobile-sheet=evidence]')", "null-selection evidence sheet");
+  await evaluate(cdp, "window.__kordynV2ApplyLiveRefresh()");
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2SelectedId === 'watch-evidence-rev-b'", "null-selection background refresh");
+  contractEqual("explicit null evidence snapshot never falls through to a later live selection", await evaluate(cdp, `(() => ({
+    identity:document.querySelector('.kordynV2MobileSheetIdentity')?.textContent.trim() || null,
+    details:[...document.querySelectorAll('.kordynV2MobileDecisionFacts dd')].map((node) => node.textContent.trim()),
+    inert:document.querySelector('[data-kordyn-v2-mobile-background]')?.hasAttribute('inert') || false,
+    actions:window.__kordynV2BrowserCalls.actions
+  }))()`), {
+    identity: "Unavailable / Unavailable",
+    details: ["Unavailable", "Unavailable", "Unavailable", "Unavailable", "Unavailable"],
+    inert: true,
+    actions: 0
+  });
+  await pressKey(cdp, "Escape");
 }
 
 async function verifyMobileSelectionDisclosure(cdp, pageUrl) {
@@ -1726,6 +1843,7 @@ try {
     await verifyMobileStates(cdp, pageUrl);
     await verifyMobileReviewStates(cdp, pageUrl);
     await verifyMobileSelectionDisclosure(cdp, pageUrl);
+    await verifyMobileEvidenceRefreshSnapshot(cdp, pageUrl);
     const longContentResults = [];
     for (const [width, height] of mobileViewports) {
       longContentResults.push(await verifyMobileLongContentSupport(cdp, pageUrl, width, height));
