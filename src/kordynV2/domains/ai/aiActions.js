@@ -9,8 +9,14 @@ const validIdentifier = (value) => typeof value === "string"
   && value === value.trim()
   && !/[\p{White_Space}\p{Cc}]/u.test(value);
 
+function arrayClassification(value) {
+  try { return Array.isArray(value); } catch { return null; }
+}
+
 function plainObject(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  if (!value || typeof value !== "object") return false;
+  const array = arrayClassification(value);
+  if (array !== false) return false;
   try {
     const prototype = Object.getPrototypeOf(value);
     return prototype === Object.prototype || prototype === null;
@@ -24,7 +30,7 @@ const validRequiredText = (value, { singleLine = false } = {}) => typeof value =
   && !(singleLine ? /[\u0000-\u001f\u007f]/u : /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u).test(value);
 
 function tagsSnapshot(value) {
-  if (!Array.isArray(value)) return null;
+  if (arrayClassification(value) !== true) return null;
   let descriptors;
   try { descriptors = Object.getOwnPropertyDescriptors(value); } catch { return null; }
   const lengthDescriptor = Object.hasOwn(descriptors, "length") ? descriptors.length : null;

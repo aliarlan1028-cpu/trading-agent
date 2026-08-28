@@ -235,6 +235,28 @@ test("intelligence memory writes a stable descriptor snapshot instead of a mutab
   assert.equal(proxyGets, 0);
 });
 
+test("revoked memory payload and tags proxies return the exact frozen invalid result without writes", () => {
+  let writes = 0;
+  const ai = createAiActions({
+    action: async () => { writes += 1; return { ok: true }; }
+  });
+  const expected = ai.rememberIntelligence(null);
+  const revokedPayload = Proxy.revocable({ title: "CPI", content: "context" }, {});
+  const revokedTags = Proxy.revocable(["intel"], {});
+  const nestedPayload = { title: "CPI", content: "context", tags: revokedTags.proxy };
+  revokedPayload.revoke();
+  revokedTags.revoke();
+
+  let payloadResult;
+  let tagsResult;
+  assert.doesNotThrow(() => { payloadResult = ai.rememberIntelligence(revokedPayload.proxy); });
+  assert.doesNotThrow(() => { tagsResult = ai.rememberIntelligence(nestedPayload); });
+  assert.equal(Object.isFrozen(expected), true);
+  assert.equal(payloadResult, expected);
+  assert.equal(tagsResult, expected);
+  assert.equal(writes, 0);
+});
+
 test("createV2Actions exposes the frozen AI adapter without changing namespace identity", () => {
   const actions = createV2Actions({ action: async () => ({}), confirm: async () => false });
 
