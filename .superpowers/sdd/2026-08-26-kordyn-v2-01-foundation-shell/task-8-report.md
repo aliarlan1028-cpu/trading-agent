@@ -2,17 +2,77 @@
 
 ## Status
 
+- Independent scoped re-review fix round 2: implemented and verified in `63cb1e6b5e88f8ad4cc56cc96d397a76fff05aea` (`fix(kordyn-v2): bind mobile details to selection`).
 - Independent review fix round 1: implemented and verified in `32f945eae44aadaa94e3e9f0a6008f52bff6b4bd` (`fix(kordyn-v2): close mobile foundation review findings`).
 - Earlier Task 8 implementation/report commits: `ba11087b63286153bcc4b1d8a1f8628ed64872e0`, `d99fa23d701d4914f2fcaba4c752616ed6586b77`.
 - Branch: `codex/kordyn-v2-rebuild`; required base: `342278a01c2194e9791a3065297263d10e920993`.
-- Independent review input: Needs fixes, `0 Critical / 5 Important / 2 Minor`.
+- Latest scoped re-review input: visual gate cleared at `390/430`, with `0 Critical / 2 Important / 0 Minor` behavior findings remaining.
 - Foundation boundary preserved: no Plan 02 work, merge, push, deploy, cutover, default enablement, route, API, write, permission, or production fixture was added.
-- Plan 02 remains blocked pending independent re-review.
+- Plan 02 remains blocked pending independent verification of round 2.
 
-## Findings closed
+## Round 2 scoped re-review
 
-1. The governed Mobile Mission evidence sheet now opens on `详情` and exposes all five loaded decision facts: strategy, knowledge source, capability, event, and selected-position impact. Context and Proof remain available from the same sheet and the same canonical selection.
-2. Recent completeness now requires all three authoritative sources to be arrays. A real partial fixture fails closed to visible `Unavailable` instead of claiming an authoritative empty result.
+The scoped re-review correctly invalidated the round-1 report's unqualified “same canonical selection” and “all seven findings closed” claims. Those claims are supported only after the following round-2 tests and production fix.
+
+### Round 2 strict RED
+
+Tests and real production-shaped fixtures were written before the round-2 production edit.
+
+Command:
+
+```text
+node tests/run-kordyn-v2-shell-browser.mjs --mobile-only
+```
+
+Valid RED result after correcting an over-narrow Proof-row test expectation: exit `1`, three semantic failures.
+
+```text
+partial Recent keeps known rows but visibly discloses unavailable completeness:
+  expected {"completeness":"unavailable","warning":"Unavailable","rows":1,"actions":0}
+  received {"completeness":"unavailable","warning":null,"rows":1,"actions":0}
+
+explicit outside-slice selection owns the visible Mission projection:
+  selectedId was watch-canonical-outside
+  expected LINK / LINK canonical outside-slice Mission / Canonical LINK thesis / Canonical Strategy 11 / CPI · 12h
+  received BTC / Sliced Agent run 1 / Unrelated visible row 1 / Unavailable / Unavailable
+
+governed Details uses exactly the outside-slice canonical selection:
+  identity was Watch / watch-canonical-outside
+  expected Canonical Strategy 11, Canonical Knowledge 11, 行情 / 市场结构 / 审计, CPI · 12h, short 3.5
+  received Unavailable for all five Details facts
+
+3 !== 0
+```
+
+This proves the failure at the rendered production boundary: selection identity/Context/Proof were canonical while the Mission and Details source still came from unrelated sliced row zero. It also proves that a known completed row plus one absent expected source lacked visible partial disclosure.
+
+### Round 2 minimal production fix
+
+- `MobileMissionHome` now uses a matching Mission row only when its id equals the canonical selected id. When a valid selection lies outside the sliced rows, it uses `selection.object.raw/title/context`; `rows[0]` is retained only when there is no canonical selected id.
+- Incomplete Recent sources always render a visible `Unavailable` status while retaining any real completed rows. The real Chrome assertion verifies both the row and warning have non-zero rendered geometry and are not `display:none`/`visibility:hidden`.
+- The regression clicks a `需要你` candidate whose Watch is beyond ten sliced Agent rows, then verifies Mission symbol/title/signal, all three first-viewport facts, all five governed Details facts, Context id, Proof id/target trace, and zero actions.
+
+### Round 2 GREEN
+
+Command:
+
+```text
+node tests/run-kordyn-v2-shell-browser.mjs --mobile-only
+```
+
+Exit `0`:
+
+```text
+KORDYN V2 mobile shell browser PASS 390x844:nav=4,focus=3,overflow=0,targets=44 430x932:nav=4,focus=3,overflow=0,targets=44 states=5 long-content=2 screenshots=0
+KORDYN V2 mobile geometry 390:stateBottom=782,navTop=782,reserve=62,workspaceMin=44.0,headerBottom=214,missionTop=248,needsTop=418,impactTop=506,recentTop=635,recentRowsBottom=726,promptTop=730,sheet=225-782,proofScroll=419/571 | 430:stateBottom=870,navTop=870,reserve=62,workspaceMin=44.0,headerBottom=214,missionTop=248,needsTop=448,impactTop=547,recentTop=698,recentRowsBottom=799,promptTop=808,sheet=255-870,proofScroll=477/571 transition=ai/intelligence:operationsCenter
+```
+
+The cleared default visual geometry is byte-for-byte/landmark unchanged. Round 2 changes only selection behavior and the conditional partial-source status.
+
+## Cumulative findings now locally closed
+
+1. The governed Mobile Mission evidence sheet opens on `详情` and exposes all five loaded decision facts: strategy, knowledge source, capability, event, and selected-position impact. The outside-slice interaction proves Mission, Details, Context, and Proof use exactly the same canonical selected id and source.
+2. Recent completeness requires all three authoritative sources to be arrays. A real partial fixture with one completed row and one absent source proves the row remains rendered while visible `Unavailable` prevents a complete/authoritative claim.
 3. `MobileShell` no longer forces every domain to Full Truth. Only the approved AI Mission location explicitly requests Full; canonical compact Assets and critical Governance remain intact.
 4. Mobile stages now use the canonical `Sense → Plan → Guard → Execute → Monitor` identity and `快扫 / 结构 / 风控 / 执行 / 等待回踩` labels. Connector paint derives only from the real current-stage status; unavailable/waiting never looks complete and blocked is distinct.
 5. The Mobile Mission now preserves an outer `AI 交易员` runtime frame and a real nested Mission card. The evidence action is secondary, stage/fact type is at least `11px`, and the unchanged hard geometry remains: outer height `>=190px`, inner height `>=148px`, real nested Mission top `<250px` at both sizes.
@@ -132,7 +192,7 @@ KORDYN V2 mobile geometry 390:stateBottom=782,navTop=782,reserve=62,workspaceMin
 
 The runner renders/clicks the actual `KordynV2Root`; it covers four roots, five AI-local destinations, notification, Details/Context/Proof, keyboard tab navigation, Escape/pointer close, AI 客服, prompt, canonical selection, modal inertness/focus return, partial Recent, unavailable/partial stages, five non-happy states, long content, `44px` targets, no overflow, and zero production writes.
 
-## Files changed in fix round 1
+## Files changed
 
 Production:
 
@@ -160,6 +220,15 @@ Evidence/ledger:
 - `.impeccable/review/kordyn-v2/foundation-compare/mobile-ai-mission-home--{390x844,430x932}--{overlay,difference,geometry}`
 
 Normalized references were regenerated deterministically but remain byte-identical. Desktop captures were not refreshed and their hashes remain unchanged.
+
+Round 2 changed only:
+
+- `src/kordynV2/KordynV2Root.jsx`
+- `tests/kordyn-v2-production-fixture.js`
+- `tests/kordyn-v2-shell-browser.jsx`
+- `tests/run-kordyn-v2-shell-browser.mjs`
+
+The comparison command produced no round-2 evidence diff because the cleared default screenshots and geometry did not change.
 
 ## Screenshots and hashes
 
@@ -221,7 +290,7 @@ The immutable approved source, both normalized references, both fresh base captu
 - The Details sheet exposes all five real decision facts; Context and Proof remain accessible in the same bounded modal. Proof scroll is `419/571` at 390 and `477/571` at 430.
 - All three tabs are touch-sized and visibly participate in a single governed surface; keyboard focus and tabpanel labelling were separately verified in Chrome.
 - Expected local visual differences remain because production shows authoritative fixture facts and explicitly omits the unsupported concept daily PnL. Human region review, not pixel similarity, remains authoritative.
-- Fix-round self-review finds all seven independent findings closed. Independent re-review is still outstanding.
+- Round-2 real Chrome now proves the two scoped behavior findings closed locally in addition to the earlier visual/interaction fixes. Independent verification of round 2 is still outstanding.
 
 ## Full gates
 
@@ -231,7 +300,7 @@ The immutable approved source, both normalized references, both fresh base captu
 node scripts/run-tests-isolated.mjs tests/kordyn-v2-architecture.test.mjs tests/kordyn-v2-cutover.test.mjs tests/kordyn-v2-state.test.mjs tests/kordyn-v2-actions.test.mjs tests/kordyn-v2-shell.test.mjs tests/kordyn-v2-ai-support.test.mjs tests/kordyn-v2-concept-manifest.mjs tests/kordyn-v2-performance.test.mjs
 ```
 
-Exit `0`: `65` tests, `65` pass, `0` fail; duration `1157.244ms`; isolated data root cleaned.
+Exit `0`: `65` tests, `65` pass, `0` fail; duration `1365.39925ms`; isolated data root cleaned.
 
 ### Full repository suite
 
@@ -239,7 +308,7 @@ Exit `0`: `65` tests, `65` pass, `0` fail; duration `1157.244ms`; isolated data 
 npm test
 ```
 
-Exit `0`: `1746` tests, `1746` pass, `0` fail, `0` skipped; duration `8949.625333ms`; isolated data root cleaned.
+Exit `0`: `1746` tests, `1746` pass, `0` fail, `0` skipped; duration `9686.155667ms`; isolated data root cleaned.
 
 ### Lint
 
@@ -255,7 +324,7 @@ Exit `0`; ESLint output contained no findings.
 npm run build
 ```
 
-Exit `0`; Vite `6.4.3`, `1674` modules transformed, built in `1.03s`. The existing greater-than-500k chunk advisory remains the only advisory.
+Exit `0`; Vite `6.4.3`, `1674` modules transformed, built in `1.18s`. The existing greater-than-500k chunk advisory remains the only advisory.
 
 ### Combined Desktop/APP real Chrome shell
 
@@ -282,8 +351,8 @@ node tests/run-kordyn-v2-performance-build.mjs
 Exit `0`, `PASS`:
 
 ```text
-public:   js=375164 gzip=123898 css=15304 gzip=3746
-AI shell: js=458401 gzip=147323 css=76273 gzip=14164 loadsLegacyProductStyles=false
+public:   js=375164 gzip=123897 css=15304 gzip=3746
+AI shell: js=458496 gzip=147363 css=76273 gzip=14164 loadsLegacyProductStyles=false
 legacy:   js=46 gzip=66 css=843660 gzip=141376
 budgets: publicCss 15304/40000 pass; publicJs 375164/450000 pass; aiShellCss 76273/180000 pass
 integrity: source unchanged; checked-in dist unchanged; temporary output removed
@@ -335,7 +404,7 @@ Output: empty; exit `0` before the implementation/evidence commit and again befo
 
 ## Concerns and boundary
 
-- Independent re-review has not yet cleared the fix; Plan 02 remains blocked.
+- Independent verification has not yet cleared round 2; Plan 02 remains blocked.
 - Physical-device and live-payload variance have not been verified. Real Chrome covers both required viewport geometries, a production-shaped happy fixture, a real partial Recent shape, unavailable/partial stage shapes, and the existing non-happy states.
 - Pixel differences remain diagnostic only and include expected real-data/unsupported-PnL differences.
 - Vite continues to emit the existing chunk-size advisory; all explicit performance budgets pass and V2 still does not load legacy product CSS.
