@@ -831,6 +831,91 @@ test("array descriptor failure closes only that collection without escaping the 
   assert.deepEqual(model.intelligence.map((row) => row.id), ["news-survives"]);
 });
 
+test("failed shared object aliases are omitted once regardless of property insertion order", () => {
+  const project = (reverse) => {
+    let descriptorAttempts = 0;
+    const sharedObject = new Proxy({ privateFact: "must not project" }, {
+      ownKeys(target) {
+        descriptorAttempts += 1;
+        if (descriptorAttempts === 1) throw new Error("first object descriptor attempt fails");
+        return Reflect.ownKeys(target);
+      }
+    });
+    const row = {
+      id: "news-shared-alias",
+      title: "Shared alias containment",
+      sibling: { status: "survives" },
+      literalUndefined: undefined
+    };
+    const aliases = reverse
+      ? [["beta", sharedObject], ["alpha", sharedObject]]
+      : [["alpha", sharedObject], ["beta", sharedObject]];
+    for (let index = 0; index < aliases.length; index += 1) {
+      Object.defineProperty(row, aliases[index][0], {
+        enumerable: true,
+        value: aliases[index][1]
+      });
+    }
+
+    let model;
+    assert.doesNotThrow(() => {
+      model = buildAiDomainModel({ newsFeed: [row] });
+    });
+    const projected = model.intelligence[0];
+    assert.equal(descriptorAttempts, 1);
+    for (const key of ["alpha", "beta"]) {
+      assert.equal(Object.hasOwn(projected, key), false);
+    }
+    assert.equal(projected.sibling.status, "survives");
+    assert.equal(Object.hasOwn(projected, "literalUndefined"), true);
+    assert.equal(projected.literalUndefined, undefined);
+    return projected;
+  };
+
+  assert.deepEqual(project(false), project(true));
+});
+
+test("failed shared array aliases are omitted once regardless of property insertion order", () => {
+  const project = (reverse) => {
+    let descriptorAttempts = 0;
+    const sharedArray = new Proxy(["must not project"], {
+      ownKeys(target) {
+        descriptorAttempts += 1;
+        if (descriptorAttempts === 1) throw new Error("first array descriptor attempt fails");
+        return Reflect.ownKeys(target);
+      }
+    });
+    const row = {
+      id: "news-shared-array-alias",
+      title: "Shared array alias containment",
+      sibling: { status: "survives" }
+    };
+    const aliases = reverse
+      ? [["listBeta", sharedArray], ["listAlpha", sharedArray]]
+      : [["listAlpha", sharedArray], ["listBeta", sharedArray]];
+    for (let index = 0; index < aliases.length; index += 1) {
+      Object.defineProperty(row, aliases[index][0], {
+        enumerable: true,
+        value: aliases[index][1]
+      });
+    }
+
+    let model;
+    assert.doesNotThrow(() => {
+      model = buildAiDomainModel({ newsFeed: [row] });
+    });
+    const projected = model.intelligence[0];
+    assert.equal(descriptorAttempts, 1);
+    for (const key of ["listAlpha", "listBeta"]) {
+      assert.equal(Object.hasOwn(projected, key), false);
+    }
+    assert.equal(projected.sibling.status, "survives");
+    return projected;
+  };
+
+  assert.deepEqual(project(false), project(true));
+});
+
 test("revoked root records and arrays fail closed without escaping the model", () => {
   const revokedRecord = Proxy.revocable({}, {});
   const revokedArray = Proxy.revocable([], {});

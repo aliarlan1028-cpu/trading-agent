@@ -3,6 +3,7 @@ import { buildEventRows } from "../../../viewData.js";
 
 const unavailable = "Unavailable";
 const invalidArrayShape = Symbol("kordynV2.invalidArrayShape");
+const failedClone = Symbol("kordynV2.failedClone");
 const hasOwn = (value, key) => Boolean(value && Object.hasOwn(value, key));
 const nonEmptyText = (value) => typeof value === "string" && value.trim().length > 0;
 const canonicalIdentifier = (value) => nonEmptyText(value)
@@ -27,17 +28,22 @@ function plainRecord(value) {
   }
 }
 
-function cloneData(value, seen = new WeakMap(), retainArrayShapeMarker = true) {
+function cloneDataValue(value, seen, retainArrayShapeMarker) {
   if (value === null || ["string", "number", "boolean", "undefined"].includes(typeof value)) return value;
+  if (!["object", "function"].includes(typeof value)) return failedClone;
+  if (seen.has(value)) return seen.get(value);
+  const fail = () => {
+    seen.set(value, failedClone);
+    return failedClone;
+  };
   const array = arrayClassification(value);
-  if (array === null) return undefined;
+  if (array === null) return fail();
   if (array) {
-    if (seen.has(value)) return seen.get(value);
     let descriptors;
-    try { descriptors = Object.getOwnPropertyDescriptors(value); } catch { return undefined; }
+    try { descriptors = Object.getOwnPropertyDescriptors(value); } catch { return fail(); }
     const lengthDescriptor = Object.hasOwn(descriptors, "length") ? descriptors.length : null;
     const length = lengthDescriptor && "value" in lengthDescriptor ? lengthDescriptor.value : null;
-    if (!Number.isInteger(length) || length < 0 || length > 0xffffffff) return undefined;
+    if (!Number.isInteger(length) || length < 0 || length > 0xffffffff) return fail();
     const copy = new Array(length);
     seen.set(value, copy);
     const keys = Reflect.ownKeys(descriptors);
@@ -53,10 +59,12 @@ function cloneData(value, seen = new WeakMap(), retainArrayShapeMarker = true) {
         continue;
       }
       if (!("value" in descriptor)) continue;
+      const child = cloneDataValue(descriptor.value, seen, retainArrayShapeMarker);
+      if (child === failedClone) continue;
       Object.defineProperty(copy, key, {
         configurable: true,
         enumerable: true,
-        value: cloneData(descriptor.value, seen, retainArrayShapeMarker),
+        value: child,
         writable: true
       });
     }
@@ -65,22 +73,30 @@ function cloneData(value, seen = new WeakMap(), retainArrayShapeMarker = true) {
     }
     return copy;
   }
-  if (!plainRecord(value)) return undefined;
-  if (seen.has(value)) return seen.get(value);
+  let prototype;
+  try { prototype = Object.getPrototypeOf(value); } catch { return fail(); }
+  if (prototype !== Object.prototype && prototype !== null) return fail();
+  let descriptors;
+  try { descriptors = Object.getOwnPropertyDescriptors(value); } catch { return fail(); }
   const copy = Object.create(null);
   seen.set(value, copy);
-  let descriptors;
-  try { descriptors = Object.getOwnPropertyDescriptors(value); } catch { return undefined; }
   for (const [key, descriptor] of Object.entries(descriptors)) {
     if (!descriptor.enumerable || !("value" in descriptor)) continue;
+    const child = cloneDataValue(descriptor.value, seen, retainArrayShapeMarker);
+    if (child === failedClone) continue;
     Object.defineProperty(copy, key, {
       configurable: true,
       enumerable: true,
-      value: cloneData(descriptor.value, seen, retainArrayShapeMarker),
+      value: child,
       writable: true
     });
   }
   return copy;
+}
+
+function cloneData(value, seen = new WeakMap(), retainArrayShapeMarker = true) {
+  const cloned = cloneDataValue(value, seen, retainArrayShapeMarker);
+  return cloned === failedClone ? undefined : cloned;
 }
 
 function ownCanonicalIdentifier(value, key) {
