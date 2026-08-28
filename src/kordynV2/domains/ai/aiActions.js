@@ -7,7 +7,7 @@ const noOp = () => undefined;
 const validIdentifier = (value) => typeof value === "string"
   && value.length > 0
   && value === value.trim()
-  && !/[\s\u0000-\u001f\u007f]/u.test(value);
+  && !/[\p{White_Space}\p{Cc}]/u.test(value);
 
 function plainObject(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -23,39 +23,54 @@ const validRequiredText = (value, { singleLine = false } = {}) => typeof value =
   && value.trim().length > 0
   && !(singleLine ? /[\u0000-\u001f\u007f]/u : /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u).test(value);
 
-function validTags(value) {
-  if (!Array.isArray(value) || value.length > 32) return false;
+function tagsSnapshot(value) {
+  if (!Array.isArray(value)) return null;
   let descriptors;
-  try { descriptors = Object.getOwnPropertyDescriptors(value); } catch { return false; }
-  for (let index = 0; index < value.length; index += 1) {
+  try { descriptors = Object.getOwnPropertyDescriptors(value); } catch { return null; }
+  const lengthDescriptor = Object.hasOwn(descriptors, "length") ? descriptors.length : null;
+  const length = lengthDescriptor && "value" in lengthDescriptor ? lengthDescriptor.value : null;
+  if (!Number.isInteger(length) || length < 0 || length > 32) return null;
+  const keys = Reflect.ownKeys(descriptors);
+  if (keys.some((key) => key !== "length" && (typeof key !== "string" || !/^(?:0|[1-9]\d*)$/u.test(key) || Number(key) >= length))) {
+    return null;
+  }
+  const snapshot = new Array(length);
+  for (let index = 0; index < length; index += 1) {
     const descriptor = descriptors[index];
-    if (!descriptor || !("value" in descriptor)) return false;
+    if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) return null;
     const tag = descriptor.value;
     if (typeof tag !== "string" || tag.length > 80 || tag !== tag.trim() || !tag || /[\u0000-\u001f\u007f]/u.test(tag)) {
-      return false;
+      return null;
     }
+    snapshot[index] = tag;
   }
-  return true;
+  return Object.freeze(snapshot);
 }
 
-function validMemoryPayload(value) {
-  if (!plainObject(value)) return false;
+function memoryPayloadSnapshot(value) {
+  if (!plainObject(value)) return null;
   let descriptors;
-  try { descriptors = Object.getOwnPropertyDescriptors(value); } catch { return false; }
+  try { descriptors = Object.getOwnPropertyDescriptors(value); } catch { return null; }
   const allowed = new Set(["layer", "title", "content", "tags", "source"]);
   const keys = Reflect.ownKeys(descriptors);
-  if (keys.some((key) => typeof key !== "string" || !allowed.has(key))) return false;
-  if (keys.some((key) => !("value" in descriptors[key]))) return false;
-  if (!Object.hasOwn(descriptors, "title") || !Object.hasOwn(descriptors, "content")) return false;
-  if (!validRequiredText(descriptors.title.value, { singleLine: true })) return false;
-  if (!validRequiredText(descriptors.content.value)) return false;
-  if (Object.hasOwn(descriptors, "tags") && !validTags(descriptors.tags.value)) return false;
+  if (keys.some((key) => typeof key !== "string" || !allowed.has(key))) return null;
+  if (keys.some((key) => !("value" in descriptors[key]) || !descriptors[key].enumerable)) return null;
+  if (!Object.hasOwn(descriptors, "title") || !Object.hasOwn(descriptors, "content")) return null;
+  if (!validRequiredText(descriptors.title.value, { singleLine: true })) return null;
+  if (!validRequiredText(descriptors.content.value)) return null;
+  const tags = Object.hasOwn(descriptors, "tags") ? tagsSnapshot(descriptors.tags.value) : null;
+  if (Object.hasOwn(descriptors, "tags") && tags === null) return null;
   for (const key of ["layer", "source"]) {
     if (Object.hasOwn(descriptors, key) && (!validIdentifier(descriptors[key].value) || descriptors[key].value.length > 64)) {
-      return false;
+      return null;
     }
   }
-  return true;
+  const snapshot = {};
+  for (const key of ["layer", "title", "content", "tags", "source"]) {
+    if (!Object.hasOwn(descriptors, key)) continue;
+    snapshot[key] = key === "tags" ? tags : descriptors[key].value;
+  }
+  return Object.freeze(snapshot);
 }
 
 export function createAiActions({
@@ -103,9 +118,10 @@ export function createAiActions({
       {}
     );
   };
-  const rememberIntelligence = (payload) => validMemoryPayload(payload)
-    ? runAction("/api/agent/memory", payload)
-    : invalidInput;
+  const rememberIntelligence = (payload) => {
+    const snapshot = memoryPayloadSnapshot(payload);
+    return snapshot ? runAction("/api/agent/memory", snapshot) : invalidInput;
+  };
   const refreshEvents = () => runAction("/api/event-sources/refresh", {});
   const translatePoster = (value) => typeof value === "string" && value.trim()
     ? runAction("/api/posters/translate", { text: value })

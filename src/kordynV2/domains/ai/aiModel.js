@@ -5,7 +5,9 @@ const unavailable = "Unavailable";
 const list = (value) => Array.isArray(value) ? value : [];
 const hasOwn = (value, key) => Boolean(value && Object.hasOwn(value, key));
 const nonEmptyText = (value) => typeof value === "string" && value.trim().length > 0;
-const canonicalIdentifier = (value) => nonEmptyText(value) && value === value.trim();
+const canonicalIdentifier = (value) => nonEmptyText(value)
+  && value === value.trim()
+  && !/[\p{White_Space}\p{Cc}]/u.test(value);
 
 function plainRecord(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -21,22 +23,50 @@ function cloneData(value, seen = new WeakMap()) {
   if (value === null || ["string", "number", "boolean", "undefined"].includes(typeof value)) return value;
   if (Array.isArray(value)) {
     if (seen.has(value)) return seen.get(value);
-    const copy = [];
+    let descriptors;
+    try { descriptors = Object.getOwnPropertyDescriptors(value); } catch { return undefined; }
+    const lengthDescriptor = Object.hasOwn(descriptors, "length") ? descriptors.length : null;
+    const length = lengthDescriptor && "value" in lengthDescriptor ? lengthDescriptor.value : null;
+    if (!Number.isInteger(length) || length < 0 || length > 0xffffffff) return undefined;
+    const copy = new Array(length);
     seen.set(value, copy);
-    for (const item of value) copy.push(cloneData(item, seen));
+    const keys = Object.keys(descriptors);
+    for (let offset = 0; offset < keys.length; offset += 1) {
+      const key = keys[offset];
+      const descriptor = descriptors[key];
+      const index = /^(?:0|[1-9]\d*)$/u.test(key) ? Number(key) : -1;
+      if (!descriptor.enumerable || !("value" in descriptor) || !Number.isInteger(index) || index < 0 || index >= length) continue;
+      Object.defineProperty(copy, key, {
+        configurable: true,
+        enumerable: true,
+        value: cloneData(descriptor.value, seen),
+        writable: true
+      });
+    }
     return copy;
   }
   if (!plainRecord(value)) return undefined;
   if (seen.has(value)) return seen.get(value);
-  const copy = {};
+  const copy = Object.create(null);
   seen.set(value, copy);
   let descriptors;
   try { descriptors = Object.getOwnPropertyDescriptors(value); } catch { return undefined; }
   for (const [key, descriptor] of Object.entries(descriptors)) {
     if (!descriptor.enumerable || !("value" in descriptor)) continue;
-    copy[key] = cloneData(descriptor.value, seen);
+    Object.defineProperty(copy, key, {
+      configurable: true,
+      enumerable: true,
+      value: cloneData(descriptor.value, seen),
+      writable: true
+    });
   }
   return copy;
+}
+
+function ownCanonicalIdentifier(value, key) {
+  return plainRecord(value) && hasOwn(value, key) && canonicalIdentifier(value[key])
+    ? value[key]
+    : null;
 }
 
 function deepFreeze(value, seen = new WeakSet()) {
@@ -54,6 +84,63 @@ function validEventInput(row) {
   return plainRecord(row) && [row.title, row.shortTitle, row.name].some(nonEmptyText);
 }
 
+function eventIdentity(row) {
+  return ownCanonicalIdentifier(row, "id") || ownCanonicalIdentifier(row, "eventId");
+}
+
+function eventMoment(row) {
+  if (hasOwn(row, "due") && row.due) return row.due;
+  return hasOwn(row, "startAt") ? row.startAt : null;
+}
+
+function eventLabels(row) {
+  return [hasOwn(row, "title") ? row.title : null, hasOwn(row, "shortTitle") ? row.shortTitle : null]
+    .filter(nonEmptyText);
+}
+
+function sameEventTruth(left, right) {
+  if (eventMoment(left) !== eventMoment(right)) return false;
+  const rightLabels = eventLabels(right);
+  return eventLabels(left).some((label) => rightLabels.includes(label));
+}
+
+function normalizedEventCandidate(row, official) {
+  try {
+    const normalized = buildEventRows(official
+      ? { marketCalendarEvents: [row] }
+      : { events: [row] });
+    return plainRecord(normalized[0]) ? normalized[0] : null;
+  } catch {
+    return null;
+  }
+}
+
+function reconcileEventRows(events, officialEvents) {
+  const candidates = [
+    ...events.map((row) => normalizedEventCandidate(row, false)),
+    ...officialEvents.map((row) => normalizedEventCandidate(row, true))
+  ].filter(Boolean);
+  const identityCounts = new Map();
+  for (const row of candidates) {
+    const identity = eventIdentity(row);
+    if (identity !== null) identityCounts.set(identity, (identityCounts.get(identity) || 0) + 1);
+  }
+  const groups = [];
+  for (const row of candidates) {
+    const group = groups.find((existing) => existing.some((candidate) => sameEventTruth(candidate, row)));
+    if (group) group.push(row);
+    else groups.push([row]);
+  }
+  return groups.map((group) => {
+    const uniquelyIdentified = group.filter((row) => {
+      const identity = eventIdentity(row);
+      return identity !== null && identityCounts.get(identity) === 1;
+    });
+    const row = uniquelyIdentified.length === 1 ? uniquelyIdentified[0] : group[0];
+    return { row, identity: uniquelyIdentified.length === 1 ? eventIdentity(row) : null };
+  });
+}
+
 function safePatrolView(message) {
   if (!plainRecord(message)) return null;
   const safeMessage = cloneData(message);
@@ -62,7 +149,7 @@ function safePatrolView(message) {
 }
 
 function uniquelyIdentified(rows) {
-  const valid = list(rows).filter((row) => row && typeof row === "object" && canonicalIdentifier(row.id));
+  const valid = list(rows).filter((row) => ownCanonicalIdentifier(row, "id") !== null);
   const counts = new Map();
   for (const row of valid) counts.set(row.id, (counts.get(row.id) || 0) + 1);
   return valid.filter((row) => counts.get(row.id) === 1);
@@ -140,11 +227,11 @@ export function missionStagePresentation(stage) {
 
 function linkedPlanFor(run, plans) {
   const runId = run.id;
-  const declaredPlanId = canonicalIdentifier(run.tradePlanId) ? run.tradePlanId : null;
+  const declaredPlanId = ownCanonicalIdentifier(run, "tradePlanId");
   if (declaredPlanId !== null) {
     return plans.find((plan) => plan.id === declaredPlanId) || null;
   }
-  const linked = plans.filter((plan) => canonicalIdentifier(plan.agentRunId) && plan.agentRunId === runId);
+  const linked = plans.filter((plan) => ownCanonicalIdentifier(plan, "agentRunId") === runId);
   return linked.length === 1 ? linked[0] : null;
 }
 
@@ -155,9 +242,10 @@ function countEvidenceIds(value) {
 }
 
 function traceTargetsRun(trace, runId) {
-  if (!trace || typeof trace !== "object") return false;
-  if (trace.agentRunId === runId || trace.runId === runId) return true;
-  return trace.objectId === runId
+  if (!plainRecord(trace)) return false;
+  if (ownCanonicalIdentifier(trace, "agentRunId") === runId || ownCanonicalIdentifier(trace, "runId") === runId) return true;
+  return ownCanonicalIdentifier(trace, "objectId") === runId
+    && hasOwn(trace, "objectType")
     && /^agent[ _-]?run$/i.test(String(trace.objectType || "").trim());
 }
 
@@ -238,31 +326,28 @@ export function buildAiDomainModel(data = {}) {
   const messages = Array.isArray(source.chatMessages)
     ? source.chatMessages
     : list(source.messages);
-  const eventInput = {
-    events: list(source.events).map((row) => cloneData(row)).filter(validEventInput),
-    marketCalendarEvents: list(source.marketCalendarEvents).map((row) => cloneData(row)).filter(validEventInput)
-  };
-  const events = buildEventRows(eventInput)
-    .filter((row) => row && typeof row === "object" && !Array.isArray(row))
-    .map((row) => intelligenceProjection(row, {
-      id: canonicalIdentifier(row.id) ? row.id : row.eventId,
+  const eventInput = list(source.events).map((row) => cloneData(row)).filter(validEventInput);
+  const officialEventInput = list(source.marketCalendarEvents).map((row) => cloneData(row)).filter(validEventInput);
+  const events = reconcileEventRows(eventInput, officialEventInput)
+    .map(({ row, identity }) => intelligenceProjection(row, {
+      id: identity,
       kind: "event",
       source: "events"
     }));
   const news = list(source.newsFeed)
     .filter((row) => row && typeof row === "object" && !Array.isArray(row))
-    .map((row) => intelligenceProjection(row, { id: row.id, kind: "news", source: "newsFeed" }));
+    .map((row) => intelligenceProjection(row, { id: ownCanonicalIdentifier(row, "id"), kind: "news", source: "newsFeed" }));
   const movers = list(source.marketMovers?.movers)
     .filter((row) => row && typeof row === "object" && !Array.isArray(row))
     .map((row) => intelligenceProjection(row, {
-      id: canonicalIdentifier(row.id) ? row.id : canonicalIdentifier(row.instId) ? row.instId : row.symbol,
+      id: ownCanonicalIdentifier(row, "id") || ownCanonicalIdentifier(row, "instId") || ownCanonicalIdentifier(row, "symbol"),
       kind: "market_mover",
       source: "marketMovers.movers"
     }));
   const knowledgeSource = Array.isArray(source.knowledge) ? source.knowledge : list(source.knowledge?.sources);
   const knowledge = knowledgeSource
     .filter((row) => row && typeof row === "object" && !Array.isArray(row))
-    .map((row) => intelligenceProjection(row, { id: row.id, kind: "knowledge", source: "knowledge" }));
+    .map((row) => intelligenceProjection(row, { id: ownCanonicalIdentifier(row, "id"), kind: "knowledge", source: "knowledge" }));
 
   return Object.freeze({
     missions: Object.freeze(uniquelyIdentified(source.agentRuns)

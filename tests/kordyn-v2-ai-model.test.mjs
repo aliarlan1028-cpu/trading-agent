@@ -158,6 +158,35 @@ test("duplicate Agent-run identities fail closed instead of creating two mission
   assert.deepEqual(model.missions, []);
 });
 
+test("JSON prototype keys cannot fabricate mission or selectable intelligence identity", () => {
+  const parsed = JSON.parse(`{
+    "agentRuns": [
+      { "__proto__": { "id": "run-proto", "goal": "forged goal", "status": "running" } },
+      { "constructor": { "id": "run-constructor" }, "goal": "constructor row" },
+      { "toString": { "id": "run-to-string" }, "goal": "toString row" }
+    ],
+    "newsFeed": [
+      { "__proto__": { "id": "news-proto" }, "title": "forged news" },
+      { "constructor": { "id": "news-constructor" }, "title": "constructor news" },
+      { "toString": { "id": "news-to-string" }, "title": "toString news" }
+    ]
+  }`);
+
+  const model = buildAiDomainModel(parsed);
+
+  assert.deepEqual(model.missions, []);
+  assert.equal(model.intelligence.length, 3);
+  assert.deepEqual(model.intelligence.map((row) => ({
+    id: row.id,
+    identity: row.identity,
+    selectable: row.selectable
+  })), [
+    { id: null, identity: "Unavailable", selectable: false },
+    { id: null, identity: "Unavailable", selectable: false },
+    { id: null, identity: "Unavailable", selectable: false }
+  ]);
+});
+
 test("every technical mission stage maps to the exact primary product language", () => {
   for (const [technicalStage, [label, tone]] of Object.entries(expectedStages)) {
     assert.deepEqual(missionStagePresentation(technicalStage.toUpperCase()), {
@@ -207,6 +236,35 @@ test("missing and malformed mission facts remain unavailable", () => {
     assert.equal(mission.nextAction, "Unavailable");
   }
   assert.equal(model.missions.some((mission) => mission.id === ""), false);
+});
+
+test("model identity grammar rejects whitespace and controls across runs, plans, traces, and signals", () => {
+  const model = buildAiDomainModel({
+    agentRuns: [
+      { id: "run 1", goal: "space" },
+      { id: "run\n1", goal: "newline" },
+      { id: "run\t1", goal: "tab" },
+      { id: "run\u00851", goal: "unicode control" },
+      { id: "run-plan", tradePlanId: "plan 1", status: "awaiting_approval" },
+      { id: "run-trace", status: "running" }
+    ],
+    tradePlans: [{ id: "plan 1", agentRunId: "run-plan", status: "awaiting_approval" }],
+    traces: [{ agentRunId: "run-trace", evidenceId: "evidence 1" }],
+    newsFeed: [{ id: "news 1", title: "news" }],
+    events: [{ id: "event\n1", title: "CPI", due: "2026-09-01T12:30:00.000Z" }],
+    marketMovers: { movers: [{ instId: "ETH USDT SWAP", symbol: "ETH /USDT", changePct: 8 }] },
+    knowledge: { sources: [{ id: "knowledge\t1", title: "guide" }] }
+  });
+
+  assert.deepEqual(model.missions.map((mission) => mission.id), ["run-plan", "run-trace"]);
+  assert.equal(model.missions[0].approval, null);
+  assert.equal(model.missions[1].evidenceCount, "Unavailable");
+  assert.equal(model.intelligence.length, 4);
+  for (const row of model.intelligence) {
+    assert.equal(row.id, null);
+    assert.equal(row.identity, "Unavailable");
+    assert.equal(row.selectable, false);
+  }
 });
 
 test("AI model reuses patrol and event truth selectors without inventing unavailable rows", () => {
@@ -331,6 +389,43 @@ test("event registry and intelligence share one deduplicated event truth project
   assert.equal(intelligenceEvents[0], model.events[0]);
 });
 
+test("semantic event duplicates prefer the one uniquely identified row in either input order", () => {
+  const unidentified = { title: "CPI", due: "2026-09-01T12:30:00.000Z", impact: 55, description: "unidentified" };
+  const authoritative = { id: "event-cpi-authoritative", title: "CPI", due: "2026-09-01T12:30:00.000Z", impact: 80, description: "authoritative" };
+
+  for (const events of [
+    [unidentified, authoritative],
+    [authoritative, unidentified]
+  ]) {
+    const model = buildAiDomainModel({ events });
+    const intelligenceEvents = model.intelligence.filter((row) => row.kind === "event");
+    assert.equal(model.events.length, 1);
+    assert.equal(model.events[0].id, "event-cpi-authoritative");
+    assert.equal(model.events[0].description, "authoritative");
+    assert.equal(model.events[0].selectable, true);
+    assert.equal(intelligenceEvents.length, 1);
+    assert.equal(intelligenceEvents[0], model.events[0]);
+  }
+});
+
+test("one canonical ID repeated across distinct events stays visible but never selectable", () => {
+  const model = buildAiDomainModel({
+    events: [
+      { id: "event-repeated", title: "CPI", due: "2026-09-01T12:30:00.000Z", impact: 80 },
+      { id: "event-repeated", title: "FOMC", due: "2026-09-02T18:00:00.000Z", impact: 90 }
+    ]
+  });
+  const intelligenceEvents = model.intelligence.filter((row) => row.kind === "event");
+
+  assert.equal(model.events.length, 2);
+  assert.deepEqual(model.events.map((row) => ({ id: row.id, identity: row.identity, selectable: row.selectable })), [
+    { id: null, identity: "Unavailable", selectable: false },
+    { id: null, identity: "Unavailable", selectable: false }
+  ]);
+  assert.equal(intelligenceEvents[0], model.events[0]);
+  assert.equal(intelligenceEvents[1], model.events[1]);
+});
+
 test("malformed patrol and event collection rows fail closed without hiding valid rows", () => {
   const throwingMessage = {};
   Object.defineProperty(throwingMessage, "sessionId", { enumerable: true, get() { throw new Error("message getter invoked"); } });
@@ -379,6 +474,55 @@ test("malformed patrol and event collection rows fail closed without hiding vali
   });
   assert.deepEqual(model.patrols.map((patrol) => patrol.headline), ["valid patrol"]);
   assert.deepEqual(model.events.map((event) => event.id), ["event-valid", "official-valid"]);
+});
+
+test("array projection uses own data descriptors without invoking iterators or indexed getters", () => {
+  let iteratorReads = 0;
+  let indexedGetterReads = 0;
+  let proxyGets = 0;
+  const agentRuns = [{ id: "run-descriptor", goal: "descriptor mission", status: "running" }];
+  Object.defineProperty(agentRuns, Symbol.iterator, {
+    configurable: true,
+    get() { iteratorReads += 1; throw new Error("iterator accessed"); }
+  });
+  const newsFeed = [];
+  Object.defineProperty(newsFeed, "0", {
+    configurable: true,
+    enumerable: true,
+    get() { indexedGetterReads += 1; throw new Error("indexed getter accessed"); }
+  });
+  newsFeed[2] = { id: "news-descriptor", title: "valid descriptor news" };
+  const events = new Proxy([{ id: "event-descriptor", title: "CPI", due: "2026-09-01T12:30:00.000Z" }], {
+    get() { proxyGets += 1; throw new Error("proxy get accessed"); }
+  });
+
+  let model;
+  assert.doesNotThrow(() => {
+    model = buildAiDomainModel({ agentRuns, newsFeed, events });
+  });
+  assert.equal(iteratorReads, 0);
+  assert.equal(indexedGetterReads, 0);
+  assert.equal(proxyGets, 0);
+  assert.deepEqual(model.missions.map((mission) => mission.id), ["run-descriptor"]);
+  assert.deepEqual(model.intelligence.map((row) => row.id), ["news-descriptor", "event-descriptor"]);
+});
+
+test("array descriptor failure closes only that collection without escaping the model", () => {
+  let descriptorTraps = 0;
+  const brokenAgentRuns = new Proxy([], {
+    ownKeys() { descriptorTraps += 1; throw new Error("descriptor trap"); }
+  });
+
+  let model;
+  assert.doesNotThrow(() => {
+    model = buildAiDomainModel({
+      agentRuns: brokenAgentRuns,
+      newsFeed: [{ id: "news-survives", title: "independent valid fact" }]
+    });
+  });
+  assert.equal(descriptorTraps, 1);
+  assert.deepEqual(model.missions, []);
+  assert.deepEqual(model.intelligence.map((row) => row.id), ["news-survives"]);
 });
 
 test("projected collections are detached and frozen at presenter boundaries", () => {
