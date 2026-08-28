@@ -1,4 +1,5 @@
 import { uiConfirm } from "../../confirm.jsx";
+import { createAiActions } from "../domains/ai/aiActions.js";
 
 const cancelled = Object.freeze({ ok: false, cancelled: true });
 const invalidKillSwitchState = Object.freeze({ ok: false, error: "invalid_kill_switch_state" });
@@ -12,8 +13,6 @@ export function createV2Actions({
   download = noOp,
   navigate = noOp
 } = {}) {
-  void notify;
-
   const protect = async (message, options, endpoint, payload) => {
     if (!await confirm(message, options)) return cancelled;
     return action(endpoint, payload);
@@ -45,7 +44,7 @@ export function createV2Actions({
   const runDownload = (...args) => download(...args);
 
   return Object.freeze({
-    ai: Object.freeze({}),
+    ai: createAiActions({ action, confirm, notify, download, navigate }),
     account: Object.freeze({}),
     assets: Object.freeze({}),
     governance: Object.freeze({}),
