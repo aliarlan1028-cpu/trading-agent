@@ -7,14 +7,14 @@
 - Current comparison scope: Foundation Plan 01 shared shell only.
 - Completed concept comparisons: `2 / 15` — Desktop AI Mission shell and Mobile AI Mission shell.
 - Pending domain implementation: `13 / 15` — no production comparison or fidelity claim is made for these surfaces.
-- Current self-review verdict: **Task 8 independent review fix round 3 is implemented and locally verified; independent round-3 re-review is still required, so Plan 02 remains blocked.**
+- Current independent verdict: **Task 8 APPROVE — 0 Critical / 0 Important / 0 Minor; visual 390/430 PASS.** The position Important was formally withdrawn after response-boundary verification. The Foundation gate is clear; Plan 02 is unblocked but has not been started.
 
 ## Staged concept coverage
 
 | Concept | Device | Domain / workspace | Targets | Foundation status |
 | --- | --- | --- | --- | --- |
 | `desktop-ai-mission-control` | Desktop | `ai / missions` | `1440x900`, `1180x800` | Compared — shared shell |
-| `mobile-ai-mission-home` | APP | `ai / missions` | `390x844`, `430x932` | Compared — Task 8 fix round 3; independent re-review pending |
+| `mobile-ai-mission-home` | APP | `ai / missions` | `390x844`, `430x932` | Compared — Task 8 independently approved; visual PASS |
 | `desktop-ai-signals` | Desktop | `ai / intelligence` | `1440x900`, `1180x800` | pending domain implementation |
 | `desktop-account-position` | Desktop | `account / positions` | `1440x900`, `1180x800` | pending domain implementation |
 | `desktop-assets-relationship` | Desktop | `assets / relationships` | `1440x900`, `1180x800` | pending domain implementation |
@@ -91,7 +91,7 @@ The approved `853x1844` source (`6e0eda474f6658ff9dbfcbc6b18d4503203a78ddb30e38a
 - The concept’s unsupported daily PnL is not fabricated. Production overview response boundaries already call `server/positionView.mjs::normalizePositionsForUi`, which merges engine/REST/WS mirrors and emits canonical `quantity=coinSize`, `pnl/unrealizedPnl`, and `notional=coinSize×mark`. A test-only integration sends three real raw mirrors through that existing server projection before mounting the real Root and proves one position, `123.45` PnL, `3,400.00` notional, and no fabricated `0.00`; no client schema or backend/API change was added.
 - Loaded pending-action/risk-incident identity remains canonical and read-only. Notification, four roots, all five AI-local destinations, prompt, AI 客服, and evidence navigation invoke zero production writes.
 
-Human fix-round self-review finds the round-1 seven findings, round-2 two findings, and round-3 locally actionable snapshot/translation findings addressed in production behavior and the two refreshed original-resolution views. Round-3 Important 1 is recorded as a reviewer false positive because the actual server response boundary already owns normalization, backed by the new integration contract. Pixel metrics remain diagnostic only. Physical-device and live-payload variance have not been independently verified; **Plan 02 remains blocked pending independent round-3 re-review.**
+Final independent review reports `APPROVE`, `0 Critical / 0 Important / 0 Minor`, and original-resolution visual PASS at both `390x844` and `430x932`. The round-3 position Important was formally withdrawn because the actual server response boundary already owns normalization, backed by the integration contract above. Pixel metrics remain diagnostic only. Physical-device and live-payload variance remain a recorded non-blocking limitation. **The Foundation gate is clear; Plan 02 is unblocked but was not started by Task 8.**
 
 ## Fresh isolated performance evidence
 
@@ -132,4 +132,4 @@ Completed freshly during Task 8:
 - hard scans found no `!important`, legacy stylesheet import, or production-fixture import under `src/kordynV2`;
 - `git diff --check`: exit `0` before report finalization.
 
-Successful mechanical gates and self-review do not substitute for the intentionally outstanding independent review; Plan 02 remains blocked.
+The final independent review supplements the mechanical gates with `APPROVE`, `0 Critical / 0 Important / 0 Minor`, and visual PASS at both required APP sizes. Plan 02 is unblocked by the Foundation gate but remains unstarted in this task.

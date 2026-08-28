@@ -3,13 +3,22 @@
 ## Status
 
 - Independent whole-task review fix round 3: implemented, verified, and committed in `561489a` (`fix(kordyn-v2): snapshot mobile evidence selection`).
+- Final independent Task 8 review: **APPROVE — 0 Critical / 0 Important / 0 Minor; visual 390/430 PASS.** The earlier position Important was formally withdrawn after response-boundary verification.
 - Independent scoped re-review fix round 2: implemented and verified in `63cb1e6b5e88f8ad4cc56cc96d397a76fff05aea` (`fix(kordyn-v2): bind mobile details to selection`).
 - Independent review fix round 1: implemented and verified in `32f945eae44aadaa94e3e9f0a6008f52bff6b4bd` (`fix(kordyn-v2): close mobile foundation review findings`).
 - Earlier Task 8 implementation/report commits: `ba11087b63286153bcc4b1d8a1f8628ed64872e0`, `d99fa23d701d4914f2fcaba4c752616ed6586b77`.
 - Branch: `codex/kordyn-v2-rebuild`; required base: `342278a01c2194e9791a3065297263d10e920993`.
-- Latest whole-task review input: visual gate remained cleared at `390/430`, with `0 Critical / 2 Important / 1 Minor` findings. One Important premise was disproved at the real production response boundary; the other Important and Minor were fixed and tested.
+- Final approved code/evidence commit: `561489a2a45332db3349f31c067972456a916a8c`; final pre-approval documentation HEAD: `9ab1673b023b2ac8787ff7d6bd8413bb0496badb`.
 - Foundation boundary preserved: no Plan 02 work, merge, push, deploy, cutover, default enablement, route, API, write, permission, or production fixture was added.
-- Plan 02 remains blocked pending independent verification of round 3.
+- The independent Task 8 gate is clear. Plan 02 is unblocked for subsequent authorized work but was **not started** in Task 8.
+
+## Final independent approval
+
+- Verdict: **APPROVE**.
+- Findings: `0 Critical / 0 Important / 0 Minor`.
+- Original-resolution visual verdict: `390x844 PASS`, `430x932 PASS`; no material APP Foundation Shell difference remains.
+- Position finding disposition: formally withdrawn. Independent response-boundary verification confirmed that production overview responses already pass engine/REST/WS mirrors through `normalizePositionsForUi` before `KordynV2Root`; the test-only real Root integration matches that boundary.
+- Release sequencing: Task 8 is independently cleared. Plan 02 is no longer blocked by the foundation gate, but this task did not begin Plan 02 or perform merge, push, deploy, cutover, or default enablement.
 
 ## Round 3 whole-task review
 
@@ -376,7 +385,7 @@ The immutable approved source, both normalized references, both fresh base captu
 - The Details sheet exposes all five real decision facts; Context and Proof remain accessible in the same bounded modal. Proof scroll is `419/571` at 390 and `477/571` at 430.
 - All three tabs are touch-sized and visibly participate in a single governed surface; keyboard focus and tabpanel labelling were separately verified in Chrome.
 - Expected local visual differences remain because production shows authoritative fixture facts and explicitly omits the unsupported concept daily PnL. Human region review, not pixel similarity, remains authoritative.
-- Round-2 real Chrome now proves the two scoped behavior findings closed locally in addition to the earlier visual/interaction fixes. Independent verification of round 2 is still outstanding.
+- Round-2 real Chrome proved the two scoped behavior findings closed locally in addition to the earlier visual/interaction fixes. That checkpoint's outstanding review state is superseded by the final independent Task 8 approval recorded above.
 
 ## Full gates
 
@@ -631,7 +640,7 @@ Round-3 changed files are the two production files above; `tests/kordyn-v2-produ
 
 ## Concerns and boundary
 
-- Independent verification has not yet cleared round 3; Plan 02 remains blocked.
+- Final independent verification cleared round 3 with `APPROVE`, `0 Critical / 0 Important / 0 Minor`, and visual PASS at both required APP sizes. Plan 02 is unblocked but not started.
 - Physical-device and live-payload variance have not been verified. Real Chrome covers both required viewport geometries, a production-shaped happy fixture, a real partial Recent shape, unavailable/partial stage shapes, and the existing non-happy states.
 - Pixel differences remain diagnostic only and include expected real-data/unsupported-PnL differences.
 - Vite continues to emit the existing chunk-size advisory; all explicit performance budgets pass and V2 still does not load legacy product CSS.
