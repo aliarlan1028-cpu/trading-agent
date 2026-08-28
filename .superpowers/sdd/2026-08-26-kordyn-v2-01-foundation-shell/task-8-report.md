@@ -2,13 +2,99 @@
 
 ## Status
 
+- Independent whole-task review fix round 3: implemented, verified, and committed in `561489a` (`fix(kordyn-v2): snapshot mobile evidence selection`).
 - Independent scoped re-review fix round 2: implemented and verified in `63cb1e6b5e88f8ad4cc56cc96d397a76fff05aea` (`fix(kordyn-v2): bind mobile details to selection`).
 - Independent review fix round 1: implemented and verified in `32f945eae44aadaa94e3e9f0a6008f52bff6b4bd` (`fix(kordyn-v2): close mobile foundation review findings`).
 - Earlier Task 8 implementation/report commits: `ba11087b63286153bcc4b1d8a1f8628ed64872e0`, `d99fa23d701d4914f2fcaba4c752616ed6586b77`.
 - Branch: `codex/kordyn-v2-rebuild`; required base: `342278a01c2194e9791a3065297263d10e920993`.
-- Latest scoped re-review input: visual gate cleared at `390/430`, with `0 Critical / 2 Important / 0 Minor` behavior findings remaining.
+- Latest whole-task review input: visual gate remained cleared at `390/430`, with `0 Critical / 2 Important / 1 Minor` findings. One Important premise was disproved at the real production response boundary; the other Important and Minor were fixed and tested.
 - Foundation boundary preserved: no Plan 02 work, merge, push, deploy, cutover, default enablement, route, API, write, permission, or production fixture was added.
-- Plan 02 remains blocked pending independent verification of round 2.
+- Plan 02 remains blocked pending independent verification of round 3.
+
+## Round 3 whole-task review
+
+### Production position authority: reviewer premise disproved
+
+No client normalizer, duplicate schema, backend route, or API change was added. Read-only source inspection confirmed that `server/index.mjs` calls the existing `server/positionView.mjs::normalizePositionsForUi` at the overview response boundaries consumed by `KordynV2Root`. That canonical production projection already:
+
+- groups engine, REST, and WS mirrors into one symbol/direction row;
+- gives REST/WS `coinSize` precedence and publishes it as UI `quantity`;
+- publishes authoritative `pnl` as `unrealizedPnl` and `pnl`;
+- derives `notional = coinSize × mark`.
+
+The required test-only integration starts from three real raw mirror shapes, passes them through the existing server normalizer, then publishes that result to the real `KordynV2Root`. It directly passed before production changes and proves `3` raw mirrors become `1` rendered position, aggregate/row notional is `3,400.00`, aggregate PnL is `123.45`, no `0.00` is fabricated, and the production action count stays zero. This closes the finding as a false positive without weakening the server-owned authority boundary.
+
+### Round 3 strict RED
+
+Tests and live-refresh fixtures were written before the production changes.
+
+Command:
+
+```text
+node tests/run-kordyn-v2-shell-browser.mjs --mobile-only
+```
+
+Exit `1`; the position integration contract passed directly, while these four expected failures remained:
+
+```text
+canonical waiting is translated in the Chinese Mobile Mission while semantics stay waiting:
+  expected statusText "等待", received "waiting"; data status remained "waiting"
+
+open evidence keeps one immutable selection snapshot after live Root refresh:
+  expected identity Watch / watch-evidence-rev-a
+  received identity Watch / watch-evidence-rev-b
+
+open evidence Context retains revision A:
+  expected watch-evidence-rev-a / revision-a
+  received watch-evidence-rev-b / revision-b
+
+open evidence Proof retains revision A:
+  expected ownsA=true / ownsB=false
+  received ownsA=false / ownsB=true
+
+4 !== 0
+```
+
+After the initial object/revision fix passed, self-review found that `evidenceRequest?.selection || selection` would still let an explicit null snapshot fall through to a future live selection. A dedicated real Root null-refresh contract was added before correcting it.
+
+Command:
+
+```text
+node tests/run-kordyn-v2-shell-browser.mjs --mobile-only
+```
+
+Exit `1`; one expected failure:
+
+```text
+explicit null evidence snapshot never falls through to a later live selection:
+  expected identity Unavailable / Unavailable
+  received identity Watch / watch-evidence-rev-b
+
+1 !== 0
+```
+
+### Round 3 minimal production fix
+
+- `requestProof` now atomically stores the current canonical `selection` with the Details tuple list and request token.
+- The open evidence sheet reads only `evidenceRequest.selection`; it no longer reads the live shell selection, and an explicit null snapshot remains null. The background may advance independently, but Details, identity, Context, and Proof retain one object id/revision for the modal lifetime. Closing and reopening captures the new selection.
+- Mobile-only status presentation maps canonical `waiting` to `等待`. The canonical status and `data-stage-state="waiting"` remain unchanged; Desktop continues through its unchanged label/render branch.
+
+### Round 3 GREEN
+
+Command:
+
+```text
+node tests/run-kordyn-v2-shell-browser.mjs --mobile-only
+```
+
+Exit `0`:
+
+```text
+KORDYN V2 mobile shell browser PASS 390x844:nav=4,focus=3,overflow=0,targets=44 430x932:nav=4,focus=3,overflow=0,targets=44 states=5 long-content=2 screenshots=0
+KORDYN V2 mobile geometry 390:stateBottom=782,navTop=782,reserve=62,workspaceMin=44.0,headerBottom=214,missionTop=248,needsTop=418,impactTop=506,recentTop=635,recentRowsBottom=726,promptTop=730,sheet=225-782,proofScroll=419/571 | 430:stateBottom=870,navTop=870,reserve=62,workspaceMin=44.0,headerBottom=214,missionTop=248,needsTop=448,impactTop=547,recentTop=698,recentRowsBottom=799,promptTop=808,sheet=255-870,proofScroll=477/571 transition=ai/intelligence:operationsCenter
+```
+
+The live-refresh regression verifies identity, revision, all five Details facts, Context, Proof, explicit null selection, close/reopen adoption, inertness, Escape focus return, and zero writes against the real Root.
 
 ## Round 2 scoped re-review
 
@@ -402,9 +488,150 @@ git diff --check
 
 Output: empty; exit `0` before the implementation/evidence commit and again before report commit.
 
+## Round 3 final fresh gates and evidence
+
+### Focused component and isolated suites
+
+```text
+node --test tests/kordyn-v2-shell.test.mjs
+```
+
+Exit `0`: `8` tests, `8` pass, `0` fail; duration `179.209833ms`.
+
+```text
+node scripts/run-tests-isolated.mjs tests/kordyn-v2-architecture.test.mjs tests/kordyn-v2-cutover.test.mjs tests/kordyn-v2-state.test.mjs tests/kordyn-v2-actions.test.mjs tests/kordyn-v2-shell.test.mjs tests/kordyn-v2-ai-support.test.mjs tests/kordyn-v2-concept-manifest.mjs tests/kordyn-v2-performance.test.mjs
+```
+
+Exit `0`: `65` tests, `65` pass, `0` fail; duration `1334.68575ms`; isolated root `/private/tmp/trading-agent-test-suite-UTSoem` cleaned.
+
+### Full repository, lint, and build
+
+```text
+npm test
+```
+
+Exit `0`:
+
+```text
+tests 1746
+pass 1746
+fail 0
+cancelled 0
+skipped 0
+todo 0
+duration_ms 9899.160333
+ISOLATED_TEST_DATA_ROOT_CLEANED=/private/tmp/trading-agent-test-suite-P63xDb
+```
+
+```text
+npm run lint
+```
+
+Exit `0`; ESLint produced no findings.
+
+```text
+npm run build
+```
+
+Exit `0`: Vite `6.4.3`, `1674` modules transformed, built in `1.18s`. The only advisory is the existing greater-than-500k chunk warning.
+
+### Combined and related real Chrome gates
+
+```text
+node tests/run-kordyn-v2-shell-browser.mjs
+```
+
+Exit `0`:
+
+```text
+KORDYN V2 desktop shell browser PASS 1440x900:nav=4,focus=3,overflow=0,mae=0.039474 1180x800:nav=4,focus=3,overflow=0,mae=0.043104 long-content=long-content screenshots=0
+KORDYN V2 mobile shell browser PASS 390x844:nav=4,focus=3,overflow=0,targets=44 430x932:nav=4,focus=3,overflow=0,targets=44 states=5 long-content=2 screenshots=0
+KORDYN V2 mobile geometry 390:stateBottom=782,navTop=782,reserve=62,workspaceMin=44.0,headerBottom=214,missionTop=248,needsTop=418,impactTop=506,recentTop=635,recentRowsBottom=726,promptTop=730,sheet=225-782,proofScroll=419/571 | 430:stateBottom=870,navTop=870,reserve=62,workspaceMin=44.0,headerBottom=214,missionTop=248,needsTop=448,impactTop=547,recentTop=698,recentRowsBottom=799,promptTop=808,sheet=255-870,proofScroll=477/571 transition=ai/intelligence:operationsCenter
+```
+
+Desktop render source and Desktop captures were unchanged.
+
+```text
+node tests/run-canonical-selection-browser.mjs && node tests/run-kordyn-v2-cutover-browser.mjs && node tests/run-zero-base-auth-browser.mjs
+```
+
+Exit `0` for all three: canonical pointer/keyboard/object routes passed; cutover/recovery reported `retry=1 legacy=1 api=0`; public/auth reported `PASS` at `1440x900`, `390x844`, and `430x932` with no overflow and all login/MFA/registration/modal/focus/Escape interactions.
+
+### Performance
+
+```text
+node tests/run-kordyn-v2-performance-build.mjs
+```
+
+Exit `0`, `PASS`:
+
+```text
+public:   js=375164 gzip=123896 css=15304 gzip=3746
+AI shell: js=458606 gzip=147392 css=76273 gzip=14164 loadsLegacyProductStyles=false
+legacy:   js=46 gzip=66 css=843660 gzip=141376
+budgets: publicCss 15304/40000 pass; publicJs 375164/450000 pass; aiShellCss 76273/180000 pass
+integrity: source unchanged; checked-in dist unchanged; temporary output removed
+```
+
+### Capture, comparison, hashes, and original-resolution observations
+
+```text
+KORDYN_V2_SCREENSHOT_DIR=.impeccable/review/kordyn-v2/foundation node tests/run-kordyn-v2-shell-browser.mjs --mobile-only
+```
+
+Exit `0`; `screenshots=7`, with the exact final geometry above.
+
+```text
+node scripts/compare-kordyn-v2-concepts.mjs --scope shell --screenshots .impeccable/review/kordyn-v2/foundation --output .impeccable/review/kordyn-v2/foundation-compare
+```
+
+Exit `0`:
+
+```json
+{"counts":{"concepts":15,"completedConcepts":2,"pendingConcepts":13,"comparisons":4,"artifacts":17},"releaseVerdict":"human region review required"}
+```
+
+Hashes:
+
+- immutable Mobile source: `6e0eda474f6658ff9dbfcbc6b18d4503203a78ddb30e38aa22b0760c1c902c9b`;
+- fresh `mobile-390x844.png`: `bdb125d64a5748e4fdb884a04bee21fe3b88d91ab1a78a4397f6f0736b745fce`;
+- fresh `mobile-430x932.png`: `e8162bcfdfa5d57453568253bc291f77317dd4281e922bf0d4b17785d992dafb`;
+- capture sidecar: `677db2d05eaf64cef4990417e2697d2712d8d39b89bf60c14a3539037dcb4f1d`;
+- comparison index: `6e308a1240683b17382665f2bb7e8b445f01ff096ce514df9670071e451923d6`;
+- 390 reference / overlay / difference / geometry: `2d2c24912b9843d1de183dbb66ebbbc9fd39c928874558c918eb51e406d6faff` / `110982c2d4df5b135412fb40a010d24a8286193d84ad8fc853f29f014d8e6384` / `e844e04611d46d68793426e8c63362bdb6fc9c0f64ebe4403ab5ecb85c124e48` / `fde007c8913e180ecaa07fb9ebec3a0b9094c12a211b3e1ab567f8b4c546d454`;
+- 430 reference / overlay / difference / geometry: `f3e8a97d69a54a9754c92b89fcba0c39821e7e88fbcd2ca37f24b2ece86d2049` / `8c59aef5bd5274c5fb1cc55f60a5fe6a79b76d925ebb4b7d60888fefce5d0c29` / `c7b1a244b997e2d68e06b08100f26d509b2667b5981e8fbfede00afb40192ffd` / `6661f5d1a710803366e880da34069e56c07198a24d6aacc416c8964d54c20738`.
+
+The approved source, both normalized references, both fresh base captures, both overlays, and both absolute differences were opened at original resolution. The cleared nested runtime/Mission hierarchy, readable typography, two visible Recent rows, prompt/support clearance, and height-aware `390/430` rhythm remain intact. The only intended default-pixel change is canonical `waiting` now rendering as `等待`; measured geometry is unchanged. Diagnostic pixel differences are `0.07915717727120013` at 390 and `0.07831707337757607` at 430; neither is a release threshold.
+
+### Detector, hard scan, diff check, and scope
+
+```text
+node /Users/ely/.codex/skills/impeccable/scripts/detect.mjs --json src/kordynV2/KordynV2Root.jsx src/kordynV2/shell/MobileShell.jsx
+```
+
+Exit `0`:
+
+```json
+[]
+```
+
+```text
+rg -n "!important|src/styles\\.css|productStyles|kordyn-v2-production-fixture" src/kordynV2 || true
+```
+
+Output empty. No backend or API file changed; the production diff is limited to `src/kordynV2/KordynV2Root.jsx` and `src/kordynV2/shell/MobileShell.jsx`.
+
+```text
+git diff --check
+```
+
+Exit `0`; output empty before implementation/evidence commit `561489a` and before this report commit.
+
+Round-3 changed files are the two production files above; `tests/kordyn-v2-production-fixture.js`, `tests/kordyn-v2-shell-browser.jsx`, and `tests/run-kordyn-v2-shell-browser.mjs`; the two Mobile base captures, capture sidecar, and changed Mobile comparison artifacts; this report and `docs/kordyn-v2-evidence.md`.
+
 ## Concerns and boundary
 
-- Independent verification has not yet cleared round 2; Plan 02 remains blocked.
+- Independent verification has not yet cleared round 3; Plan 02 remains blocked.
 - Physical-device and live-payload variance have not been verified. Real Chrome covers both required viewport geometries, a production-shaped happy fixture, a real partial Recent shape, unavailable/partial stage shapes, and the existing non-happy states.
 - Pixel differences remain diagnostic only and include expected real-data/unsupported-PnL differences.
 - Vite continues to emit the existing chunk-size advisory; all explicit performance budgets pass and V2 still does not load legacy product CSS.
