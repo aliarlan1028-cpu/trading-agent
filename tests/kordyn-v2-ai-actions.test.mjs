@@ -55,6 +55,7 @@ test("AI non-trading actions retain deployed request shapes and dependency resul
   const calls = [];
   const downloads = [];
   const navigations = [];
+  const memoryResult = Object.freeze({ id: "memory-1", stored: true });
   const memory = {
     layer: "semantic",
     title: "情报上下文：CPI",
@@ -63,7 +64,10 @@ test("AI non-trading actions retain deployed request shapes and dependency resul
     source: "intel"
   };
   const ai = createAiActions({
-    action: async (...args) => { calls.push(args); return { route: args[0], body: args[1] }; },
+    action: async (...args) => {
+      calls.push(args);
+      return args[0] === "/api/agent/memory" ? memoryResult : { route: args[0], body: args[1] };
+    },
     confirm: async () => true,
     download: (...args) => { downloads.push(args); return "download-result"; },
     navigate: (...args) => { navigations.push(args); return "navigate-result"; }
@@ -78,7 +82,8 @@ test("AI non-trading actions retain deployed request shapes and dependency resul
     ["/api/event-sources/refresh", {}],
     ["/api/posters/translate", { text: "BTC 计划复核" }]
   ]);
-  assert.deepEqual(remembered, { route: "/api/agent/memory", body: memory });
+  assert.equal(calls[0][1], memory);
+  assert.equal(remembered, memoryResult);
   assert.deepEqual(refreshed, { route: "/api/event-sources/refresh", body: {} });
   assert.deepEqual(translated, { route: "/api/posters/translate", body: { text: "BTC 计划复核" } });
   assert.equal(ai.downloadPoster("poster-node", "btc.png"), "download-result");
@@ -119,6 +124,68 @@ test("malformed AI action input cannot reach a production write", async () => {
   }
   assert.deepEqual(calls, []);
   assert.equal(confirmations, 0);
+});
+
+test("AI action identifiers reject internal whitespace and control characters before confirmation", async () => {
+  let confirmations = 0;
+  let writes = 0;
+  const ai = createAiActions({
+    action: async () => { writes += 1; return { ok: true }; },
+    confirm: async () => { confirmations += 1; return true; }
+  });
+
+  for (const result of [
+    await ai.approvePlan("plan 1"),
+    await ai.rejectPlan("plan\n1"),
+    await ai.cancelWatch("watch\t1"),
+    await ai.cancelWatch("watch-1", "BTC /USDT"),
+    await ai.cancelWatch("watch-1", "BTC\u0000/USDT")
+  ]) {
+    assert.deepEqual(result, { ok: false, error: "invalid_ai_action_input" });
+  }
+  assert.equal(confirmations, 0);
+  assert.equal(writes, 0);
+});
+
+test("intelligence memory rejects malformed and inherited payload facts before writing", async () => {
+  let confirmations = 0;
+  let writes = 0;
+  let accessorReads = 0;
+  const accessorPayload = {};
+  Object.defineProperties(accessorPayload, {
+    title: { enumerable: true, get() { accessorReads += 1; return "CPI"; } },
+    content: { enumerable: true, get() { accessorReads += 1; return "context"; } }
+  });
+  const inheritedPayload = Object.create({ title: "CPI", content: "context" });
+  const ai = createAiActions({
+    action: async () => { writes += 1; return { ok: true }; },
+    confirm: async () => { confirmations += 1; return true; }
+  });
+  const invalidPayloads = [
+    {},
+    new Date(),
+    [],
+    accessorPayload,
+    inheritedPayload,
+    { title: "CPI", content: " " },
+    { title: "CPI", content: "context", tags: "intel" },
+    { title: "CPI", content: "context", tags: ["intel", 7] },
+    { title: "CPI", content: "context", tags: [" intel"] },
+    { title: "CPI", content: "context", layer: 3 },
+    { title: "CPI", content: "context", layer: "semantic layer" },
+    { title: "CPI", content: "context", source: {} },
+    { title: "CPI", content: "context", source: "intel\nfeed" }
+  ];
+
+  for (const payload of invalidPayloads) {
+    assert.deepEqual(
+      await ai.rememberIntelligence(payload),
+      { ok: false, error: "invalid_ai_action_input" }
+    );
+  }
+  assert.equal(accessorReads, 0);
+  assert.equal(confirmations, 0);
+  assert.equal(writes, 0);
 });
 
 test("createV2Actions exposes the frozen AI adapter without changing namespace identity", () => {

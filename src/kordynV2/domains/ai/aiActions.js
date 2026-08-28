@@ -6,8 +6,57 @@ const noOp = () => undefined;
 
 const validIdentifier = (value) => typeof value === "string"
   && value.length > 0
-  && value === value.trim();
-const plainObject = (value) => Boolean(value && typeof value === "object" && !Array.isArray(value));
+  && value === value.trim()
+  && !/[\s\u0000-\u001f\u007f]/u.test(value);
+
+function plainObject(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  try {
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
+  } catch {
+    return false;
+  }
+}
+
+const validRequiredText = (value, { singleLine = false } = {}) => typeof value === "string"
+  && value.trim().length > 0
+  && !(singleLine ? /[\u0000-\u001f\u007f]/u : /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u).test(value);
+
+function validTags(value) {
+  if (!Array.isArray(value) || value.length > 32) return false;
+  let descriptors;
+  try { descriptors = Object.getOwnPropertyDescriptors(value); } catch { return false; }
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = descriptors[index];
+    if (!descriptor || !("value" in descriptor)) return false;
+    const tag = descriptor.value;
+    if (typeof tag !== "string" || tag.length > 80 || tag !== tag.trim() || !tag || /[\u0000-\u001f\u007f]/u.test(tag)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function validMemoryPayload(value) {
+  if (!plainObject(value)) return false;
+  let descriptors;
+  try { descriptors = Object.getOwnPropertyDescriptors(value); } catch { return false; }
+  const allowed = new Set(["layer", "title", "content", "tags", "source"]);
+  const keys = Reflect.ownKeys(descriptors);
+  if (keys.some((key) => typeof key !== "string" || !allowed.has(key))) return false;
+  if (keys.some((key) => !("value" in descriptors[key]))) return false;
+  if (!Object.hasOwn(descriptors, "title") || !Object.hasOwn(descriptors, "content")) return false;
+  if (!validRequiredText(descriptors.title.value, { singleLine: true })) return false;
+  if (!validRequiredText(descriptors.content.value)) return false;
+  if (Object.hasOwn(descriptors, "tags") && !validTags(descriptors.tags.value)) return false;
+  for (const key of ["layer", "source"]) {
+    if (Object.hasOwn(descriptors, key) && (!validIdentifier(descriptors[key].value) || descriptors[key].value.length > 64)) {
+      return false;
+    }
+  }
+  return true;
+}
 
 export function createAiActions({
   action = unavailableAction,
@@ -54,7 +103,7 @@ export function createAiActions({
       {}
     );
   };
-  const rememberIntelligence = (payload) => plainObject(payload)
+  const rememberIntelligence = (payload) => validMemoryPayload(payload)
     ? runAction("/api/agent/memory", payload)
     : invalidInput;
   const refreshEvents = () => runAction("/api/event-sources/refresh", {});
