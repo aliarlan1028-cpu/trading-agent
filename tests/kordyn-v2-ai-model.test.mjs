@@ -433,6 +433,50 @@ test("production official mirrors keep the canonical events identity", () => {
   assert.equal(intelligenceEvents[0], model.events[0]);
 });
 
+test("unidentified canonical mirrors fall back to the unique official identity in either order", () => {
+  const due = "2026-09-02T18:00:00.000Z";
+  const official = {
+    id: "calendar-fomc-fallback",
+    title: "FOMC",
+    due,
+    importance: "high",
+    sourceId: "official_fomc_calendar",
+    sourceName: "Federal Reserve FOMC Calendar",
+    symbols: ["BTC/USDT"],
+    timePrecision: "minute"
+  };
+  const mirrors = [
+    {
+      scheduledKey: `official_${official.id}`,
+      title: official.title,
+      due,
+      impact: 90,
+      sourceName: official.sourceName,
+      description: "first unidentified mirror"
+    },
+    {
+      scheduledKey: `official_${official.id}`,
+      title: official.title,
+      due,
+      impact: 90,
+      sourceName: official.sourceName,
+      description: "second unidentified mirror"
+    }
+  ];
+
+  for (const events of [mirrors, mirrors.slice().reverse()]) {
+    const model = buildAiDomainModel({ events, marketCalendarEvents: [official] });
+    const intelligenceEvents = model.intelligence.filter((row) => row.kind === "event");
+
+    assert.equal(model.events.length, 1);
+    assert.equal(model.events[0].id, "calendar-fomc-fallback");
+    assert.equal(model.events[0].identity, "calendar-fomc-fallback");
+    assert.equal(model.events[0].selectable, true);
+    assert.equal(model.events[0].provider, "Federal Reserve FOMC Calendar");
+    assert.equal(intelligenceEvents[0], model.events[0]);
+  }
+});
+
 test("an unidentified official duplicate cannot displace identified canonical event truth", () => {
   const due = "2026-09-03T12:30:00.000Z";
   const model = buildAiDomainModel({

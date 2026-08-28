@@ -140,13 +140,14 @@ function selectEventCandidate(group) {
 
   if (mirrors.length) {
     const identities = identitySet(mirrors);
-    const identity = identities.size === 1 ? identities.values().next().value : null;
-    return {
-      candidate: identity === null
-        ? mirrors[0]
-        : mirrors.find((item) => eventIdentity(item.row) === identity),
-      identity
-    };
+    if (identities.size === 1) {
+      const identity = identities.values().next().value;
+      return {
+        candidate: mirrors.find((item) => eventIdentity(item.row) === identity),
+        identity
+      };
+    }
+    if (identities.size > 1) return { candidate: mirrors[0], identity: null };
   }
   const officialIdentities = identitySet(official);
   if (officialIdentities.size === 1) {
