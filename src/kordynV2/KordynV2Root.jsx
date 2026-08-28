@@ -434,6 +434,146 @@ function MissionControlCanvas({ data, domain, workspace, selection, onSelect, on
   );
 }
 
+const moneyText = (value) => typeof value === "number" && Number.isFinite(value)
+  ? new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)
+  : unavailable;
+
+function firstPositionValue(position, fields) {
+  for (const field of fields) {
+    const value = position?.[field];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
+function positionPnlFact(positions) {
+  if (!Array.isArray(positions) || !positions.length) return unavailable;
+  const values = positions.map((position) => firstPositionValue(position, ["unrealizedPnlUsdt", "unrealizedPnl", "upl"]));
+  return values.every((value) => value !== null)
+    ? moneyText(values.reduce((total, value) => total + value, 0))
+    : unavailable;
+}
+
+function MobileMissionHome({ data, truth, selection, onSelect, onOpenDialog, onOpenProof }) {
+  const rows = useMemo(() => buildMissionRows(data), [data]);
+  const selectedId = safeText(selection?.object?.id, "");
+  const selectedRow = rows.find((row) => row.id === selectedId) || rows[0] || null;
+  const source = selectedRow?.source || selection?.object?.raw || {};
+  const title = firstText(selectedRow?.title, selection?.object?.title, selection?.context?.title);
+  const symbol = optionalText(selectedRow?.symbol, source?.symbol, source?.instId);
+  const missionStatus = firstText(selectedRow?.status, selection?.context?.status);
+  const missionSignal = firstText(source?.summary, source?.displayThesis, source?.thesis, source?.rationale);
+  const traceStages = asList(selection?.trace?.stages);
+  const traceByStage = new Map(traceStages.map((stage) => [safeText(stage?.id, "").toLowerCase(), stage]));
+  const attention = [...asList(data?.pendingActions), ...asList(data?.riskIncidents)].slice(0, 1);
+  const attentionComplete = Array.isArray(data?.pendingActions) && Array.isArray(data?.riskIncidents);
+  const positions = Array.isArray(data?.positions) ? data.positions : null;
+  const firstPosition = positions?.[0] || null;
+  const completed = rows.filter((row) => row.group === "complete").slice(0, 2);
+  const completedProjectionAvailable = [data?.agentRuns, data?.watchTriggers, data?.tradePlans].some(Array.isArray);
+  const stageStatus = (stageId) => firstText(traceByStage.get(stageId)?.status);
+
+  return (
+    <div
+      className="kordynV2MobileMissionHome"
+      data-kordyn-v2-destination="ai/missions"
+      data-kordyn-v2-mission-control
+      data-kordyn-v2-mobile-mission-home
+    >
+      <article className="kordynV2MobileActiveMission" data-kordyn-v2-mobile-active-mission>
+        <header>
+          <span className="kordynV2MobileMissionSymbol">{safeText(symbol, "AI").slice(0, 3)}</span>
+          <span className="kordynV2MobileMissionCopy">
+            <strong>{title}</strong>
+            <small>{missionSignal}</small>
+          </span>
+          <em data-status-tone={statusTone(missionStatus)}>{statusLabel(missionStatus)}</em>
+          <button
+            type="button"
+            data-kordyn-v2-mobile-evidence-trigger
+            aria-haspopup="dialog"
+            onClick={(event) => onOpenProof(event.currentTarget)}
+          >
+            <Link2 size={17} aria-hidden="true" />
+            查看证据
+          </button>
+        </header>
+        <div className="kordynV2MobileMissionStages" aria-label="任务阶段">
+          {PIPELINE.map(({ stageId, label }, index) => {
+            const currentStatus = stageStatus(stageId);
+            const complete = normalizedStatus(currentStatus) === "complete";
+            return (
+              <div key={stageId} data-stage-id={stageId} data-stage-state={normalizedStatus(currentStatus)}>
+                <span>{complete ? <CircleCheck size={16} aria-label="complete" /> : index + 1}</span>
+                <strong>{label.replace("全市场", "").replace("检验市场", "")}</strong>
+                <small>{statusLabel(currentStatus)}</small>
+              </div>
+            );
+          })}
+        </div>
+        <dl className="kordynV2MobileMissionFacts">
+          <div><dt><ShieldCheck size={15} aria-hidden="true" />风控</dt><dd>{firstText(truth?.risk)}</dd></div>
+          <div><dt><ChartNoAxesCombined size={15} aria-hidden="true" />策略</dt><dd>{firstText(source?.strategyName, source?.strategy, source?.strategyProductId)}</dd></div>
+          <div><dt><CalendarClock size={15} aria-hidden="true" />事件</dt><dd>{firstText(source?.eventWindow, source?.event, source?.timeframe)}</dd></div>
+        </dl>
+      </article>
+
+      <section className="kordynV2MobileNeedsYou" data-kordyn-v2-mobile-needs-you>
+        <header><h2>需要你</h2><span>{attentionComplete ? attention.length ? "高优先级" : "0" : unavailable}</span></header>
+        {attention.length ? attention.map((item, index) => {
+          const candidate = attentionCandidate(item, data);
+          const Item = candidate ? "button" : "div";
+          return (
+            <Item
+              key={rowIdentity(item, "id", "title") || index}
+              type={candidate ? "button" : undefined}
+              data-kordyn-v2-attention-target={candidate?.id}
+              aria-label={candidate ? `打开 ${firstText(item?.title, item?.type, item?.id)}` : `${firstText(item?.title, item?.type, item?.id)}：${unavailable}`}
+              onClick={candidate ? () => onSelect(candidate) : undefined}
+            >
+              <span><strong>{firstText(item?.title, item?.type, item?.id)}</strong><small>{firstText(item?.detail, item?.summary, item?.status)}</small></span>
+              {candidate && <ArrowRight size={18} aria-hidden="true" />}
+            </Item>
+          );
+        }) : <p>{attentionComplete ? "当前没有待处理的权威事项。" : unavailable}</p>}
+      </section>
+
+      <section className="kordynV2MobileAccountImpact" data-kordyn-v2-mobile-account-impact>
+        <header><h2>账户影响</h2><span>只读账户事实</span></header>
+        <dl>
+          <div><dt>持仓数量</dt><dd>{positions ? positions.length : unavailable}</dd></div>
+          <div><dt>总持仓价值</dt><dd>{moneyText(truth?.exposure)}</dd></div>
+          <div><dt>未实现盈亏</dt><dd>{positionPnlFact(positions)}</dd></div>
+        </dl>
+        {firstPosition ? (
+          <div className="kordynV2MobilePositionRow">
+            <span className="kordynV2MobilePositionSymbol">{safeText(optionalText(firstPosition?.symbol, firstPosition?.instId), "--").slice(0, 3)}</span>
+            <span><strong>{firstText(firstPosition?.symbol, firstPosition?.instId)}</strong><small>{firstText(firstPosition?.direction, firstPosition?.side)} · {safeText(firstPosition?.quantity ?? firstPosition?.size)}</small></span>
+            <span><small>名义价值</small><strong>{moneyText(firstPositionValue(firstPosition, ["notionalUsdt", "notional", "marketValue"]))}</strong></span>
+          </div>
+        ) : <p>{positions ? "当前没有已加载持仓。" : unavailable}</p>}
+      </section>
+
+      <section className="kordynV2MobileRecent" data-kordyn-v2-mobile-recent>
+        <h2>最近完成</h2>
+        {completed.length ? completed.map((row) => (
+          <div key={`${row.type}:${row.id}`}>
+            <CircleCheck size={18} aria-hidden="true" />
+            <span><strong>{row.title}</strong><small>{row.subtitle}</small></span>
+            <em>{statusLabel(row.status)}</em>
+          </div>
+        )) : <p>{completedProjectionAvailable ? "当前没有已完成的 Mission 或 Agent 运行。" : unavailable}</p>}
+      </section>
+
+      <button className="kordynV2MissionPrompt" data-kordyn-v2-dialog-trigger type="button" onClick={onOpenDialog}>
+        <Sparkles size={20} aria-hidden="true" />
+        <span>告诉 AI 交易员你的目标…</span>
+        <Send size={18} aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
 export function KordynV2Root({ api, lang }) {
   const viewport = useV2Viewport();
   const data = api?.data || {};
@@ -524,7 +664,16 @@ export function KordynV2Root({ api, lang }) {
   }), [data, location, selection, state]);
 
   const destination = location.domainId === "ai" && location.workspaceId === "missions"
-    ? (
+    ? viewport === "mobile" ? (
+      <MobileMissionHome
+        data={data}
+        truth={truth}
+        selection={selection}
+        onSelect={select}
+        onOpenDialog={openDialog}
+        onOpenProof={requestProof}
+      />
+    ) : (
       <MissionControlCanvas
         data={data}
         domain={domain}

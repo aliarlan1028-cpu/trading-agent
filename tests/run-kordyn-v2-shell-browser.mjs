@@ -973,6 +973,10 @@ async function readMobileGeometry(cdp) {
       const rect = node.getBoundingClientRect();
       return {left:rect.left,top:rect.top,right:rect.right,bottom:rect.bottom,width:rect.width,height:rect.height,clientWidth:node.clientWidth,scrollWidth:node.scrollWidth};
     };
+    const maybeBox = (selector) => {
+      const node = root.querySelector(selector);
+      return node ? box(node) : null;
+    };
     const structural = new Set([
       root,
       root.querySelector('.kordynV2MobileHeader'),
@@ -1006,9 +1010,45 @@ async function readMobileGeometry(cdp) {
       activeWorkspaces:root.querySelectorAll('[data-kordyn-v2-workspace-target][aria-current="page"]').length,
       domain:root.dataset.kordynV2Domain,
       workspace:root.dataset.kordynV2Workspace,
+      selectedId:root.dataset.kordynV2SelectedId,
       actions:window.__kordynV2BrowserCalls.actions,
       legacyStyles:${legacyStyleProbeSource},
-      paddingBottom:Number.parseFloat(getComputedStyle(root).paddingBottom) || 0
+      paddingBottom:Number.parseFloat(getComputedStyle(root).paddingBottom) || 0,
+      foundation:{
+        identity:maybeBox('[data-kordyn-v2-mobile-identity]'),
+        header:maybeBox('.kordynV2MobileHeader'),
+        title:maybeBox('[data-kordyn-v2-mobile-title]'),
+        destinations:maybeBox('[data-kordyn-v2-workspace-nav]'),
+        truth:maybeBox('[data-kordyn-v2-account-truth-mode]'),
+        mission:maybeBox('[data-kordyn-v2-mobile-active-mission]'),
+        needsYou:maybeBox('[data-kordyn-v2-mobile-needs-you]'),
+        accountImpact:maybeBox('[data-kordyn-v2-mobile-account-impact]'),
+        recent:maybeBox('[data-kordyn-v2-mobile-recent]'),
+        recentRows:[...root.querySelectorAll('[data-kordyn-v2-mobile-recent] > div')].map(box),
+        prompt:maybeBox('.kordynV2MissionPrompt'),
+        evidence:maybeBox('[data-kordyn-v2-mobile-evidence-trigger]'),
+        notification:maybeBox('[data-kordyn-v2-notification-target="governance/notifications"]'),
+        missionFacts:[...root.querySelectorAll('.kordynV2MobileMissionFacts dd')].map((node) => node.textContent.trim()),
+        evidenceDock:Boolean(root.querySelector('.kordynV2MobileEvidenceDock')),
+        standaloneEvidenceTriggers:root.querySelectorAll('.kordynV2MobileHeader [data-kordyn-v2-context-trigger], .kordynV2MobileHeader [data-kordyn-v2-proof-trigger]').length,
+        evidenceInsideMission:Boolean(root.querySelector('[data-kordyn-v2-mobile-active-mission] [data-kordyn-v2-mobile-evidence-trigger]')),
+        readingOrder:(() => {
+          const selectors = [
+            '[data-kordyn-v2-mobile-identity]',
+            '[data-kordyn-v2-mobile-title]',
+            '[data-kordyn-v2-workspace-nav]',
+            '[data-kordyn-v2-account-truth-mode]',
+            '[data-kordyn-v2-mobile-active-mission]',
+            '[data-kordyn-v2-mobile-needs-you]',
+            '[data-kordyn-v2-mobile-account-impact]',
+            '[data-kordyn-v2-mobile-recent]',
+            '.kordynV2MissionPrompt',
+            '[data-kordyn-v2-mobile-navigation]'
+          ];
+          const nodes = selectors.map((selector) => root.querySelector(selector));
+          return nodes.every(Boolean) && nodes.every((node, index) => index === 0 || Boolean(nodes[index - 1].compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING));
+        })()
+      }
     };
   })()`);
 }
@@ -1114,6 +1154,15 @@ async function verifyMobileViewport(cdp, pageUrl, width, height) {
 
   await click(cdp, '[data-kordyn-v2-domain-target="ai"]');
   await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2Workspace === 'missions'", `${width}: return to mobile missions`);
+  const aiDestinations = await evaluate(cdp, "[...document.querySelectorAll('[data-kordyn-v2-workspace-target]')].map((node) => node.getAttribute('data-kordyn-v2-workspace-target'))");
+  assert.deepEqual(aiDestinations, ["missions", "intelligence", "watch", "events", "dialog"], `${width}: all five AI-local destinations remain exposed`);
+  for (const workspace of aiDestinations) {
+    await click(cdp, `[data-kordyn-v2-workspace-target="${workspace}"]`);
+    await waitForExpression(cdp, `document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2Workspace === ${JSON.stringify(workspace)}`, `${width}: clicks AI-local ${workspace}`);
+  }
+  await click(cdp, '[data-kordyn-v2-workspace-target="missions"]');
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2Workspace === 'missions'", `${width}: restores mobile mission home`);
+
   const base = await readMobileGeometry(cdp);
   assert.deepEqual(base.viewport, [width, height], `${width}: mobile viewport retained`);
   assert.deepEqual(base.document, [width, width], `${width}: no document overflow`);
@@ -1122,6 +1171,27 @@ async function verifyMobileViewport(cdp, pageUrl, width, height) {
   assert.ok(base.paddingBottom >= base.nav.height - 1, `${width}: shell reserves persistent navigation height`);
   assert.ok(base.visibleTargets.every((target) => target.width >= 44 && target.height >= 44), `${width}: mobile controls are at least 44x44`);
   assert.equal(base.actions, 0, `${width}: mobile navigation invokes no production action`);
+  assert.equal(base.foundation.readingOrder, true, `${width}: approved mobile foundation reading order`);
+  assert.equal(base.foundation.evidenceDock, false, `${width}: standalone Context/Proof dock is absent`);
+  assert.equal(base.foundation.standaloneEvidenceTriggers, 0, `${width}: header contains no standalone evidence trigger`);
+  assert.equal(base.foundation.evidenceInsideMission, true, `${width}: Mission owns the single governed evidence trigger`);
+  assert.ok(base.foundation.header?.bottom <= 214, `${width}: compact header bottom ${base.foundation.header?.bottom} is at or above 214px`);
+  assert.ok(base.foundation.mission?.top < 250, `${width}: active Mission begins before 250px, received ${base.foundation.mission?.top}`);
+  for (const [name, landmark] of Object.entries({ needsYou: base.foundation.needsYou, accountImpact: base.foundation.accountImpact, recent: base.foundation.recent })) {
+    assert.ok(landmark && landmark.top < height && landmark.bottom > 0, `${width}: ${name} intersects the first viewport, received ${JSON.stringify(landmark)}`);
+  }
+  assert.ok(base.foundation.prompt && base.foundation.prompt.bottom <= base.nav.top + 1, `${width}: task prompt remains above bottom navigation`);
+  assert.ok(base.foundation.recentRows.length >= 2, `${width}: two loaded recent-completion rows are present`);
+  assert.ok(base.foundation.recentRows.slice(0, 2).every((row) => row.bottom <= base.foundation.prompt.top - 4), `${width}: two recent-completion rows remain meaningfully visible above the prompt, received rows=${JSON.stringify(base.foundation.recentRows)} prompt=${JSON.stringify(base.foundation.prompt)}`);
+  assert.ok(base.foundation.prompt.top - base.foundation.recentRows[1].bottom <= 16, `${width}: recent completion and prompt retain the approved compact continuity`);
+  assert.ok(base.foundation.notification?.width >= 44 && base.foundation.notification?.height >= 44, `${width}: notification is touch sized`);
+  assert.deepEqual(base.foundation.missionFacts, ["normal", "Breakout Retest v3", "FOMC · 6h"], `${width}: active Mission projects loaded risk, strategy, and event facts`);
+
+  await click(cdp, '[data-kordyn-v2-notification-target="governance/notifications"]');
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2Domain === 'governance' && document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2Workspace === 'notifications'", `${width}: notification opens governed notifications`);
+  assert.equal(await evaluate(cdp, "window.__kordynV2BrowserCalls.actions"), 0, `${width}: notification navigation is zero-write`);
+  await click(cdp, '[data-kordyn-v2-domain-target="ai"]');
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2Workspace === 'missions'", `${width}: notification returns to missions`);
 
   const baseScreenshot = await captureMobile(cdp, width, height, `mobile-${width}x${height}.png`);
   recordCaptureEvidence({
@@ -1133,23 +1203,37 @@ async function verifyMobileViewport(cdp, pageUrl, width, height) {
     sha256: baseScreenshot.sha256,
     geometry: base
   });
-  await click(cdp, '[data-kordyn-v2-context-trigger]');
-  await assertMobileSheet(cdp, width, base.nav.top, "context");
+  await click(cdp, '[data-kordyn-v2-mobile-evidence-trigger]');
+  const evidence = await assertMobileSheet(cdp, width, base.nav.top, "evidence");
+  const evidenceTabs = await evaluate(cdp, `(() => ({
+    labels:[...document.querySelectorAll('[data-kordyn-v2-evidence-tab]')].map((node) => node.textContent.trim()),
+    targets:[...document.querySelectorAll('[data-kordyn-v2-evidence-tab]')].map((node) => { const rect=node.getBoundingClientRect(); return [rect.width,rect.height]; }),
+    active:document.querySelector('[data-kordyn-v2-evidence-tab][aria-selected="true"]')?.getAttribute('data-kordyn-v2-evidence-tab') || null,
+    selectedId:document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2SelectedId
+  }))()`);
+  assert.deepEqual(evidenceTabs.labels, ["Context", "Proof"], `${width}: governed evidence sheet exposes Context and Proof tabs`);
+  assert.ok(evidenceTabs.targets.every(([targetWidth, targetHeight]) => targetWidth >= 44 && targetHeight >= 44), `${width}: evidence tabs are touch sized`);
+  assert.equal(evidenceTabs.active, "proof", `${width}: Mission evidence opens its proof projection`);
+  assert.equal(evidenceTabs.selectedId, base.selectedId, `${width}: opening evidence preserves canonical selection`);
+  await click(cdp, '[data-kordyn-v2-evidence-tab="context"]');
+  assert.equal(await evaluate(cdp, "Boolean(document.querySelector('.kordynV2MobileContextFacts'))"), true, `${width}: Context tab exposes governed context`);
+  assert.equal(await evaluate(cdp, "document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2SelectedId"), base.selectedId, `${width}: Context tab preserves canonical selection`);
   await pressKey(cdp, "Escape");
-  await waitForExpression(cdp, "!document.querySelector('[data-kordyn-v2-mobile-sheet]')", `${width}: context sheet closes by Escape`);
-  assert.equal(await evaluate(cdp, "document.activeElement === document.querySelector('[data-kordyn-v2-context-trigger]')"), true, `${width}: Context focus returns`);
+  await waitForExpression(cdp, "!document.querySelector('[data-kordyn-v2-mobile-sheet]')", `${width}: evidence sheet closes by Escape`);
+  assert.equal(await evaluate(cdp, "document.activeElement === document.querySelector('[data-kordyn-v2-mobile-evidence-trigger]')"), true, `${width}: evidence focus returns`);
   assert.deepEqual(await evaluate(cdp, `(() => {
     const background = document.querySelector('[data-kordyn-v2-mobile-background]');
     return {inert:background.hasAttribute('inert'),ariaHidden:background.getAttribute('aria-hidden')};
-  })()`), { inert: false, ariaHidden: null }, `${width}: Context close removes background isolation`);
+  })()`), { inert: false, ariaHidden: null }, `${width}: evidence close removes background isolation`);
   await click(cdp, '[data-kordyn-v2-domain-target="account"]');
-  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2Domain === 'account'", `${width}: navigation restored after Context closes`);
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2Domain === 'account'", `${width}: navigation restored after evidence closes`);
   await click(cdp, '[data-kordyn-v2-domain-target="ai"]');
   await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2Workspace === 'missions'", `${width}: return after restored navigation`);
 
-  await evaluate(cdp, "document.querySelector('[data-kordyn-v2-proof-trigger]').focus() || true");
+  await evaluate(cdp, "document.querySelector('[data-kordyn-v2-mobile-evidence-trigger]').focus() || true");
   await pressKey(cdp, "Enter");
-  const proof = await assertMobileSheet(cdp, width, base.nav.top, "proof");
+  const proof = await assertMobileSheet(cdp, width, base.nav.top, "evidence");
+  await click(cdp, '[data-kordyn-v2-evidence-tab="proof"]');
   assert.ok(proof.sheetScroll.scrollHeight > proof.sheetScroll.clientHeight, `${width}: Proof long content exceeds the bounded sheet viewport`);
   const scrolled = await evaluate(cdp, `(() => {
     const node = document.querySelector('.kordynV2MobileSheetScroll');
@@ -1162,7 +1246,7 @@ async function verifyMobileViewport(cdp, pageUrl, width, height) {
     : null;
   await click(cdp, '[data-kordyn-v2-mobile-sheet-close]');
   await waitForExpression(cdp, "!document.querySelector('[data-kordyn-v2-mobile-sheet]')", `${width}: proof sheet closes by pointer`);
-  assert.equal(await evaluate(cdp, "document.activeElement === document.querySelector('[data-kordyn-v2-proof-trigger]')"), true, `${width}: Proof focus returns`);
+  assert.equal(await evaluate(cdp, "document.activeElement === document.querySelector('[data-kordyn-v2-mobile-evidence-trigger]')"), true, `${width}: Proof focus returns`);
   assert.equal(await evaluate(cdp, "document.querySelector('[data-kordyn-v2-mobile-background]').hasAttribute('inert')"), false, `${width}: Proof close removes background isolation`);
   assert.equal(await evaluate(cdp, "window.__kordynV2BrowserCalls.actions"), 0, `${width}: sheets invoke no production action`);
 
@@ -1225,11 +1309,13 @@ async function verifyMobileViewport(cdp, pageUrl, width, height) {
   await click(cdp, '[data-kordyn-v2-domain-target="ai"]');
   await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2Workspace === 'missions'", `${width}: APP support returns to mission workspace`);
 
-  await click(cdp, '[data-kordyn-v2-workspace-target="dialog"]');
-  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2Workspace === 'dialog'", `${width}: mobile dialog workspace`);
+  await click(cdp, '.kordynV2MissionPrompt');
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2Workspace === 'dialog'", `${width}: mobile prompt opens dialog workspace`);
   const dialogGeometry = await readMobileGeometry(cdp);
   assert.ok(dialogGeometry.visibleTargets.every((target) => target.width >= 44 && target.height >= 44), `${width}: every visible dialog control is at least 44x44`);
-  return { width, height, base, proof, support, minimumWorkspaceTarget, baseScreenshot, sheetScreenshot, supportScreenshot };
+  await pressKey(cdp, "Escape");
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2Workspace === 'missions' && document.activeElement === document.querySelector('.kordynV2MissionPrompt')", `${width}: mobile prompt Escape returns focus`);
+  return { width, height, base, evidence, proof, support, minimumWorkspaceTarget, baseScreenshot, sheetScreenshot, supportScreenshot };
 }
 
 async function verifyViewportTransition(cdp, pageUrl) {
@@ -1439,7 +1525,7 @@ try {
       `KORDYN V2 Task5 mobile semantic contract failures:\n- ${contractFailures.join("\n- ")}`
     );
     process.stdout.write(`KORDYN V2 mobile shell browser PASS ${mobileResults.map((row) => `${row.width}x${row.height}:nav=4,focus=3,overflow=0,targets=44`).join(" ")} states=5 long-content=${longContentResults.length} screenshots=${mobileResults.filter((row) => row.baseScreenshot.outputPath).length + mobileResults.filter((row) => row.sheetScreenshot?.outputPath).length + mobileResults.filter((row) => row.supportScreenshot?.outputPath).length + longContentResults.filter((row) => row.screenshot?.outputPath).length}\n`);
-    process.stdout.write(`KORDYN V2 mobile geometry ${mobileResults.map((row) => `${row.width}:stateBottom=${Math.round(row.base.state.bottom)},navTop=${Math.round(row.base.nav.top)},reserve=${Math.round(row.base.paddingBottom)},workspaceMin=${row.minimumWorkspaceTarget.toFixed(1)},sheet=${Math.round(row.proof.sheet.top)}-${Math.round(row.proof.sheet.bottom)},proofScroll=${row.proof.sheetScroll.clientHeight}/${row.proof.sheetScroll.scrollHeight}`).join(" | ")} transition=${transition.domain}/${transition.workspace}:${transition.sections.map((item) => item.section).join(",")}\n`);
+    process.stdout.write(`KORDYN V2 mobile geometry ${mobileResults.map((row) => `${row.width}:stateBottom=${Math.round(row.base.state.bottom)},navTop=${Math.round(row.base.nav.top)},reserve=${Math.round(row.base.paddingBottom)},workspaceMin=${row.minimumWorkspaceTarget.toFixed(1)},headerBottom=${Math.round(row.base.foundation.header.bottom)},missionTop=${Math.round(row.base.foundation.mission.top)},needsTop=${Math.round(row.base.foundation.needsYou.top)},impactTop=${Math.round(row.base.foundation.accountImpact.top)},recentTop=${Math.round(row.base.foundation.recent.top)},recentRowsBottom=${Math.round(row.base.foundation.recentRows[1].bottom)},promptTop=${Math.round(row.base.foundation.prompt.top)},sheet=${Math.round(row.proof.sheet.top)}-${Math.round(row.proof.sheet.bottom)},proofScroll=${row.proof.sheetScroll.clientHeight}/${row.proof.sheetScroll.scrollHeight}`).join(" | ")} transition=${transition.domain}/${transition.workspace}:${transition.sections.map((item) => item.section).join(",")}\n`);
   } else {
   await setViewport(cdp, pageUrl, 1440, 900);
   await verifyLegacyStyleOwnershipProbe(cdp, readGeometry, "desktop stylesheet ownership probe");

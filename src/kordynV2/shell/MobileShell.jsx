@@ -1,4 +1,4 @@
-import { Bot, Braces, FileCheck2 } from "lucide-react";
+import { Bell, Bot } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { KORDYN_V2_DOMAINS } from "../architecture/domains.js";
 import { AccountTruth } from "./AccountTruth.jsx";
@@ -12,6 +12,7 @@ export function MobileShell({
   truth,
   state,
   selection,
+  identity,
   supportContext,
   evidenceRequest,
   onNavigate,
@@ -19,21 +20,33 @@ export function MobileShell({
   children
 }) {
   const [panel, setPanel] = useState(null);
+  const [evidenceTab, setEvidenceTab] = useState("context");
   const returnFocusRef = useRef(null);
-  const contextTriggerRef = useRef(null);
-  const proofTriggerRef = useRef(null);
   const supportTriggerRef = useRef(null);
   const selectedId = selection?.object?.id || "none";
   const domain = KORDYN_V2_DOMAINS.find((item) => item.id === location.domainId) || KORDYN_V2_DOMAINS[0];
   const mobileTruth = useMemo(() => ({
     ...truth,
-    mode: truth?.mode === "critical" ? "critical" : "compact"
+    mode: "full"
   }), [truth]);
+  const equity = typeof truth?.equity === "number" && Number.isFinite(truth.equity)
+    ? new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(truth.equity)
+    : "Unavailable";
+  const risk = typeof truth?.risk === "string" && truth.risk
+    ? ["normal", "ok", "healthy"].includes(truth.risk.toLowerCase()) ? "风险正常" : truth.risk
+    : "Unavailable";
+  const riskTone = risk === "风险正常"
+    ? "mint"
+    : risk === "Unavailable" ? "unavailable" : "danger";
+  const notificationCount = Number.isInteger(identity?.notificationCount) && identity.notificationCount >= 0
+    ? identity.notificationCount
+    : null;
 
   useEffect(() => {
     if (!evidenceRequest?.token || !["context", "proof"].includes(evidenceRequest.panel)) return;
     returnFocusRef.current = evidenceRequest.trigger;
-    setPanel(evidenceRequest.panel);
+    setEvidenceTab(evidenceRequest.panel);
+    setPanel("evidence");
   }, [evidenceRequest?.panel, evidenceRequest?.token, evidenceRequest?.trigger]);
 
   const openSheet = (nextPanel, trigger) => {
@@ -69,43 +82,35 @@ export function MobileShell({
         aria-hidden={panel ? "true" : undefined}
       >
         <header className="kordynV2MobileHeader">
-          <div className="kordynV2MobileBrandRow">
+          <div className="kordynV2MobileBrandRow" data-kordyn-v2-mobile-identity>
             <span className="kordynV2MobileBrand" aria-label="KORDYN">
               <span aria-hidden="true"><img src="/kordyn-logo-white.svg" alt="" /></span>
               <strong>KORDYN</strong>
             </span>
-            <strong className="kordynV2MobileDomainTitle">{domain.label}</strong>
+            <span className="kordynV2MobileHealthSummary">
+              <span>权益 <strong>{equity}</strong></span>
+              <em data-health-tone={riskTone}><i aria-hidden="true" />{risk}</em>
+            </span>
+            <button
+              className="kordynV2MobileNotification"
+              type="button"
+              data-kordyn-v2-notification-target="governance/notifications"
+              aria-label={notificationCount === null ? "通知，Unavailable" : `通知，${notificationCount} 条`}
+              onClick={() => onNavigate("governance", "notifications")}
+            >
+              <Bell size={21} strokeWidth={1.8} aria-hidden="true" />
+              {notificationCount > 0 && <span>{notificationCount}</span>}
+            </button>
           </div>
-          <AccountTruth truth={mobileTruth} state={state} />
+          <div className="kordynV2MobileTitleRow">
+            <h1 className="kordynV2MobileDomainTitle" data-kordyn-v2-mobile-title data-kordyn-v2-destination-title>{domain.label}</h1>
+          </div>
           <WorkspaceNavigation
             domainId={location.domainId}
             workspaceId={location.workspaceId}
             onNavigate={onNavigate}
           />
-          <div className="kordynV2MobileEvidenceDock" aria-label="对象证据工具">
-            <button
-              ref={contextTriggerRef}
-              type="button"
-              data-kordyn-v2-context-trigger
-              aria-haspopup="dialog"
-              aria-expanded={panel === "context"}
-              onClick={() => openSheet("context", contextTriggerRef.current)}
-            >
-              <Braces size={18} aria-hidden="true" />
-              Context
-            </button>
-            <button
-              ref={proofTriggerRef}
-              type="button"
-              data-kordyn-v2-proof-trigger
-              aria-haspopup="dialog"
-              aria-expanded={panel === "proof"}
-              onClick={() => openSheet("proof", proofTriggerRef.current)}
-            >
-              <FileCheck2 size={18} aria-hidden="true" />
-              Proof
-            </button>
-          </div>
+          <AccountTruth truth={mobileTruth} state={state} />
         </header>
         <StateBoundary state={state} onRetry={onRetry}>
           <main className="kordynV2MobileCanvas" data-kordyn-v2-work-canvas>
@@ -131,6 +136,7 @@ export function MobileShell({
         panel={panel}
         selection={selection}
         supportContext={supportContext}
+        initialEvidenceTab={evidenceTab}
         onSupportNavigate={navigateFromSupport}
         onClose={closeSheet}
       />

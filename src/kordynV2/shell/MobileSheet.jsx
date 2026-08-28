@@ -1,5 +1,5 @@
 import { Bot, Braces, FileCheck2, X } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AiSupport } from "./AiSupport.jsx";
 
 const unavailable = "Unavailable";
@@ -17,9 +17,15 @@ const CONTEXT_FIELDS = Object.freeze([
   ["版本", "version"]
 ]);
 
-export function MobileSheet({ panel, selection, supportContext, onSupportNavigate, onClose }) {
+export function MobileSheet({ panel, selection, supportContext, initialEvidenceTab = "context", onSupportNavigate, onClose }) {
   const dialogRef = useRef(null);
-  const supportedPanel = panel === "context" || panel === "proof" || panel === "support";
+  const [evidenceTab, setEvidenceTab] = useState(initialEvidenceTab === "proof" ? "proof" : "context");
+  const supportedPanel = panel === "evidence" || panel === "support";
+
+  useEffect(() => {
+    if (panel !== "evidence") return;
+    setEvidenceTab(initialEvidenceTab === "proof" ? "proof" : "context");
+  }, [initialEvidenceTab, panel]);
 
   useEffect(() => {
     if (!supportedPanel) return undefined;
@@ -68,12 +74,8 @@ export function MobileSheet({ panel, selection, supportContext, onSupportNavigat
   const context = selection?.context || {};
   const stages = Array.isArray(selection?.trace?.stages) ? selection.trace.stages : [];
   const selectedId = safeText(selection?.object?.id);
-  const title = panel === "context"
-    ? "关联上下文"
-    : panel === "proof"
-      ? "决策证据链"
-      : "AI 客服 · 只读助理";
-  const PanelIcon = panel === "context" ? Braces : panel === "proof" ? FileCheck2 : Bot;
+  const title = panel === "evidence" ? "对象证据" : "AI 客服 · 只读助理";
+  const PanelIcon = panel === "evidence" ? FileCheck2 : Bot;
 
   return (
     <div
@@ -102,12 +104,36 @@ export function MobileSheet({ panel, selection, supportContext, onSupportNavigat
             <X size={20} aria-hidden="true" />
           </button>
         </header>
+        {panel === "evidence" && (
+          <div className="kordynV2MobileEvidenceTabs" role="tablist" aria-label="对象证据视图">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={evidenceTab === "context"}
+              data-kordyn-v2-evidence-tab="context"
+              onClick={() => setEvidenceTab("context")}
+            >
+              <Braces size={17} aria-hidden="true" />
+              Context
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={evidenceTab === "proof"}
+              data-kordyn-v2-evidence-tab="proof"
+              onClick={() => setEvidenceTab("proof")}
+            >
+              <FileCheck2 size={17} aria-hidden="true" />
+              Proof
+            </button>
+          </div>
+        )}
         <div className="kordynV2MobileSheetScroll">
           {panel === "support" ? (
             <AiSupport context={supportContext} onNavigate={onSupportNavigate} presentation="content" />
           ) : <>
             <p className="kordynV2MobileSheetIdentity">{safeText(selection?.object?.type)} / {selectedId}</p>
-            {panel === "context" ? (
+            {evidenceTab === "context" ? (
             <dl className="kordynV2MobileContextFacts">
               {CONTEXT_FIELDS.map(([label, key]) => (
                 <div key={key}>

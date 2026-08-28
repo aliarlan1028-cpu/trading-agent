@@ -57,7 +57,7 @@
       "device": "mobile",
       "domainId": "ai",
       "workspaceId": "missions",
-      "sha256": "90794714012d5a81ae36de9519b936af57198a03bf7dbdfc8ca8b5b2cb972802",
+      "sha256": "5dbee3de521d130740d0a96d2e4e8d855b53cb22c81e89e336d28423becae500",
       "viewportGeometry": {
         "width": 390,
         "height": 844
@@ -81,7 +81,7 @@
       "device": "mobile",
       "domainId": "ai",
       "workspaceId": "missions",
-      "sha256": "7cabf0552fa614cd1dd0189dc44103d57abec11a9200ec193a7138b551e6506a",
+      "sha256": "5730e70ad5ffba84a4d1db8d0deee507d54ac80e6594bece10bf320e467f5314",
       "viewportGeometry": {
         "width": 430,
         "height": 932

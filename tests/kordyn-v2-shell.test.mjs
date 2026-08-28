@@ -38,6 +38,7 @@ const { DesktopShell, MobileShell, buildShellTrace } = require(outFile);
 const readyTruth = Object.freeze({
   mode: "compact",
   equity: 28640.72,
+  available: 13870.1,
   exposure: 6102.4,
   freshness: "2026-08-27T14:32:00+08:00",
   freshnessState: "fresh",
@@ -99,6 +100,7 @@ test("APP shell exposes exactly four full-label roots without a catch-all destin
         truth: readyTruth,
         state: { kind: "ready" },
         selection: canonicalSelection,
+        identity: { name: "K0", notificationCount: 1 },
         onNavigate: () => {},
         onSelect: () => {}
       },
@@ -114,6 +116,39 @@ test("APP shell exposes exactly four full-label roots without a catch-all destin
     assert.match(html, new RegExp(label));
   }
   assert.doesNotMatch(html, /今日|更多/);
+});
+
+test("APP shell follows the approved compact identity, title, destinations, and truth order", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(
+      MobileShell,
+      {
+        location: { domainId: "ai", workspaceId: "missions" },
+        truth: readyTruth,
+        state: { kind: "ready" },
+        selection: canonicalSelection,
+        identity: { name: "K0", notificationCount: 1 },
+        onNavigate: () => {},
+        onSelect: () => {}
+      },
+      React.createElement("main", { "data-kordyn-v2-mobile-mission-home": true }, "Mission")
+    )
+  );
+
+  const readingOrder = [
+    'data-kordyn-v2-mobile-identity',
+    'data-kordyn-v2-mobile-title',
+    'data-kordyn-v2-workspace-nav',
+    'data-kordyn-v2-account-truth-mode',
+    'data-kordyn-v2-mobile-mission-home'
+  ].map((marker) => html.indexOf(marker));
+  assert.ok(readingOrder.every((index) => index >= 0), `missing approved APP marker: ${readingOrder}`);
+  assert.deepEqual(readingOrder, [...readingOrder].sort((a, b) => a - b));
+  assert.match(html, /data-kordyn-v2-notification-target="governance\/notifications"/);
+  assert.match(html, /data-kordyn-v2-account-truth-mode="full"/);
+  assert.match(html, /data-kordyn-v2-truth-fact="available"/);
+  assert.doesNotMatch(html, /kordynV2MobileEvidenceDock/);
+  assert.doesNotMatch(html, /data-kordyn-v2-(?:context|proof)-trigger/);
 });
 
 test("APP shell keeps unknown and adverse truth fail-closed", () => {
