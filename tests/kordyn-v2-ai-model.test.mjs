@@ -267,6 +267,61 @@ test("model identity grammar rejects whitespace and controls across runs, plans,
   }
 });
 
+test("evidence ID counts require a dense own data-descriptor array", () => {
+  let getterCalls = 0;
+  const accessorIds = [];
+  Object.defineProperty(accessorIds, "0", {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return "evidence-accessor";
+    }
+  });
+
+  const model = buildAiDomainModel({
+    agentRuns: [
+      { id: "run-sparse", evidenceIds: new Array(1) },
+      { id: "run-accessor", evidenceIds: accessorIds },
+      { id: "run-empty", evidenceIds: [] },
+      { id: "run-dense", evidenceIds: ["evidence-a", "evidence-a", "evidence-b"] }
+    ]
+  });
+
+  assert.equal(getterCalls, 0);
+  assert.deepEqual(model.missions.map((mission) => [mission.id, mission.evidenceCount]), [
+    ["run-sparse", "Unavailable"],
+    ["run-accessor", "Unavailable"],
+    ["run-empty", 0],
+    ["run-dense", 2]
+  ]);
+});
+
+test("malformed trace object metadata fails closed while valid trace evidence survives", () => {
+  const revoked = Proxy.revocable({}, {});
+  revoked.revoke();
+  let model;
+
+  assert.doesNotThrow(() => {
+    model = buildAiDomainModel({
+      agentRuns: [
+        { id: "run-trace-target" },
+        { id: "run-trace-sibling" }
+      ],
+      traces: [
+        { objectId: "run-trace-target", objectType: {}, evidenceId: "evidence-object" },
+        { objectId: "run-trace-target", objectType: revoked.proxy, evidenceId: "evidence-revoked" },
+        { objectId: "run-trace-target", objectType: "agent_run", evidenceId: "evidence-valid" },
+        { agentRunId: "run-trace-sibling", evidenceId: "evidence-sibling" }
+      ]
+    });
+  });
+
+  assert.deepEqual(model.missions.map((mission) => [mission.id, mission.evidenceCount]), [
+    ["run-trace-target", 1],
+    ["run-trace-sibling", 1]
+  ]);
+});
+
 test("AI model reuses patrol and event truth selectors without inventing unavailable rows", () => {
   const model = buildAiDomainModel({
     chatMessages: [{
@@ -510,6 +565,43 @@ test("semantic event duplicates prefer the one uniquely identified row in either
     assert.equal(model.events[0].id, "event-cpi-authoritative");
     assert.equal(model.events[0].description, "authoritative");
     assert.equal(model.events[0].selectable, true);
+    assert.equal(intelligenceEvents.length, 1);
+    assert.equal(intelligenceEvents[0], model.events[0]);
+  }
+});
+
+test("bridged semantic events reconcile transitively and deterministically across every permutation", () => {
+  const due = "2026-09-05T12:00:00.000Z";
+  const alpha = { id: "event-alpha", title: "Alpha", due, description: "alpha representative" };
+  const bravo = { id: "event-bravo", title: "Bravo", due, description: "bravo row" };
+  const bridge = { id: "event-bridge", title: "Alpha", shortTitle: "Bravo", due, description: "bridge row" };
+  const permutations = [
+    [alpha, bravo, bridge],
+    [alpha, bridge, bravo],
+    [bravo, alpha, bridge],
+    [bravo, bridge, alpha],
+    [bridge, alpha, bravo],
+    [bridge, bravo, alpha]
+  ];
+
+  for (const events of permutations) {
+    const model = buildAiDomainModel({ events });
+    const intelligenceEvents = model.intelligence.filter((row) => row.kind === "event");
+
+    assert.equal(model.events.length, 1);
+    assert.deepEqual({
+      title: model.events[0].title,
+      description: model.events[0].description,
+      id: model.events[0].id,
+      identity: model.events[0].identity,
+      selectable: model.events[0].selectable
+    }, {
+      title: "Alpha",
+      description: "alpha representative",
+      id: null,
+      identity: "Unavailable",
+      selectable: false
+    });
     assert.equal(intelligenceEvents.length, 1);
     assert.equal(intelligenceEvents[0], model.events[0]);
   }

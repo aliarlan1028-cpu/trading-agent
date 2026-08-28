@@ -128,9 +128,44 @@ function identitySet(candidates) {
   return new Set(candidates.map((candidate) => eventIdentity(candidate.row)).filter((identity) => identity !== null));
 }
 
+function stableEventScalar(value) {
+  if (value === null) return "0:";
+  if (typeof value === "string") return `1:${value}`;
+  if (typeof value === "number" && Number.isFinite(value)) return `2:${value}`;
+  if (typeof value === "boolean") return value ? "3:1" : "3:0";
+  return "4:";
+}
+
+function eventCandidateStableKey(candidate) {
+  const row = candidate.row;
+  const fields = [
+    eventMoment(row),
+    eventIdentity(row),
+    row.title,
+    row.shortTitle,
+    row.name,
+    row.scheduledKey,
+    row.sourceName,
+    row.source,
+    row.description,
+    row.impact,
+    row.importance,
+    row.timePrecision,
+    row.createdAt
+  ];
+  return [candidate.provenance === "canonical" ? "0" : "1", ...fields.map(stableEventScalar)].join("\u0001");
+}
+
+function compareEventCandidates(left, right) {
+  const leftKey = eventCandidateStableKey(left);
+  const rightKey = eventCandidateStableKey(right);
+  return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+}
+
 function selectEventCandidate(group) {
-  const canonical = group.filter((candidate) => candidate.provenance === "canonical");
-  const official = group.filter((candidate) => candidate.provenance === "official");
+  const ordered = group.slice().sort(compareEventCandidates);
+  const canonical = ordered.filter((candidate) => candidate.provenance === "canonical");
+  const official = ordered.filter((candidate) => candidate.provenance === "official");
   const mirrors = canonical.filter((candidate) => official.some((officialCandidate) => {
     const officialId = eventIdentity(officialCandidate.row);
     return officialId !== null
@@ -157,7 +192,7 @@ function selectEventCandidate(group) {
       identity
     };
   }
-  if (officialIdentities.size > 1) return { candidate: group[0], identity: null };
+  if (officialIdentities.size > 1) return { candidate: ordered[0], identity: null };
 
   const canonicalIdentities = identitySet(canonical);
   if (canonicalIdentities.size === 1) {
@@ -167,21 +202,48 @@ function selectEventCandidate(group) {
       identity
     };
   }
-  if (canonicalIdentities.size > 1) return { candidate: group[0], identity: null };
-  return { candidate: group[0], identity: null };
+  if (canonicalIdentities.size > 1) return { candidate: ordered[0], identity: null };
+  return { candidate: ordered[0], identity: null };
 }
 
 function reconcileEventRows(events, officialEvents) {
   const candidates = [
     ...events.map((row) => normalizedEventCandidate(row, "canonical")),
     ...officialEvents.map((row) => normalizedEventCandidate(row, "official"))
-  ].filter(Boolean);
-  const groups = [];
-  for (const candidate of candidates) {
-    const group = groups.find((existing) => existing.some((item) => sameEventTruth(item.row, candidate.row)));
-    if (group) group.push(candidate);
-    else groups.push([candidate]);
+  ].filter(Boolean).sort(compareEventCandidates);
+  const parents = candidates.map((unused, index) => index);
+  const findRoot = (index) => {
+    let root = index;
+    while (parents[root] !== root) root = parents[root];
+    while (parents[index] !== index) {
+      const next = parents[index];
+      parents[index] = root;
+      index = next;
+    }
+    return root;
+  };
+  for (let left = 0; left < candidates.length; left += 1) {
+    for (let right = left + 1; right < candidates.length; right += 1) {
+      if (!sameEventTruth(candidates[left].row, candidates[right].row)) continue;
+      const leftRoot = findRoot(left);
+      const rightRoot = findRoot(right);
+      if (leftRoot !== rightRoot) {
+        const root = Math.min(leftRoot, rightRoot);
+        parents[leftRoot] = root;
+        parents[rightRoot] = root;
+      }
+    }
   }
+  const grouped = new Map();
+  for (let index = 0; index < candidates.length; index += 1) {
+    const root = findRoot(index);
+    const group = grouped.get(root) || [];
+    group.push(candidates[index]);
+    grouped.set(root, group);
+  }
+  const groups = Array.from(grouped.values())
+    .map((group) => group.sort(compareEventCandidates))
+    .sort((left, right) => compareEventCandidates(left[0], right[0]));
   const identityGroupCounts = new Map();
   for (const group of groups) {
     for (const identity of identitySet(group)) {
@@ -293,16 +355,30 @@ function linkedPlanFor(run, plans) {
 
 function countEvidenceIds(value) {
   if (arrayClassification(value) !== true) return unavailable;
-  if (!value.every(canonicalIdentifier)) return unavailable;
-  return new Set(value).size;
+  let descriptors;
+  try { descriptors = Object.getOwnPropertyDescriptors(value); } catch { return unavailable; }
+  const lengthDescriptor = Object.hasOwn(descriptors, "length") ? descriptors.length : null;
+  const length = lengthDescriptor && "value" in lengthDescriptor ? lengthDescriptor.value : null;
+  if (!Number.isInteger(length) || length < 0 || length > 0xffffffff) return unavailable;
+  if (Reflect.ownKeys(descriptors).length !== length + 1) return unavailable;
+  const identities = new Set();
+  for (let index = 0; index < length; index += 1) {
+    const descriptor = descriptors[index];
+    if (!descriptor || !descriptor.enumerable || !("value" in descriptor) || !canonicalIdentifier(descriptor.value)) {
+      return unavailable;
+    }
+    identities.add(descriptor.value);
+  }
+  return identities.size;
 }
 
 function traceTargetsRun(trace, runId) {
   if (!plainRecord(trace)) return false;
   if (ownCanonicalIdentifier(trace, "agentRunId") === runId || ownCanonicalIdentifier(trace, "runId") === runId) return true;
+  const objectType = hasOwn(trace, "objectType") ? trace.objectType : null;
   return ownCanonicalIdentifier(trace, "objectId") === runId
-    && hasOwn(trace, "objectType")
-    && /^agent[ _-]?run$/i.test(String(trace.objectType || "").trim());
+    && typeof objectType === "string"
+    && /^agent[ _-]?run$/i.test(objectType.trim());
 }
 
 function evidenceCountFor(run, plan, traces) {
