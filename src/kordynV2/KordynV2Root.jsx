@@ -86,6 +86,14 @@ const PIPELINE = Object.freeze([
   { stageId: "monitor", label: "等待回踩", icon: Clock3 }
 ]);
 
+const MOBILE_PIPELINE = Object.freeze([
+  { stageId: "sense", label: "快扫" },
+  { stageId: "plan", label: "结构" },
+  { stageId: "guard", label: "风控" },
+  { stageId: "execute", label: "执行" },
+  { stageId: "monitor", label: "等待回踩" }
+]);
+
 const QUEUE_GROUPS = Object.freeze([
   { id: "analysis", label: "正在分析" },
   { id: "monitoring", label: "正在监控" },
@@ -463,6 +471,8 @@ function MobileMissionHome({ data, truth, selection, onSelect, onOpenDialog, onO
   const symbol = optionalText(selectedRow?.symbol, source?.symbol, source?.instId);
   const missionStatus = firstText(selectedRow?.status, selection?.context?.status);
   const missionSignal = firstText(source?.summary, source?.displayThesis, source?.thesis, source?.rationale);
+  const capabilityValue = asList(source?.capabilities).map((item) => safeText(item, "")).filter(Boolean).join(" / ") || firstText(source?.capability, source?.tools);
+  const eventValue = firstText(source?.eventWindow, source?.event, source?.timeframe);
   const traceStages = asList(selection?.trace?.stages);
   const traceByStage = new Map(traceStages.map((stage) => [safeText(stage?.id, "").toLowerCase(), stage]));
   const attention = [...asList(data?.pendingActions), ...asList(data?.riskIncidents)].slice(0, 1);
@@ -470,7 +480,15 @@ function MobileMissionHome({ data, truth, selection, onSelect, onOpenDialog, onO
   const positions = Array.isArray(data?.positions) ? data.positions : null;
   const firstPosition = positions?.[0] || null;
   const completed = rows.filter((row) => row.group === "complete").slice(0, 2);
-  const completedProjectionAvailable = [data?.agentRuns, data?.watchTriggers, data?.tradePlans].some(Array.isArray);
+  const completedProjectionAvailable = [data?.agentRuns, data?.watchTriggers, data?.tradePlans].every(Array.isArray);
+  const automation = automationHealth(data);
+  const decisionFacts = [
+    ["策略", firstText(source?.strategyName, source?.strategy, source?.strategyProductId)],
+    ["知识来源", firstText(source?.knowledgeSource, source?.evidenceSource, source?.rationale)],
+    ["能力", capabilityValue],
+    ["事件", eventValue],
+    ["持仓影响", selectedPositionImpact(data, symbol)]
+  ];
   const stageStatus = (stageId) => firstText(traceByStage.get(stageId)?.status);
 
   return (
@@ -480,43 +498,53 @@ function MobileMissionHome({ data, truth, selection, onSelect, onOpenDialog, onO
       data-kordyn-v2-mission-control
       data-kordyn-v2-mobile-mission-home
     >
-      <article className="kordynV2MobileActiveMission" data-kordyn-v2-mobile-active-mission>
-        <header>
-          <span className="kordynV2MobileMissionSymbol">{safeText(symbol, "AI").slice(0, 3)}</span>
-          <span className="kordynV2MobileMissionCopy">
-            <strong>{title}</strong>
-            <small>{missionSignal}</small>
-          </span>
-          <em data-status-tone={statusTone(missionStatus)}>{statusLabel(missionStatus)}</em>
-          <button
-            type="button"
-            data-kordyn-v2-mobile-evidence-trigger
-            aria-haspopup="dialog"
-            onClick={(event) => onOpenProof(event.currentTarget)}
-          >
-            <Link2 size={17} aria-hidden="true" />
-            查看证据
-          </button>
+      <section className="kordynV2MobileTraderFrame" data-kordyn-v2-mobile-trader-frame>
+        <header className="kordynV2MobileTraderHeader" data-kordyn-v2-mobile-trader-header>
+          <span><Activity size={18} aria-hidden="true" /><strong>AI 交易员</strong></span>
+          <em data-health-tone={automation.tone} role="status" aria-label={`自动化状态：${automation.label}`}><i aria-hidden="true" />{automation.label}</em>
         </header>
-        <div className="kordynV2MobileMissionStages" aria-label="任务阶段">
-          {PIPELINE.map(({ stageId, label }, index) => {
-            const currentStatus = stageStatus(stageId);
-            const complete = normalizedStatus(currentStatus) === "complete";
-            return (
-              <div key={stageId} data-stage-id={stageId} data-stage-state={normalizedStatus(currentStatus)}>
-                <span>{complete ? <CircleCheck size={16} aria-label="complete" /> : index + 1}</span>
-                <strong>{label.replace("全市场", "").replace("检验市场", "")}</strong>
-                <small>{statusLabel(currentStatus)}</small>
-              </div>
-            );
-          })}
-        </div>
-        <dl className="kordynV2MobileMissionFacts">
-          <div><dt><ShieldCheck size={15} aria-hidden="true" />风控</dt><dd>{firstText(truth?.risk)}</dd></div>
-          <div><dt><ChartNoAxesCombined size={15} aria-hidden="true" />策略</dt><dd>{firstText(source?.strategyName, source?.strategy, source?.strategyProductId)}</dd></div>
-          <div><dt><CalendarClock size={15} aria-hidden="true" />事件</dt><dd>{firstText(source?.eventWindow, source?.event, source?.timeframe)}</dd></div>
-        </dl>
-      </article>
+        <article className="kordynV2MobileActiveMission" data-kordyn-v2-mobile-active-mission>
+          <header>
+            <span className="kordynV2MobileMissionSymbol">{safeText(symbol, "AI").slice(0, 3)}</span>
+            <span className="kordynV2MobileMissionCopy">
+              <strong>{title}</strong>
+              <small>{missionSignal}</small>
+            </span>
+            <em data-status-tone={statusTone(missionStatus)}>{statusLabel(missionStatus)}</em>
+            <button
+              type="button"
+              data-kordyn-v2-mobile-evidence-trigger
+              aria-haspopup="dialog"
+              onClick={(event) => onOpenProof(event.currentTarget, { panel: "details", details: decisionFacts })}
+            >
+              <Link2 size={16} aria-hidden="true" />
+              证据
+            </button>
+          </header>
+          <div className="kordynV2MobileMissionStages" aria-label="任务阶段">
+            {MOBILE_PIPELINE.map(({ stageId, label }, index) => {
+              const currentStatus = stageStatus(stageId);
+              const normalized = normalizedStatus(currentStatus);
+              const complete = normalized === "complete";
+              const connector = index === MOBILE_PIPELINE.length - 1
+                ? "none"
+                : complete ? "complete" : normalized === "blocked" ? "blocked" : "unavailable";
+              return (
+                <div key={stageId} data-stage-id={stageId} data-stage-state={normalized} data-stage-connector={connector}>
+                  <span>{complete ? <CircleCheck size={16} aria-label="complete" /> : index + 1}</span>
+                  <strong>{label}</strong>
+                  <small>{statusLabel(currentStatus)}</small>
+                </div>
+              );
+            })}
+          </div>
+          <dl className="kordynV2MobileMissionFacts">
+            <div><dt><ShieldCheck size={15} aria-hidden="true" />风控</dt><dd>{firstText(truth?.risk)}</dd></div>
+            <div><dt><ChartNoAxesCombined size={15} aria-hidden="true" />策略</dt><dd>{firstText(source?.strategyName, source?.strategy, source?.strategyProductId)}</dd></div>
+            <div><dt><CalendarClock size={15} aria-hidden="true" />事件</dt><dd>{eventValue}</dd></div>
+          </dl>
+        </article>
+      </section>
 
       <section className="kordynV2MobileNeedsYou" data-kordyn-v2-mobile-needs-you>
         <header><h2>需要你</h2><span>{attentionComplete ? attention.length ? "高优先级" : "0" : unavailable}</span></header>
@@ -554,7 +582,11 @@ function MobileMissionHome({ data, truth, selection, onSelect, onOpenDialog, onO
         ) : <p>{positions ? "当前没有已加载持仓。" : unavailable}</p>}
       </section>
 
-      <section className="kordynV2MobileRecent" data-kordyn-v2-mobile-recent>
+      <section
+        className="kordynV2MobileRecent"
+        data-kordyn-v2-mobile-recent
+        data-kordyn-v2-recent-completeness={completedProjectionAvailable ? "complete" : "unavailable"}
+      >
         <h2>最近完成</h2>
         {completed.length ? completed.map((row) => (
           <div key={`${row.type}:${row.id}`}>
@@ -647,9 +679,11 @@ export function KordynV2Root({ api, lang }) {
     Promise.resolve(api?.ensureSection?.(location.resourceSection, { force: true })).catch(() => {});
   }, [api, location.resourceSection]);
 
-  const requestProof = useCallback((trigger) => {
+  const requestProof = useCallback((trigger, request = {}) => {
+    const panel = ["details", "context", "proof"].includes(request?.panel) ? request.panel : "proof";
     setEvidenceRequest((current) => ({
-      panel: "proof",
+      panel,
+      details: Array.isArray(request?.details) ? request.details : null,
       token: (current?.token || 0) + 1,
       trigger
     }));

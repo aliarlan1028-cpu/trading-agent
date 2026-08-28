@@ -17,6 +17,7 @@ require("esbuild").buildSync({
     contents: `
       export { DesktopShell } from "./src/kordynV2/shell/DesktopShell.jsx";
       export { MobileShell } from "./src/kordynV2/shell/MobileShell.jsx";
+      export { MobileSheet } from "./src/kordynV2/shell/MobileSheet.jsx";
       export { buildShellTrace } from "./src/productShell.jsx";
     `,
     resolveDir: rootDir,
@@ -33,7 +34,7 @@ require("esbuild").buildSync({
 
 const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
-const { DesktopShell, MobileShell, buildShellTrace } = require(outFile);
+const { DesktopShell, MobileShell, MobileSheet, buildShellTrace } = require(outFile);
 
 const readyTruth = Object.freeze({
   mode: "compact",
@@ -149,6 +150,60 @@ test("APP shell follows the approved compact identity, title, destinations, and 
   assert.match(html, /data-kordyn-v2-truth-fact="available"/);
   assert.doesNotMatch(html, /kordynV2MobileEvidenceDock/);
   assert.doesNotMatch(html, /data-kordyn-v2-(?:context|proof)-trigger/);
+});
+
+test("APP shell preserves each non-Mission domain canonical truth mode", () => {
+  const renderMode = (domainId, workspaceId, mode) => renderToStaticMarkup(
+    React.createElement(
+      MobileShell,
+      {
+        location: { domainId, workspaceId },
+        truth: { ...readyTruth, mode },
+        state: { kind: "ready" },
+        selection: canonicalSelection,
+        identity: { name: "K0", notificationCount: 1 },
+        onNavigate: () => {},
+        onSelect: () => {}
+      },
+      React.createElement("main")
+    )
+  );
+
+  const assets = renderMode("assets", "relationships", "compact");
+  const governance = renderMode("governance", "overview", "critical");
+  assert.match(assets, /data-kordyn-v2-account-truth-mode="compact"/);
+  assert.doesNotMatch(assets, /data-kordyn-v2-truth-fact="available"/);
+  assert.match(governance, /data-kordyn-v2-account-truth-mode="critical"/);
+  assert.doesNotMatch(governance, /data-kordyn-v2-truth-fact="equity"/);
+});
+
+test("APP governed evidence exposes full decision facts with complete tab relationships", () => {
+  const html = renderToStaticMarkup(React.createElement(MobileSheet, {
+    panel: "evidence",
+    selection: canonicalSelection,
+    initialEvidenceTab: "details",
+    evidenceDetails: [
+      ["策略", "Breakout Retest v3"],
+      ["知识来源", "波动环境指南 + 2 条真实复盘"],
+      ["能力", "行情 / 市场结构 / 风控 / 执行"],
+      ["事件", "FOMC · 6h"],
+      ["持仓影响", "long 1.4"]
+    ],
+    onClose: () => {}
+  }));
+
+  for (const [tab, label] of [["details", "详情"], ["context", "Context"], ["proof", "Proof"]]) {
+    assert.match(html, new RegExp(`id="kordyn-v2-evidence-tab-${tab}"[^>]*aria-controls="kordyn-v2-evidence-panel"`));
+    assert.match(html, new RegExp(`data-kordyn-v2-evidence-tab="${tab}"[^>]*>${label}|data-kordyn-v2-evidence-tab="${tab}"[\\s\\S]*?>${label}`));
+  }
+  assert.match(html, /role="tabpanel"/);
+  assert.match(html, /id="kordyn-v2-evidence-panel"/);
+  assert.match(html, /aria-labelledby="kordyn-v2-evidence-tab-details"/);
+  assert.equal((html.match(/tabindex="0"/g) || []).length, 1);
+  assert.equal((html.match(/tabindex="-1"/g) || []).length, 2);
+  for (const value of ["Breakout Retest v3", "波动环境指南 + 2 条真实复盘", "行情 / 市场结构 / 风控 / 执行", "FOMC · 6h", "long 1.4"]) {
+    assert.ok(html.includes(value), `missing governed decision fact: ${value}`);
+  }
 });
 
 test("APP shell keeps unknown and adverse truth fail-closed", () => {

@@ -7,7 +7,7 @@
   }
 
   .kordynV2Root {
-    --v2-mobile-nav-height: 74px;
+    --v2-mobile-nav-height: 62px;
     min-width: 0;
     min-height: 0;
     font-size: 14px;
@@ -508,7 +508,7 @@
     min-height: 52px;
     padding: 4px 14px;
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 6px;
     border-bottom: 1px solid var(--kordyn-v2-border);
   }
@@ -525,6 +525,7 @@
     color: var(--kordyn-v2-muted);
     background: transparent;
     cursor: pointer;
+    font-size: 11px;
   }
 
   .kordynV2MobileEvidenceTabs button[aria-selected="true"] {
@@ -571,6 +572,47 @@
 
   .kordynV2MobileContextFacts {
     margin: 0;
+  }
+
+  .kordynV2MobileDecisionFacts {
+    margin: 0;
+    display: grid;
+    gap: 8px;
+  }
+
+  .kordynV2MobileDecisionFacts > div {
+    min-height: 52px;
+    padding: 9px 11px;
+    display: grid;
+    grid-template-columns: 82px minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    border: 1px solid rgba(116, 148, 194, 0.18);
+    border-radius: 12px;
+    background: rgba(6, 15, 27, 0.64);
+  }
+
+  .kordynV2MobileDecisionFacts dt,
+  .kordynV2MobileDecisionFacts dd {
+    min-width: 0;
+    margin: 0;
+  }
+
+  .kordynV2MobileDecisionFacts dt {
+    color: var(--kordyn-v2-muted);
+    font-size: 12px;
+  }
+
+  .kordynV2MobileDecisionFacts dd {
+    color: var(--kordyn-v2-text-soft);
+    font-size: 13px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+
+  .kordynV2MobileEvidenceUnavailable {
+    color: var(--kordyn-v2-muted);
+    font-size: 13px;
   }
 
   .kordynV2MobileContextFacts div {
@@ -690,12 +732,12 @@
 
   .kordynV2MobileMissionHome {
     min-height: 100%;
-    padding: 8px 12px 116px;
+    padding: 8px 12px 104px;
     display: grid;
     gap: 6px;
   }
 
-  .kordynV2MobileActiveMission,
+  .kordynV2MobileTraderFrame,
   .kordynV2MobileNeedsYou,
   .kordynV2MobileAccountImpact,
   .kordynV2MobileRecent {
@@ -706,20 +748,85 @@
     box-shadow: 0 14px 34px rgba(0, 0, 0, 0.15);
   }
 
-  .kordynV2MobileActiveMission {
-    min-height: 166px;
-    padding: 8px;
+  .kordynV2MobileTraderFrame {
+    min-height: 190px;
+    padding: 3px;
     display: grid;
-    grid-template-rows: auto 46px 40px;
-    gap: 4px;
+    grid-template-rows: 20px minmax(148px, 1fr);
+    gap: 2px;
+  }
+
+  .kordynV2MobileTraderHeader {
+    min-width: 0;
+    padding: 0 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .kordynV2MobileTraderHeader > span,
+  .kordynV2MobileTraderHeader > em {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .kordynV2MobileTraderHeader > span {
+    color: var(--kordyn-v2-mint);
+  }
+
+  .kordynV2MobileTraderHeader strong {
+    color: var(--kordyn-v2-text);
+    font-size: 15px;
+    line-height: 1;
+  }
+
+  .kordynV2MobileTraderHeader > em {
+    overflow: hidden;
+    color: var(--kordyn-v2-muted);
+    font-size: 11px;
+    font-style: normal;
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .kordynV2MobileTraderHeader > em i {
+    width: 7px;
+    height: 7px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .kordynV2MobileTraderHeader > em[data-health-tone="mint"] {
+    color: var(--kordyn-v2-mint);
+  }
+
+  .kordynV2MobileTraderHeader > em[data-health-tone="danger"] {
+    color: var(--kordyn-v2-danger);
+  }
+
+  .kordynV2MobileActiveMission {
+    min-width: 0;
+    min-height: 148px;
+    padding: 5px;
+    display: grid;
+    grid-template-rows: 44px 46px 40px;
+    gap: 3px;
+    border: 1px solid rgba(116, 148, 194, 0.18);
+    border-radius: 12px;
+    background: rgba(5, 14, 26, 0.78);
   }
 
   .kordynV2MobileActiveMission > header {
     min-width: 0;
-    min-height: 48px;
+    min-height: 44px;
     display: grid;
     grid-template-columns: 34px minmax(0, 1fr) auto;
-    grid-template-rows: 14px 34px;
+    grid-template-rows: 12px 32px;
     align-items: center;
     gap: 0 8px;
   }
@@ -735,14 +842,14 @@
     color: #dce5ff;
     background: #334fc7;
     font-family: var(--kordyn-v2-mono);
-    font-size: 9px;
+    font-size: 10px;
   }
 
   .kordynV2MobileMissionCopy {
     grid-row: 1 / 3;
     min-width: 0;
     display: grid;
-    gap: 4px;
+    gap: 2px;
   }
 
   .kordynV2MobileMissionCopy strong,
@@ -759,13 +866,13 @@
 
   .kordynV2MobileMissionCopy small {
     color: var(--kordyn-v2-mint);
-    font-size: 10px;
+    font-size: 11px;
   }
 
   .kordynV2MobileActiveMission > header > em {
     align-self: start;
     color: var(--kordyn-v2-muted);
-    font-size: 9px;
+    font-size: 11px;
     font-style: normal;
   }
 
@@ -774,20 +881,21 @@
   }
 
   .kordynV2MobileActiveMission > header > button {
-    min-width: 88px;
+    width: 64px;
+    min-width: 44px;
     min-height: 44px;
-    padding: 0 10px;
+    padding: 0 7px;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
+    gap: 4px;
     align-self: end;
-    border: 1px solid rgba(69, 122, 255, 0.42);
+    border: 1px solid rgba(116, 148, 194, 0.18);
     border-radius: 10px;
-    color: var(--kordyn-v2-cobalt-soft);
-    background: rgba(30, 58, 126, 0.24);
+    color: var(--kordyn-v2-text-soft);
+    background: transparent;
     cursor: pointer;
-    font-size: 10px;
+    font-size: 11px;
   }
 
   .kordynV2MobileMissionStages {
@@ -798,28 +906,41 @@
     gap: 2px;
   }
 
-  .kordynV2MobileMissionStages::before {
-    content: "";
-    position: absolute;
-    z-index: 0;
-    top: 11px;
-    right: 8%;
-    left: 8%;
-    height: 2px;
-    background: linear-gradient(90deg, var(--kordyn-v2-mint) 0 64%, rgba(71, 104, 163, 0.45) 64%);
-  }
-
   .kordynV2MobileMissionStages > div {
     position: relative;
-    z-index: 1;
     min-width: 0;
     display: grid;
     justify-items: center;
     align-content: start;
-    gap: 2px;
+    gap: 1px;
+  }
+
+  .kordynV2MobileMissionStages > div::after {
+    content: "";
+    position: absolute;
+    z-index: 0;
+    top: 11px;
+    left: 50%;
+    width: calc(100% + 2px);
+    height: 2px;
+    background: #31415e;
+  }
+
+  .kordynV2MobileMissionStages > div[data-stage-connector="complete"]::after {
+    background: var(--kordyn-v2-mint);
+  }
+
+  .kordynV2MobileMissionStages > div[data-stage-connector="blocked"]::after {
+    background: var(--kordyn-v2-danger);
+  }
+
+  .kordynV2MobileMissionStages > div[data-stage-connector="none"]::after {
+    display: none;
   }
 
   .kordynV2MobileMissionStages > div > span {
+    position: relative;
+    z-index: 1;
     width: 24px;
     height: 24px;
     display: grid;
@@ -829,7 +950,7 @@
     color: var(--kordyn-v2-text);
     background: #081326;
     font-family: var(--kordyn-v2-mono);
-    font-size: 10px;
+    font-size: 11px;
   }
 
   .kordynV2MobileMissionStages > div[data-stage-state="complete"] > span {
@@ -839,6 +960,8 @@
 
   .kordynV2MobileMissionStages strong,
   .kordynV2MobileMissionStages small {
+    position: relative;
+    z-index: 1;
     max-width: 100%;
     overflow: hidden;
     text-align: center;
@@ -847,12 +970,14 @@
   }
 
   .kordynV2MobileMissionStages strong {
-    font-size: 8px;
+    font-size: 11px;
+    line-height: 1;
   }
 
   .kordynV2MobileMissionStages small {
     color: var(--kordyn-v2-muted);
-    font-size: 7px;
+    font-size: 11px;
+    line-height: 1;
   }
 
   .kordynV2MobileMissionFacts {
@@ -871,7 +996,7 @@
     padding: 4px 7px;
     display: grid;
     align-content: center;
-    gap: 3px;
+    gap: 1px;
   }
 
   .kordynV2MobileMissionFacts > div + div {
@@ -892,17 +1017,19 @@
     align-items: center;
     gap: 4px;
     color: var(--kordyn-v2-muted);
-    font-size: 8px;
+    font-size: 11px;
+    line-height: 1;
   }
 
   .kordynV2MobileMissionFacts dd {
     color: var(--kordyn-v2-text-soft);
-    font-size: 9px;
+    font-size: 11px;
+    line-height: 1;
   }
 
   .kordynV2MobileNeedsYou {
-    min-height: 78px;
-    padding: 5px 8px;
+    min-height: 76px;
+    padding: 4px 8px;
   }
 
   .kordynV2MobileNeedsYou > header,
@@ -927,7 +1054,7 @@
     border: 1px solid rgba(216, 82, 100, 0.48);
     border-radius: 7px;
     color: var(--kordyn-v2-danger);
-    font-size: 8px;
+    font-size: 10px;
   }
 
   .kordynV2MobileNeedsYou > button,
@@ -975,21 +1102,21 @@
   .kordynV2MobileRecent > p {
     margin: 4px 0 0;
     color: var(--kordyn-v2-muted);
-    font-size: 9px;
+    font-size: 10px;
   }
 
   .kordynV2MobileAccountImpact {
-    min-height: 122px;
-    padding: 6px 8px;
+    min-height: 120px;
+    padding: 5px 8px;
   }
 
   .kordynV2MobileAccountImpact > header span {
     color: var(--kordyn-v2-muted);
-    font-size: 8px;
+    font-size: 10px;
   }
 
   .kordynV2MobileAccountImpact > dl {
-    min-height: 40px;
+    min-height: 38px;
     margin: 2px 0;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1015,7 +1142,7 @@
 
   .kordynV2MobileAccountImpact dt {
     color: var(--kordyn-v2-muted);
-    font-size: 8px;
+    font-size: 10px;
   }
 
   .kordynV2MobileAccountImpact dd {
@@ -1044,7 +1171,7 @@
     color: #fff;
     background: #486ee3;
     font-family: var(--kordyn-v2-mono);
-    font-size: 7px;
+    font-size: 9px;
   }
 
   .kordynV2MobilePositionRow > span:not(.kordynV2MobilePositionSymbol) {
@@ -1066,21 +1193,21 @@
   }
 
   .kordynV2MobilePositionRow strong {
-    font-size: 10px;
+    font-size: 11px;
   }
 
   .kordynV2MobilePositionRow small {
     color: var(--kordyn-v2-muted);
-    font-size: 8px;
+    font-size: 10px;
   }
 
   .kordynV2MobileRecent {
-    min-height: 104px;
-    padding: 6px 10px;
+    min-height: 96px;
+    padding: 5px 10px;
   }
 
   .kordynV2MobileRecent h2 {
-    min-height: 22px;
+    min-height: 20px;
   }
 
   .kordynV2MobileRecent > div {
@@ -1109,13 +1236,13 @@
   }
 
   .kordynV2MobileRecent strong {
-    font-size: 10px;
+    font-size: 11px;
   }
 
   .kordynV2MobileRecent small,
   .kordynV2MobileRecent em {
     color: var(--kordyn-v2-muted);
-    font-size: 8px;
+    font-size: 10px;
     font-style: normal;
   }
 
@@ -1129,10 +1256,10 @@
     right: auto;
     bottom: calc(var(--v2-mobile-nav-height) + env(safe-area-inset-bottom) + 4px);
     left: 12px;
-    width: calc(100% - 88px);
+    width: calc(100% - 82px);
     min-width: 44px;
-    min-height: 54px;
-    height: 54px;
+    min-height: 48px;
+    height: 48px;
     margin: 0;
     padding: 0 12px;
     border-radius: 14px;
@@ -1144,127 +1271,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .kordynV2MobileShell .kordynV2MissionControl {
-    height: auto;
-    min-height: 100%;
-    padding: 14px 12px 22px;
-    display: block;
-  }
-
-  .kordynV2MobileShell .kordynV2WorkspaceHeading {
-    min-height: 42px;
-    padding: 0 2px 10px;
-  }
-
-  .kordynV2MobileShell .kordynV2WorkspaceHeading h1 {
-    font-size: 20px;
-  }
-
-  .kordynV2MobileShell .kordynV2WorkspaceHeading em {
-    max-width: 46%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .kordynV2MobileShell .kordynV2MissionGrid {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    margin: 0;
-  }
-
-  .kordynV2MobileShell .kordynV2MissionFocus {
-    order: 1;
-    min-height: 620px;
-    padding: 12px;
-    grid-template-rows: auto auto auto auto auto;
-    border-radius: 14px;
-  }
-
-  .kordynV2MobileShell .kordynV2AttentionRail {
-    order: 2;
-    overflow: visible;
-  }
-
-  .kordynV2MobileShell .kordynV2MissionQueue {
-    order: 3;
-    min-height: 360px;
-    border-radius: 14px;
-  }
-
-  .kordynV2MobileShell .kordynV2MissionQueue,
-  .kordynV2MobileShell .kordynV2MissionFocus,
-  .kordynV2MobileShell .kordynV2AttentionCard {
-    border-color: rgba(116, 148, 194, 0.22);
-    background: linear-gradient(150deg, rgba(12, 25, 43, 0.94), rgba(6, 15, 27, 0.96));
-    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.16);
-  }
-
-  .kordynV2MobileShell .kordynV2MissionTitle {
-    grid-template-columns: 38px minmax(0, 1fr) auto;
-  }
-
-  .kordynV2MobileShell .kordynV2MissionTitle h2 {
-    font-size: 17px;
-  }
-
-  .kordynV2MobileShell .kordynV2MissionPipeline {
-    min-height: 110px;
-  }
-
-  .kordynV2MobileShell .kordynV2PipelineStage > span {
-    width: 40px;
-    height: 40px;
-  }
-
-  .kordynV2MobileShell .kordynV2PipelineStage > strong {
-    max-width: 58px;
-    text-align: center;
-    white-space: normal;
-  }
-
-  .kordynV2MobileShell .kordynV2PipelineStage > svg {
-    top: 31px;
-  }
-
-  .kordynV2MobileShell .kordynV2MissionPipeline::before {
-    top: 38px;
-  }
-
-  .kordynV2MobileShell .kordynV2DecisionSummary {
-    min-height: 310px;
-  }
-
-  .kordynV2MobileShell .kordynV2DecisionFact {
-    grid-template-columns: 20px 86px minmax(0, 1fr);
-  }
-
-  .kordynV2MobileShell .kordynV2WorkbenchFooter {
-    min-height: 130px;
-    padding-top: 10px;
-    grid-template-columns: 1fr 1fr;
-    align-items: stretch;
-  }
-
-  .kordynV2MobileShell .kordynV2WorkbenchIdentity {
-    grid-column: 1 / -1;
-    order: 3;
-    min-height: 34px;
-  }
-
-  .kordynV2MobileShell .kordynV2WorkbenchFooter button {
-    min-width: 44px;
-    min-height: 48px;
-  }
-
-  .kordynV2MobileShell .kordynV2MissionPrompt {
-    width: 100%;
-    min-height: 58px;
-    margin: 14px 0 0;
-    border-radius: 16px;
   }
 
   .kordynV2MobileShell .kordynV2DestinationBoundary,
@@ -1306,19 +1312,30 @@
     gap: 8px;
   }
 
+  .kordynV2MobileTraderFrame {
+    min-height: 218px;
+    padding: 3px;
+    grid-template-rows: 20px minmax(168px, 1fr);
+    gap: 2px;
+  }
+
+  .kordynV2MobileTraderHeader {
+    padding: 0 5px;
+  }
+
   .kordynV2MobileActiveMission {
-    min-height: 196px;
-    padding: 10px;
-    grid-template-rows: auto 58px 48px;
-    gap: 8px;
+    min-height: 168px;
+    padding: 8px;
+    grid-template-rows: 46px 52px 44px;
+    gap: 5px;
   }
 
   .kordynV2MobileActiveMission > header {
-    min-height: 60px;
-    grid-template-rows: 18px 42px;
+    min-height: 46px;
+    grid-template-rows: 14px 32px;
   }
 
-  .kordynV2MobileMissionStages::before {
+  .kordynV2MobileMissionStages > div::after {
     top: 13px;
   }
 
@@ -1366,6 +1383,7 @@
   }
 
   .kordynV2MobileRecent {
+    min-height: 108px;
     padding: 8px 10px;
   }
 
@@ -1375,6 +1393,11 @@
 
   .kordynV2MobileRecent > div {
     min-height: 34px;
+  }
+
+  .kordynV2MobileShell .kordynV2MobileMissionHome > .kordynV2MissionPrompt {
+    min-height: 58px;
+    height: 58px;
   }
 }
 

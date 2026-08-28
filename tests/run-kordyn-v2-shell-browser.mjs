@@ -977,6 +977,12 @@ async function readMobileGeometry(cdp) {
       const node = root.querySelector(selector);
       return node ? box(node) : null;
     };
+    const fontSize = (node) => node ? Number.parseFloat(getComputedStyle(node).fontSize) || 0 : 0;
+    const loadedCssRules = [...document.styleSheets].flatMap((sheet) => {
+      const walk = (rules) => [...(rules || [])].flatMap((rule) => rule.cssRules ? walk(rule.cssRules) : [rule]);
+      try { return walk(sheet.cssRules); } catch { return []; }
+    });
+    const loadedStyleText = [...document.querySelectorAll('style')].map((node) => node.textContent || '').join('\\n');
     const structural = new Set([
       root,
       root.querySelector('.kordynV2MobileHeader'),
@@ -1020,6 +1026,8 @@ async function readMobileGeometry(cdp) {
         title:maybeBox('[data-kordyn-v2-mobile-title]'),
         destinations:maybeBox('[data-kordyn-v2-workspace-nav]'),
         truth:maybeBox('[data-kordyn-v2-account-truth-mode]'),
+        traderFrame:maybeBox('[data-kordyn-v2-mobile-trader-frame]'),
+        traderHeader:maybeBox('[data-kordyn-v2-mobile-trader-header]'),
         mission:maybeBox('[data-kordyn-v2-mobile-active-mission]'),
         needsYou:maybeBox('[data-kordyn-v2-mobile-needs-you]'),
         accountImpact:maybeBox('[data-kordyn-v2-mobile-account-impact]'),
@@ -1029,6 +1037,19 @@ async function readMobileGeometry(cdp) {
         evidence:maybeBox('[data-kordyn-v2-mobile-evidence-trigger]'),
         notification:maybeBox('[data-kordyn-v2-notification-target="governance/notifications"]'),
         missionFacts:[...root.querySelectorAll('.kordynV2MobileMissionFacts dd')].map((node) => node.textContent.trim()),
+        missionNested:Boolean(root.querySelector('[data-kordyn-v2-mobile-trader-frame] > [data-kordyn-v2-mobile-active-mission]')),
+        coreFontMin:Math.min(...[...root.querySelectorAll('.kordynV2MobileMissionStages strong, .kordynV2MobileMissionStages small, .kordynV2MobileMissionFacts dt, .kordynV2MobileMissionFacts dd')].map(fontSize)),
+        stageProjection:[...root.querySelectorAll('.kordynV2MobileMissionStages > [data-stage-id]')].map((node) => ({
+          id:node.getAttribute('data-stage-id'),
+          label:node.querySelector('strong')?.textContent.trim() || null,
+          status:node.getAttribute('data-stage-state'),
+          connector:node.getAttribute('data-stage-connector'),
+          connectorPaint:getComputedStyle(node, '::after').backgroundColor
+        })),
+        legacyMissionOverrideCount:Math.max(
+          loadedCssRules.filter((rule) => /\\.kordynV2MobileShell \\.kordynV2(?:MissionControl|MissionGrid|MissionFocus|AttentionRail|MissionQueue|MissionTitle|MissionPipeline|PipelineStage|DecisionSummary|DecisionFact|WorkbenchFooter|WorkbenchIdentity)/.test(rule.selectorText || '')).length,
+          loadedStyleText.includes('.kordynV2MobileShell .kordynV2MissionControl') ? 1 : 0
+        ),
         evidenceDock:Boolean(root.querySelector('.kordynV2MobileEvidenceDock')),
         standaloneEvidenceTriggers:root.querySelectorAll('.kordynV2MobileHeader [data-kordyn-v2-context-trigger], .kordynV2MobileHeader [data-kordyn-v2-proof-trigger]').length,
         evidenceInsideMission:Boolean(root.querySelector('[data-kordyn-v2-mobile-active-mission] [data-kordyn-v2-mobile-evidence-trigger]')),
@@ -1175,6 +1196,22 @@ async function verifyMobileViewport(cdp, pageUrl, width, height) {
   assert.equal(base.foundation.evidenceDock, false, `${width}: standalone Context/Proof dock is absent`);
   assert.equal(base.foundation.standaloneEvidenceTriggers, 0, `${width}: header contains no standalone evidence trigger`);
   assert.equal(base.foundation.evidenceInsideMission, true, `${width}: Mission owns the single governed evidence trigger`);
+  contractTrue(`${width}: approved AI Trader frame contains a nested Mission card`, base.foundation.missionNested, `received ${base.foundation.missionNested}`);
+  contractTrue(`${width}: outer AI Trader frame retains approved card rhythm`, base.foundation.traderFrame?.height >= 190, `received ${base.foundation.traderFrame?.height}`);
+  contractTrue(`${width}: nested Mission card remains substantial`, base.foundation.mission?.height >= 148, `received ${base.foundation.mission?.height}`);
+  contractTrue(`${width}: core Mission stages and facts stay readable`, base.foundation.coreFontMin >= 11, `received ${base.foundation.coreFontMin}px`);
+  contractTrue(`${width}: evidence remains a secondary control`, base.foundation.evidence?.width <= 80, `received ${base.foundation.evidence?.width}px`);
+  contractEqual(`${width}: unreachable legacy mobile MissionControl overrides are absent from the loaded CSSOM`, base.foundation.legacyMissionOverrideCount, 0);
+  contractEqual(`${width}: mobile progress follows canonical stage identity and real status`, base.foundation.stageProjection.map(({ id, label, status, connector }) => ({ id, label, status, connector })), [
+    { id: "sense", label: "快扫", status: "complete", connector: "complete" },
+    { id: "plan", label: "结构", status: "complete", connector: "complete" },
+    { id: "guard", label: "风控", status: "complete", connector: "complete" },
+    { id: "execute", label: "执行", status: "waiting", connector: "unavailable" },
+    { id: "monitor", label: "等待回踩", status: "waiting", connector: "none" }
+  ]);
+  const completeConnectorPaint = base.foundation.stageProjection.find((stage) => stage.connector === "complete")?.connectorPaint;
+  const unavailableConnectorPaint = base.foundation.stageProjection.find((stage) => stage.connector === "unavailable")?.connectorPaint;
+  contractTrue(`${width}: complete and unavailable connectors have distinct painted states`, completeConnectorPaint !== unavailableConnectorPaint, `received complete=${completeConnectorPaint} unavailable=${unavailableConnectorPaint}`);
   assert.ok(base.foundation.header?.bottom <= 214, `${width}: compact header bottom ${base.foundation.header?.bottom} is at or above 214px`);
   assert.ok(base.foundation.mission?.top < 250, `${width}: active Mission begins before 250px, received ${base.foundation.mission?.top}`);
   for (const [name, landmark] of Object.entries({ needsYou: base.foundation.needsYou, accountImpact: base.foundation.accountImpact, recent: base.foundation.recent })) {
@@ -1211,10 +1248,48 @@ async function verifyMobileViewport(cdp, pageUrl, width, height) {
     active:document.querySelector('[data-kordyn-v2-evidence-tab][aria-selected="true"]')?.getAttribute('data-kordyn-v2-evidence-tab') || null,
     selectedId:document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2SelectedId
   }))()`);
-  assert.deepEqual(evidenceTabs.labels, ["Context", "Proof"], `${width}: governed evidence sheet exposes Context and Proof tabs`);
+  contractEqual(`${width}: governed evidence sheet exposes Details, Context, and Proof tabs`, evidenceTabs.labels, ["详情", "Context", "Proof"]);
   assert.ok(evidenceTabs.targets.every(([targetWidth, targetHeight]) => targetWidth >= 44 && targetHeight >= 44), `${width}: evidence tabs are touch sized`);
-  assert.equal(evidenceTabs.active, "proof", `${width}: Mission evidence opens its proof projection`);
+  contractEqual(`${width}: Mission disclosure opens its full decision details`, evidenceTabs.active, "details");
   assert.equal(evidenceTabs.selectedId, base.selectedId, `${width}: opening evidence preserves canonical selection`);
+  const hasDetailsTab = evidenceTabs.labels.includes("详情");
+  contractTrue(`${width}: governed mobile details tab is present`, hasDetailsTab, `received tabs ${JSON.stringify(evidenceTabs.labels)}`);
+  if (hasDetailsTab) {
+    const details = await evaluate(cdp, `(() => ({
+      facts:[...document.querySelectorAll('.kordynV2MobileDecisionFacts > div')].map((row) => [row.querySelector('dt')?.textContent.trim(), row.querySelector('dd')?.textContent.trim()]),
+      tabs:[...document.querySelectorAll('[data-kordyn-v2-evidence-tab]')].map((tab) => ({
+        id:tab.id,
+        tab:tab.getAttribute('data-kordyn-v2-evidence-tab'),
+        controls:tab.getAttribute('aria-controls'),
+        selected:tab.getAttribute('aria-selected'),
+        tabIndex:tab.tabIndex
+      })),
+      panel:{
+        role:document.querySelector('#kordyn-v2-evidence-panel')?.getAttribute('role'),
+        labelledBy:document.querySelector('#kordyn-v2-evidence-panel')?.getAttribute('aria-labelledby')
+      }
+    }))()`);
+    assert.deepEqual(details.facts, [
+      ["策略", "Breakout Retest v3"],
+      ["知识来源", "波动环境指南 + 2 条真实复盘"],
+      ["能力", "行情 / 市场结构 / 风控 / 执行"],
+      ["事件", "FOMC · 6h"],
+      ["持仓影响", "long 1.4"]
+    ], `${width}: governed details restores every full decision fact from loaded data`);
+    assert.deepEqual(details.tabs.map(({ tab, controls, tabIndex }) => ({ tab, controls, tabIndex })), [
+      { tab: "details", controls: "kordyn-v2-evidence-panel", tabIndex: 0 },
+      { tab: "context", controls: "kordyn-v2-evidence-panel", tabIndex: -1 },
+      { tab: "proof", controls: "kordyn-v2-evidence-panel", tabIndex: -1 }
+    ], `${width}: evidence tabs expose one roving stop and panel controls`);
+    assert.deepEqual(details.panel, { role: "tabpanel", labelledBy: "kordyn-v2-evidence-tab-details" }, `${width}: active details tab labels its tabpanel`);
+    await evaluate(cdp, "document.querySelector('[data-kordyn-v2-evidence-tab=details]').focus() || true");
+    await pressKey(cdp, "ArrowRight");
+    assert.equal(await evaluate(cdp, "document.activeElement?.getAttribute('data-kordyn-v2-evidence-tab')"), "context", `${width}: ArrowRight advances and focuses the evidence tab`);
+    await pressKey(cdp, "End");
+    assert.equal(await evaluate(cdp, "document.activeElement?.getAttribute('data-kordyn-v2-evidence-tab')"), "proof", `${width}: End focuses the final evidence tab`);
+    await pressKey(cdp, "Home");
+    assert.equal(await evaluate(cdp, "document.activeElement?.getAttribute('data-kordyn-v2-evidence-tab')"), "details", `${width}: Home restores the first evidence tab`);
+  }
   await click(cdp, '[data-kordyn-v2-evidence-tab="context"]');
   assert.equal(await evaluate(cdp, "Boolean(document.querySelector('.kordynV2MobileContextFacts'))"), true, `${width}: Context tab exposes governed context`);
   assert.equal(await evaluate(cdp, "document.querySelector('[data-kordyn-v2-shell=mobile]')?.dataset.kordynV2SelectedId"), base.selectedId, `${width}: Context tab preserves canonical selection`);
@@ -1232,8 +1307,9 @@ async function verifyMobileViewport(cdp, pageUrl, width, height) {
 
   await evaluate(cdp, "document.querySelector('[data-kordyn-v2-mobile-evidence-trigger]').focus() || true");
   await pressKey(cdp, "Enter");
-  const proof = await assertMobileSheet(cdp, width, base.nav.top, "evidence");
+  await assertMobileSheet(cdp, width, base.nav.top, "evidence");
   await click(cdp, '[data-kordyn-v2-evidence-tab="proof"]');
+  const proof = await readMobileGeometry(cdp);
   assert.ok(proof.sheetScroll.scrollHeight > proof.sheetScroll.clientHeight, `${width}: Proof long content exceeds the bounded sheet viewport`);
   const scrolled = await evaluate(cdp, `(() => {
     const node = document.querySelector('.kordynV2MobileSheetScroll');
@@ -1398,6 +1474,50 @@ async function verifyMobileStates(cdp, pageUrl) {
   }
 }
 
+async function verifyMobileReviewStates(cdp, pageUrl) {
+  await setViewport(cdp, `${pageUrl}?scenario=recent-partial`, 390, 844, "mobile");
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-mobile-recent]')", "partial Recent projection");
+  const recent = await evaluate(cdp, `(() => {
+    const section = document.querySelector('[data-kordyn-v2-mobile-recent]');
+    return {
+      completeness:section?.getAttribute('data-kordyn-v2-recent-completeness') || null,
+      empty:section?.querySelector(':scope > p')?.textContent.trim() || null,
+      rows:section?.querySelectorAll(':scope > div').length || 0,
+      actions:window.__kordynV2BrowserCalls.actions
+    };
+  })()`);
+  contractEqual("partial Recent sources fail closed instead of claiming authoritative empty", recent, {
+    completeness: "unavailable",
+    empty: "Unavailable",
+    rows: 0,
+    actions: 0
+  });
+
+  await setViewport(cdp, `${pageUrl}?scenario=mission-empty`, 390, 844, "mobile");
+  await waitForExpression(cdp, "document.querySelector('.kordynV2MobileMissionStages')", "unavailable mobile stage projection");
+  const unavailable = await readMobileGeometry(cdp);
+  contractEqual("unavailable mobile stages preserve canonical order without positive connectors", unavailable.foundation.stageProjection.map(({ id, label, status, connector }) => ({ id, label, status, connector })), [
+    { id: "sense", label: "快扫", status: "unavailable", connector: "unavailable" },
+    { id: "plan", label: "结构", status: "unavailable", connector: "unavailable" },
+    { id: "guard", label: "风控", status: "unavailable", connector: "unavailable" },
+    { id: "execute", label: "执行", status: "unavailable", connector: "unavailable" },
+    { id: "monitor", label: "等待回踩", status: "unavailable", connector: "none" }
+  ]);
+  const unavailablePaint = unavailable.foundation.stageProjection.slice(0, -1).map((stage) => stage.connectorPaint);
+  contractTrue("unavailable mobile connectors are painted uniformly non-positive", new Set(unavailablePaint).size === 1, `received ${JSON.stringify(unavailablePaint)}`);
+
+  await setViewport(cdp, `${pageUrl}?scenario=facts-unknown`, 390, 844, "mobile");
+  await waitForExpression(cdp, "document.querySelector('.kordynV2MobileMissionStages')", "partial mobile stage projection");
+  const partial = await readMobileGeometry(cdp);
+  contractEqual("partial mobile stages bind only their real canonical statuses", partial.foundation.stageProjection.map(({ id, label, status, connector }) => ({ id, label, status, connector })), [
+    { id: "sense", label: "快扫", status: "blocked", connector: "blocked" },
+    { id: "plan", label: "结构", status: "complete", connector: "complete" },
+    { id: "guard", label: "风控", status: "unavailable", connector: "unavailable" },
+    { id: "execute", label: "执行", status: "waiting", connector: "unavailable" },
+    { id: "monitor", label: "等待回踩", status: "complete", connector: "none" }
+  ]);
+}
+
 async function verifyDesktopLongContentSupport(cdp, pageUrl) {
   await setViewport(cdp, `${pageUrl}?scenario=support-long-content`, 1440, 900, "desktop");
   await click(cdp, '[data-kordyn-v2-ai-support-trigger]');
@@ -1426,7 +1546,8 @@ async function verifyDesktopLongContentSupport(cdp, pageUrl) {
 async function verifyMobileLongContentSupport(cdp, pageUrl, width, height) {
   await setViewport(cdp, `${pageUrl}?scenario=support-long-content`, width, height, "mobile");
   await click(cdp, '[data-kordyn-v2-ai-support-trigger]');
-  const sheetContract = await assertMobileSheet(cdp, width, height - 74, "support");
+  const navTop = (await readMobileGeometry(cdp)).nav.top;
+  const sheetContract = await assertMobileSheet(cdp, width, navTop, "support");
   const result = await evaluate(cdp, `(() => {
     const root = document.querySelector('[data-kordyn-v2-shell=mobile]');
     const sheet = document.querySelector('[data-kordyn-v2-mobile-sheet="support"]');
@@ -1515,6 +1636,7 @@ try {
       mobileResults.push(await verifyMobileViewport(cdp, pageUrl, width, height));
     }
     await verifyMobileStates(cdp, pageUrl);
+    await verifyMobileReviewStates(cdp, pageUrl);
     const longContentResults = [];
     for (const [width, height] of mobileViewports) {
       longContentResults.push(await verifyMobileLongContentSupport(cdp, pageUrl, width, height));

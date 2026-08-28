@@ -27,8 +27,8 @@ export function MobileShell({
   const domain = KORDYN_V2_DOMAINS.find((item) => item.id === location.domainId) || KORDYN_V2_DOMAINS[0];
   const mobileTruth = useMemo(() => ({
     ...truth,
-    mode: "full"
-  }), [truth]);
+    mode: location.domainId === "ai" && location.workspaceId === "missions" ? "full" : truth?.mode
+  }), [location.domainId, location.workspaceId, truth]);
   const equity = typeof truth?.equity === "number" && Number.isFinite(truth.equity)
     ? new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(truth.equity)
     : "Unavailable";
@@ -43,7 +43,7 @@ export function MobileShell({
     : null;
 
   useEffect(() => {
-    if (!evidenceRequest?.token || !["context", "proof"].includes(evidenceRequest.panel)) return;
+    if (!evidenceRequest?.token || !["details", "context", "proof"].includes(evidenceRequest.panel)) return;
     returnFocusRef.current = evidenceRequest.trigger;
     setEvidenceTab(evidenceRequest.panel);
     setPanel("evidence");
@@ -137,6 +137,7 @@ export function MobileShell({
         selection={selection}
         supportContext={supportContext}
         initialEvidenceTab={evidenceTab}
+        evidenceDetails={evidenceRequest?.details}
         onSupportNavigate={navigateFromSupport}
         onClose={closeSheet}
       />

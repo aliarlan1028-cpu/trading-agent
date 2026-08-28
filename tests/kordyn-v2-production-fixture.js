@@ -270,6 +270,20 @@ export const KORDYN_V2_ATTENTION_PRESENT_PARTIAL_FIXTURE_JSON = JSON.stringify({
   ]
 });
 
+export const KORDYN_V2_PARTIAL_RECENT_FIXTURE_JSON = JSON.stringify({
+  revision: 67,
+  source: "Read-only partial recent projection",
+  asOf: "2026-08-27T07:20:00Z",
+  user: { id: "fixture-user-recent-partial", name: "K0" },
+  resourceState: { chat: "loaded" },
+  agentRuns: [],
+  watchTriggers: [
+    { id: "watch-recent-partial", title: "ETH active watch", symbol: "ETH/USDT", status: "active" }
+  ],
+  pendingActions: [],
+  riskIncidents: []
+});
+
 export const KORDYN_V2_STALE_HEALTH_FIXTURE_JSON = JSON.stringify({
   revision: 52,
   source: "Read-only stale health projection",
