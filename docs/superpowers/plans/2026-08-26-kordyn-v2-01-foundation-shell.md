@@ -597,3 +597,70 @@ Open the four shell screenshots and normalized comparison images. Review navigat
 git add tests/kordyn-v2-concept-manifest.mjs scripts/compare-kordyn-v2-concepts.mjs tests/kordyn-v2-performance.test.mjs tests/kordyn-v2-performance-report.mjs tests/run-kordyn-v2-performance-build.mjs docs/kordyn-v2-evidence.md .impeccable/review/kordyn-v2/foundation .impeccable/review/kordyn-v2/foundation-compare
 git commit -m "test: gate KORDYN V2 shell fidelity and performance"
 ```
+
+### Task 8: APP Foundation Shell concept-fidelity remediation
+
+**Files:**
+- Modify: `src/kordynV2/KordynV2Root.jsx`
+- Modify: `src/kordynV2/shell/MobileShell.jsx`
+- Modify: `src/kordynV2/shell/MobileSheet.jsx`
+- Modify: `src/kordynV2/styles/mobile-shell.css`
+- Modify: `tests/kordyn-v2-shell.test.mjs`
+- Modify: `tests/kordyn-v2-shell-browser.jsx`
+- Modify: `tests/run-kordyn-v2-shell-browser.mjs`
+- Modify: `docs/kordyn-v2-evidence.md`
+- Refresh: `.impeccable/review/kordyn-v2/foundation/mobile-390x844.png`
+- Refresh: `.impeccable/review/kordyn-v2/foundation/mobile-430x932.png`
+- Refresh: `.impeccable/review/kordyn-v2/foundation/capture-evidence.json`
+- Refresh: `.impeccable/review/kordyn-v2/foundation-compare/mobile-ai-mission-home--*`
+- Refresh: `.impeccable/review/kordyn-v2/foundation-compare/comparison-index.json`
+
+**Interfaces:**
+- Consumes: the existing production-shaped `data`, canonical `selection`, `truth`, `state`, four-domain routes, read-only AI support context, and existing Context/Proof projections.
+- Produces: a touch-first Mobile AI Mission home whose first viewport follows the approved `mobile-ai-mission-home.png` composition without adding an API, action, permission, object, or business capability.
+
+- [ ] **Step 1: Write and verify RED component and browser contracts**
+
+The tests must fail against the Task 7 baseline because the current APP shell is materially different from the approved concept. At both `390x844` and `430x932`, assert the actual production component tree has this reading order:
+
+1. compact brand / account-health / notification row;
+2. `AI 交易员` title;
+3. five AI-local destinations;
+4. three-column account-impact truth strip;
+5. compact active Mission;
+6. `需要你`;
+7. `账户影响`;
+8. `最近完成`;
+9. task prompt above the four-root bottom navigation.
+
+The header bottom must be at or above `214px`, the active Mission must begin before `250px`, and `需要你`, `账户影响`, and `最近完成` must each intersect the first viewport. The full-width standalone Context/Proof dock must be absent. A single in-Mission evidence action must open the governed sheet, expose both Context and Proof as touch-sized tabs, restore focus, and preserve the existing canonical selection.
+
+- [ ] **Step 2: Implement one mobile-only Mission composition**
+
+Do not shrink or reorder the Desktop workbench. Render a mobile-only Mission projection from the same loaded facts:
+
+- Top identity row uses real equity/risk/notification facts. Notification opens the existing `governance/notifications` route.
+- The truth strip uses real equity, available, exposure, freshness, risk, and runtime facts through progressive disclosure. Missing or invalid facts remain `Unavailable`; no missing value becomes zero or healthy.
+- The active Mission shows its real title, status, five-stage trace, risk/strategy/event facts, and one evidence trigger. Full decision facts remain reachable through the governed evidence/detail disclosure rather than occupying the first viewport.
+- `需要你` uses the existing pending-action/risk-incident projection and canonical selection. It does not approve, reject, execute, or mutate.
+- `账户影响` uses only authoritative loaded positions/account facts. Missing notional or PnL remains `Unavailable`.
+- `最近完成` uses completed loaded Mission/Agent-run facts and remains explicit when empty/unavailable.
+- The AI prompt, four bottom roots, read-only AI 客服, safe areas, loading/empty/processing/stale/degraded/failed/forbidden/disabled states, and modal background isolation remain functional.
+
+Do not add production fixtures, write endpoints, optimistic success, `!important`, legacy CSS imports, or a second mobile business model.
+
+- [ ] **Step 3: Run GREEN and interaction/accessibility gates**
+
+Run the focused component tests and the real Chrome shell runner. At `390x844` and `430x932`, click all four bottom roots, every AI-local destination required by the existing contract, notification navigation, the Mission evidence trigger, Context and Proof tabs, sheet close/Escape, AI 客服, and the AI prompt. Assert one active route, focus return, outside-background inertness while sheets are open, every visible interactive target at least `44x44`, document overflow `0`, and no production writes.
+
+- [ ] **Step 4: Refresh and inspect visual evidence**
+
+Regenerate the two APP screenshots and all four foundation comparisons. Open the approved source, both normalized references, both fresh APP screenshots, overlays, and differences at original resolution. Human region review—not pixel similarity alone—must verify the approved hierarchy, density, first-viewport content, evidence access, AI 客服, and bottom navigation. Desktop screenshots and behavior must remain unchanged. Record the exact source/capture hashes and the visual verdict in `docs/kordyn-v2-evidence.md`.
+
+- [ ] **Step 5: Run full gates and independent review**
+
+Run focused tests, the full repository suite, lint, production build, combined Desktop/APP shell browser, canonical selection, cutover/recovery, public/auth, performance, comparison, Impeccable detector on changed UI targets, and `git diff --check`. An independent read-only reviewer must inspect the real `390x844` and `430x932` screenshots against the immutable approved concept. Critical and Important findings must be zero. Plan 02 remains blocked unless the reviewer explicitly finds no material APP Foundation Shell difference.
+
+- [ ] **Step 6: Commit and stop at the foundation boundary**
+
+Commit the implementation, tests, evidence, and evidence-index update. Do not begin Plan 02, merge, push, deploy, cut over, or enable V2 by default in this task.
