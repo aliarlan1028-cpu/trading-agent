@@ -1,0 +1,1163 @@
+.kordynV2AiMissionWorkspace {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 8px 26px 24px 18px;
+  display: grid;
+  grid-template-rows: 38px minmax(0, 1fr) 64px;
+  gap: 12px;
+}
+
+.kordynV2AiWorkspaceTitle {
+  min-width: 0;
+  padding: 0 190px 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.kordynV2AiWorkspaceTitle > span,
+.kordynV2AiWorkspaceTitle > em {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kordynV2AiWorkspaceTitle h1 {
+  margin: 0;
+  font-size: 23px;
+  font-weight: 660;
+  letter-spacing: -0.035em;
+}
+
+.kordynV2AiWorkspaceTitle > em {
+  overflow: hidden;
+  color: var(--kordyn-v2-muted);
+  font-size: 11px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kordynV2AiWorkspaceTitle > em i {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--kordyn-v2-mint);
+  box-shadow: 0 0 12px rgba(32, 215, 148, 0.34);
+}
+
+.kordynV2AiMissionWorkbench {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(218px, 0.82fr) minmax(430px, 2fr) minmax(230px, 0.9fr);
+  gap: 14px;
+}
+
+.kordynV2AiMissionRegistry,
+.kordynV2AiMissionInspector,
+.kordynV2AiAttentionPanel {
+  min-width: 0;
+  border: 1px solid var(--kordyn-v2-border);
+  border-radius: 8px;
+  background: linear-gradient(150deg, rgba(12, 24, 40, 0.96), rgba(6, 15, 27, 0.98));
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.13);
+}
+
+.kordynV2AiMissionRegistry {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 50px minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.kordynV2AiMissionRegistry > header,
+.kordynV2AiAttentionPanel > header {
+  min-width: 0;
+  padding: 0 15px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--kordyn-v2-border);
+}
+
+.kordynV2AiMissionRegistry h2,
+.kordynV2AiAttentionPanel h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.kordynV2AiMissionRegistry > header svg {
+  color: var(--kordyn-v2-muted);
+}
+
+.kordynV2AiMissionRegistryScroll {
+  min-height: 0;
+  overflow: auto;
+  scrollbar-color: #2d405e transparent;
+  scrollbar-width: thin;
+}
+
+.kordynV2AiMissionGroup {
+  padding: 11px 12px 12px;
+  border-bottom: 1px solid rgba(135, 160, 194, 0.1);
+}
+
+.kordynV2AiMissionGroup:last-child {
+  border-bottom: 0;
+}
+
+.kordynV2AiMissionGroup h3 {
+  margin: 0 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--kordyn-v2-text-soft);
+  font-size: 11px;
+  font-weight: 620;
+}
+
+.kordynV2AiMissionGroup h3 span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--kordyn-v2-cobalt-soft);
+}
+
+.kordynV2AiMissionGroup[data-mission-group="approval"] h3 span {
+  background: var(--kordyn-v2-danger);
+}
+
+.kordynV2AiMissionGroup[data-mission-group="monitoring"] h3 span {
+  background: var(--kordyn-v2-mint);
+}
+
+.kordynV2AiMissionGroup[data-mission-group="reviewing"] h3 span,
+.kordynV2AiMissionGroup[data-mission-group="unavailable"] h3 span {
+  background: var(--kordyn-v2-dim);
+}
+
+.kordynV2AiMissionGroup h3 small {
+  color: var(--kordyn-v2-muted);
+  font-family: var(--kordyn-v2-mono);
+  font-weight: 500;
+}
+
+.kordynV2AiMissionRow {
+  width: 100%;
+  min-height: 58px;
+  margin-top: 6px;
+  padding: 7px 9px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid rgba(135, 160, 194, 0.14);
+  border-radius: 8px;
+  color: var(--kordyn-v2-text-soft);
+  background: rgba(4, 11, 20, 0.34);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 140ms ease, background-color 140ms ease, transform 140ms ease;
+}
+
+.kordynV2AiMissionRow:hover {
+  border-color: var(--kordyn-v2-border-strong);
+  background: rgba(31, 51, 80, 0.27);
+  transform: translateY(-1px);
+}
+
+.kordynV2AiMissionRow[aria-pressed="true"] {
+  border-color: var(--kordyn-v2-cobalt);
+  background: rgba(35, 65, 107, 0.32);
+  box-shadow: 0 10px 26px rgba(16, 55, 124, 0.16), inset 0 0 24px rgba(52, 120, 255, 0.05);
+}
+
+.kordynV2AiMissionRowIcon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(132, 114, 255, 0.3);
+  border-radius: 50%;
+  color: #c9c4ff;
+  background: #0b1220;
+}
+
+.kordynV2AiMissionRow[data-kordyn-v2-stage-tone="approval"] .kordynV2AiMissionRowIcon {
+  color: #ff99a2;
+  border-color: rgba(255, 89, 104, 0.34);
+}
+
+.kordynV2AiMissionRow[data-kordyn-v2-stage-tone="monitoring"] .kordynV2AiMissionRowIcon {
+  color: #78e9c0;
+  border-color: rgba(32, 215, 148, 0.34);
+}
+
+.kordynV2AiMissionRowCopy,
+.kordynV2AiMissionRowEvidence {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.kordynV2AiMissionRowCopy strong,
+.kordynV2AiMissionRowCopy small,
+.kordynV2AiMissionRowEvidence strong,
+.kordynV2AiMissionRowEvidence small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kordynV2AiMissionRowCopy strong {
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.kordynV2AiMissionRowCopy small,
+.kordynV2AiMissionRowEvidence small {
+  color: var(--kordyn-v2-muted);
+  font-size: 10px;
+}
+
+.kordynV2AiMissionRowEvidence {
+  justify-items: end;
+  font-family: var(--kordyn-v2-mono);
+  font-size: 10px;
+}
+
+.kordynV2AiMissionEmpty,
+.kordynV2AiMissionInspector.is-empty {
+  min-height: 150px;
+  padding: 24px 18px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 7px;
+  color: var(--kordyn-v2-muted);
+  text-align: center;
+}
+
+.kordynV2AiMissionEmpty strong,
+.kordynV2AiMissionInspector.is-empty h2 {
+  margin: 0;
+  color: var(--kordyn-v2-text-soft);
+  font-size: 14px;
+}
+
+.kordynV2AiMissionEmpty span,
+.kordynV2AiMissionInspector.is-empty p {
+  margin: 0;
+  font-family: var(--kordyn-v2-mono);
+  font-size: 10px;
+}
+
+.kordynV2AiMissionInspector {
+  min-height: 0;
+  padding: 13px 15px 12px;
+  display: grid;
+  grid-template-rows: auto 126px 54px minmax(0, 1fr) auto 52px;
+  overflow: hidden;
+}
+
+.kordynV2AiMissionInspectorHeader {
+  min-width: 0;
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.kordynV2AiMissionGlyph {
+  width: 36px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  color: #d9d5ff;
+  background: linear-gradient(145deg, rgba(132, 114, 255, 0.88), rgba(52, 120, 255, 0.35));
+  clip-path: polygon(50% 0, 94% 48%, 50% 100%, 6% 48%);
+}
+
+.kordynV2AiMissionInspectorHeader > span:nth-child(2) {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.kordynV2AiMissionInspectorHeader h2,
+.kordynV2AiMissionInspectorHeader p {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kordynV2AiMissionInspectorHeader h2 {
+  font-size: 20px;
+  font-weight: 660;
+  letter-spacing: -0.025em;
+}
+
+.kordynV2AiMissionInspectorHeader p {
+  color: var(--kordyn-v2-muted);
+  font-size: 11px;
+}
+
+.kordynV2AiMissionInspectorHeader em {
+  max-width: 142px;
+  padding: 5px 8px;
+  overflow: hidden;
+  border: 1px solid rgba(135, 160, 194, 0.13);
+  border-radius: 6px;
+  color: var(--kordyn-v2-muted);
+  background: rgba(135, 160, 194, 0.06);
+  font-size: 10px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kordynV2AiMissionInspectorHeader em[data-stage-tone="approval"] {
+  color: #ff99a2;
+  border-color: rgba(255, 89, 104, 0.28);
+  background: rgba(255, 89, 104, 0.07);
+}
+
+.kordynV2AiMissionInspectorHeader em[data-stage-tone="monitoring"] {
+  color: var(--kordyn-v2-mint);
+  border-color: rgba(32, 215, 148, 0.24);
+  background: rgba(32, 215, 148, 0.07);
+}
+
+.kordynV2AiMissionProgress {
+  position: relative;
+  min-width: 0;
+  margin: 0;
+  padding: 18px 2px 8px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  list-style: none;
+  border-bottom: 1px solid var(--kordyn-v2-border);
+}
+
+.kordynV2AiMissionProgress::before {
+  content: "";
+  position: absolute;
+  top: 40px;
+  right: 10%;
+  left: 10%;
+  height: 2px;
+  background: var(--kordyn-v2-border-strong);
+}
+
+.kordynV2AiMissionProgress li {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+}
+
+.kordynV2AiMissionProgress li > span {
+  width: 45px;
+  height: 45px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--kordyn-v2-border-strong);
+  border-radius: 50%;
+  color: var(--kordyn-v2-dim);
+  background: var(--kordyn-v2-field-deep);
+}
+
+.kordynV2AiMissionProgress li[aria-current="step"] > span {
+  color: var(--kordyn-v2-cobalt-soft);
+  border-color: var(--kordyn-v2-cobalt);
+  box-shadow: 0 7px 22px rgba(52, 120, 255, 0.18);
+}
+
+.kordynV2AiMissionProgress li[data-stage-state="monitoring"][aria-current="step"] > span {
+  color: var(--kordyn-v2-mint);
+  border-color: var(--kordyn-v2-mint);
+  box-shadow: 0 7px 22px rgba(32, 215, 148, 0.15);
+}
+
+.kordynV2AiMissionProgress li[data-stage-state="attention"][aria-current="step"] > span,
+.kordynV2AiMissionProgress li[data-stage-state="approval"][aria-current="step"] > span {
+  color: var(--kordyn-v2-amber);
+  border-color: var(--kordyn-v2-amber);
+}
+
+.kordynV2AiMissionProgress strong,
+.kordynV2AiMissionProgress small {
+  max-width: 100%;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kordynV2AiMissionProgress strong {
+  color: var(--kordyn-v2-text-soft);
+  font-size: 10px;
+  font-weight: 540;
+}
+
+.kordynV2AiMissionProgress small {
+  color: var(--kordyn-v2-dim);
+  font-size: 9px;
+}
+
+.kordynV2AiMissionProgress li[aria-current="step"] small {
+  color: var(--kordyn-v2-cobalt-soft);
+}
+
+.kordynV2AiMissionNow {
+  min-height: 54px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--kordyn-v2-cobalt-soft);
+  font-size: 12px;
+}
+
+.kordynV2AiMissionNow span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 12px currentColor;
+}
+
+.kordynV2AiMissionDecision {
+  min-height: 0;
+  padding: 0 12px;
+  border: 1px solid rgba(135, 160, 194, 0.14);
+  border-radius: 7px;
+  background: rgba(4, 11, 20, 0.32);
+  overflow: hidden;
+}
+
+.kordynV2AiMissionDecision h3 {
+  min-height: 40px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid rgba(135, 160, 194, 0.1);
+  font-size: 13px;
+}
+
+.kordynV2AiMissionDecision dl {
+  margin: 0;
+}
+
+.kordynV2AiMissionFact {
+  min-height: 40px;
+  display: grid;
+  grid-template-columns: 20px 90px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px dashed rgba(135, 160, 194, 0.1);
+}
+
+.kordynV2AiMissionFact:last-child {
+  border-bottom: 0;
+}
+
+.kordynV2AiMissionFact svg,
+.kordynV2AiMissionFact dt {
+  color: var(--kordyn-v2-muted);
+}
+
+.kordynV2AiMissionFact dt,
+.kordynV2AiMissionFact dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kordynV2AiMissionFact dd {
+  color: var(--kordyn-v2-text-soft);
+}
+
+.kordynV2AiMissionApproval {
+  min-height: 50px;
+  margin-top: 9px;
+  padding: 7px 10px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  border: 1px solid rgba(255, 89, 104, 0.42);
+  border-radius: 7px;
+  color: #ff929c;
+  background: rgba(255, 89, 104, 0.06);
+}
+
+.kordynV2AiMissionApproval span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.kordynV2AiMissionApproval strong,
+.kordynV2AiMissionApproval small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kordynV2AiMissionApproval strong {
+  font-size: 11px;
+}
+
+.kordynV2AiMissionApproval small {
+  color: var(--kordyn-v2-muted);
+  font-size: 9px;
+}
+
+.kordynV2AiMissionInspectorFooter {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: end;
+  gap: 10px;
+}
+
+.kordynV2AiMissionInspectorFooter button {
+  min-height: 44px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--kordyn-v2-border-strong);
+  border-radius: 6px;
+  background: rgba(4, 11, 20, 0.38);
+  cursor: pointer;
+}
+
+.kordynV2AiMissionInspectorFooter span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--kordyn-v2-dim);
+  font-family: var(--kordyn-v2-mono);
+  font-size: 9px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kordynV2AiAttentionRail {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  align-content: start;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.kordynV2AiAttentionPanel {
+  min-width: 0;
+  padding-bottom: 11px;
+  overflow: hidden;
+}
+
+.kordynV2AiAttentionPanel > header {
+  min-height: 45px;
+}
+
+.kordynV2AiAttentionPanel > header span {
+  min-width: 28px;
+  min-height: 22px;
+  padding: 0 7px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: var(--kordyn-v2-danger);
+  background: rgba(255, 89, 104, 0.14);
+  font-size: 10px;
+}
+
+.kordynV2AiAttentionPanel > button {
+  width: calc(100% - 22px);
+  min-height: 68px;
+  margin: 10px 11px 0;
+  padding: 9px 10px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--kordyn-v2-danger);
+  border-radius: 7px;
+  color: #ff929c;
+  background: rgba(255, 89, 104, 0.06);
+  cursor: pointer;
+  text-align: left;
+}
+
+.kordynV2AiAttentionPanel > button span {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.kordynV2AiAttentionPanel > button strong,
+.kordynV2AiAttentionPanel > button small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kordynV2AiAttentionPanel > button strong {
+  font-size: 11px;
+}
+
+.kordynV2AiAttentionPanel > button small,
+.kordynV2AiAttentionPanel > p {
+  color: var(--kordyn-v2-muted);
+  font-size: 10px;
+}
+
+.kordynV2AiAttentionPanel > p {
+  margin: 14px;
+  line-height: 1.5;
+}
+
+.kordynV2AiAttentionPanel dl {
+  margin: 7px 0 0;
+  padding: 0 15px;
+}
+
+.kordynV2AiAttentionPanel dl div {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.kordynV2AiAttentionPanel dt,
+.kordynV2AiAttentionPanel dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--kordyn-v2-muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kordynV2AiAttentionPanel dd {
+  max-width: 58%;
+  color: var(--kordyn-v2-text-soft);
+  font-family: var(--kordyn-v2-mono);
+  text-align: right;
+}
+
+.kordynV2AiMissionPrompt {
+  width: calc(100% - 356px);
+  min-height: 58px;
+  margin-left: 70px;
+  justify-self: start;
+  padding: 0 15px 0 20px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 36px;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--kordyn-v2-cobalt);
+  border-radius: 28px;
+  color: var(--kordyn-v2-cobalt-soft);
+  background: var(--kordyn-v2-field-deep);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22), 0 0 28px rgba(52, 120, 255, 0.06);
+  cursor: pointer;
+  text-align: left;
+}
+
+.kordynV2AiMissionPrompt span {
+  color: var(--kordyn-v2-muted);
+}
+
+.kordynV2AiMissionPrompt svg:last-child {
+  width: 33px;
+  height: 33px;
+  padding: 8px;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--kordyn-v2-cobalt);
+}
+
+@media (max-width: 1180px) and (min-width: 768px) {
+  .kordynV2AiMissionWorkspace {
+    padding-right: 16px;
+    padding-left: 14px;
+  }
+
+  .kordynV2AiWorkspaceTitle {
+    padding-right: 150px;
+  }
+
+  .kordynV2AiMissionWorkbench {
+    grid-template-columns: minmax(190px, 0.76fr) minmax(390px, 1.8fr) minmax(200px, 0.78fr);
+    gap: 10px;
+  }
+
+  .kordynV2AiMissionInspector {
+    padding-right: 11px;
+    padding-left: 11px;
+  }
+
+  .kordynV2AiMissionFact {
+    grid-template-columns: 18px 72px minmax(0, 1fr);
+  }
+
+  .kordynV2AiMissionPrompt {
+    width: calc(100% - 310px);
+    margin-left: 46px;
+  }
+}
+
+@media (max-height: 760px) and (min-width: 768px) {
+  .kordynV2AiMissionWorkspace {
+    grid-template-rows: 34px minmax(0, 1fr) 50px;
+    gap: 8px;
+    padding-bottom: 12px;
+  }
+
+  .kordynV2AiMissionInspector {
+    grid-template-rows: auto 102px 40px minmax(0, 1fr) auto 46px;
+  }
+
+  .kordynV2AiMissionProgress {
+    padding-top: 10px;
+  }
+
+  .kordynV2AiMissionProgress::before {
+    top: 31px;
+  }
+
+  .kordynV2AiMissionProgress li > span {
+    width: 38px;
+    height: 38px;
+  }
+
+  .kordynV2AiMissionNow,
+  .kordynV2AiMissionFact {
+    min-height: 36px;
+  }
+
+  .kordynV2AiMissionPrompt {
+    min-height: 48px;
+  }
+}
+
+@media (max-width: 767px) {
+  .kordynV2AiMobile {
+    min-width: 0;
+    min-height: 100%;
+    padding: 10px 12px 110px;
+    display: grid;
+    gap: 10px;
+  }
+
+  .kordynV2AiMobileActive,
+  .kordynV2AiMobileAttention,
+  .kordynV2AiMobileContext,
+  .kordynV2AiMobileRecent {
+    min-width: 0;
+    border: 1px solid rgba(116, 148, 194, 0.22);
+    border-radius: 14px;
+    background: linear-gradient(150deg, rgba(12, 25, 43, 0.96), rgba(6, 15, 27, 0.98));
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.15);
+  }
+
+  .kordynV2AiMobileActive {
+    padding: 12px;
+    display: grid;
+    gap: 11px;
+  }
+
+  .kordynV2AiMobileActive > header {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 9px;
+  }
+
+  .kordynV2AiMobileMissionGlyph {
+    width: 40px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(89, 118, 255, 0.52);
+    border-radius: 50%;
+    color: #dce5ff;
+    background: #334fc7;
+  }
+
+  .kordynV2AiMobileActive > header > span:nth-child(2) {
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+  }
+
+  .kordynV2AiMobileActive > header strong,
+  .kordynV2AiMobileActive > header small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .kordynV2AiMobileActive > header strong {
+    font-size: 16px;
+    letter-spacing: -0.02em;
+  }
+
+  .kordynV2AiMobileActive > header small {
+    color: var(--kordyn-v2-muted);
+    font-size: 11px;
+  }
+
+  .kordynV2AiMobileActive > header em {
+    max-width: 92px;
+    overflow: hidden;
+    color: var(--kordyn-v2-cobalt-soft);
+    font-size: 10px;
+    font-style: normal;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .kordynV2AiMobileActive.is-empty {
+    min-height: 168px;
+    place-content: center;
+    justify-items: center;
+    color: var(--kordyn-v2-muted);
+    text-align: center;
+  }
+
+  .kordynV2AiMissionProgress.is-compact {
+    min-height: 82px;
+    padding: 8px 0 0;
+    border-bottom: 0;
+  }
+
+  .kordynV2AiMissionProgress.is-compact::before {
+    top: 26px;
+  }
+
+  .kordynV2AiMissionProgress.is-compact li {
+    gap: 4px;
+  }
+
+  .kordynV2AiMissionProgress.is-compact li > span {
+    width: 36px;
+    height: 36px;
+  }
+
+  .kordynV2AiMissionProgress.is-compact strong,
+  .kordynV2AiMissionProgress.is-compact small {
+    font-size: 9px;
+  }
+
+  .kordynV2AiMobileFacts {
+    min-width: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border: 1px solid rgba(116, 148, 194, 0.13);
+    border-radius: 10px;
+    background: rgba(9, 20, 35, 0.76);
+  }
+
+  .kordynV2AiMobileFacts > div {
+    min-width: 0;
+    min-height: 54px;
+    padding: 7px;
+    display: grid;
+    align-content: center;
+    gap: 4px;
+  }
+
+  .kordynV2AiMobileFacts > div + div {
+    border-left: 1px solid rgba(116, 148, 194, 0.13);
+  }
+
+  .kordynV2AiMobileFacts dt,
+  .kordynV2AiMobileFacts dd {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .kordynV2AiMobileFacts dt {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--kordyn-v2-muted);
+    font-size: 10px;
+  }
+
+  .kordynV2AiMobileFacts dd {
+    color: var(--kordyn-v2-text-soft);
+    font-size: 11px;
+  }
+
+  .kordynV2AiMobileActive > footer {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .kordynV2AiMobileActive > footer > span {
+    grid-column: 1 / -1;
+    color: var(--kordyn-v2-dim);
+    font-family: var(--kordyn-v2-mono);
+    font-size: 9px;
+    text-align: right;
+  }
+
+  .kordynV2AiMobileAction {
+    min-height: 44px;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  .kordynV2AiMobileActive > footer button {
+    min-width: 0;
+    padding: 0 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    border: 1px solid var(--kordyn-v2-border-strong);
+    border-radius: 10px;
+    background: rgba(4, 11, 20, 0.38);
+  }
+
+  .kordynV2AiMobileAttention,
+  .kordynV2AiMobileContext,
+  .kordynV2AiMobileRecent {
+    padding: 10px;
+  }
+
+  .kordynV2AiMobileAttention > header,
+  .kordynV2AiMobileContext > header {
+    min-height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .kordynV2AiMobileAttention h2,
+  .kordynV2AiMobileContext h2,
+  .kordynV2AiMobileRecent h2 {
+    margin: 0;
+    font-size: 16px;
+    letter-spacing: -0.02em;
+  }
+
+  .kordynV2AiMobileAttention > header span {
+    padding: 3px 7px;
+    border: 1px solid rgba(255, 89, 104, 0.45);
+    border-radius: 8px;
+    color: var(--kordyn-v2-danger);
+    font-size: 10px;
+  }
+
+  .kordynV2AiMobileAttention > button,
+  .kordynV2AiMobileRecent > button {
+    width: 100%;
+    margin-top: 7px;
+    padding: 7px 8px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid rgba(255, 89, 104, 0.42);
+    border-radius: 10px;
+    color: var(--kordyn-v2-text);
+    background: rgba(56, 14, 25, 0.22);
+    text-align: left;
+  }
+
+  .kordynV2AiMobileAttention > button > span,
+  .kordynV2AiMobileRecent > button > span {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+
+  .kordynV2AiMobileAttention strong,
+  .kordynV2AiMobileAttention small,
+  .kordynV2AiMobileRecent strong,
+  .kordynV2AiMobileRecent small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .kordynV2AiMobileAttention strong,
+  .kordynV2AiMobileRecent strong {
+    font-size: 12px;
+  }
+
+  .kordynV2AiMobileAttention small,
+  .kordynV2AiMobileAttention > p,
+  .kordynV2AiMobileRecent small,
+  .kordynV2AiMobileRecent > p,
+  .kordynV2AiMobileContext > p {
+    color: var(--kordyn-v2-muted);
+    font-size: 10px;
+  }
+
+  .kordynV2AiMobileAttention > p,
+  .kordynV2AiMobileRecent > p {
+    margin: 9px 0 0;
+  }
+
+  .kordynV2AiMobileContext > header span {
+    color: var(--kordyn-v2-muted);
+    font-size: 10px;
+  }
+
+  .kordynV2AiMobileContext dl {
+    margin: 7px 0 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-top: 1px solid rgba(116, 148, 194, 0.12);
+    border-bottom: 1px solid rgba(116, 148, 194, 0.12);
+  }
+
+  .kordynV2AiMobileContext dl > div {
+    min-width: 0;
+    min-height: 54px;
+    padding: 7px;
+    display: grid;
+    align-content: center;
+    gap: 3px;
+  }
+
+  .kordynV2AiMobileContext dt,
+  .kordynV2AiMobileContext dd {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .kordynV2AiMobileContext dt {
+    color: var(--kordyn-v2-muted);
+    font-size: 10px;
+  }
+
+  .kordynV2AiMobileContext dd {
+    color: var(--kordyn-v2-text-soft);
+    font-family: var(--kordyn-v2-mono);
+    font-size: 11px;
+  }
+
+  .kordynV2AiMobileContext > p {
+    margin: 8px 0 0;
+    font-family: var(--kordyn-v2-mono);
+  }
+
+  .kordynV2AiMobileRecent > button {
+    border-color: rgba(116, 148, 194, 0.15);
+    background: rgba(9, 20, 35, 0.56);
+  }
+
+  .kordynV2AiMobileRecent > button em {
+    color: var(--kordyn-v2-cobalt-soft);
+    font-size: 10px;
+    font-style: normal;
+  }
+
+  .kordynV2AiMobilePrompt {
+    position: fixed;
+    z-index: 24;
+    right: 70px;
+    bottom: calc(var(--v2-mobile-nav-height) + env(safe-area-inset-bottom) + 6px);
+    left: 12px;
+    min-height: 50px;
+    padding: 0 12px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid var(--kordyn-v2-border-strong);
+    border-radius: 14px;
+    color: var(--kordyn-v2-cobalt-soft);
+    background: rgba(11, 25, 42, 0.98);
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.32);
+    text-align: left;
+  }
+
+  .kordynV2AiMobilePrompt span {
+    overflow: hidden;
+    color: var(--kordyn-v2-muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 430px) {
+  .kordynV2AiMobile {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .kordynV2AiMobileActive {
+    gap: 10px;
+  }
+}
+
+@media (max-width: 390px) {
+  .kordynV2AiMobile {
+    padding-right: 10px;
+    padding-left: 10px;
+    gap: 8px;
+  }
+
+  .kordynV2AiMobileActive,
+  .kordynV2AiMobileAttention,
+  .kordynV2AiMobileContext,
+  .kordynV2AiMobileRecent {
+    border-radius: 12px;
+  }
+
+  .kordynV2AiMissionProgress.is-compact li > span {
+    width: 32px;
+    height: 32px;
+  }
+
+  .kordynV2AiMissionProgress.is-compact::before {
+    top: 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kordynV2AiMissionRow {
+    transition-duration: 0.01ms;
+  }
+}
