@@ -58,7 +58,7 @@ const model = buildAiDomainModel({
       presentation: { nextAction: "继续监控入场条件" },
       strategyName: "Breakout Retest v3",
       knowledgeSource: "波动环境指南",
-      capabilities: ["行情", "市场结构", "风控"],
+      capabilities: ["行情", "市场结构", "风控", "执行"],
       eventWindow: "FOMC · 6h",
       positionId: "position-eth",
       createdAt: "2026-08-30T06:42:00Z",
@@ -150,7 +150,14 @@ test("Desktop Mission keeps lifecycle, real decision context, related Context Pr
   assert.match(html.slice(heroStart, heroEnd), /继续监控入场条件/);
   const contextStart = html.indexOf('class="kordynV2AiAttentionPanel is-context"');
   const contextEnd = html.indexOf('</section>', contextStart);
-  assert.match(html.slice(contextStart, contextEnd), /Evidence[^<]*<\/dt><dd>5/);
+  assert.match(html.slice(contextStart, contextEnd), /Evidence<\/dt><dd[^>]*>5<\/dd>/);
+  const contextMarkup = html.slice(contextStart, contextEnd);
+  assert.match(contextMarkup, /data-kordyn-v2-mission-context-fact="Capability"[^>]*><dt>Capability<\/dt><dd[^>]*title="行情 · 市场结构 · 风控 · 执行"[^>]*aria-label="Capability 行情 · 市场结构 · 风控 · 执行"/);
+  const receiptStart = html.indexOf('data-kordyn-v2-mission-receipt="run-monitor"');
+  const receiptEnd = html.indexOf('</section>', receiptStart);
+  const receiptMarkup = html.slice(receiptStart, receiptEnd);
+  assert.match(receiptMarkup, /data-kordyn-v2-mission-receipt-fact="createdAt"[^>]*><dt>创建<\/dt><dd[^>]*title="2026-08-30T06:42:00Z"[^>]*aria-label="创建 2026-08-30T06:42:00Z"[^>]*>08-30 06:42:00<\/dd>/);
+  assert.match(receiptMarkup, /data-kordyn-v2-mission-receipt-fact="updatedAt"[^>]*><dt>更新<\/dt><dd[^>]*title="2026-08-30T07:12:00Z"[^>]*aria-label="更新 2026-08-30T07:12:00Z"[^>]*>08-30 07:12:00<\/dd>/);
   const decisionStart = html.indexOf('data-kordyn-v2-mission-decision-summary="run-monitor"');
   const decisionEnd = html.indexOf("</section>", decisionStart);
   const decision = html.slice(decisionStart, decisionEnd);
@@ -178,6 +185,8 @@ test("Desktop Mission reserves the protected approval row without displacing the
   assert.match(css, /@media\s*\(max-width:\s*1180px\)[\s\S]*?\.kordynV2AiMissionInspector:not\(\[data-kordyn-v2-mission-stage="approval"\]\) \.kordynV2AiMissionInspectorFooter\s*\{[^}]*align-items:\s*flex-start[^}]*padding-right:\s*27px/s);
   assert.match(css, /@media\s*\(max-width:\s*1180px\)[\s\S]*?\.kordynV2AiMissionInspector:not\(\[data-kordyn-v2-mission-stage="approval"\]\) \[data-kordyn-v2-mission-context\]\s*\{[^}]*flex:\s*0 0 116px/s);
   assert.match(css, /@media\s*\(max-width:\s*1180px\)[\s\S]*?\.kordynV2AiMissionInspector:not\(\[data-kordyn-v2-mission-stage="approval"\]\) \[data-kordyn-v2-mission-proof\]\s*\{[^}]*flex:\s*0 0 140px/s);
+  assert.match(css, /\[data-kordyn-v2-mission-context-fact="Capability"\] dd\s*\{[^}]*white-space:\s*normal[^}]*text-overflow:\s*clip/s);
+  assert.match(css, /\[data-kordyn-v2-mission-receipt-fact\] dd\s*\{[^}]*text-overflow:\s*clip/s);
 });
 
 test("local Signal filters combine category, time range, and canonical object availability without inventing confidence", () => {
@@ -208,4 +217,10 @@ test("Desktop Signals lower operations are real interactive Watch Event and Inte
   assert.match(html, /data-kordyn-v2-object-id="event-fomc"[^>]*data-kordyn-v2-object-type="Event"/);
   assert.match(html, /data-kordyn-v2-object-id="signal-recent"[^>]*data-kordyn-v2-object-type="Signal"/);
   assert.match(html, /data-kordyn-v2-readonly-fact="true"/);
+  const intelligenceStart = html.indexOf('data-kordyn-v2-signal-operation="intelligence"');
+  const intelligenceEnd = html.indexOf('</section>', intelligenceStart);
+  const intelligence = html.slice(intelligenceStart, intelligenceEnd);
+  assert.match(intelligence, /data-kordyn-v2-object-id="signal-recent"[^>]*data-kordyn-v2-object-type="Signal"/);
+  assert.match(intelligence, /data-kordyn-v2-readonly-fact="true"/);
+  assert.doesNotMatch(intelligence, /data-kordyn-v2-signal-overview-id/);
 });

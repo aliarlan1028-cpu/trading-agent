@@ -398,9 +398,9 @@ test("empty long-content and large-list context workspaces remain truthful and c
     intelligence: Object.freeze([longRow, ...Array.from({ length: 59 }, (_, index) => Object.freeze({ id: `signal-large-${index}`, kind: "news", title: `事实 ${index}`, source: "newsFeed", selectable: true }))]),
     watches: Object.freeze([]), events: Object.freeze([]), missions: Object.freeze([])
   });
-  for (const Component of [AiSignalsWorkspace, MobileAiSignalsScreen]) {
+  for (const [Component, expectedCanonicalPresentations] of [[AiSignalsWorkspace, 120], [MobileAiSignalsScreen, 60]]) {
     const html = renderToStaticMarkup(React.createElement(Component, { model: largeModel, actions: {}, actionsDisabled: false, selection: null }));
-    assert.equal((html.match(/data-kordyn-v2-object-type="Signal"/g) || []).length, 60);
+    assert.equal((html.match(/data-kordyn-v2-object-type="Signal"/g) || []).length, expectedCanonicalPresentations);
     assert.match(html, new RegExp(longTail));
   }
 });

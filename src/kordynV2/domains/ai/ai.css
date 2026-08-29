@@ -702,6 +702,26 @@
   text-align: right;
 }
 
+.kordynV2AiAttentionPanel [data-kordyn-v2-mission-context-fact="Capability"] {
+  min-height: 38px;
+  align-items: flex-start;
+  padding: 4px 0;
+}
+
+.kordynV2AiAttentionPanel [data-kordyn-v2-mission-context-fact="Capability"] dd {
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
+}
+
+.kordynV2AiAttentionPanel [data-kordyn-v2-mission-receipt-fact] dd {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
 .kordynV2AiMissionPrompt {
   width: calc(100% - 356px);
   min-height: 58px;

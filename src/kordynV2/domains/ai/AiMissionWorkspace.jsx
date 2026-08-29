@@ -18,6 +18,22 @@ function selectedMissionFor(model, selection) {
 function firstListValue(values) {
   return Array.isArray(values) && values.length ? values.join(" · ") : unavailable;
 }
+function readableValue(value) {
+  return value === null || value === undefined || value === "" ? unavailable : String(value);
+}
+function compactTimestamp(value) {
+  const exact = readableValue(value);
+  const match = exact.match(/^\d{4}-(\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(?:\.\d+)?Z$/);
+  return { exact, display: match ? `${match[1]} ${match[2]}` : exact };
+}
+function ContextFact({ label, value }) {
+  const exact = readableValue(value);
+  return <div data-kordyn-v2-mission-context-fact={label}><dt>{label}</dt><dd title={exact} aria-label={`${label} ${exact}`}>{exact}</dd></div>;
+}
+function ReceiptFact({ id, label, value, timestamp = false }) {
+  const fact = timestamp ? compactTimestamp(value) : { exact: readableValue(value), display: readableValue(value) };
+  return <div data-kordyn-v2-mission-receipt-fact={id}><dt>{label}</dt><dd title={fact.exact} aria-label={`${label} ${fact.exact}`}>{fact.display}</dd></div>;
+}
 function missionProofRequest(mission) {
   return { panel: "proof", candidate: { id: mission.id, type: "Agent run", workspaceId: "ai", route: "chat", evidence: mission.evidenceCount } };
 }
@@ -46,12 +62,12 @@ function AttentionRail({ missions, selectedMission, selection, onSelect, onOpenP
       <section className="kordynV2AiAttentionPanel is-context" data-kordyn-v2-mission-related-context={selectedMission?.id || unavailable}>
         <header><h2>关联上下文</h2><FileSearch size={17} aria-hidden="true" /></header>
         <dl>
-          <div><dt>Strategy</dt><dd>{selectedMission?.decisionContext?.strategy || unavailable}</dd></div>
-          <div><dt>Knowledge</dt><dd>{firstListValue(selectedMission?.decisionContext?.knowledge)}</dd></div>
-          <div><dt>Capability</dt><dd>{firstListValue(selectedMission?.decisionContext?.capabilities)}</dd></div>
-          <div><dt>Event</dt><dd>{firstListValue(selectedMission?.decisionContext?.events)}</dd></div>
-          <div><dt>Position</dt><dd>{firstListValue(selectedMission?.decisionContext?.positions)}</dd></div>
-          <div><dt>Evidence</dt><dd>{selectedMission?.evidenceCount ?? unavailable}</dd></div>
+          <ContextFact label="Strategy" value={selectedMission?.decisionContext?.strategy} />
+          <ContextFact label="Knowledge" value={firstListValue(selectedMission?.decisionContext?.knowledge)} />
+          <ContextFact label="Capability" value={firstListValue(selectedMission?.decisionContext?.capabilities)} />
+          <ContextFact label="Event" value={firstListValue(selectedMission?.decisionContext?.events)} />
+          <ContextFact label="Position" value={firstListValue(selectedMission?.decisionContext?.positions)} />
+          <ContextFact label="Evidence" value={selectedMission?.evidenceCount} />
         </dl>
         {selectedMission && <button type="button" className="kordynV2AiAttentionProof" data-kordyn-v2-attention-proof={selectedMission.id} onClick={(event) => onOpenProof(event.currentTarget, missionProofRequest(selectedMission))}><FileSearch size={15} aria-hidden="true" /><span><strong>打开 Context / Proof</strong><small>{selection?.context?.title || selectedMission.id}</small></span><ArrowRight size={15} aria-hidden="true" /></button>}
       </section>
@@ -59,11 +75,11 @@ function AttentionRail({ missions, selectedMission, selection, onSelect, onOpenP
       <section className="kordynV2AiAttentionPanel is-trace" data-kordyn-v2-mission-receipt={selectedMission?.id || unavailable}>
         <header><h2>运行回执</h2></header>
         <dl>
-          <div><dt>创建</dt><dd>{selectedMission?.receipt?.createdAt || unavailable}</dd></div>
-          <div><dt>更新</dt><dd>{selectedMission?.receipt?.updatedAt || unavailable}</dd></div>
-          <div><dt>完成</dt><dd>{selectedMission?.receipt?.completedAt || unavailable}</dd></div>
-          <div><dt>状态</dt><dd>{selectedMission?.receipt?.status || unavailable}</dd></div>
-          <div><dt>Proof</dt><dd>{selection?.trace?.stages?.length ? `${selection.trace.stages.length} 阶段` : unavailable}</dd></div>
+          <ReceiptFact id="createdAt" label="创建" value={selectedMission?.receipt?.createdAt} timestamp />
+          <ReceiptFact id="updatedAt" label="更新" value={selectedMission?.receipt?.updatedAt} timestamp />
+          <ReceiptFact id="completedAt" label="完成" value={selectedMission?.receipt?.completedAt} timestamp />
+          <ReceiptFact id="status" label="状态" value={selectedMission?.receipt?.status} />
+          <ReceiptFact id="proof" label="Proof" value={selection?.trace?.stages?.length ? `${selection.trace.stages.length} 阶段` : unavailable} />
         </dl>
       </section>
     </aside>

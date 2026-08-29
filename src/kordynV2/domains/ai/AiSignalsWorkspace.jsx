@@ -64,16 +64,15 @@ function SignalOperationTable({ kind, title, rows, selectedId, onInspect = () =>
         {source.map((row, index) => {
           const type = kind === "watch" ? "Watch" : kind === "event" ? "Event" : signalType(row);
           const moment = type === "Event" ? safe(row.due || row.startAt) : observedFor(row);
-          const locallyInspectable = kind === "intelligence";
           return (
             <button
-              className={locallyInspectable && selectedId === row.id ? "is-selected" : ""}
+              className={selectedId === row.id ? "is-selected" : ""}
               type="button"
-              {...(locallyInspectable ? { "data-kordyn-v2-signal-overview-id": row.id || undefined } : contextPresentationAttributes(row, type))}
-              aria-disabled={locallyInspectable ? false : row.selectable !== true}
-              aria-pressed={locallyInspectable ? selectedId === row.id : undefined}
+              {...contextPresentationAttributes(row, type)}
+              aria-disabled={row.selectable !== true}
+              aria-pressed={row.selectable === true ? selectedId === row.id : undefined}
               key={`${kind}-operation-${index}`}
-              onClick={() => locallyInspectable ? onInspect(row) : runAiContextRowInteraction({ row, type, onInspect: () => {}, onSelect, candidateFor: (value) => operationCandidate(value, type) })}
+              onClick={() => runAiContextRowInteraction({ row, type, onInspect, onSelect, candidateFor: (value) => operationCandidate(value, type) })}
             >
               <span><strong>{titleFor(row)}</strong><small>{type === "Watch" ? safe(row.symbol) : sourceLabel(row)} · {moment}</small></span>
               <em>{type === "Watch" ? safe(row.status) : type === "Event" ? safe(row.impactLabel || row.timePrecision) : availabilityLabel(row)}</em>
