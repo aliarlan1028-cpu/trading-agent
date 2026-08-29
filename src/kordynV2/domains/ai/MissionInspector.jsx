@@ -1,4 +1,4 @@
-import { ArrowRight, Bot, FileCheck2, Link2, MessagesSquare, ShieldAlert } from "lucide-react";
+import { ArrowRight, Bot, FileCheck2, FileImage, Link2, MessagesSquare, ShieldAlert } from "lucide-react";
 import { MissionProgress } from "./MissionProgress.jsx";
 
 const unavailable = "Unavailable";
@@ -23,7 +23,7 @@ function MissionFact({ label, value, icon: Icon }) {
     </div>
   );
 }
-export function MissionInspector({ mission, selection, onOpenProof = () => {} }) {
+export function MissionInspector({ mission, selection, onOpenProof = () => {}, onOpenApproval = () => {}, onOpenOutput = () => {} }) {
   if (!mission) {
     return (
       <article className="kordynV2AiMissionInspector is-empty" data-kordyn-v2-mission-inspector data-kordyn-v2-selected-mission="Unavailable">
@@ -73,11 +73,13 @@ export function MissionInspector({ mission, selection, onOpenProof = () => {} })
       {approvalRequired && (
         <aside className="kordynV2AiMissionApproval" role="status">
           <ShieldAlert size={18} aria-hidden="true" />
-          <span><strong>需要你确认</strong><small>Plan {safeValue(mission.approval?.planId)} · 当前仅披露，不在此处执行写操作。</small></span>
+          <span><strong>需要你确认</strong><small>Plan {safeValue(mission.approval?.planId)} · 打开后仍需受保护确认，服务器会重新校验。</small></span>
         </aside>
       )}
 
       <footer className="kordynV2AiMissionInspectorFooter">
+        {approvalRequired && <button type="button" data-kordyn-v2-open-approval={mission.id} aria-haspopup="dialog" onClick={(event) => onOpenApproval(mission, event.currentTarget)}><ShieldAlert size={16} aria-hidden="true" />打开任务确认</button>}
+        {mission.output && <button type="button" data-kordyn-v2-open-output={mission.id} aria-haspopup="dialog" onClick={(event) => onOpenOutput(mission.output, event.currentTarget)}><FileImage size={16} aria-hidden="true" />生成 PNG 输出</button>}
         <button
           type="button"
           aria-haspopup="dialog"

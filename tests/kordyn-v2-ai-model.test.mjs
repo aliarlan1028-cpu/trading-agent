@@ -927,6 +927,7 @@ test("revoked root records and arrays fail closed without escaping the model", (
     assert.doesNotThrow(() => { model = buildAiDomainModel(root); });
     assert.deepEqual(model, {
       missions: [],
+      dialog: { sessions: [], activeSessionId: null, messages: [], provider: null, messageScope: "Unavailable" },
       patrols: [],
       intelligence: [],
       watches: [],

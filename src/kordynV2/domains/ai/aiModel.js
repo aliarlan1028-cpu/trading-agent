@@ -260,6 +260,132 @@ function nextActionFor(run) {
     : unavailable;
 }
 
+const finiteFact = (value, { positive = false, integer = false } = {}) => (
+  typeof value === "number"
+  && Number.isFinite(value)
+  && (!positive || value > 0)
+  && (!integer || Number.isInteger(value))
+    ? value
+    : null
+);
+
+function boundedIdentifiers(...values) {
+  const identifiers = [];
+  for (const value of values) {
+    if (arrayClassification(value) === true) {
+      for (const item of value) if (canonicalIdentifier(item) && !identifiers.includes(item)) identifiers.push(item);
+    } else if (canonicalIdentifier(value) && !identifiers.includes(value)) identifiers.push(value);
+    if (identifiers.length >= 24) break;
+  }
+  return identifiers;
+}
+
+function planEntry(plan) {
+  if (nonEmptyText(plan.entry?.range)) return plan.entry.range.trim();
+  const values = arrayClassification(plan.entry_range) === true
+    ? plan.entry_range.map((value) => finiteFact(value, { positive: true }))
+    : [];
+  return values.length >= 2 && values.every((value) => value !== null) ? values.join("–") : unavailable;
+}
+
+function takeProfitFacts(plan) {
+  const source = arrayClassification(plan.takeProfit) === true
+    ? plan.takeProfit
+    : arrayClassification(plan.take_profit) === true ? plan.take_profit : [];
+  return source.slice(0, 4).map((value) => finiteFact(value, { positive: true })).filter((value) => value !== null);
+}
+
+function accountImpactFor(plan, data, riskPercent) {
+  const explicit = plainRecord(plan.accountImpact) ? plan.accountImpact : {};
+  const portfolio = plainRecord(data.portfolio) ? data.portfolio : {};
+  const positionsKnown = arrayClassification(data.positions) === true;
+  const equityUsdt = finiteFact(explicit.equityUsdt) ?? finiteFact(portfolio.totalEquityUsdt);
+  const availableMarginUsdt = finiteFact(explicit.availableMarginUsdt) ?? finiteFact(portfolio.availableMarginUsdt);
+  const openPositionCount = finiteFact(explicit.openPositionCount, { integer: true })
+    ?? (positionsKnown ? data.positions.length : null);
+  const projectedOpenPositionCount = finiteFact(explicit.projectedOpenPositionCount, { integer: true })
+    ?? (openPositionCount === null ? null : openPositionCount + 1);
+  const estimatedMaxLossUsdt = finiteFact(explicit.estimatedMaxLossUsdt)
+    ?? (equityUsdt !== null && riskPercent !== null ? Number((equityUsdt * riskPercent / 100).toFixed(2)) : null);
+  return Object.freeze({ equityUsdt, availableMarginUsdt, openPositionCount, projectedOpenPositionCount, estimatedMaxLossUsdt });
+}
+
+export function projectApprovalTruth(plan, data = {}) {
+  if (!plainRecord(plan)) return null;
+  const planId = ownCanonicalIdentifier(plan, "id");
+  if (!planId) return null;
+  const status = nonEmptyText(plan.status) ? plan.status.trim().toLowerCase() : unavailable;
+  const symbol = nonEmptyText(plan.symbol) ? plan.symbol.trim() : unavailable;
+  const direction = nonEmptyText(plan.direction) ? plan.direction.trim().toLowerCase() : unavailable;
+  const entry = planEntry(plan);
+  const stopLoss = finiteFact(plan.stopLoss ?? plan.stop_loss, { positive: true });
+  const takeProfit = takeProfitFacts(plan);
+  const leverage = finiteFact(plan.leverage, { positive: true });
+  const riskPercent = finiteFact(plan.max_loss_pct ?? plan.entry?.riskPercent ?? plan.riskPercent, { positive: true });
+  const riskCheck = plainRecord(plan.lastRiskCheck) ? plan.lastRiskCheck : null;
+  const riskSummary = riskCheck && nonEmptyText(riskCheck.summary ?? riskCheck.reason)
+    ? String(riskCheck.summary ?? riskCheck.reason).trim()
+    : unavailable;
+  const riskId = riskCheck ? ownCanonicalIdentifier(riskCheck, "id") : null;
+  const evidenceIds = boundedIdentifiers(plan.evidenceIds, plan.analysisBundleId, plan.knowledgeSkillIds, riskId);
+  const accountImpact = accountImpactFor(plan, data, riskPercent);
+  const missingFacts = [];
+  if (status !== "awaiting_approval") missingFacts.push("status");
+  if (symbol === unavailable) missingFacts.push("symbol");
+  if (!new Set(["long", "short"]).has(direction)) missingFacts.push("direction");
+  if (entry === unavailable) missingFacts.push("entry");
+  if (stopLoss === null) missingFacts.push("stopLoss");
+  if (!takeProfit.length) missingFacts.push("takeProfit");
+  if (leverage === null) missingFacts.push("leverage");
+  if (riskPercent === null) missingFacts.push("riskPercent");
+  if (!riskCheck || riskCheck.passed !== true || riskSummary === unavailable) missingFacts.push("riskResult");
+  if (!evidenceIds.length) missingFacts.push("evidence");
+  if (Object.values(accountImpact).some((value) => value === null)) missingFacts.push("accountImpact");
+  return Object.freeze({
+    planId,
+    status,
+    symbol,
+    direction,
+    entry,
+    stopLoss,
+    takeProfit: Object.freeze(takeProfit),
+    leverage,
+    riskPercent,
+    strategy: nonEmptyText(plan.strategy) ? plan.strategy.trim() : unavailable,
+    evidence: Object.freeze({ ids: Object.freeze(evidenceIds), count: evidenceIds.length }),
+    risk: Object.freeze({
+      id: riskId,
+      passed: riskCheck?.passed === true,
+      summary: riskSummary,
+      blockers: Object.freeze(list(riskCheck?.blockers).slice(0, 6).map((value) => String(value))),
+      warnings: Object.freeze(list(riskCheck?.warnings).slice(0, 6).map((value) => String(value)))
+    }),
+    accountImpact,
+    valid: missingFacts.length === 0,
+    missingFacts: Object.freeze(missingFacts)
+  });
+}
+
+function outputMessageFor(run, plan, messages) {
+  const matches = messages.filter((message) => plainRecord(message)
+    && String(message.role || "").toLowerCase() !== "user"
+    && nonEmptyText(message.content)
+    && (
+      ownCanonicalIdentifier(message, "agentRunId") === run.id
+      || ownCanonicalIdentifier(message, "runId") === run.id
+      || (plan && ownCanonicalIdentifier(message, "planId") === plan.id)
+      || (plan && plainRecord(message.presentation?.linked) && ownCanonicalIdentifier(message.presentation.linked, "planId") === plan.id)
+    ));
+  const message = matches[matches.length - 1];
+  if (!message) return null;
+  return Object.freeze({
+    id: ownCanonicalIdentifier(message, "id") || `${run.id}-output`,
+    role: "agent",
+    content: message.content,
+    createdAt: nonEmptyText(message.createdAt) ? message.createdAt : unavailable
+  });
+}
+
 function stageForRun(run) {
   const status = nonEmptyText(run.status) ? run.status.trim().toLowerCase() : null;
   const statusValue = auditedStage(statusStage, status);
@@ -272,7 +398,7 @@ function stageForRun(run) {
   return phaseValue || statusValue;
 }
 
-function missionFor(run, plans, traces) {
+function missionFor(run, plans, traces, data, messages) {
   const plan = linkedPlanFor(run, plans);
   const latestStep = list(run.steps).slice().reverse().find((step) => (
     step && typeof step === "object" && (nonEmptyText(step.title) || nonEmptyText(step.summary))
@@ -287,10 +413,37 @@ function missionFor(run, plans, traces) {
     stage: missionStagePresentation(stageForRun(run)),
     evidenceCount: evidenceCountFor(run, plan, traces),
     nextAction: nextActionFor(run),
-    approval: plan ? Object.freeze({
-      planId: plan.id,
-      status: nonEmptyText(plan.status) ? plan.status : unavailable
-    }) : null
+    approval: plan ? projectApprovalTruth(plan, data) : null,
+    output: outputMessageFor(run, plan, messages)
+  });
+}
+
+function dialogProjection(source, messages) {
+  const sessions = uniquelyIdentified(source.chatSessions).slice(0, 40).map((session) => Object.freeze({
+    id: session.id,
+    title: nonEmptyText(session.title) ? session.title : unavailable,
+    status: nonEmptyText(session.status) ? session.status : unavailable,
+    updatedAt: nonEmptyText(session.updatedAt ?? session.createdAt) ? String(session.updatedAt ?? session.createdAt) : unavailable
+  }));
+  const projectedMessages = messages.slice(-100).filter(plainRecord).map((message, index) => Object.freeze({
+    id: ownCanonicalIdentifier(message, "id") || `message-${index}`,
+    role: nonEmptyText(message.role) ? message.role : unavailable,
+    content: nonEmptyText(message.content ?? message.text) ? String(message.content ?? message.text) : unavailable,
+    sessionId: ownCanonicalIdentifier(message, "sessionId"),
+    createdAt: nonEmptyText(message.createdAt) ? message.createdAt : unavailable,
+    model: nonEmptyText(message.model) ? message.model : null,
+    planId: ownCanonicalIdentifier(message, "planId")
+  }));
+  const activeSessionId = ownCanonicalIdentifier(source, "activeSessionId") || sessions[0]?.id || null;
+  return Object.freeze({
+    sessions: Object.freeze(sessions),
+    activeSessionId,
+    messages: Object.freeze(projectedMessages),
+    provider: plainRecord(source.provider) ? Object.freeze({
+      name: nonEmptyText(source.provider.name) ? source.provider.name : unavailable,
+      model: nonEmptyText(source.provider.model) ? source.provider.model : unavailable
+    }) : null,
+    messageScope: nonEmptyText(source.messageScope) ? source.messageScope : unavailable
   });
 }
 
@@ -305,7 +458,8 @@ export function buildAiDomainModel(data = {}) {
     : list(source.messages);
   return Object.freeze({
     missions: Object.freeze(uniquelyIdentified(source.agentRuns)
-      .map((run) => missionFor(run, plans, traces))),
+      .map((run) => missionFor(run, plans, traces, source, messages))),
+    dialog: dialogProjection(source, messages),
     patrols: Object.freeze(messages.map(safePatrolView).filter(Boolean).map(freezeProjection)),
     intelligence: contextFacts.intelligence,
     watches: contextFacts.watches,

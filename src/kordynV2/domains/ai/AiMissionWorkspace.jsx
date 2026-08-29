@@ -52,13 +52,13 @@ function AttentionRail({ missions, selectedMission, selection, onSelect }) {
 
 export function AiMissionWorkspace({
   model,
-  actions,
   selection,
   onSelect = () => {},
   onOpenDialog = () => {},
-  onOpenProof = () => {}
+  onOpenProof = () => {},
+  onOpenApproval = () => {},
+  onOpenOutput = () => {}
 }) {
-  void actions;
   const missions = Array.isArray(model?.missions) ? model.missions : [];
   const selectedMission = selectedMissionFor(model, selection);
 
@@ -70,7 +70,13 @@ export function AiMissionWorkspace({
       </header>
       <div className="kordynV2AiMissionWorkbench">
         <MissionRegistry missions={missions} selectedId={selectedMission?.id} onSelect={onSelect} />
-        <MissionInspector mission={selectedMission} selection={selection} onOpenProof={onOpenProof} />
+        <MissionInspector
+          mission={selectedMission}
+          selection={selection}
+          onOpenProof={onOpenProof}
+          onOpenApproval={onOpenApproval}
+          onOpenOutput={onOpenOutput}
+        />
         <AttentionRail missions={missions} selectedMission={selectedMission} selection={selection} onSelect={onSelect} />
       </div>
       <AiDialogPrompt onOpen={onOpenDialog} />

@@ -5,7 +5,6 @@ import { KORDYN_V2_DOMAINS, KORDYN_V2_WORKSPACES } from "./architecture/domains.
 import { v2LocationForWorkspace } from "./architecture/routes.js";
 import { DesktopShell } from "./shell/DesktopShell.jsx";
 import { DestinationBoundary } from "./shell/DestinationBoundary.jsx";
-import { DialogSurface } from "./shell/DialogSurface.jsx";
 import { MobileShell } from "./shell/MobileShell.jsx";
 import { useV2Viewport } from "./shell/useV2Viewport.js";
 import { buildAccountTruth } from "./viewModels/accountTruth.js";
@@ -164,7 +163,7 @@ export function KordynV2Root({ api, lang }) {
   const identity = useMemo(() => identityTruth(data), [data]);
   const supportContext = useMemo(() => buildAiSupportContext({ data, location, selection, state }), [data, location, selection, state]);
 
-  const destination = location.domainId === "ai" && location.workspaceId !== "dialog"
+  const destination = location.domainId === "ai"
     ? (
       <Suspense fallback={<div className="kordynV2AiDomainLoading" role="status">正在加载 AI 交易员工作区…</div>}>
         <LazyAiDomain
@@ -177,13 +176,12 @@ export function KordynV2Root({ api, lang }) {
           selection={selection}
           onSelect={select}
           onOpenDialog={openDialog}
+          onCloseDialog={closeDialog}
           onOpenProof={requestProof}
         />
       </Suspense>
     )
-    : location.domainId === "ai" && location.workspaceId === "dialog"
-      ? <DialogSurface data={data} onClose={closeDialog} />
-      : <DestinationBoundary domain={domain} workspace={workspace} location={location} state={state} />;
+    : <DestinationBoundary domain={domain} workspace={workspace} location={location} state={state} />;
 
   const Shell = viewport === "mobile" ? MobileShell : DesktopShell;
   return (

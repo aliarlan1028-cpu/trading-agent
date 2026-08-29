@@ -1,3 +1,5 @@
+import { agentChatRequestForSurface } from "../../../chatArchive.js";
+
 const cancelled = Object.freeze({ ok: false, cancelled: true });
 const invalidInput = Object.freeze({ ok: false, error: "invalid_ai_action_input" });
 const unavailableAction = async () => ({ ok: false, error: "action_unavailable" });
@@ -129,6 +131,14 @@ export function createAiActions({
     return snapshot ? runAction("/api/agent/memory", snapshot) : invalidInput;
   };
   const refreshEvents = () => runAction("/api/event-sources/refresh", {});
+  const readChatSession = (sessionId = "") => {
+    if (sessionId !== "" && !validIdentifier(sessionId)) return invalidInput;
+    return runAction(agentChatRequestForSurface("dialog", sessionId), {}, "GET");
+  };
+  const sendChatMessage = (message, sessionId = "") => {
+    if (!validRequiredText(message) || (sessionId !== "" && !validIdentifier(sessionId))) return invalidInput;
+    return runAction("/api/agent/chat", { message: message.trim(), sessionId });
+  };
   const translatePoster = (value) => typeof value === "string" && value.trim()
     ? runAction("/api/posters/translate", { text: value })
     : invalidInput;
@@ -141,6 +151,8 @@ export function createAiActions({
     cancelWatch,
     rememberIntelligence,
     refreshEvents,
+    readChatSession,
+    sendChatMessage,
     translatePoster,
     downloadPoster,
     navigate: runNavigate

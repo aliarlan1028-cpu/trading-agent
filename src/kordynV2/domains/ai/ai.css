@@ -1156,6 +1156,669 @@
   }
 }
 
+/* Task 4: real conversation, one-shot approval, and current-style output. */
+.kordynV2AiDialogWorkspace,
+.kordynV2AiMobileDialog,
+.kordynV2AiDialogWorkbench,
+.kordynV2AiDialogWorkbench > main,
+.kordynV2AiDialogMessages {
+  min-width: 0;
+  min-height: 0;
+}
+
+.kordynV2AiDialogWorkspace {
+  width: 100%;
+  height: 100%;
+  padding: 12px 28px 22px 18px;
+  display: grid;
+  grid-template-rows: 64px minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.kordynV2AiDialogWorkspace > header,
+.kordynV2AiMobileDialog > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--kordyn-v2-border);
+}
+
+.kordynV2AiDialogWorkspace > header { padding-right: 176px; }
+
+.kordynV2AiDialogWorkspace > header > span,
+.kordynV2AiMobileDialog > header > span {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.kordynV2AiDialogWorkspace > header > span > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.kordynV2AiDialogWorkspace h1 {
+  margin: 0;
+  font-size: 21px;
+  letter-spacing: -0.025em;
+}
+
+.kordynV2AiDialogWorkspace > header small {
+  overflow: hidden;
+  color: var(--kordyn-v2-muted);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kordynV2AiDialogWorkspace > header > button,
+.kordynV2AiMobileDialog > header > button {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--kordyn-v2-border-strong);
+  border-radius: 50%;
+  color: var(--kordyn-v2-text-soft);
+  background: rgba(4, 11, 20, 0.44);
+  cursor: pointer;
+}
+
+.kordynV2AiDialogWorkbench {
+  display: grid;
+  grid-template-columns: 224px minmax(0, 1fr);
+  border: 1px solid var(--kordyn-v2-border);
+  border-radius: 10px;
+  background: rgba(6, 15, 27, 0.78);
+  box-shadow: 0 22px 58px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+.kordynV2AiDialogWorkbench > aside {
+  min-width: 0;
+  min-height: 0;
+  padding: 16px 12px;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  border-right: 1px solid var(--kordyn-v2-border);
+  background: rgba(4, 11, 20, 0.45);
+  overflow: auto;
+}
+
+.kordynV2AiDialogWorkbench > aside > strong {
+  margin: 0 5px 7px;
+  color: var(--kordyn-v2-muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.kordynV2AiDialogWorkbench > aside > button {
+  min-height: 52px;
+  padding: 8px 10px;
+  display: grid;
+  gap: 4px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--kordyn-v2-text-soft);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.kordynV2AiDialogWorkbench > aside > button[aria-pressed="true"] {
+  border-color: rgba(52, 120, 255, 0.42);
+  background: rgba(52, 120, 255, 0.13);
+}
+
+.kordynV2AiDialogWorkbench > aside > button span,
+.kordynV2AiDialogWorkbench > aside > button small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kordynV2AiDialogWorkbench > aside > button small,
+.kordynV2AiDialogWorkbench > aside > p {
+  color: var(--kordyn-v2-dim);
+  font-size: 9px;
+}
+
+.kordynV2AiDialogWorkbench > main {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.kordynV2AiDialogMessages {
+  padding: 22px clamp(18px, 4vw, 64px);
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  overflow: auto;
+  scrollbar-color: #2d405e transparent;
+  scrollbar-width: thin;
+}
+
+.kordynV2AiDialogMessages > article {
+  width: min(760px, 88%);
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.kordynV2AiDialogMessages > article[data-message-role="user"] {
+  margin-left: auto;
+  grid-template-columns: minmax(0, 1fr) 34px;
+}
+
+.kordynV2AiDialogMessages > article[data-message-role="user"] > span {
+  grid-column: 2;
+}
+
+.kordynV2AiDialogMessages > article[data-message-role="user"] > div {
+  grid-row: 1;
+  grid-column: 1;
+  background: rgba(52, 120, 255, 0.16);
+}
+
+.kordynV2AiDialogMessages > article > span {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(132, 114, 255, 0.32);
+  border-radius: 50%;
+  color: #c9c4ff;
+  background: #0b1220;
+}
+
+.kordynV2AiDialogMessages > article > div {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(135, 160, 194, 0.15);
+  border-radius: 10px;
+  background: rgba(12, 24, 40, 0.72);
+}
+
+.kordynV2AiDialogMessages article header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.kordynV2AiDialogMessages article header strong {
+  color: var(--kordyn-v2-cobalt-soft);
+  font-size: 10px;
+}
+
+.kordynV2AiDialogMessages article header small {
+  color: var(--kordyn-v2-dim);
+  font-family: var(--kordyn-v2-mono);
+  font-size: 8px;
+}
+
+.kordynV2AiDialogMessages article p {
+  margin: 8px 0 0;
+  color: var(--kordyn-v2-text-soft);
+  font-size: 12px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.kordynV2AiDialogMessages article button {
+  min-height: 36px;
+  margin-top: 10px;
+  padding: 0 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(52, 120, 255, 0.34);
+  border-radius: 6px;
+  color: var(--kordyn-v2-cobalt-soft);
+  background: rgba(52, 120, 255, 0.08);
+  cursor: pointer;
+  font-size: 9px;
+}
+
+.kordynV2AiDialogEmpty {
+  min-height: 220px;
+  margin: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 7px;
+  color: var(--kordyn-v2-muted);
+  text-align: center;
+}
+
+.kordynV2AiDialogEmpty strong { color: var(--kordyn-v2-text-soft); font-size: 14px; }
+.kordynV2AiDialogEmpty span { font-size: 10px; }
+
+.kordynV2AiDialogComposer {
+  min-width: 0;
+  padding: 12px 270px 14px 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px;
+  gap: 8px;
+  border-top: 1px solid var(--kordyn-v2-border);
+  background: rgba(4, 11, 20, 0.56);
+}
+
+.kordynV2AiDialogComposer label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+
+.kordynV2AiDialogComposer textarea {
+  min-width: 0;
+  min-height: 48px;
+  max-height: 128px;
+  padding: 12px 14px;
+  resize: vertical;
+  border: 1px solid var(--kordyn-v2-border-strong);
+  border-radius: 10px;
+  color: var(--kordyn-v2-text);
+  background: var(--kordyn-v2-field-deep);
+  font: inherit;
+  line-height: 1.45;
+}
+
+.kordynV2AiDialogComposer > button {
+  width: 48px;
+  min-height: 48px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--kordyn-v2-cobalt);
+  border-radius: 10px;
+  color: white;
+  background: var(--kordyn-v2-cobalt);
+  cursor: pointer;
+}
+
+.kordynV2AiDialogComposer > small {
+  grid-column: 1 / -1;
+  color: var(--kordyn-v2-muted);
+  font-size: 9px;
+}
+
+.kordynV2AiDialogComposer > small[data-dialog-state="failed"] { color: #ff929c; }
+.kordynV2AiDialogComposer button:disabled,
+.kordynV2AiDialogComposer textarea:disabled { cursor: not-allowed; opacity: 0.5; }
+
+.kordynV2AiDialogWorkspace button:focus-visible,
+.kordynV2AiMobileDialog button:focus-visible,
+.kordynV2AiDialogComposer textarea:focus-visible,
+.kordynV2AiApprovalSheet button:focus-visible,
+.kordynV2AiOutputSheet button:focus-visible {
+  outline: 2px solid var(--kordyn-v2-mint);
+  outline-offset: 2px;
+}
+
+.kordynV2AiSheetScrim {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  padding: 22px;
+  display: grid;
+  place-items: center;
+  background: rgba(1, 6, 13, 0.78);
+}
+
+.kordynV2AiApprovalSheet,
+.kordynV2AiOutputSheet {
+  width: min(900px, 100%);
+  max-height: min(880px, calc(100dvh - 44px));
+  display: grid;
+  border: 1px solid var(--kordyn-v2-border-strong);
+  border-radius: 12px;
+  color: var(--kordyn-v2-text);
+  background: #07111f;
+  box-shadow: 0 32px 96px rgba(0, 0, 0, 0.48);
+  overflow: hidden;
+}
+
+.kordynV2AiApprovalSheet { grid-template-rows: 62px minmax(0, 1fr) auto; }
+.kordynV2AiOutputSheet { grid-template-rows: 62px auto auto minmax(0, 1fr); }
+
+.kordynV2AiApprovalHeader,
+.kordynV2AiOutputSheet > header {
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-bottom: 1px solid var(--kordyn-v2-border);
+}
+
+.kordynV2AiApprovalHeader > span,
+.kordynV2AiOutputSheet > header > span {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.kordynV2AiOutputSheet > header > span small {
+  color: var(--kordyn-v2-muted);
+  font-size: 9px;
+}
+
+.kordynV2AiApprovalHeader button,
+.kordynV2AiOutputSheet > header button {
+  min-width: 44px;
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  color: var(--kordyn-v2-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.kordynV2AiApprovalScroll {
+  min-height: 0;
+  padding: 14px 18px;
+  display: grid;
+  gap: 10px;
+  overflow: auto;
+  scrollbar-color: #2d405e transparent;
+  scrollbar-width: thin;
+}
+
+.kordynV2AiApprovalSummary,
+.kordynV2AiApprovalSection,
+.kordynV2AiApprovalImpact,
+.kordynV2AiApprovalRisk,
+.kordynV2AiApprovalBoundary,
+.kordynV2AiApprovalOutcome {
+  min-width: 0;
+  padding: 13px 15px;
+  border: 1px solid var(--kordyn-v2-border);
+  border-radius: 9px;
+  background: rgba(9, 19, 33, 0.74);
+}
+
+.kordynV2AiApprovalSummary > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--kordyn-v2-amber);
+}
+
+.kordynV2AiApprovalSummary p,
+.kordynV2AiApprovalSummary small,
+.kordynV2AiApprovalBoundary p {
+  margin: 7px 0 0;
+  color: var(--kordyn-v2-muted);
+  font-size: 10px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.kordynV2AiApprovalSummary small b { color: var(--kordyn-v2-text-soft); font-family: var(--kordyn-v2-mono); }
+.kordynV2AiApprovalSection h2,
+.kordynV2AiApprovalImpact h2,
+.kordynV2AiApprovalRisk h2,
+.kordynV2AiApprovalBoundary h2 { margin: 0 0 10px; font-size: 13px; }
+
+.kordynV2AiApprovalPlanFacts,
+.kordynV2AiApprovalImpact dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.kordynV2AiApprovalPlanFacts > div,
+.kordynV2AiApprovalImpact dl > div {
+  min-width: 0;
+  min-height: 62px;
+  padding: 8px 12px;
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  border-right: 1px solid rgba(135, 160, 194, 0.13);
+  border-bottom: 1px solid rgba(135, 160, 194, 0.13);
+}
+
+.kordynV2AiApprovalPlanFacts > div:nth-child(3n),
+.kordynV2AiApprovalImpact dl > div:last-child { border-right: 0; }
+.kordynV2AiApprovalPlanFacts > div:nth-last-child(-n + 3),
+.kordynV2AiApprovalImpact dl > div { border-bottom: 0; }
+
+.kordynV2AiApprovalPlanFacts dt,
+.kordynV2AiApprovalImpact dt { color: var(--kordyn-v2-muted); font-size: 9px; }
+.kordynV2AiApprovalPlanFacts dd,
+.kordynV2AiApprovalImpact dd { min-width: 0; margin: 0; color: var(--kordyn-v2-text); font-family: var(--kordyn-v2-mono); font-size: 13px; overflow-wrap: anywhere; }
+
+.kordynV2AiApprovalRisk { border-color: rgba(32, 215, 148, 0.3); }
+.kordynV2AiApprovalRisk header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.kordynV2AiApprovalRisk header span { display: flex; align-items: center; gap: 8px; color: var(--kordyn-v2-mint); }
+.kordynV2AiApprovalRisk header h2 { margin: 0; }
+.kordynV2AiApprovalRisk header > strong { color: var(--kordyn-v2-mint); font-size: 12px; }
+.kordynV2AiApprovalRisk > p { margin: 10px 0 0; color: var(--kordyn-v2-muted); font-family: var(--kordyn-v2-mono); font-size: 9px; overflow-wrap: anywhere; }
+.kordynV2AiApprovalBoundary > p[role="alert"] { padding: 8px; display: flex; gap: 7px; color: var(--kordyn-v2-amber); border: 1px solid rgba(239, 180, 75, 0.32); border-radius: 7px; background: rgba(239, 180, 75, 0.07); }
+
+.kordynV2AiApprovalOutcome {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+}
+
+.kordynV2AiApprovalOutcome > span { min-width: 0; display: grid; gap: 3px; }
+.kordynV2AiApprovalOutcome small { color: var(--kordyn-v2-muted); font-size: 9px; overflow-wrap: anywhere; }
+.kordynV2AiApprovalOutcome[data-kordyn-v2-approval-outcome="succeeded"] { color: var(--kordyn-v2-mint); border-color: rgba(32, 215, 148, 0.3); }
+.kordynV2AiApprovalOutcome[data-kordyn-v2-approval-outcome="failed"] { color: #ff929c; border-color: rgba(255, 89, 104, 0.3); }
+.kordynV2AiApprovalOutcome[data-kordyn-v2-approval-outcome="partial"] { color: var(--kordyn-v2-amber); border-color: rgba(239, 180, 75, 0.3); }
+
+.kordynV2AiApprovalActions {
+  padding: 12px 18px calc(12px + env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 12px;
+  border-top: 1px solid var(--kordyn-v2-border);
+  background: #07111f;
+}
+
+.kordynV2AiApprovalActions > .kordynV2AiApprovalOutcome {
+  grid-column: 1 / -1;
+  padding: 9px 12px;
+}
+
+.kordynV2AiApprovalActions button,
+.kordynV2AiOutputToolbar button {
+  min-height: 48px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--kordyn-v2-border-strong);
+  border-radius: 8px;
+  color: var(--kordyn-v2-text-soft);
+  background: rgba(4, 11, 20, 0.42);
+  cursor: pointer;
+}
+
+.kordynV2AiApprovalActions button[data-kordyn-v2-approval-primary] {
+  color: #fff;
+  border-color: var(--kordyn-v2-cobalt);
+  background: var(--kordyn-v2-cobalt);
+}
+
+.kordynV2AiApprovalActions button:disabled,
+.kordynV2AiOutputToolbar button:disabled { cursor: not-allowed; opacity: 0.42; }
+
+.kordynV2AiOutputToolbar {
+  padding: 10px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--kordyn-v2-border);
+}
+
+.kordynV2AiOutputToolbar > div { display: flex; gap: 7px; }
+.kordynV2AiOutputToolbar button { min-height: 44px; }
+.kordynV2AiOutputToolbar button[aria-pressed="true"] { color: #fff; border-color: var(--kordyn-v2-cobalt); background: rgba(52, 120, 255, 0.26); }
+.kordynV2AiOutputToolbar > button { color: #fff; border-color: var(--kordyn-v2-cobalt); background: var(--kordyn-v2-cobalt); }
+
+.kordynV2AiOutputState {
+  margin: 0;
+  padding: 8px 18px;
+  color: var(--kordyn-v2-muted);
+  border-bottom: 1px solid var(--kordyn-v2-border);
+  font-size: 10px;
+}
+.kordynV2AiOutputState[data-output-state="failed"] { color: #ff929c; }
+.kordynV2AiOutputState[data-output-state="succeeded"] { color: var(--kordyn-v2-mint); }
+
+.kordynV2AiOutputPreview {
+  min-height: 0;
+  padding: 20px;
+  display: grid;
+  justify-items: center;
+  overflow: auto;
+  background: #030a13;
+}
+
+.kordynV2AiOutputPreview > div { width: min(680px, 100%); }
+.kordynV2PosterCanvas {
+  width: 100%;
+  min-height: 850px;
+  padding: 42px 46px;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 34px;
+  color: #eef5ff;
+  background: #07111f;
+  border: 1px solid #263d5e;
+}
+
+.kordynV2PosterCanvas > header,
+.kordynV2PosterCanvas > footer { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.kordynV2PosterBrand { display: flex; align-items: center; gap: 12px; }
+.kordynV2PosterBrand img { width: 42px; height: 42px; }
+.kordynV2PosterBrand > span { display: grid; gap: 2px; }
+.kordynV2PosterBrand strong { font-size: 18px; letter-spacing: 0.08em; }
+.kordynV2PosterBrand small,
+.kordynV2PosterEdition { color: #8092aa; font-family: var(--kordyn-v2-mono); font-size: 9px; }
+.kordynV2PosterTitle { padding: 28px 0; border-top: 1px solid #263d5e; border-bottom: 1px solid #263d5e; }
+.kordynV2PosterTitle > small { color: #7ca8ff; font-family: var(--kordyn-v2-mono); font-size: 10px; }
+.kordynV2PosterTitle h1 { margin: 10px 0 18px; font-size: 44px; letter-spacing: -0.035em; }
+.kordynV2PosterTitle p { margin: 0; display: flex; gap: 12px; color: #8092aa; font-size: 10px; }
+.kordynV2PosterTitle time { color: #eef5ff; font-family: var(--kordyn-v2-mono); }
+.kordynV2PosterBody { min-height: 0; padding: 28px; border: 1px solid #263d5e; background: #0b192a; }
+.kordynV2PosterBody p { margin: 0; color: #d7e1ef; font-size: 17px; line-height: 1.75; overflow-wrap: anywhere; white-space: pre-wrap; }
+.kordynV2PosterCanvas > footer { padding-top: 20px; border-top: 1px solid #263d5e; color: #8092aa; font-size: 9px; }
+.kordynV2PosterCanvas > footer strong { color: #b9c8dd; font-weight: 520; }
+
+.kordynV2AiMissionInspectorFooter { grid-template-columns: repeat(3, auto) minmax(0, 1fr); align-items: center; }
+
+@media (max-width: 1180px) and (min-width: 768px) {
+  .kordynV2AiDialogWorkspace { padding-right: 16px; padding-left: 14px; }
+  .kordynV2AiDialogWorkbench { grid-template-columns: 176px minmax(0, 1fr); }
+  .kordynV2AiDialogMessages { padding-right: 28px; padding-left: 28px; }
+  .kordynV2AiMissionInspectorFooter { grid-template-columns: repeat(2, minmax(0, auto)); }
+  .kordynV2AiMissionInspectorFooter > span { grid-column: 1 / -1; }
+}
+
+@media (max-width: 767px) {
+  .kordynV2AiMobileDialog {
+    width: 100%;
+    height: 100%;
+    padding-bottom: calc(82px + env(safe-area-inset-bottom));
+    display: grid;
+    grid-template-rows: 58px auto minmax(0, 1fr) auto;
+    overflow: hidden;
+  }
+
+  .kordynV2AiMobileDialog > header { padding: 0 12px; }
+  .kordynV2AiMobileDialog > header > button { order: 0; }
+  .kordynV2AiMobileDialog > header > span { flex: 1; justify-content: center; font-size: 14px; }
+  .kordynV2AiMobileDialog > header > i { width: 44px; }
+  .kordynV2AiMobileDialog > nav { min-width: 0; padding: 8px 12px; display: flex; gap: 7px; overflow: hidden; }
+  .kordynV2AiMobileDialog > nav button { min-width: 0; min-height: 44px; padding: 0 11px; overflow: hidden; border: 1px solid var(--kordyn-v2-border); border-radius: 8px; color: var(--kordyn-v2-muted); background: rgba(4, 11, 20, 0.42); text-overflow: ellipsis; white-space: nowrap; }
+  .kordynV2AiMobileDialog > nav button[aria-current="page"] { color: var(--kordyn-v2-cobalt-soft); border-color: var(--kordyn-v2-cobalt); }
+  .kordynV2AiMobileDialog .kordynV2AiDialogMessages { padding: 14px 12px; gap: 14px; }
+  .kordynV2AiMobileDialog .kordynV2AiDialogMessages > article { width: 94%; grid-template-columns: 30px minmax(0, 1fr); gap: 8px; }
+  .kordynV2AiMobileDialog .kordynV2AiDialogMessages > article[data-message-role="user"] { grid-template-columns: minmax(0, 1fr) 30px; }
+  .kordynV2AiMobileDialog .kordynV2AiDialogMessages > article > span { width: 30px; height: 30px; }
+  .kordynV2AiMobileDialog .kordynV2AiDialogMessages article button { min-height: 44px; }
+  .kordynV2AiMobileDialog .kordynV2AiDialogComposer { padding: 10px 82px calc(10px + env(safe-area-inset-bottom)) 12px; grid-template-columns: minmax(0, 1fr) 48px; }
+
+  .kordynV2AiSheetScrim { padding: 0; place-items: stretch; }
+  .kordynV2AiApprovalSheet,
+  .kordynV2AiOutputSheet { width: 100%; max-height: calc(100dvh - 74px - env(safe-area-inset-bottom)); align-self: start; border: 0; border-radius: 0; }
+  .kordynV2AiApprovalSheet { grid-template-rows: 58px minmax(0, 1fr) auto; }
+  .kordynV2AiOutputSheet { grid-template-rows: 58px auto auto minmax(0, 1fr); }
+  .kordynV2AiApprovalHeader,
+  .kordynV2AiOutputSheet > header { padding: 0 12px; }
+  .kordynV2AiApprovalHeader strong { font-size: 14px; }
+  .kordynV2AiApprovalScroll { padding: 10px 12px; gap: 9px; }
+  .kordynV2AiApprovalSummary,
+  .kordynV2AiApprovalSection,
+  .kordynV2AiApprovalImpact,
+  .kordynV2AiApprovalRisk,
+  .kordynV2AiApprovalBoundary,
+  .kordynV2AiApprovalOutcome { padding: 12px; }
+  .kordynV2AiApprovalPlanFacts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kordynV2AiApprovalPlanFacts > div:nth-child(3n) { border-right: 1px solid rgba(135, 160, 194, 0.13); }
+  .kordynV2AiApprovalPlanFacts > div:nth-child(2n) { border-right: 0; }
+  .kordynV2AiApprovalPlanFacts > div:nth-last-child(-n + 3) { border-bottom: 1px solid rgba(135, 160, 194, 0.13); }
+  .kordynV2AiApprovalPlanFacts > div:nth-last-child(-n + 2) { border-bottom: 0; }
+  .kordynV2AiApprovalImpact dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kordynV2AiApprovalImpact dl > div:nth-child(2) { border-right: 0; }
+  .kordynV2AiApprovalImpact dl > div:nth-child(-n + 2) { border-bottom: 1px solid rgba(135, 160, 194, 0.13); }
+  .kordynV2AiApprovalRisk header { align-items: flex-start; }
+  .kordynV2AiApprovalRisk header > strong { text-align: right; }
+  .kordynV2AiApprovalActions { padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
+  .kordynV2AiApprovalActions button { min-height: 52px; }
+  .kordynV2AiOutputToolbar { padding: 8px 12px; align-items: stretch; }
+  .kordynV2AiOutputToolbar > div { min-width: 0; }
+  .kordynV2AiOutputToolbar button { min-width: 44px; padding: 0 10px; }
+  .kordynV2AiOutputPreview { padding: 12px; }
+  .kordynV2PosterCanvas { min-height: 660px; padding: 28px 24px; gap: 24px; }
+  .kordynV2PosterTitle h1 { font-size: 32px; }
+  .kordynV2PosterBody { padding: 20px; }
+  .kordynV2PosterBody p { font-size: 14px; }
+  .kordynV2PosterCanvas > footer { align-items: flex-start; flex-direction: column; gap: 6px; }
+
+  .kordynV2AiMobileAttention > article { margin-top: 8px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
+  .kordynV2AiMobileAttention > article > .kordynV2AiMobileAction { margin: 0; }
+  .kordynV2AiMobileAttention > article > button:last-child { min-width: 88px; min-height: 44px; border: 1px solid rgba(52, 120, 255, 0.45); border-radius: 8px; color: var(--kordyn-v2-cobalt-soft); background: rgba(52, 120, 255, 0.1); }
+  .kordynV2AiMobileActive > footer { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kordynV2AiMobileActive > footer > span { grid-column: 1 / -1; }
+}
+
+@media (max-width: 430px) {
+  .kordynV2AiApprovalScroll { padding-right: 10px; padding-left: 10px; }
+  .kordynV2AiOutputToolbar { flex-direction: column; }
+  .kordynV2AiOutputToolbar > div,
+  .kordynV2AiOutputToolbar > button { width: 100%; }
+  .kordynV2AiOutputToolbar > div > button { flex: 1; }
+}
+
+@media (max-width: 390px) {
+  .kordynV2AiMobileDialog .kordynV2AiDialogMessages { padding-right: 10px; padding-left: 10px; }
+  .kordynV2AiMobileAttention > article { grid-template-columns: minmax(0, 1fr); }
+  .kordynV2AiApprovalPlanFacts dd,
+  .kordynV2AiApprovalImpact dd { font-size: 11px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kordynV2AiDialogWorkspace *,
+  .kordynV2AiMobileDialog *,
+  .kordynV2AiSheetScrim * { scroll-behavior: auto; transition-duration: 0.01ms; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .kordynV2AiMissionRow {
     transition-duration: 0.01ms;

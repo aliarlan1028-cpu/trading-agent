@@ -267,6 +267,8 @@ test("createV2Actions exposes the frozen AI adapter without changing namespace i
     "cancelWatch",
     "rememberIntelligence",
     "refreshEvents",
+    "readChatSession",
+    "sendChatMessage",
     "translatePoster",
     "downloadPoster",
     "navigate"

@@ -98,9 +98,12 @@ async function click(cdp, selector) {
     target.scrollIntoView({ block:'center', inline:'center' });
     const rect = target.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0 || rect.left < -1 || rect.right > innerWidth + 1 || rect.top < -1 || rect.bottom > innerHeight + 1) return null;
-    return { x:rect.left + rect.width / 2, y:rect.top + rect.height / 2 };
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    const hit = document.elementFromPoint(x, y);
+    return hit === target || target.contains(hit) ? { x, y } : { blockedBy:[hit?.tagName, hit?.className, hit?.getAttribute?.('aria-label'), hit?.parentElement?.className, hit?.textContent?.trim()].filter(Boolean).join(':').slice(0,180) || 'unknown' };
   })()`);
-  assert.ok(point, `click target is visibly laid out: ${selector}`);
+  assert.ok(Number.isFinite(point?.x) && Number.isFinite(point?.y), `click target is visibly laid out and topmost: ${selector}; blockedBy=${point?.blockedBy || 'geometry'}`);
   await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: point.x, y: point.y, button: "left", clickCount: 1 });
   await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: point.x, y: point.y, button: "left", clickCount: 1 });
 }
@@ -393,7 +396,8 @@ async function verifyViewport(cdp, baseUrl, viewport) {
   assert.deepEqual(calls.actionRequests.map((row) => row.endpoint), [
     "/api/agent/memory",
     "/api/watch-triggers/watch-eth-retest/cancel",
-    "/api/event-sources/refresh"
+    "/api/event-sources/refresh",
+    "/api/agent/chat"
   ]);
   if (device === "mobile") {
     const minimumTarget = await evaluate(cdp, `Math.min(...[...document.querySelectorAll('.kordynV2AiMobileAction')].map((node) => node.getBoundingClientRect().height))`);
