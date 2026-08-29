@@ -404,6 +404,10 @@
     text-align: center;
   }
 
+  .kordynV2MobileShell:has([data-kordyn-v2-ai-approval-sheet]) .kordynV2MobileSupportTrigger {
+    display: none;
+  }
+
   .kordynV2MobileSupportTrigger[aria-expanded="true"] {
     border-color: #a99cff;
     background: linear-gradient(120deg, rgba(107, 87, 203, 0.96), rgba(47, 63, 137, 0.96));

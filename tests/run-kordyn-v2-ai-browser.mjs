@@ -274,6 +274,74 @@ async function assertNoOverflow(cdp, viewport, label) {
   if (geometry.canvas) assert.ok(geometry.canvas[1] <= geometry.canvas[0] + 1, `${label}: no canvas overflow; geometry=${diagnostic}`);
 }
 
+async function assertMobileApprovalIsolation(cdp, viewport) {
+  assert.equal(viewport.device, "mobile", `${viewport.width}: approval isolation is an APP contract`);
+  const geometry = await evaluate(cdp, `(() => {
+    const support=document.querySelector('[data-kordyn-v2-ai-support-trigger]');
+    const primary=document.querySelector('[data-kordyn-v2-approval-primary]');
+    const nav=document.querySelector('[data-kordyn-v2-mobile-navigation]');
+    const sheet=document.querySelector('[data-kordyn-v2-ai-approval-sheet]');
+    const renderedRect=(node)=>{
+      if(!node||node.getClientRects().length===0)return null;
+      const rect=node.getBoundingClientRect();
+      return {left:rect.left,top:rect.top,right:rect.right,bottom:rect.bottom,width:rect.width,height:rect.height};
+    };
+    const overlap=(a,b)=>!a||!b?0:Math.max(0,Math.min(a.right,b.right)-Math.max(a.left,b.left))*Math.max(0,Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top));
+    const supportStyle=support?getComputedStyle(support):null;
+    const supportRect=renderedRect(support);
+    const primaryRect=renderedRect(primary);
+    const navRect=renderedRect(nav);
+    return {
+      support:{
+        exists:Boolean(support),
+        rendered:Boolean(supportRect),
+        display:supportStyle?.display||null,
+        visibility:supportStyle?.visibility||null,
+        active:document.activeElement===support
+      },
+      primary:primaryRect,
+      nav:navRect,
+      focusInsideApproval:Boolean(sheet?.contains(document.activeElement)),
+      overlaps:{
+        supportPrimary:overlap(supportRect,primaryRect),
+        supportNav:overlap(supportRect,navRect),
+        primaryNav:overlap(primaryRect,navRect)
+      }
+    };
+  })()`);
+  assert.deepEqual(
+    geometry.support,
+    { exists: true, rendered: false, display: "none", visibility: "visible", active: false },
+    `${viewport.width}: approval removes support from layout, focus, and the accessible interaction path; geometry=${JSON.stringify(geometry)}`
+  );
+  assert.ok(geometry.primary?.width >= 44 && geometry.primary?.height >= 44, `${viewport.width}: approval primary remains a 44px target; geometry=${JSON.stringify(geometry)}`);
+  assert.ok(geometry.nav?.width >= 44 && geometry.nav?.height >= 44, `${viewport.width}: bottom navigation geometry remains measurable; geometry=${JSON.stringify(geometry)}`);
+  assert.equal(geometry.focusInsideApproval, true, `${viewport.width}: approval retains protected focus; geometry=${JSON.stringify(geometry)}`);
+  assert.deepEqual(geometry.overlaps, { supportPrimary: 0, supportNav: 0, primaryNav: 0 }, `${viewport.width}: approval, support, and nav have zero intersection; geometry=${JSON.stringify(geometry)}`);
+  return geometry;
+}
+
+async function closeApprovalAndVerifySupportRestoration(cdp, viewport) {
+  await press(cdp, "Escape");
+  await waitForExpression(cdp, "!document.querySelector('[data-kordyn-v2-ai-approval-sheet]')", `${viewport.width}: approval closes after capture`);
+  const restored = await evaluate(cdp, `(() => {
+    const support=document.querySelector('[data-kordyn-v2-ai-support-trigger]');
+    const style=support?getComputedStyle(support):null;
+    const rect=support?.getBoundingClientRect();
+    return { rendered:Boolean(support&&support.getClientRects().length), display:style?.display||null, width:rect?.width||0, height:rect?.height||0, disabled:Boolean(support?.disabled), ariaHidden:support?.getAttribute('aria-hidden') };
+  })()`);
+  assert.deepEqual(
+    restored,
+    { rendered: true, display: "grid", width: 56, height: 56, disabled: false, ariaHidden: null },
+    `${viewport.width}: support returns to its normal visible, enabled 56px target; restored=${JSON.stringify(restored)}`
+  );
+  await click(cdp, "[data-kordyn-v2-ai-support-trigger]");
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-mobile-sheet=\"support\"]')", `${viewport.width}: restored support accepts a trusted click`);
+  await press(cdp, "Escape");
+  await waitForExpression(cdp, "!document.querySelector('[data-kordyn-v2-mobile-sheet=\"support\"]')", `${viewport.width}: restored support sheet closes`);
+  assert.equal(await evaluate(cdp, "document.activeElement?.matches('[data-kordyn-v2-ai-support-trigger]')"), true, `${viewport.width}: support regains focus after its restored sheet closes`);
+}
+
 async function verifyStateScenarios(cdp, baseUrl) {
   const evidence = [];
   for (const scenario of stateScenarios) {
@@ -476,8 +544,11 @@ async function captureApprovedSurfaces(cdp, baseUrl) {
       await waitForExpression(cdp, `document.querySelector('[data-kordyn-v2-shell="mobile"]')?.dataset.kordynV2SelectedId === 'run-sol-approval'`, `${viewport.width}: SOL Mission selected`);
       await click(cdp, '[data-kordyn-v2-open-approval="run-sol-approval"]');
       await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-ai-approval-sheet]')", `${viewport.width}: approval visual`);
+      await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-ai-approval-sheet]')?.contains(document.activeElement)", `${viewport.width}: approval visual owns protected focus`);
       await assertNoOverflow(cdp, viewport, `${viewport.width} approval visual`);
+      await assertMobileApprovalIsolation(cdp, viewport);
       evidence.push(await captureVisual(cdp, viewport, `mobile-ai-task-approval--${viewport.width}x${viewport.height}.png`));
+      await closeApprovalAndVerifySupportRestoration(cdp, viewport);
     }
   }
   assert.equal(evidence.length, 8, "exactly four approved AI concepts across eight immutable captures");
