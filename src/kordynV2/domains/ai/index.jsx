@@ -26,11 +26,11 @@ export default function AiDomain({ device, workspaceId, data, actions, actionsDi
         onOpenProof={onOpenProof}
         onOpenApproval={(mission, trigger) => {
           if (actionsDisabled || !mission?.approval?.planId) return;
-          setApproval({ plan: mission.approval, trigger });
+          setApproval({ mission, plan: mission.approval, trigger });
         }}
         onOpenOutput={(message, trigger) => { if (!actionsDisabled) setOutput({ message, trigger }); }}
       />
-      {approval && <AiApprovalSheet plan={approval.plan} outcome={approvalOutcomes[approval.plan.planId] || null} actions={actions} actionsDisabled={actionsDisabled} onTerminal={(next) => setApprovalOutcomes((current) => ({ ...current, [approval.plan.planId]: next }))} returnFocus={approval.trigger} onClose={() => setApproval(null)} />}
+      {approval && <AiApprovalSheet mission={approval.mission} plan={approval.plan} outcome={approvalOutcomes[approval.plan.planId] || null} actions={actions} actionsDisabled={actionsDisabled} onTerminal={(next) => setApprovalOutcomes((current) => ({ ...current, [approval.plan.planId]: next }))} returnFocus={approval.trigger} onClose={() => setApproval(null)} />}
       {output && <AiOutputSheet message={output.message} actions={actions} actionsDisabled={actionsDisabled} returnFocus={output.trigger} onClose={() => setOutput(null)} />}
     </>
   );

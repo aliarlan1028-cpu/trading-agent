@@ -81,7 +81,7 @@ export function AiMissionWorkspace({
         />
         <AttentionRail missions={missions} selectedMission={selectedMission} selection={selection} onSelect={onSelect} />
       </div>
-      <AiDialogPrompt onOpen={onOpenDialog} />
+      <AiDialogPrompt commandBar onOpen={onOpenDialog} />
     </div>
   );
 }

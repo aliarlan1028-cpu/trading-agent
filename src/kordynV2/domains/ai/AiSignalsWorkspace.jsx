@@ -1,5 +1,5 @@
 import { ArrowRight, Bot, CalendarDays, FileSearch, Newspaper, Radar, Sparkles } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { AiDialogPrompt } from "./AiDialogPrompt.jsx";
 import { contextPresentationAttributes, runAiContextRowInteraction } from "./contextInteraction.js";
 import { aiContextActionDetail, aiContextActionLabel, canRememberIntelligence, memoryPayloadForFact, useAiContextAction } from "./contextActions.js";
@@ -20,8 +20,16 @@ const candidateFor = (row) => ({
 const titleFor = (row) => safe(row?.title || row?.shortTitle || row?.name || row?.symbol || row?.identity);
 const sourceLabel = (row) => safe(row?.provider || row?.sourceName || row?.source);
 
-function selectedSignal(model, selection) {
-  const rows = Array.isArray(model?.intelligence) ? model.intelligence : [];
+const signalFilter = (row) => row?.kind === "event"
+  ? "event"
+  : row?.kind === "market_mover" ? "market" : row?.kind === "knowledge" ? "knowledge" : "news";
+
+export function filterIntelligenceRows(rows, filter) {
+  const source = Array.isArray(rows) ? rows : [];
+  return filter === "all" ? source : source.filter((row) => signalFilter(row) === filter);
+}
+
+function selectedSignal(rows, selection) {
   const type = selection?.object?.type;
   const id = selection?.object?.id;
   return rows.find((row) => row.id === id && signalType(row) === type) || rows[0] || null;
@@ -29,8 +37,10 @@ function selectedSignal(model, selection) {
 
 export function AiSignalsWorkspace({ model, actions = {}, actionsDisabled = false, selection, onSelect = () => {}, onOpenDialog = () => {}, onOpenProof = () => {} }) {
   const rows = Array.isArray(model?.intelligence) ? model.intelligence : [];
+  const [activeFilter, setActiveFilter] = useState("all");
   const [inspected, setInspected] = useState(null);
-  const selected = inspected && rows.includes(inspected) ? inspected : selectedSignal(model, selection);
+  const visibleRows = useMemo(() => filterIntelligenceRows(rows, activeFilter), [activeFilter, rows]);
+  const selected = inspected && visibleRows.includes(inspected) ? inspected : selectedSignal(visibleRows, selection);
   const memoryAction = useAiContextAction("memory", selected?.id);
   const selectedType = selected ? signalType(selected) : "Signal";
   const canRemember = canRememberIntelligence({ row: selected, type: selectedType, selection, actions, actionsDisabled });
@@ -45,24 +55,41 @@ export function AiSignalsWorkspace({ model, actions = {}, actionsDisabled = fals
     event: rows.filter((row) => row.kind === "event").length,
     knowledge: rows.filter((row) => row.kind === "knowledge").length
   };
+  const filterRows = [
+    ["all", "全部", counts.all],
+    ["news", "快讯", counts.news],
+    ["market", "市场", counts.market],
+    ["event", "事件", counts.event],
+    ["knowledge", "知识", counts.knowledge]
+  ];
+  const sourceCount = new Set(rows.map((row) => sourceLabel(row)).filter((value) => value !== unavailable)).size;
+  const selectableCount = rows.filter((row) => row.selectable === true).length;
+  const newestFact = rows.map((row) => row.observedAt || row.publishedAt || row.updatedAt || row.startAt).filter(Boolean).sort().at(-1) || unavailable;
   return (
     <div className="kordynV2AiContextWorkspace kordynV2AiSignalsWorkspace" data-kordyn-v2-layout="signals-registry-inspector" data-kordyn-v2-destination="ai/intelligence">
       <header className="kordynV2AiWorkspaceTitle">
         <span><Radar size={20} aria-hidden="true" /><h1 data-kordyn-v2-destination-title>AI 情报</h1></span>
         <em role="status"><i aria-hidden="true" />{rows.length ? `${rows.length} 条已形成事实` : unavailable}</em>
       </header>
+      <section className="kordynV2AiSignalSummary" data-kordyn-v2-signal-summary aria-label="情报事实摘要">
+        <span><small>已加载事实</small><strong>{rows.length}</strong></span>
+        <span><small>权威来源</small><strong>{sourceCount || unavailable}</strong></span>
+        <span><small>可形成对象</small><strong>{selectableCount}</strong></span>
+        <span><small>最新事实</small><strong>{newestFact}</strong></span>
+        <em>这些是已加载事实的只读摘要，不代表置信度或执行授权。</em>
+      </section>
       <div className="kordynV2AiSignalWorkbench">
         <aside className="kordynV2AiContextFilter" aria-label="情报分类">
           <h2>情报范围</h2>
-          {[['全部', counts.all], ['快讯', counts.news], ['市场', counts.market], ['事件', counts.event], ['知识', counts.knowledge]].map(([label, count], index) => (
-            <span className={index === 0 ? "is-current" : ""} key={label}><b>{label}</b><em>{count}</em></span>
+          {filterRows.map(([filter, label, count]) => (
+            <button className={activeFilter === filter ? "is-current" : ""} type="button" data-kordyn-v2-signal-filter={filter} aria-pressed={activeFilter === filter} key={filter} onClick={() => { setActiveFilter(filter); setInspected(null); }}><b>{label}</b><em>{count}</em></button>
           ))}
           <p>Signal 只进入分析上下文；不会直接生成订单。</p>
         </aside>
         <section className="kordynV2AiContextRegistry" aria-label="正在影响 AI 的情报">
           <header><h2>正在影响 AI 的事实</h2><span>权威来源优先</span></header>
           <div>
-            {rows.map((row, index) => {
+            {visibleRows.map((row, index) => {
               const type = signalType(row);
               const selectable = row.selectable === true;
               return (
@@ -80,7 +107,7 @@ export function AiSignalsWorkspace({ model, actions = {}, actionsDisabled = fals
                 </button>
               );
             })}
-            {!rows.length && <p className="kordynV2AiContextEmpty">当前没有已形成的情报事实。缺失不代表为零。</p>}
+            {!visibleRows.length && <p className="kordynV2AiContextEmpty">当前筛选没有已形成的情报事实。缺失不代表为零。</p>}
           </div>
         </section>
         <article className="kordynV2AiContextInspector" data-kordyn-v2-selected-context={selected?.id || unavailable}>
@@ -102,7 +129,15 @@ export function AiSignalsWorkspace({ model, actions = {}, actionsDisabled = fals
           </> : <p className="kordynV2AiContextEmpty">{unavailable}</p>}
         </article>
       </div>
-      <section className="kordynV2AiSignalRelations" data-kordyn-v2-relationship-lens="signal-context" aria-label="情报与 AI 行动边界关系">
+      <section className="kordynV2AiSignalDecisionFlow" data-kordyn-v2-relationship-lens="signal-decision-flow" aria-label="情报到 AI 决策的关系">
+        <span><b>Signal / 情报</b><small>来源、市场、事件与知识事实</small></span>
+        <ArrowRight size={18} aria-hidden="true" />
+        <span><b>AI 任务 / 重新分析</b><small>{missionSummary ? safe(missionSummary.stage?.label) : "当前没有已形成任务"}</small></span>
+        <ArrowRight size={18} aria-hidden="true" />
+        <span><b>行动边界</b><small>计划 / 观察哨 / 不行动</small></span>
+        <em>情报不会直接下单</em>
+      </section>
+      <section className="kordynV2AiSignalRelations" data-kordyn-v2-signal-operational-context data-kordyn-v2-relationship-lens="signal-context" aria-label="情报的真实运行上下文">
         <article><span>AI 任务状态 / 行动边界</span><strong>{missionSummary ? safe(missionSummary.title) : unavailable}</strong><p>{missionSummary ? safe(missionSummary.stage?.label || missionSummary.nextAction) : "当前没有已形成任务。"}</p><em>Signal 不等于 Plan；只进入下一轮分析。</em></article>
         <article><span>观察哨状态</span><strong>{watchSummary ? titleFor(watchSummary) : unavailable}</strong><p>{watchSummary ? safe(watchSummary.status) : "当前没有已加载观察哨。"}</p><em>摘要未建立对象级关联；命中后重新分析。</em></article>
         <article><span>事件日历摘要</span><strong>{eventSummary ? titleFor(eventSummary) : unavailable}</strong><p>{eventSummary ? safe(eventSummary.due || eventSummary.startAt) : "当前没有已形成事件。"}</p><em>{eventSummary?.timePrecision === "date" ? "官方仅确认日期；未建立对象级关联" : "按权威来源精度显示；未建立对象级关联"}</em></article>

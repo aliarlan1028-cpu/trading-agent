@@ -328,6 +328,7 @@ export function projectApprovalTruth(plan, data = {}) {
     : unavailable;
   const riskId = riskCheck ? ownCanonicalIdentifier(riskCheck, "id") : null;
   const evidenceIds = boundedIdentifiers(plan.evidenceIds, plan.analysisBundleId, plan.knowledgeSkillIds, riskId);
+  const knowledgeSkillIds = boundedIdentifiers(plan.knowledgeSkillIds);
   const accountImpact = accountImpactFor(plan, data, riskPercent);
   const missingFacts = [];
   if (status !== "awaiting_approval") missingFacts.push("status");
@@ -352,6 +353,7 @@ export function projectApprovalTruth(plan, data = {}) {
     leverage,
     riskPercent,
     strategy: nonEmptyText(plan.strategy) ? plan.strategy.trim() : unavailable,
+    knowledgeSkillIds: Object.freeze(knowledgeSkillIds),
     evidence: Object.freeze({ ids: Object.freeze(evidenceIds), count: evidenceIds.length }),
     risk: Object.freeze({
       id: riskId,

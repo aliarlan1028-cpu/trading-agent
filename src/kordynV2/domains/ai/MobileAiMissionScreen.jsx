@@ -31,6 +31,7 @@ function MobileActiveMission({ mission, selection, actionsDisabled, onSelect, on
   return (
     <section
       className="kordynV2AiMobileActive"
+      data-kordyn-v2-mobile-mission-hero
       data-kordyn-v2-selected-mission={mission.id}
       data-kordyn-v2-object-id={mission.id}
       data-kordyn-v2-object-type="Agent run"
@@ -48,7 +49,6 @@ function MobileActiveMission({ mission, selection, actionsDisabled, onSelect, on
       </dl>
       <footer>
         <button className="kordynV2AiMobileAction" type="button" onClick={() => onSelect(selectPayload(mission))}>查看任务<ArrowRight size={16} aria-hidden="true" /></button>
-        {mission.stage?.id === "approval" && <button className="kordynV2AiMobileAction" type="button" data-kordyn-v2-open-approval={mission.id} aria-haspopup="dialog" disabled={actionsDisabled} onClick={(event) => { if (!actionsDisabled) onOpenApproval(mission, event.currentTarget); }}><ShieldCheck size={16} aria-hidden="true" />打开确认</button>}
         {mission.output && <button className="kordynV2AiMobileAction" type="button" data-kordyn-v2-open-output={mission.id} aria-haspopup="dialog" disabled={actionsDisabled} onClick={(event) => { if (!actionsDisabled) onOpenOutput(mission.output, event.currentTarget); }}><FileImage size={16} aria-hidden="true" />PNG 输出</button>}
         <button
           className="kordynV2AiMobileAction"
@@ -66,9 +66,9 @@ function MobileActiveMission({ mission, selection, actionsDisabled, onSelect, on
 function MobileApproval({ missions, actionsDisabled, onSelect, onOpenApproval }) {
   const waiting = missions.filter((mission) => mission.stage?.id === "approval");
   return (
-    <section className="kordynV2AiMobileAttention" aria-labelledby="kordyn-v2-ai-mobile-attention-title">
+    <section className="kordynV2AiMobileAttention" data-kordyn-v2-mobile-mission-attention aria-labelledby="kordyn-v2-ai-mobile-attention-title">
       <header><h2 id="kordyn-v2-ai-mobile-attention-title">需要你</h2><span>{waiting.length ? "高优先级" : "0"}</span></header>
-      {waiting.map((mission) => <article key={mission.id}><button className="kordynV2AiMobileAction" type="button" data-kordyn-v2-object-id={mission.id} data-kordyn-v2-object-type="Agent run" onClick={() => onSelect(selectPayload(mission))}><CircleAlert size={19} aria-hidden="true" /><span><strong>{mission.title}</strong><small>{mission.stage.label} · {mission.approval?.planId || unavailable}</small></span><ArrowRight size={18} aria-hidden="true" /></button><button type="button" data-kordyn-v2-open-approval={mission.id} aria-haspopup="dialog" disabled={actionsDisabled} onClick={(event) => { if (!actionsDisabled) onOpenApproval(mission, event.currentTarget); }}>打开确认</button></article>)}
+      {waiting.map((mission) => <article key={mission.id}><button className="kordynV2AiMobileAction" type="button" data-kordyn-v2-object-id={mission.id} data-kordyn-v2-object-type="Agent run" title={mission.title} onClick={() => onSelect(selectPayload(mission))}><CircleAlert size={17} aria-hidden="true" /><span><strong>{mission.title}</strong><small>{mission.stage.label} · {mission.approval?.planId || unavailable}</small></span></button><button type="button" data-kordyn-v2-open-approval={mission.id} aria-label={`打开 ${mission.title} 的确认任务`} title="打开确认" aria-haspopup="dialog" disabled={actionsDisabled} onClick={(event) => { if (!actionsDisabled) onOpenApproval(mission, event.currentTarget); }}><ArrowRight size={18} aria-hidden="true" /></button></article>)}
       {!waiting.length && <p>当前没有等待确认的 Mission。</p>}
     </section>
   );
@@ -76,12 +76,12 @@ function MobileApproval({ missions, actionsDisabled, onSelect, onOpenApproval })
 
 function MobileContext({ mission, selection, truth }) {
   return (
-    <section className="kordynV2AiMobileContext" aria-labelledby="kordyn-v2-ai-mobile-context-title">
-      <header><h2 id="kordyn-v2-ai-mobile-context-title">账户影响与上下文</h2><span>只读事实</span></header>
+    <section className="kordynV2AiMobileContext" data-kordyn-v2-mobile-account-impact aria-labelledby="kordyn-v2-ai-mobile-context-title">
+      <header><h2 id="kordyn-v2-ai-mobile-context-title">账户影响</h2><span>只读事实</span></header>
       <dl>
-        <div><dt>风险</dt><dd>{safeValue(truth?.risk)}</dd></div>
+        <div><dt>账户权益</dt><dd>{safeValue(truth?.equity)}</dd></div>
+        <div><dt>可用</dt><dd>{safeValue(truth?.available)}</dd></div>
         <div><dt>敞口</dt><dd>{safeValue(truth?.exposure)}</dd></div>
-        <div><dt>Context</dt><dd>{safeValue(selection?.context?.title)}</dd></div>
       </dl>
       <p>{mission ? `${mission.id} · Agent run` : `Agent run · ${unavailable}`}</p>
     </section>
@@ -89,10 +89,10 @@ function MobileContext({ mission, selection, truth }) {
 }
 
 function MobileRecent({ missions, selectedId, onSelect }) {
-  const recent = missions.filter((mission) => mission.id !== selectedId);
+  const recent = missions.filter((mission) => mission.id !== selectedId && mission.stage?.id === "review").slice(0, 1);
   return (
-    <section className="kordynV2AiMobileRecent" aria-labelledby="kordyn-v2-ai-mobile-recent-title">
-      <h2 id="kordyn-v2-ai-mobile-recent-title">其他任务</h2>
+    <section className="kordynV2AiMobileRecent" data-kordyn-v2-mobile-recent-completed aria-labelledby="kordyn-v2-ai-mobile-recent-title">
+      <h2 id="kordyn-v2-ai-mobile-recent-title">最近完成</h2>
       {recent.map((mission) => (
         <button
           className="kordynV2AiMobileAction"
@@ -107,7 +107,32 @@ function MobileRecent({ missions, selectedId, onSelect }) {
           <ArrowRight size={17} aria-hidden="true" />
         </button>
       ))}
-      {!recent.length && <p>{missions.length ? "没有其他已加载 Mission。" : unavailable}</p>}
+      {!recent.length && <p>{missions.length ? "当前没有已加载的完成记录。" : unavailable}</p>}
+    </section>
+  );
+}
+
+function MobileMissionRegistry({ missions, selectedId, onSelect }) {
+  const surfacedRecentId = missions.find((mission) => mission.id !== selectedId && mission.stage?.id === "review")?.id;
+  const remainder = missions.filter((mission) => mission.id !== selectedId && mission.id !== surfacedRecentId && mission.stage?.id !== "approval");
+  if (!remainder.length) return null;
+  return (
+    <section className="kordynV2AiMobileRegistry" data-kordyn-v2-mobile-mission-registry aria-labelledby="kordyn-v2-ai-mobile-registry-title">
+      <header><h2 id="kordyn-v2-ai-mobile-registry-title">其他任务</h2><span>{remainder.length}</span></header>
+      {remainder.map((mission) => (
+        <button
+          className="kordynV2AiMobileAction"
+          type="button"
+          data-kordyn-v2-object-id={mission.id}
+          data-kordyn-v2-object-type="Agent run"
+          key={mission.id}
+          onClick={() => onSelect(selectPayload(mission))}
+        >
+          <span><strong>{safeValue(mission.title)}</strong><small>{safeValue(mission.stage?.label)}</small></span>
+          <em>{safeValue(mission.evidenceCount)} 证据</em>
+          <ArrowRight size={17} aria-hidden="true" />
+        </button>
+      ))}
     </section>
   );
 }
@@ -131,6 +156,7 @@ export function MobileAiMissionScreen({
       <MobileApproval missions={missions} actionsDisabled={actionsDisabled} onSelect={onSelect} onOpenApproval={onOpenApproval} />
       <MobileContext mission={selectedMission} selection={selection} truth={truth} />
       <MobileRecent missions={missions} selectedId={selectedMission?.id} onSelect={onSelect} />
+      <MobileMissionRegistry missions={missions} selectedId={selectedMission?.id} onSelect={onSelect} />
       <AiDialogPrompt mobile onOpen={onOpenDialog} />
     </div>
   );

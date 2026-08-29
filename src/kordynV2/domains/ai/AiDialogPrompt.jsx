@@ -1,10 +1,11 @@
 import { Send, Sparkles } from "lucide-react";
 
-export function AiDialogPrompt({ mobile = false, onOpen = () => {} }) {
+export function AiDialogPrompt({ mobile = false, commandBar = false, onOpen = () => {} }) {
   return (
     <button
       className={mobile ? "kordynV2AiMobilePrompt kordynV2AiMobileAction" : "kordynV2AiMissionPrompt"}
       data-kordyn-v2-dialog-trigger
+      data-kordyn-v2-mission-command-bar={commandBar ? "" : undefined}
       type="button"
       onClick={onOpen}
     >
