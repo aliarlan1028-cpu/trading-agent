@@ -1,4 +1,5 @@
-import { ArrowRight, Bot, CircleAlert, FileCheck2, Send, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, Bot, CircleAlert, FileCheck2, ShieldCheck } from "lucide-react";
+import { AiDialogPrompt } from "./AiDialogPrompt.jsx";
 import { MissionProgress } from "./MissionProgress.jsx";
 
 const unavailable = "Unavailable";
@@ -140,11 +141,7 @@ export function MobileAiMissionScreen({
       <MobileApproval missions={missions} onSelect={onSelect} />
       <MobileContext mission={selectedMission} selection={selection} truth={truth} />
       <MobileRecent missions={missions} selectedId={selectedMission?.id} onSelect={onSelect} />
-      <button className="kordynV2AiMobilePrompt kordynV2AiMobileAction" data-kordyn-v2-dialog-trigger type="button" onClick={onOpenDialog}>
-        <Sparkles size={20} aria-hidden="true" />
-        <span>告诉 AI 交易员你的目标…</span>
-        <Send size={18} aria-hidden="true" />
-      </button>
+      <AiDialogPrompt mobile onOpen={onOpenDialog} />
     </div>
   );
 }

@@ -1,4 +1,5 @@
-import { ArrowRight, Bot, CircleAlert, FileSearch, Send, Sparkles } from "lucide-react";
+import { ArrowRight, Bot, CircleAlert, FileSearch } from "lucide-react";
+import { AiDialogPrompt } from "./AiDialogPrompt.jsx";
 import { MissionInspector } from "./MissionInspector.jsx";
 import { MissionRegistry } from "./MissionRegistry.jsx";
 
@@ -72,11 +73,7 @@ export function AiMissionWorkspace({
         <MissionInspector mission={selectedMission} selection={selection} onOpenProof={onOpenProof} />
         <AttentionRail missions={missions} selectedMission={selectedMission} selection={selection} onSelect={onSelect} />
       </div>
-      <button className="kordynV2AiMissionPrompt" data-kordyn-v2-dialog-trigger type="button" onClick={onOpenDialog}>
-        <Sparkles size={20} aria-hidden="true" />
-        <span>告诉 AI 交易员你的目标，或检查当前任务…</span>
-        <Send size={18} aria-hidden="true" />
-      </button>
+      <AiDialogPrompt onOpen={onOpenDialog} />
     </div>
   );
 }

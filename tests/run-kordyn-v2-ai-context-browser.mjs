@@ -267,6 +267,59 @@ async function runContextAction(cdp, selector, processingKind, finalKind, expect
   assert.ok(text.includes(expectedText), `${selector}: exposes bounded authoritative outcome`);
 }
 
+async function assertMobileActionClearance(cdp, actionSelector, label) {
+  const geometry = await evaluate(cdp, `(() => {
+    const selectors = {
+      action:${JSON.stringify(actionSelector)},
+      prompt:'[data-kordyn-v2-dialog-trigger]',
+      support:'[data-kordyn-v2-ai-support-trigger]',
+      navigation:'.kordynV2MobileBottomNavigation'
+    };
+    const rects = Object.fromEntries(Object.entries(selectors).map(([key, selector]) => {
+      const node = document.querySelector(selector);
+      if (!node) return [key, null];
+      const rect = node.getBoundingClientRect();
+      return [key, { left:rect.left, top:rect.top, right:rect.right, bottom:rect.bottom, width:rect.width, height:rect.height }];
+    }));
+    const overlap = (left, right) => !left || !right ? null : Math.max(0, Math.min(left.right, right.right) - Math.max(left.left, right.left)) * Math.max(0, Math.min(left.bottom, right.bottom) - Math.max(left.top, right.top));
+    return {
+      rects,
+      overlaps:{
+        actionPrompt:overlap(rects.action, rects.prompt),
+        actionSupport:overlap(rects.action, rects.support),
+        actionNavigation:overlap(rects.action, rects.navigation),
+        promptSupport:overlap(rects.prompt, rects.support),
+        promptNavigation:overlap(rects.prompt, rects.navigation),
+        supportNavigation:overlap(rects.support, rects.navigation)
+      }
+    };
+  })()`);
+  for (const [name, rect] of Object.entries(geometry.rects)) assert.ok(rect && rect.width >= 44 && rect.height >= 44, `${label}: ${name} exists with a 44px target`);
+  for (const [name, overlap] of Object.entries(geometry.overlaps)) assert.equal(overlap, 0, `${label}: ${name} has zero overlap`);
+}
+
+async function assertDesktopPromptClearance(cdp, label) {
+  const geometry = await evaluate(cdp, `(() => {
+    const prompt = document.querySelector('[data-kordyn-v2-dialog-trigger]')?.getBoundingClientRect();
+    const support = document.querySelector('[data-kordyn-v2-ai-support-trigger]')?.getBoundingClientRect();
+    if (!prompt || !support) return null;
+    const width = Math.max(0, Math.min(prompt.right, support.right) - Math.max(prompt.left, support.left));
+    const height = Math.max(0, Math.min(prompt.bottom, support.bottom) - Math.max(prompt.top, support.top));
+    return { prompt:{ width:prompt.width, height:prompt.height }, support:{ width:support.width, height:support.height }, overlap:width * height };
+  })()`);
+  assert.ok(geometry, `${label}: prompt and support exist`);
+  assert.ok(geometry.prompt.width >= 44 && geometry.prompt.height >= 44, `${label}: prompt is actionable`);
+  assert.ok(geometry.support.width >= 44 && geometry.support.height >= 44, `${label}: support is actionable`);
+  assert.equal(geometry.overlap, 0, `${label}: prompt and support have zero overlap`);
+}
+
+async function verifyDialogPrompt(cdp, device, label) {
+  await click(cdp, "[data-kordyn-v2-dialog-trigger]");
+  await waitForExpression(cdp, `document.querySelector('[data-kordyn-v2-dialog-surface][data-kordyn-v2-destination="ai/dialog"]')`, `${label}: real AI dialog opens`);
+  await click(cdp, '[data-kordyn-v2-dialog-surface] button[aria-label="关闭对话并返回任务"]');
+  await waitForExpression(cdp, `!document.querySelector('[data-kordyn-v2-dialog-surface]') && document.querySelector('[data-kordyn-v2-shell="${device}"]')?.dataset.kordynV2Workspace === 'missions'`, `${label}: dialog returns to Mission`);
+}
+
 async function verifyViewport(cdp, baseUrl, viewport) {
   const { width, height, device } = viewport;
   await navigatePage(cdp, baseUrl, viewport);
@@ -310,12 +363,15 @@ async function verifyViewport(cdp, baseUrl, viewport) {
   let eventTopShot = null;
   if (device === "mobile") {
     await resetScroll(cdp);
+    await assertMobileActionClearance(cdp, '[data-kordyn-v2-context-action="refresh-events"]', `${width} Event protected action clearance`);
     eventTopShot = await capture(cdp, `${device}-${width}x${height}-events-top.png`, width, height);
+  } else {
+    await assertDesktopPromptClearance(cdp, `${width} Event prompt clearance`);
   }
   await runContextAction(cdp, '[data-kordyn-v2-context-action="refresh-events"]', "processing", "partial", "成功 2/3");
   const eventShot = await capture(cdp, `${device}-${width}x${height}-events.png`, width, height);
 
-  await navigateWorkspace(cdp, device, "missions", device === "desktop" ? "mission-registry-inspector" : "mission-task-flow");
+  await verifyDialogPrompt(cdp, device, `${width} Event prompt`);
   const globalBeforeProof = await evaluate(cdp, `document.querySelector('[data-kordyn-v2-shell="${device}"]')?.dataset.kordynV2SelectedId`);
   assert.equal(globalBeforeProof, "event-fomc-date", `${width}: non-Mission selection survives Mission navigation`);
   await click(cdp, '[data-kordyn-v2-mission-proof="run-btc-analysis"]');
@@ -370,6 +426,11 @@ async function verifyState(cdp, baseUrl, viewport, scenario, kind, workspaceId, 
     assert.equal(state.workspaceVisible, true, `${kind} retains last-valid facts`);
     assert.ok(state.actionCount > 0, `${kind} retains visible actions`);
     assert.equal(state.enabledCount, 0, `${kind} disables every write`);
+    const callsBefore = await evaluate(cdp, "window.__kordynV2BrowserCalls.actions");
+    await evaluate(cdp, "document.querySelector('[data-kordyn-v2-context-action]')?.click()");
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    const callsAfter = await evaluate(cdp, "window.__kordynV2BrowserCalls.actions");
+    assert.equal(callsAfter, callsBefore, `${kind}: disabled action cannot produce a production request`);
   }
   return await capture(cdp, `${viewport.device}-${viewport.width}x${viewport.height}-${kind}.png`, viewport.width, viewport.height);
 }

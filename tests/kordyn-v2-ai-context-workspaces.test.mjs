@@ -28,7 +28,7 @@ require("esbuild").buildSync({
       export { buildAiDomainModel } from "./src/kordynV2/domains/ai/aiModel.js";
       export { canonicalContextAttributes, runAiContextRowInteraction } from "./src/kordynV2/domains/ai/contextInteraction.js";
       export { aiPresenterForWorkspace } from "./src/kordynV2/domains/ai/presenters.js";
-      export { memoryPayloadForFact, canRememberIntelligence, canCancelWatch, classifyAiContextActionResult, runAuthoritativeAiContextAction, aiContextActionDetail } from "./src/kordynV2/domains/ai/contextActions.js";
+      export { memoryPayloadForFact, canRememberIntelligence, canCancelWatch, canRefreshEvents, classifyAiContextActionResult, runAuthoritativeAiContextAction, aiContextActionDetail } from "./src/kordynV2/domains/ai/contextActions.js";
     `,
     resolveDir: rootDir,
     loader: "jsx"
@@ -58,6 +58,7 @@ const {
   memoryPayloadForFact,
   canRememberIntelligence,
   canCancelWatch,
+  canRefreshEvents,
   classifyAiContextActionResult,
   runAuthoritativeAiContextAction,
   aiContextActionDetail
@@ -289,6 +290,27 @@ test("Watch cancellation requires the active canonical current object and ready 
   assert.equal(canCancelWatch({ row, selection, actions, actionsDisabled: true }), false);
   assert.equal(canCancelWatch({ row, selection: { ...selection, context: { actionsDisabled: true } }, actions, actionsDisabled: false }), false);
   assert.equal(canCancelWatch({ row, selection, actions: {}, actionsDisabled: false }), false);
+});
+
+test("Event refresh respects the selected Context action gate on Desktop and APP", () => {
+  const actions = Object.freeze({ refreshEvents: async () => ({ status: "ok" }) });
+  const openSelection = Object.freeze({ object: Object.freeze({ id: "event-fomc-1", type: "Event" }), context: Object.freeze({ actionsDisabled: false }) });
+  const gatedSelection = Object.freeze({ ...openSelection, context: Object.freeze({ actionsDisabled: true }) });
+  assert.equal(canRefreshEvents({ selection: openSelection, actions, actionsDisabled: false }), true);
+  assert.equal(canRefreshEvents({ selection: gatedSelection, actions, actionsDisabled: false }), false);
+  for (const Component of [AiEventsWorkspace, MobileAiEventsScreen]) {
+    const open = renderToStaticMarkup(React.createElement(Component, { model, actions, actionsDisabled: false, selection: openSelection }));
+    const gated = renderToStaticMarkup(React.createElement(Component, { model, actions, actionsDisabled: false, selection: gatedSelection }));
+    assert.doesNotMatch(open, /data-kordyn-v2-context-action="refresh-events"[^>]*disabled/);
+    assert.match(gated, /data-kordyn-v2-context-action="refresh-events"[^>]*disabled/);
+  }
+});
+
+test("every Task 3 context workspace preserves the shared low AI prompt entry", () => {
+  for (const Component of [AiSignalsWorkspace, MobileAiSignalsScreen, AiWatchWorkspace, MobileAiWatchScreen, AiEventsWorkspace, MobileAiEventsScreen]) {
+    const html = renderToStaticMarkup(React.createElement(Component, { model, actions: {}, actionsDisabled: false, selection: null }));
+    assert.match(html, /data-kordyn-v2-dialog-trigger="true"/);
+  }
 });
 
 test("context actions enter processing before awaiting and return raw truth without optimistic mutation", async () => {

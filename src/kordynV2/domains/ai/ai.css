@@ -1171,13 +1171,26 @@
   min-height: 0;
   padding: 8px 26px 24px 18px;
   display: grid;
-  grid-template-rows: 38px minmax(0, 1fr);
+  grid-template-rows: 38px minmax(0, 1fr) 54px;
   gap: 12px;
   overflow: hidden;
 }
 
 .kordynV2AiSignalsWorkspace {
-  grid-template-rows: 38px minmax(0, 1fr) 124px;
+  grid-template-rows: 38px minmax(0, 1fr) 112px 54px;
+}
+
+.kordynV2AiContextPrompt {
+  min-width: 0;
+  display: grid;
+  place-items: center;
+}
+
+.kordynV2AiContextPrompt .kordynV2AiMissionPrompt {
+  width: min(760px, calc(100% - 120px));
+  min-height: 52px;
+  margin-left: 0;
+  justify-self: center;
 }
 
 .kordynV2AiSignalWorkbench {
@@ -1606,7 +1619,7 @@
 }
 
 .kordynV2AiWatchWorkspace {
-  grid-template-rows: 38px auto minmax(0, 1fr);
+  grid-template-rows: 38px auto minmax(0, 1fr) 54px;
 }
 
 .kordynV2AiWatchBoundary {
@@ -1678,7 +1691,13 @@
 }
 
 .kordynV2AiEventsWorkspace {
-  grid-template-rows: 38px auto auto minmax(0, 1fr);
+  grid-template-rows: 38px auto minmax(0, 1fr) 54px;
+}
+
+.kordynV2AiEventsControls {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
 }
 
 .kordynV2AiEventsToolbar {
@@ -1998,6 +2017,10 @@
     grid-template-columns: minmax(280px, 0.9fr) minmax(340px, 1.1fr);
     gap: 10px;
   }
+
+  .kordynV2AiContextPrompt .kordynV2AiMissionPrompt {
+    width: min(610px, calc(100% - 220px));
+  }
 }
 
 @media (max-width: 430px) {
@@ -2024,17 +2047,9 @@
     gap: 10px;
   }
 
-  .kordynV2AiMobileContextHero dl {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .kordynV2AiMobileContextHero dl > div {
-    min-height: 44px;
-    border-right: 0;
-    border-bottom: 1px solid rgba(135, 160, 194, 0.1);
-  }
-
-  .kordynV2AiMobileContextHero dl > div:last-child {
-    border-bottom: 0;
+    min-height: 52px;
+    padding-right: 6px;
+    padding-left: 6px;
   }
 }

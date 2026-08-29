@@ -1,5 +1,6 @@
 import { ArrowRight, CalendarDays, FileSearch, Newspaper, Radar, Sparkles } from "lucide-react";
 import { useState } from "react";
+import { AiDialogPrompt } from "./AiDialogPrompt.jsx";
 import { signalSelectionCandidate } from "./AiSignalsWorkspace.jsx";
 import { contextPresentationAttributes, runAiContextRowInteraction } from "./contextInteraction.js";
 import { aiContextActionDetail, aiContextActionLabel, canRememberIntelligence, memoryPayloadForFact, useAiContextAction } from "./contextActions.js";
@@ -16,7 +17,7 @@ function selectedSignal(model, selection) {
   return rows.find((row) => row.id === id && typeFor(row) === type) || rows[0] || null;
 }
 
-export function MobileAiSignalsScreen({ model, actions = {}, actionsDisabled = false, selection, onSelect = () => {}, onOpenProof = () => {} }) {
+export function MobileAiSignalsScreen({ model, actions = {}, actionsDisabled = false, selection, onSelect = () => {}, onOpenDialog = () => {}, onOpenProof = () => {} }) {
   const rows = Array.isArray(model?.intelligence) ? model.intelligence : [];
   const [inspected, setInspected] = useState(null);
   const selected = inspected && rows.includes(inspected) ? inspected : selectedSignal(model, selection);
@@ -37,6 +38,7 @@ export function MobileAiSignalsScreen({ model, actions = {}, actionsDisabled = f
         </> : <p className="kordynV2AiContextEmpty">当前没有已形成情报。</p>}
       </section>
       <section className="kordynV2AiMobileContextList"><header><h2>其他情报</h2><span>{rows.length}</span></header>{rows.filter((row) => row !== selected).map((row, index) => <button className="kordynV2AiMobileAction" type="button" {...contextPresentationAttributes(row, typeFor(row))} aria-disabled={row.selectable !== true} key={`signal-presentation-${index}`} onClick={() => runAiContextRowInteraction({ row, type: typeFor(row), onInspect: setInspected, onSelect, candidateFor: signalSelectionCandidate })}><span><strong>{titleFor(row)}</strong><small>{safe(row.provider || row.sourceName || row.source)}</small></span><em>{safe(row.kind)}</em><ArrowRight size={16} aria-hidden="true" /></button>)}{rows.length <= 1 && <p>{rows.length ? "没有其他已加载情报。" : unavailable}</p>}</section>
+      <AiDialogPrompt mobile onOpen={onOpenDialog} />
     </div>
   );
 }

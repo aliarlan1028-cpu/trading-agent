@@ -1,5 +1,6 @@
 import { ArrowRight, Eye, FileSearch, ShieldCheck } from "lucide-react";
 import { useState } from "react";
+import { AiDialogPrompt } from "./AiDialogPrompt.jsx";
 import { watchSelectionCandidate } from "./AiWatchWorkspace.jsx";
 import { contextPresentationAttributes, runAiContextRowInteraction } from "./contextInteraction.js";
 import { aiContextActionDetail, aiContextActionLabel, canCancelWatch, useAiContextAction } from "./contextActions.js";
@@ -14,7 +15,7 @@ function selectedWatch(model, selection) {
   return rows.find((row) => row.id === id) || rows[0] || null;
 }
 
-export function MobileAiWatchScreen({ model, actions = {}, actionsDisabled = false, selection, onSelect = () => {}, onOpenProof = () => {} }) {
+export function MobileAiWatchScreen({ model, actions = {}, actionsDisabled = false, selection, onSelect = () => {}, onOpenDialog = () => {}, onOpenProof = () => {} }) {
   const rows = Array.isArray(model?.watches) ? model.watches : [];
   const [inspected, setInspected] = useState(null);
   const selected = inspected && rows.includes(inspected) ? inspected : selectedWatch(model, selection);
@@ -34,6 +35,7 @@ export function MobileAiWatchScreen({ model, actions = {}, actionsDisabled = fal
         </> : <p className="kordynV2AiContextEmpty">暂无已加载观察哨。</p>}
       </section>
       <section className="kordynV2AiMobileContextList"><header><h2>其他观察哨</h2><span>{rows.length}</span></header>{rows.filter((row) => row !== selected).map((row, index) => <button className="kordynV2AiMobileAction" type="button" {...contextPresentationAttributes(row, "Watch")} aria-disabled={row.selectable !== true} key={`watch-presentation-${index}`} onClick={() => runAiContextRowInteraction({ row, type: "Watch", onInspect: setInspected, onSelect, candidateFor: watchSelectionCandidate })}><span><strong>{titleFor(row)}</strong><small>{safe(row.symbol)} · {safe(row.status)}</small></span><ArrowRight size={16} aria-hidden="true" /></button>)}{rows.length <= 1 && <p>{rows.length ? "没有其他已加载观察哨。" : unavailable}</p>}</section>
+      <AiDialogPrompt mobile onOpen={onOpenDialog} />
     </div>
   );
 }

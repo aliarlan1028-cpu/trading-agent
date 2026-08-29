@@ -1,5 +1,6 @@
 import { ArrowRight, Bot, CalendarDays, FileSearch, Newspaper, Radar, Sparkles } from "lucide-react";
 import { useState } from "react";
+import { AiDialogPrompt } from "./AiDialogPrompt.jsx";
 import { contextPresentationAttributes, runAiContextRowInteraction } from "./contextInteraction.js";
 import { aiContextActionDetail, aiContextActionLabel, canRememberIntelligence, memoryPayloadForFact, useAiContextAction } from "./contextActions.js";
 
@@ -26,7 +27,7 @@ function selectedSignal(model, selection) {
   return rows.find((row) => row.id === id && signalType(row) === type) || rows[0] || null;
 }
 
-export function AiSignalsWorkspace({ model, actions = {}, actionsDisabled = false, selection, onSelect = () => {}, onOpenProof = () => {} }) {
+export function AiSignalsWorkspace({ model, actions = {}, actionsDisabled = false, selection, onSelect = () => {}, onOpenDialog = () => {}, onOpenProof = () => {} }) {
   const rows = Array.isArray(model?.intelligence) ? model.intelligence : [];
   const [inspected, setInspected] = useState(null);
   const selected = inspected && rows.includes(inspected) ? inspected : selectedSignal(model, selection);
@@ -106,6 +107,7 @@ export function AiSignalsWorkspace({ model, actions = {}, actionsDisabled = fals
         <article><span>观察哨状态</span><strong>{watchSummary ? titleFor(watchSummary) : unavailable}</strong><p>{watchSummary ? safe(watchSummary.status) : "当前没有已加载观察哨。"}</p><em>摘要未建立对象级关联；命中后重新分析。</em></article>
         <article><span>事件日历摘要</span><strong>{eventSummary ? titleFor(eventSummary) : unavailable}</strong><p>{eventSummary ? safe(eventSummary.due || eventSummary.startAt) : "当前没有已形成事件。"}</p><em>{eventSummary?.timePrecision === "date" ? "官方仅确认日期；未建立对象级关联" : "按权威来源精度显示；未建立对象级关联"}</em></article>
       </section>
+      <div className="kordynV2AiContextPrompt"><AiDialogPrompt onOpen={onOpenDialog} /></div>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { ArrowRight, CalendarDays, Clock3, FileSearch } from "lucide-react";
 import { useState } from "react";
+import { AiDialogPrompt } from "./AiDialogPrompt.jsx";
 import { eventSelectionCandidate } from "./AiEventsWorkspace.jsx";
 import { contextPresentationAttributes, runAiContextRowInteraction } from "./contextInteraction.js";
 import { aiContextActionDetail, aiContextActionLabel, canRefreshEvents, useAiContextAction } from "./contextActions.js";
@@ -15,12 +16,12 @@ function selectedEvent(model, selection) {
   return rows.find((row) => row.id === id) || rows[0] || null;
 }
 
-export function MobileAiEventsScreen({ model, actions = {}, actionsDisabled = false, selection, onSelect = () => {}, onOpenProof = () => {} }) {
+export function MobileAiEventsScreen({ model, actions = {}, actionsDisabled = false, selection, onSelect = () => {}, onOpenDialog = () => {}, onOpenProof = () => {} }) {
   const rows = Array.isArray(model?.events) ? model.events : [];
   const [inspected, setInspected] = useState(null);
   const selected = inspected && rows.includes(inspected) ? inspected : selectedEvent(model, selection);
   const refreshAction = useAiContextAction("events", null);
-  const canRefresh = canRefreshEvents({ actions, actionsDisabled });
+  const canRefresh = canRefreshEvents({ selection, actions, actionsDisabled });
   const refreshDetail = aiContextActionDetail("events", refreshAction.state.result);
   return (
     <div className="kordynV2AiMobile kordynV2AiMobileContextFlow" data-kordyn-v2-layout="events-task-flow" data-kordyn-v2-destination="ai/events">
@@ -35,6 +36,7 @@ export function MobileAiEventsScreen({ model, actions = {}, actionsDisabled = fa
       </section>
       <section className="kordynV2AiMobileContextCommand"><p>刷新仅更新已配置的事件来源，不保证生成新的情报。</p><button className="kordynV2AiMobileAction" type="button" data-kordyn-v2-context-action="refresh-events" disabled={!canRefresh || refreshAction.state.kind === "processing"} onClick={() => refreshAction.run(() => actions.refreshEvents())}>{aiContextActionLabel(refreshAction.state, { idle: "刷新事件来源", processing: "正在刷新来源…", succeeded: "来源刷新完成", partial: "来源部分刷新", failed: "来源刷新失败" })}</button>{refreshAction.state.kind !== "idle" && <p className="kordynV2AiActionOutcome" role="status" data-kordyn-v2-action-state={refreshAction.state.kind}>{refreshAction.state.kind === "succeeded" ? "服务器已确认来源刷新；新事实以随后载入为准。" : refreshAction.state.kind === "processing" ? "服务器正在刷新已配置来源。" : refreshAction.state.kind === "partial" ? "仅部分来源完成。" : "服务器未确认来源刷新。"}{refreshDetail !== unavailable && <small>{refreshDetail}</small>}</p>}</section>
       <section className="kordynV2AiMobileContextList"><header><h2>事件日历</h2><span>{rows.length}</span></header>{rows.filter((row) => row !== selected).map((row, index) => <button className="kordynV2AiMobileAction" type="button" {...contextPresentationAttributes(row, "Event")} aria-disabled={row.selectable !== true} key={`event-presentation-${index}`} onClick={() => runAiContextRowInteraction({ row, type: "Event", onInspect: setInspected, onSelect, candidateFor: eventSelectionCandidate })}><span><strong>{titleFor(row)}</strong><small>{momentFor(row)} · {row.timePrecision === "date" ? "仅日期" : safe(row.impactLabel)}</small></span><ArrowRight size={16} aria-hidden="true" /></button>)}{rows.length <= 1 && <p>{rows.length ? "没有其他已加载事件。" : unavailable}</p>}</section>
+      <AiDialogPrompt mobile onOpen={onOpenDialog} />
     </div>
   );
 }

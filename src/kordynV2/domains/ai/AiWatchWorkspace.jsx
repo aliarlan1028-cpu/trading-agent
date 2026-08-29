@@ -1,5 +1,6 @@
 import { Activity, ArrowRight, Eye, FileSearch, ShieldCheck } from "lucide-react";
 import { useState } from "react";
+import { AiDialogPrompt } from "./AiDialogPrompt.jsx";
 import { contextPresentationAttributes, runAiContextRowInteraction } from "./contextInteraction.js";
 import { aiContextActionDetail, aiContextActionLabel, canCancelWatch, useAiContextAction } from "./contextActions.js";
 
@@ -21,7 +22,7 @@ function selectedWatch(model, selection) {
   return rows.find((row) => row.id === id) || rows[0] || null;
 }
 
-export function AiWatchWorkspace({ model, actions = {}, actionsDisabled = false, selection, onSelect = () => {}, onOpenProof = () => {} }) {
+export function AiWatchWorkspace({ model, actions = {}, actionsDisabled = false, selection, onSelect = () => {}, onOpenDialog = () => {}, onOpenProof = () => {} }) {
   const rows = Array.isArray(model?.watches) ? model.watches : [];
   const [inspected, setInspected] = useState(null);
   const selected = inspected && rows.includes(inspected) ? inspected : selectedWatch(model, selection);
@@ -66,6 +67,7 @@ export function AiWatchWorkspace({ model, actions = {}, actionsDisabled = false,
         </article>
         <aside className="kordynV2AiWatchLifecycle"><h2>真实边界</h2><ol><li><b>1</b><span>条件命中</span></li><li><b>2</b><span>重新读取市场与账户事实</span></li><li><b>3</b><span>形成新的分析或 Plan 候选</span></li><li><b>4</b><span>仍由授权和硬风控决定</span></li></ol><p>观察哨绝不会直接提交订单。</p></aside>
       </div>
+      <div className="kordynV2AiContextPrompt"><AiDialogPrompt onOpen={onOpenDialog} /></div>
     </div>
   );
 }

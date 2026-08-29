@@ -46,8 +46,8 @@ export function canCancelWatch({ row, selection, actions, actionsDisabled }) {
     && typeof actions?.cancelWatch === "function";
 }
 
-export function canRefreshEvents({ actions, actionsDisabled }) {
-  return actionsDisabled !== true && typeof actions?.refreshEvents === "function";
+export function canRefreshEvents({ selection, actions, actionsDisabled }) {
+  return boundaryEnabled({ selection, actionsDisabled }) && typeof actions?.refreshEvents === "function";
 }
 
 export function classifyAiContextActionResult(kind, result, expectedId) {
