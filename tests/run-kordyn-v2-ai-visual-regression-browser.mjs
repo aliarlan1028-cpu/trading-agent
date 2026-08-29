@@ -158,7 +158,25 @@ async function verifyMobileMission(cdp, baseUrl, width, height) {
   })()`);
   assert.ok(missionBottomReachability.scrollTop > 0 && Math.abs(missionBottomReachability.scrollTop-missionBottomReachability.maxScroll) <= 1, `${width}: real Mission scroll owner reaches its end ${JSON.stringify(missionBottomReachability)}`);
   assert.ok(missionBottomReachability.lastTop >= missionBottomReachability.viewportTop && missionBottomReachability.lastBottom <= missionBottomReachability.safeBottom, `${width}: final Mission content is vertically reachable above Prompt and navigation ${JSON.stringify(missionBottomReachability)}`);
-  await evaluate(cdp, `document.querySelector('.kordynV2MobileBackground > .kordynV2StateBoundary').scrollTop=0`);
+  const missionResetState = await evaluate(cdp, `(async() => {
+    const scroll=document.querySelector('.kordynV2MobileBackground > .kordynV2StateBoundary');
+    scroll.scrollTop=0;
+    let settledFrames=0;
+    await new Promise((resolve)=>requestAnimationFrame(()=>{
+      settledFrames+=1;
+      requestAnimationFrame(()=>{
+        settledFrames+=1;
+        resolve();
+      });
+    }));
+    const hero=document.querySelector('[data-kordyn-v2-mobile-mission-hero]').getBoundingClientRect();
+    const recent=document.querySelector('[data-kordyn-v2-mobile-recent-completed]').getBoundingClientRect();
+    return { settledFrames, scrollTop:scroll.scrollTop, heroTop:hero.top, heroBottom:hero.bottom, recentTop:recent.top, recentBottom:recent.bottom };
+  })()`);
+  assert.equal(missionResetState.settledFrames, 2, `${width}: Mission reset settles through two animation frames ${JSON.stringify(missionResetState)}`);
+  assert.equal(missionResetState.scrollTop, 0, `${width}: Mission reset returns the real scroll owner to its start`);
+  assert.ok(Math.abs(missionResetState.heroTop-geometry.heroTop) <= 1 && Math.abs(missionResetState.heroBottom-geometry.heroBottom) <= 1, `${width}: Mission hero returns to its initial geometry ${JSON.stringify(missionResetState)}`);
+  assert.ok(Math.abs(missionResetState.recentTop-geometry.recentTop) <= 1 && Math.abs(missionResetState.recentBottom-geometry.recentBottom) <= 1, `${width}: Recent returns to its initial visible geometry ${JSON.stringify(missionResetState)}`);
   await capture(cdp, `mobile-mission-${width}x${height}.png`, width, height);
 
   await navigate(cdp, baseUrl, "/tests/kordyn-v2-ai-actions-browser.html", width, height);
@@ -204,7 +222,7 @@ async function verifyMobileMission(cdp, baseUrl, width, height) {
   assert.equal(resetState.scrollTop, 0, `${width}: approval evidence resets to initial reading position`);
   assert.ok(resetState.lifecycleTop >= resetState.viewportTop - 1, `${width}: lifecycle hero is visible after reset`);
   await capture(cdp, `mobile-approval-${width}x${height}.png`, width, height);
-  return { width, height, geometry, bottom: missionBottomReachability };
+  return { width, height, geometry, bottom: missionBottomReachability, reset: missionResetState };
 }
 
 async function verifyDesktopSignals(cdp, baseUrl, width, height) {
