@@ -95,25 +95,74 @@ async function navigate(cdp, baseUrl, page, width, height) {
 }
 
 async function verifyMobileMission(cdp, baseUrl, width, height) {
-  await navigate(cdp, baseUrl, "/tests/kordyn-v2-ai-actions-browser.html", width, height);
-  await waitForExpression(cdp, "window.__task4Ready && document.querySelector('[data-kordyn-v2-destination=\"ai/missions\"]')", `${width}: mobile Mission`);
+  await navigate(cdp, baseUrl, "/tests/kordyn-v2-shell-browser.html", width, height);
+  await waitForExpression(cdp, "window.__kordynV2ShellReady && document.querySelector('[data-kordyn-v2-destination=\"ai/missions\"]')", `${width}: mobile Mission`);
   const geometry = await evaluate(cdp, `(() => {
     const rect=(selector)=>document.querySelector(selector)?.getBoundingClientRect();
     const nav=rect('[data-kordyn-v2-mobile-navigation]');
     const hero=rect('[data-kordyn-v2-mobile-mission-hero]');
+    const attention=rect('[data-kordyn-v2-mobile-mission-attention]');
     const account=rect('[data-kordyn-v2-mobile-account-impact]');
     const recent=rect('[data-kordyn-v2-mobile-recent-completed]');
+    const recentContent=document.querySelector('[data-kordyn-v2-mobile-recent-completed] > button, [data-kordyn-v2-mobile-recent-completed] > p')?.getBoundingClientRect();
     const prompt=rect('[data-kordyn-v2-dialog-trigger]');
     const support=rect('[data-kordyn-v2-ai-support-trigger]');
+    const scroll=document.querySelector('.kordynV2MobileBackground > .kordynV2StateBoundary');
     const overlap=(a,b)=>a&&b?Math.max(0,Math.min(a.right,b.right)-Math.max(a.left,b.left))*Math.max(0,Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)):0;
-    return { heroHeight:hero?.height, accountTop:account?.top, recentTop:recent?.top, navTop:nav?.top, overflow:document.documentElement.scrollWidth-innerWidth, promptSupport:overlap(prompt,support), promptNav:overlap(prompt,nav) };
+    return {
+      heroHeight:hero?.height,
+      heroTop:hero?.top,
+      heroBottom:hero?.bottom,
+      attentionTop:attention?.top,
+      attentionBottom:attention?.bottom,
+      accountTop:account?.top,
+      accountBottom:account?.bottom,
+      recentTop:recent?.top,
+      recentBottom:recent?.bottom,
+      recentContentTop:recentContent?.top,
+      recentContentBottom:recentContent?.bottom,
+      promptTop:prompt?.top,
+      promptBottom:prompt?.bottom,
+      navTop:nav?.top,
+      overflow:document.documentElement.scrollWidth-innerWidth,
+      promptSupport:overlap(prompt,support),
+      promptNav:overlap(prompt,nav),
+      promptRecentContent:overlap(prompt,recentContent),
+      recentNav:overlap(recent,nav),
+      recentContentNav:overlap(recentContent,nav),
+      scrollTop:scroll?.scrollTop,
+      scrollClientHeight:scroll?.clientHeight,
+      scrollHeight:scroll?.scrollHeight,
+      scrollRange:scroll ? scroll.scrollHeight-scroll.clientHeight : -1
+    };
   })()`);
   assert.ok(geometry.heroHeight <= 235, `${width}: active Mission hero ${geometry.heroHeight}px`);
   assert.ok(geometry.accountTop < geometry.navTop, `${width}: Account impact enters first screen`);
   assert.ok(geometry.recentTop < geometry.navTop, `${width}: Recent completed enters first screen`);
   assert.deepEqual({ overflow: geometry.overflow, promptSupport: geometry.promptSupport, promptNav: geometry.promptNav }, { overflow: 0, promptSupport: 0, promptNav: 0 });
+  assert.equal(geometry.promptRecentContent, 0, `${width}: fixed Prompt must not obscure Recent row/content ${JSON.stringify(geometry)}`);
+  assert.deepEqual({ recentNav: geometry.recentNav, recentContentNav: geometry.recentContentNav }, { recentNav: 0, recentContentNav: 0 }, `${width}: Recent must clear bottom navigation ${JSON.stringify(geometry)}`);
+  assert.equal(geometry.scrollTop, 0, `${width}: Mission opens at the start of the real scroll owner`);
+  assert.ok(geometry.scrollRange > 0, `${width}: real Mission scroll owner exposes a vertical safety range ${JSON.stringify(geometry)}`);
+  const missionBottomReachability = await evaluate(cdp, `(async()=>{
+    const scroll=document.querySelector('.kordynV2MobileBackground > .kordynV2StateBoundary');
+    scroll.scrollTop=scroll.scrollHeight;
+    await new Promise((resolve)=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+    const rect=(selector)=>document.querySelector(selector)?.getBoundingClientRect();
+    const prompt=rect('[data-kordyn-v2-dialog-trigger]');
+    const nav=rect('[data-kordyn-v2-mobile-navigation]');
+    const viewport=scroll.getBoundingClientRect();
+    const last=document.querySelector('[data-kordyn-v2-mobile-mission-registry] > button:last-of-type, [data-kordyn-v2-mobile-recent-completed] > button, [data-kordyn-v2-mobile-recent-completed] > p')?.getBoundingClientRect();
+    const safeBottom=Math.min(prompt?.top ?? viewport.bottom,nav?.top ?? viewport.bottom,viewport.bottom);
+    return { scrollTop:scroll.scrollTop, maxScroll:scroll.scrollHeight-scroll.clientHeight, lastTop:last?.top, lastBottom:last?.bottom, viewportTop:viewport.top, safeBottom };
+  })()`);
+  assert.ok(missionBottomReachability.scrollTop > 0 && Math.abs(missionBottomReachability.scrollTop-missionBottomReachability.maxScroll) <= 1, `${width}: real Mission scroll owner reaches its end ${JSON.stringify(missionBottomReachability)}`);
+  assert.ok(missionBottomReachability.lastTop >= missionBottomReachability.viewportTop && missionBottomReachability.lastBottom <= missionBottomReachability.safeBottom, `${width}: final Mission content is vertically reachable above Prompt and navigation ${JSON.stringify(missionBottomReachability)}`);
+  await evaluate(cdp, `document.querySelector('.kordynV2MobileBackground > .kordynV2StateBoundary').scrollTop=0`);
   await capture(cdp, `mobile-mission-${width}x${height}.png`, width, height);
 
+  await navigate(cdp, baseUrl, "/tests/kordyn-v2-ai-actions-browser.html", width, height);
+  await waitForExpression(cdp, "window.__task4Ready && document.querySelector('[data-kordyn-v2-destination=\"ai/missions\"]')", `${width}: approval source Mission`);
   await click(cdp, '[data-kordyn-v2-open-approval="run-sol-approval"]');
   await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-ai-approval-sheet]')", `${width}: approval task workspace`);
   const approval = await evaluate(cdp, `(() => {
@@ -155,6 +204,7 @@ async function verifyMobileMission(cdp, baseUrl, width, height) {
   assert.equal(resetState.scrollTop, 0, `${width}: approval evidence resets to initial reading position`);
   assert.ok(resetState.lifecycleTop >= resetState.viewportTop - 1, `${width}: lifecycle hero is visible after reset`);
   await capture(cdp, `mobile-approval-${width}x${height}.png`, width, height);
+  return { width, height, geometry, bottom: missionBottomReachability };
 }
 
 async function verifyDesktopSignals(cdp, baseUrl, width, height) {
@@ -211,13 +261,14 @@ try {
   await cdp.send("Page.enable");
   await cdp.send("Runtime.enable");
   const baseUrl = `http://127.0.0.1:${vitePort}`;
-  for (const viewport of [[390, 844], [430, 932]]) await verifyMobileMission(cdp, baseUrl, ...viewport);
+  const mobileMission = [];
+  for (const viewport of [[390, 844], [430, 932]]) mobileMission.push(await verifyMobileMission(cdp, baseUrl, ...viewport));
   for (const viewport of [[1440, 900], [1180, 800]]) {
     await verifyDesktopMissionCommand(cdp, baseUrl, ...viewport);
     await verifyDesktopSignals(cdp, baseUrl, ...viewport);
   }
   cdp.close();
-  console.log(`KORDYN V2 AI visual regression browser PASS captures=6 output=${outputDir}`);
+  console.log(`KORDYN V2 AI visual regression browser PASS captures=6 mobile=${JSON.stringify(mobileMission)} output=${outputDir}`);
 } finally {
   chrome.kill("SIGTERM");
   vite.kill("SIGTERM");

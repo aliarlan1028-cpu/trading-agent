@@ -1212,7 +1212,12 @@
   .kordynV2AiMobile {
     padding-right: 10px;
     padding-left: 10px;
-    gap: 8px;
+    gap: 6px;
+  }
+
+  .kordynV2AiMobileActive {
+    padding: 8px;
+    gap: 4px;
   }
 
   .kordynV2AiMobileActive,
@@ -1223,6 +1228,10 @@
     border-radius: 12px;
   }
 
+  .kordynV2AiMissionProgress.is-compact {
+    min-height: 40px;
+  }
+
   .kordynV2AiMissionProgress.is-compact li > span {
     width: 26px;
     height: 26px;
@@ -1230,6 +1239,32 @@
 
   .kordynV2AiMissionProgress.is-compact::before {
     top: 16px;
+  }
+
+  .kordynV2AiMobileFacts > div {
+    min-height: 40px;
+  }
+
+  .kordynV2AiMobileAttention,
+  .kordynV2AiMobileContext {
+    padding: 6px 8px;
+  }
+
+  .kordynV2AiMobileAttention > header,
+  .kordynV2AiMobileContext > header {
+    min-height: 26px;
+  }
+
+  .kordynV2AiMobileAttention > article {
+    margin-top: 3px;
+  }
+
+  .kordynV2AiMobileContext dl > div {
+    min-height: 40px;
+  }
+
+  .kordynV2AiMobileContext > p {
+    margin-top: 3px;
   }
 }
 
