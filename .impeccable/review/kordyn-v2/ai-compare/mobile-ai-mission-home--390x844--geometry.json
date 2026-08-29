@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "identity": "mobile-ai-mission-home--390x844",
+  "concept": {
+    "id": "mobile-ai-mission-home",
+    "file": ".impeccable/mocks/kordyn-v2-approved/mobile-ai-mission-home.png",
+    "sha256": "6e0eda474f6658ff9dbfcbc6b18d4503203a78ddb30e38aa22b0760c1c902c9b",
+    "storedPixels": {
+      "width": 853,
+      "height": 1844
+    },
+    "normalizedViewport": "390x844"
+  },
+  "actual": {
+    "file": "mobile-ai-mission-home--390x844.png",
+    "sha256": "8b716b0d6966ad0c9be36e47d0d66bbe5773c4185fa9aaf99c52043d1b383590",
+    "runner": "tests/run-kordyn-v2-ai-browser.mjs",
+    "fixture": "tests/kordyn-v2-production-fixture.js",
+    "productionSourceCommit": "587ee350773415846db795b45665b98ee28bf58e",
+    "device": "mobile",
+    "domainId": "ai",
+    "workspaceId": "missions"
+  },
+  "viewport": {
+    "name": "390x844",
+    "width": 390,
+    "height": 844
+  },
+  "document": {
+    "clientWidth": 390,
+    "scrollWidth": 390
+  },
+  "documentOverflow": 0,
+  "shellGeometry": {
+    "left": 0,
+    "top": 0,
+    "width": 390,
+    "height": 844
+  },
+  "diagnostics": {
+    "screenshotStructure": {
+      "variance": 0.023229614230010687,
+      "edgeDensity": 0.04727019455351857,
+      "nearFlat": false
+    },
+    "pixelDifference": {
+      "metric": 0.07819913155848478,
+      "role": "diagnostic only"
+    },
+    "contentAwareComparator": {
+      "applied": false,
+      "reason": "no fixed mobile shell threshold in Foundation Plan 01"
+    }
+  },
+  "artifacts": {
+    "normalizedReference": {
+      "file": "mobile-ai-mission-home--390x844--reference.png",
+      "sha256": "2d2c24912b9843d1de183dbb66ebbbc9fd39c928874558c918eb51e406d6faff"
+    },
+    "overlay50": {
+      "file": "mobile-ai-mission-home--390x844--overlay.png",
+      "sha256": "a60fbfee9d02c4518228e1e53bd4edfded5fd5ee83826d2ca72273b7df54e73e"
+    },
+    "absoluteDifference": {
+      "file": "mobile-ai-mission-home--390x844--difference.png",
+      "sha256": "bce4756faecb1393a7d01022c114f6f6b04f124c1cd62586b01c1e71944cdbd3"
+    }
+  },
+  "releaseVerdict": "human region review required"
+}

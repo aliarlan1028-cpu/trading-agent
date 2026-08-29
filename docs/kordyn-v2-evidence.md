@@ -11,11 +11,11 @@
 
 ## Staged concept coverage
 
-| Concept | Device | Domain / workspace | Targets | Foundation status |
+| Concept | Device | Domain / workspace | Targets | Current status |
 | --- | --- | --- | --- | --- |
-| `desktop-ai-mission-control` | Desktop | `ai / missions` | `1440x900`, `1180x800` | Compared — shared shell |
-| `mobile-ai-mission-home` | APP | `ai / missions` | `390x844`, `430x932` | Compared — Task 8 independently approved; visual PASS |
-| `desktop-ai-signals` | Desktop | `ai / intelligence` | `1440x900`, `1180x800` | pending domain implementation |
+| `desktop-ai-mission-control` | Desktop | `ai / missions` | `1440x900`, `1180x800` | Compared — Foundation shell and Plan 02 AI domain |
+| `mobile-ai-mission-home` | APP | `ai / missions` | `390x844`, `430x932` | Compared — Foundation shell and Plan 02 AI domain |
+| `desktop-ai-signals` | Desktop | `ai / intelligence` | `1440x900`, `1180x800` | Compared — Plan 02 AI domain |
 | `desktop-account-position` | Desktop | `account / positions` | `1440x900`, `1180x800` | pending domain implementation |
 | `desktop-assets-relationship` | Desktop | `assets / relationships` | `1440x900`, `1180x800` | pending domain implementation |
 | `desktop-strategy-registry` | Desktop | `assets / strategies` | `1440x900`, `1180x800` | pending domain implementation |
@@ -25,7 +25,7 @@
 | `desktop-governance-boundary` | Desktop | `governance / overview` | `1440x900`, `1180x800` | pending domain implementation |
 | `desktop-governance-operations` | Desktop | `governance / tasks` | `1440x900`, `1180x800` | pending domain implementation |
 | `desktop-governance-configuration` | Desktop | `governance / configuration` | `1440x900`, `1180x800` | pending domain implementation |
-| `mobile-ai-task-approval` | APP | `ai / missions` | `390x844`, `430x932` | pending domain implementation |
+| `mobile-ai-task-approval` | APP | `ai / missions` | `390x844`, `430x932` | Compared — Plan 02 AI domain |
 | `mobile-intelligent-assets` | APP | `assets / relationships` | `390x844`, `430x932` | pending domain implementation |
 | `mobile-system-governance` | APP | `governance / tasks` | `390x844`, `430x932` | pending domain implementation |
 
@@ -133,3 +133,88 @@ Completed freshly during Task 8:
 - `git diff --check`: exit `0` before report finalization.
 
 The final independent review supplements the mechanical gates with `APPROVE`, `0 Critical / 0 Important / 0 Minor`, and visual PASS at both required APP sizes. Plan 02 is unblocked by the Foundation gate but remains unstarted in this task.
+
+## Plan 02 AI domain checkpoint — Task 5
+
+Task 5 closes the AI-domain evidence gate against production source commit `587ee350773415846db795b45665b98ee28bf58e`. The evidence runner mounts the actual production `KordynV2Root` and its committed lazy AI domain. `tests/kordyn-v2-production-fixture.js` supplies bounded production-shaped data and authoritative delayed outcomes; it is not imported by production, contains no credentials, and performs no production write. The canonical capture sidecar, state sidecar, comparison index, and every AI geometry ledger record or inherit this exact production source commit.
+
+### Capability ownership — 8 / 8
+
+Every deployed `ai.*` capability resolves to a concrete production presenter, registered workspace/route, existing authoritative action boundary, resource-state/permission boundary, and separate Desktop and APP entry. Registry presence alone is not counted.
+
+| Capability | Production presenter | Workspace / route | Authoritative action boundary | State / permission boundary | Desktop entry | APP entry |
+| --- | --- | --- | --- | --- | --- | --- |
+| `ai.dialog` | `AiDialogWorkspace` / `MobileAiDialogScreen` | `dialog / chat` | `readDialog`, `sendDialog` via `/api/agent/chat` | authenticated RBAC; mutation only while `chat` is ready | AI → 对话 → bounded dialog | AI → 对话 → full-screen conversation |
+| `ai.autonomous-patrol` | `AiMissionWorkspace` / `MobileAiMissionScreen` | `missions / chat` | read-only Mission projection; approval stays protected | last-valid facts only for stale/degraded | AI → 任务 → Registry/Inspector | AI → 任务 → task-led Mission flow |
+| `ai.intelligence` | `AiSignalsWorkspace` / `MobileAiSignalsScreen` | `intelligence` | `rememberIntelligence` via `/api/agent/memory` | current canonical Signal and ready `operationsCenter` | AI → 情报 → Signal Registry | AI → 情报 → list/detail |
+| `ai.watch` | `AiWatchWorkspace` / `MobileAiWatchScreen` | `watch` | `cancelWatch` via `/api/watch-triggers/:id/cancel`; hit only re-analyzes | current active Watch and ready `chat` | AI → 观察哨 → Watch Registry | AI → 观察哨 → list/detail |
+| `ai.events` | `AiEventsWorkspace` / `MobileAiEventsScreen` | `events / eventsTasks:events` | `refreshEvents` via `/api/event-sources/refresh` | current Event Context and ready `operationsCenter` | AI → 事件日历 → Event Registry | AI → 事件日历 → list/detail |
+| `ai.poster-current` | `AiOutputSheet` | `missions / chat` | open supported current poster from a real Mission/message | authoritative facts must be ready | Mission → 生成海报 | Mission task → 生成海报 |
+| `ai.poster-translate` | `AiOutputSheet` | `missions / chat` | `translatePoster` via `/api/posters/translate`, Chinese/English only | translation disabled outside ready authoritative facts | Output → English | Output → English |
+| `ai.poster-png` | `AiOutputSheet` | `missions / chat` | real `html-to-image` render, then injected download | export disabled outside ready authoritative facts | Output → PNG | Output → PNG |
+
+The fresh state/capability contract is `14 / 14`: one 8-capability ownership test plus all 13 canonical state tests.
+
+### Canonical state evidence — 13 / 13
+
+| State | Canonical rule proven by real Root evidence |
+| --- | --- |
+| loading | no last-valid facts or mutation presenter; semantic loading heading |
+| empty | authoritative empty result; no stale facts reused |
+| processing | authoritative facts may remain visible, but no terminal success appears before response |
+| stale | exact last-valid source/as-of retained; protected mutations disabled; read-only dialog only |
+| degraded | exact last-valid source/as-of retained; protected mutations disabled; read-only dialog only |
+| failed | no last-valid facts or protected controls reused; retry boundary remains explicit |
+| forbidden | protected facts and mutation presenters absent |
+| disabled | disabled remains distinct from forbidden/failed and exposes no mutation path |
+| approval | confirmation required; no authorization or execution implied |
+| partial | authoritative partial result stays visible and never becomes optimistic success |
+| no-result | no server result remains distinct from empty or failed |
+| long-content | the complete authority string remains rendered with zero horizontal overflow |
+| large-list | all 64 authoritative Mission identities remain rendered with zero horizontal overflow |
+
+Canonical `state-evidence.json` covers the 13 screenshots at the four immutable viewport sizes. Loading/empty/failed/forbidden never reuse last-valid facts. Stale/degraded trusted clicks produce zero authoritative writes and retain `Task 5 bounded production-shaped authority / 2026-08-30T00:12:00.000Z`. APP `390 / 430` document and shell widths are exact, all protected touch targets are at least `44px`, and Prompt/support/navigation/protected actions do not intersect.
+
+### Trusted production interaction evidence
+
+The fresh master gate physically clicks real production rows and controls for Mission, Signal, Watch, Event, one-shot approval, dialog, translation, and PNG output. The identity chain is the clicked row type plus Root selected ID/type plus Context and Proof `Type / ID`. Mission Proof also exposes the exact `createdAt=2026-08-30T00:01:07.000Z` and `updatedAt=2026-08-30T00:12:11.000Z`; missing `completedAt` remains `Unavailable`.
+
+Approval is exercised with a delayed authoritative response: processing appears first, terminal success is absent before the response, and authoritative failed/partial outcomes remain visible. Dialog POST is followed by the authoritative GET reread. PNG evidence uses the real `html-to-image` path after fonts are ready; it is not stubbed. Keyboard focus containment, Escape close, focus return, APP target size, and zero authority writes in every capture document are asserted.
+
+### Canonical AI captures and comparisons
+
+Capture root: `.impeccable/review/kordyn-v2/ai/` (`23` files: eight approved-surface captures, 13 state captures, and two sidecars). Comparison root: `.impeccable/review/kordyn-v2/ai-compare/` (`33` files: 24 reference/overlay/difference PNGs, eight geometry ledgers, and one index).
+
+| Identity | Actual SHA-256 | Approved source SHA-256 | Overflow | Pixel MAE | Fixed content diagnostic |
+| --- | --- | --- | ---: | ---: | --- |
+| Mission Desktop `1440x900` | `9e8a1fae3e0e208a042017aa70294b06ba2fadd94336df74bbef07370c694770` | `55f988f9c87d1dce83d528bd2ad224b0951542cbab32eca018bf6c78818dbc20` | `0` | `0.051465` | `0.037187 ≤ 0.0415`; structure accepted |
+| Mission Desktop `1180x800` | `9c8815bb273f083283deb19fcb82093df148788820742d0f75edf375527015a2` | `55f988f9c87d1dce83d528bd2ad224b0951542cbab32eca018bf6c78818dbc20` | `0` | `0.062632` | `0.047456 ≤ 0.0475`; structure accepted |
+| Signals Desktop `1440x900` | `02cfee554b4d942cdcc3adaea2c5abc19caf8c616ef564cdc7af97518ab76ce2` | `beec4a413a6c1c174ea25fed47c862163415a9d577771feace2a80c715e2b283` | `0` | `0.061554` | human region review |
+| Signals Desktop `1180x800` | `ec3dd2b7709c267d0ab28cede138eef6935512651c52f4e49caa5b7900e169be` | `beec4a413a6c1c174ea25fed47c862163415a9d577771feace2a80c715e2b283` | `0` | `0.067879` | human region review |
+| Mission APP `390x844` | `8b716b0d6966ad0c9be36e47d0d66bbe5773c4185fa9aaf99c52043d1b383590` | `6e0eda474f6658ff9dbfcbc6b18d4503203a78ddb30e38aa22b0760c1c902c9b` | `0` | `0.078199` | human region review |
+| Mission APP `430x932` | `b42e0ef4f6d34cd7d9ba4c84f333703db548d8605458e3e5bc65e6ba60a1ecd9` | `6e0eda474f6658ff9dbfcbc6b18d4503203a78ddb30e38aa22b0760c1c902c9b` | `0` | `0.074845` | human region review |
+| Approval APP `390x844` | `d3a94382550172c0a7d0868f248e2b9f9a958abe8b9897c815a7608c0359078c` | `341997877d9cf8cbae27b6f2f31c5cb79b546927a3e5b3ac3d9efea5c11f0778` | `0` | `0.084381` | human region review |
+| Approval APP `430x932` | `dab7f7ff40aa1c8d52640f789ba03106ffa1a6a65d77c2ca9b1ddf69e843c4f9` | `341997877d9cf8cbae27b6f2f31c5cb79b546927a3e5b3ac3d9efea5c11f0778` | `0` | `0.085099` | human region review |
+
+The comparator reports `15 concepts / 4 completed / 11 pending / 8 comparisons / 33 artifacts`. Its top-level verdict remains `human region review required`; pixel MAE is diagnostic only and no threshold was changed. Sidecar/index SHA-256 values are:
+
+- capture: `92b4fe33318bfe5943e9ac5bfc9ab2586e0979820222b1a07442bb174e0372b7`;
+- states: `e985164f705cbfbbecaf5bb384bf7f80639806431051533e46515c729f224a02`;
+- comparison index: `2b8bdf1028bb9ba0e7055ffde8712b643176e8178bf0904b791715ce6f08eef4`.
+
+All eight final actuals and every normalized reference, 50% overlay, absolute difference, and geometry ledger were reopened at original size. Desktop Mission retains the approved queue / active Mission / lifecycle / decision summary / related context / runtime receipt hierarchy. Desktop Signals retains filters / dense Registry / Inspector / decision boundary / Watch-Event-Intelligence lower registries. APP Mission retains account truth / active Mission / attention / account impact / recent completion / command order. APP Approval retains task / plan / account impact / 12-of-12 risk / AI-used facts / acknowledgement / sticky guarded actions. Production-shaped fact availability, exact labels, icons, and local density differ from the concept rasters, but no remaining difference materially recomposes topology, density, hierarchy, protected state, or action meaning.
+
+### Fresh Task 5 gates
+
+- focused Task 1–5 and safety regression: `180 / 180`, exit `0`;
+- full repository suite: `1872 / 1872`, exit `0`;
+- ESLint: exit `0`;
+- production build: exit `0`, `1702` modules transformed;
+- isolated performance/manifest: public `375,992 / 450,000` JS and `15,304 / 40,000` CSS; AI shell `53,117 / 180,000` CSS; one unique public-owned structural V2 dynamic entry, exact AI child ownership, no legacy product styles;
+- Task 2 Mission, Task 3 Context, Task 4 Actions, AI visual regression, APP overflow, and Task 5 master real-Chrome gates: exit `0` at all required viewports;
+- Task 5 master: `8` captures, Mission/Signal/Watch/Event identity, failed+partial approval, Desktop+APP dialog/output, `13 / 13` states;
+- AI comparator: `4 / 11 / 8 / 33`, exit `0`, unchanged references and thresholds;
+- Impeccable exact JSX/registry detector: exit `0`, `[]`;
+- production presentation source is unchanged by Task 5; only registries and evidence/test harness files are added or modified.
+
+Task 5 does not enable a flag, cut over traffic, start Plan 03, modify API/auth/permissions/trading/risk behavior, deploy, merge, push, or remove legacy production code.

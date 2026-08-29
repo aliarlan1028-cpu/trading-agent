@@ -30,6 +30,45 @@ function uniquePublicEntry(manifest) {
   return matches[0][0];
 }
 
+function validOwnedCss(row) {
+  return Array.isArray(row?.css)
+    && row.css.length > 0
+    && row.css.every((file) => typeof file === "string" && file.endsWith(".css") && file.length > 4);
+}
+
+function resolveV2Entry(manifest, publicEntry) {
+  const exact = Object.entries(manifest).filter(([key, row]) => (
+    key === "src/kordynV2/entry.jsx" || row?.src === "src/kordynV2/entry.jsx"
+  ));
+  if (exact.length > 1) throw new Error("ambiguous_v2_entry");
+  if (exact.length === 1) return exact[0][0];
+
+  const publicDynamic = manifest[publicEntry]?.dynamicImports;
+  if (!Array.isArray(publicDynamic) || publicDynamic.some((value) => typeof value !== "string" || !value)) {
+    throw new Error("invalid_public_dynamic_imports");
+  }
+  let aiEntry;
+  try {
+    aiEntry = uniqueEntry(manifest, "src/kordynV2/domains/ai/index.jsx", "ai");
+  } catch (error) {
+    if (error?.message === "missing_ai_entry") throw new Error("missing_v2_entry");
+    if (error?.message === "ambiguous_ai_entry") throw new Error("ambiguous_v2_entry");
+    throw error;
+  }
+  const candidates = publicDynamic.filter((key) => {
+    const row = manifest[key];
+    return row?.isDynamicEntry === true
+      && validOwnedCss(row)
+      && Array.isArray(row.dynamicImports)
+      && row.dynamicImports.length > 0
+      && row.dynamicImports.includes(aiEntry)
+      && validOwnedCss(manifest[aiEntry]);
+  });
+  if (candidates.length === 0) throw new Error("missing_v2_entry");
+  if (candidates.length !== 1) throw new Error("ambiguous_v2_entry");
+  return candidates[0];
+}
+
 function staticClosure(manifest, entryKey) {
   const visited = new Set();
   const pending = [entryKey];
@@ -113,7 +152,7 @@ export function analyzeV2BuildManifest({ manifest: manifestInput, assetStats: as
   const manifest = record(manifestInput, "manifest");
   const assetStats = record(assetStatsInput, "asset_stats");
   const publicEntry = uniquePublicEntry(manifest);
-  const v2Entry = uniqueEntry(manifest, "src/kordynV2/entry.jsx", "v2");
+  const v2Entry = resolveV2Entry(manifest, publicEntry);
   const legacyEntry = uniqueEntry(manifest, "src/productStyles.js", "legacy");
   const dynamicImports = manifest[publicEntry]?.dynamicImports;
   if (!Array.isArray(dynamicImports) || !dynamicImports.includes(v2Entry)) {

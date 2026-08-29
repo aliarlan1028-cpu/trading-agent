@@ -117,6 +117,92 @@ test("manifest graph ownership reports public, V2 shell, and legacy assets witho
   });
 });
 
+const coalescedV2Manifest = Object.freeze({
+  ...validManifest,
+  "index.html": Object.freeze({
+    ...validManifest["index.html"],
+    dynamicImports: ["src/productStyles.js", "_entry-v2.js"]
+  }),
+  "_entry-v2.js": Object.freeze({
+    file: "assets/v2.js",
+    name: "entry",
+    isDynamicEntry: true,
+    imports: ["index.html", "_react.js"],
+    dynamicImports: ["src/kordynV2/domains/ai/index.jsx"],
+    css: ["assets/v2.css"]
+  }),
+  "src/kordynV2/domains/ai/index.jsx": Object.freeze({
+    file: "assets/ai.js",
+    name: "index",
+    src: "src/kordynV2/domains/ai/index.jsx",
+    isDynamicEntry: true,
+    imports: ["_react.js"],
+    css: ["assets/ai.css"]
+  })
+});
+
+const coalescedAssetStats = Object.freeze({
+  ...validAssetStats,
+  "assets/ai.js": Object.freeze({ raw: 55_000, gzip: 18_000 }),
+  "assets/ai.css": Object.freeze({ raw: 45_000, gzip: 9_000 })
+});
+
+test("Vite-coalesced V2 entry is resolved by unique public-owned structural identity", () => {
+  assert.ifError(performanceImportError);
+  const manifest = { ...coalescedV2Manifest };
+  delete manifest["src/kordynV2/entry.jsx"];
+  const report = performanceModule.analyzeV2BuildManifest({
+    manifest,
+    assetStats: coalescedAssetStats
+  });
+  assert.equal(report.routes.aiShell.entry, "_entry-v2.js");
+  assert.equal(report.routes.aiShell.loadsLegacyProductStyles, false);
+  assert.ok(report.routes.aiShell.assets.includes("assets/v2.css"));
+  assert.equal(report.routes.aiShell.assets.includes("assets/ai.css"), false, "inactive lazy AI child stays outside static shell closure");
+});
+
+test("Vite-coalesced V2 entry resolution fails closed when the structural owner is ambiguous", () => {
+  assert.ifError(performanceImportError);
+  const manifest = { ...coalescedV2Manifest };
+  delete manifest["src/kordynV2/entry.jsx"];
+  manifest["index.html"] = {
+    ...manifest["index.html"],
+    dynamicImports: [...manifest["index.html"].dynamicImports, "_entry-v2-copy.js"]
+  };
+  manifest["_entry-v2-copy.js"] = {
+    ...manifest["_entry-v2.js"],
+    file: "assets/v2-copy.js"
+  };
+  assert.throws(
+    () => performanceModule.analyzeV2BuildManifest({
+      manifest,
+      assetStats: {
+        ...coalescedAssetStats,
+        "assets/v2-copy.js": { raw: 80_000, gzip: 25_000 }
+      }
+    }),
+    /ambiguous_v2_entry/
+  );
+});
+
+test("Vite-coalesced V2 entry resolution rejects misowned or unscoped structural candidates", () => {
+  assert.ifError(performanceImportError);
+  for (const mutate of [
+    (manifest) => { manifest["index.html"].dynamicImports = ["src/productStyles.js"]; },
+    (manifest) => { manifest["_entry-v2.js"].isDynamicEntry = false; },
+    (manifest) => { manifest["_entry-v2.js"].css = []; },
+    (manifest) => { manifest["_entry-v2.js"].dynamicImports = []; }
+  ]) {
+    const manifest = structuredClone(coalescedV2Manifest);
+    delete manifest["src/kordynV2/entry.jsx"];
+    mutate(manifest);
+    assert.throws(
+      () => performanceModule.analyzeV2BuildManifest({ manifest, assetStats: coalescedAssetStats }),
+      /missing_v2_entry/
+    );
+  }
+});
+
 test("manifest analysis fails closed on missing, ambiguous, non-finite, or legacy-owned assets", () => {
   assert.ifError(performanceImportError);
   const analyze = performanceModule.analyzeV2BuildManifest;

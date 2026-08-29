@@ -1,0 +1,333 @@
+{
+  "schemaVersion": 1,
+  "runner": "tests/run-kordyn-v2-ai-browser.mjs",
+  "fixture": "tests/kordyn-v2-production-fixture.js",
+  "productionSourceCommit": "587ee350773415846db795b45665b98ee28bf58e",
+  "states": [
+    {
+      "state": "loading",
+      "file": "state-loading--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "ai",
+      "workspaceId": "missions",
+      "sha256": "abeb97933459b44654815e52bce0031f48dfe4d08dbec2f047d23bcc43430b09",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "width": 1440,
+        "height": 900
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false
+    },
+    {
+      "state": "empty",
+      "file": "state-empty--390x844.png",
+      "viewport": "390x844",
+      "device": "mobile",
+      "domainId": "ai",
+      "workspaceId": "missions",
+      "sha256": "1ba7a2c641fcc5927f1330e68fa4e41343b849a81525826d14b934811b3d1a48",
+      "viewportGeometry": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "clientWidth": 390,
+        "scrollWidth": 390
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "width": 390,
+        "height": 844
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false
+    },
+    {
+      "state": "processing",
+      "file": "state-processing--1180x800.png",
+      "viewport": "1180x800",
+      "device": "desktop",
+      "domainId": "ai",
+      "workspaceId": "missions",
+      "sha256": "beca72afb640bcf8c78ec379247830e50deb97c94d2d4a54eabb2d21dc7f8b12",
+      "viewportGeometry": {
+        "width": 1180,
+        "height": 800
+      },
+      "document": {
+        "clientWidth": 1180,
+        "scrollWidth": 1180
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "width": 1180,
+        "height": 800
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false
+    },
+    {
+      "state": "stale",
+      "file": "state-stale--390x844.png",
+      "viewport": "390x844",
+      "device": "mobile",
+      "domainId": "ai",
+      "workspaceId": "missions",
+      "sha256": "f7566bbf48a0c83dfef58a28b6a0f98d8c9a28a2dc2abb6726d0960d765aec5f",
+      "viewportGeometry": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "clientWidth": 390,
+        "scrollWidth": 390
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "width": 390,
+        "height": 844
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false
+    },
+    {
+      "state": "degraded",
+      "file": "state-degraded--430x932.png",
+      "viewport": "430x932",
+      "device": "mobile",
+      "domainId": "ai",
+      "workspaceId": "missions",
+      "sha256": "c894db5c80a669b05287b21a8f8f1568307f8a8dae68f101b74f80be9fd50031",
+      "viewportGeometry": {
+        "width": 430,
+        "height": 932
+      },
+      "document": {
+        "clientWidth": 430,
+        "scrollWidth": 430
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "width": 430,
+        "height": 932
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false
+    },
+    {
+      "state": "failed",
+      "file": "state-failed--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "ai",
+      "workspaceId": "missions",
+      "sha256": "d346aca750910153d7d5fed6fe3025dfc155b040f5d95ed319c41a80b36657a3",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "width": 1440,
+        "height": 900
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false
+    },
+    {
+      "state": "forbidden",
+      "file": "state-forbidden--390x844.png",
+      "viewport": "390x844",
+      "device": "mobile",
+      "domainId": "ai",
+      "workspaceId": "missions",
+      "sha256": "0bfb46ad1aad0b9765fdf6ea638858d96498230858aebe8c289877ff05bc00f3",
+      "viewportGeometry": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "clientWidth": 390,
+        "scrollWidth": 390
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "width": 390,
+        "height": 844
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false
+    },
+    {
+      "state": "disabled",
+      "file": "state-disabled--1180x800.png",
+      "viewport": "1180x800",
+      "device": "desktop",
+      "domainId": "ai",
+      "workspaceId": "missions",
+      "sha256": "3aec4a29a447c7f4286d03f99021753ce8cd0c013f639124725b1ea5eaadfab2",
+      "viewportGeometry": {
+        "width": 1180,
+        "height": 800
+      },
+      "document": {
+        "clientWidth": 1180,
+        "scrollWidth": 1180
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "width": 1180,
+        "height": 800
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false
+    },
+    {
+      "state": "approval",
+      "file": "state-approval--430x932.png",
+      "viewport": "430x932",
+      "device": "mobile",
+      "domainId": "ai",
+      "workspaceId": "missions",
+      "sha256": "8c410c25819b5d457dcc8bfc2043a1ac388d0a80bd80982c155c357e66c96cf4",
+      "viewportGeometry": {
+        "width": 430,
+        "height": 932
+      },
+      "document": {
+        "clientWidth": 430,
+        "scrollWidth": 430
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "width": 430,
+        "height": 932
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false
+    },
+    {
+      "state": "partial",
+      "file": "state-partial--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "ai",
+      "workspaceId": "missions",
+      "sha256": "8499e441a29c7ca77ecddc5ee4184803461785be7c6f8754a2dd2f2f0f5563cf",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "width": 1440,
+        "height": 900
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false
+    },
+    {
+      "state": "no-result",
+      "file": "state-no-result--390x844.png",
+      "viewport": "390x844",
+      "device": "mobile",
+      "domainId": "ai",
+      "workspaceId": "missions",
+      "sha256": "c841914b124e5ac76060005d3c077d54fb7265f20fb4e3d0a74900141926d414",
+      "viewportGeometry": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "clientWidth": 390,
+        "scrollWidth": 390
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "width": 390,
+        "height": 844
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false
+    },
+    {
+      "state": "long-content",
+      "file": "state-long-content--390x844.png",
+      "viewport": "390x844",
+      "device": "mobile",
+      "domainId": "ai",
+      "workspaceId": "missions",
+      "sha256": "1efb72def6e5c4544b7ea9a796c9a7883ff4bd128f762592328423251cec7b0b",
+      "viewportGeometry": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "clientWidth": 390,
+        "scrollWidth": 390
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "width": 390,
+        "height": 844
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false
+    },
+    {
+      "state": "large-list",
+      "file": "state-large-list--430x932.png",
+      "viewport": "430x932",
+      "device": "mobile",
+      "domainId": "ai",
+      "workspaceId": "missions",
+      "sha256": "93a3b15103239bf48a7ea9888cca994a8f60f1b5398e387f609b2ead8f25aae1",
+      "viewportGeometry": {
+        "width": 430,
+        "height": 932
+      },
+      "document": {
+        "clientWidth": 430,
+        "scrollWidth": 430
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "width": 430,
+        "height": 932
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false
+    }
+  ]
+}

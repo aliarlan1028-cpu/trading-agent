@@ -14,6 +14,13 @@ export const KORDYN_V2_TARGET_VIEWPORTS = Object.freeze([
 const desktopTargets = Object.freeze(["1440x900", "1180x800"]);
 const mobileTargets = Object.freeze(["390x844", "430x932"]);
 
+const comparisonScopes = Object.freeze({
+  "desktop-ai-mission-control": Object.freeze(["shell", "ai"]),
+  "desktop-ai-signals": Object.freeze(["ai"]),
+  "mobile-ai-mission-home": Object.freeze(["shell", "ai"]),
+  "mobile-ai-task-approval": Object.freeze(["ai"])
+});
+
 const rows = [
   ["desktop-ai-mission-control", "AI 交易员", "Mission control", "desktop-ai-mission-control.png", 1586, 992, "55f988f9c87d1dce83d528bd2ad224b0951542cbab32eca018bf6c78818dbc20", "ai", "missions", "desktop", true],
   ["desktop-ai-signals", "AI 交易员", "Signals / intelligence / watch / event calendar", "desktop-ai-signals.png", 1586, 992, "beec4a413a6c1c174ea25fed47c862163415a9d577771feace2a80c715e2b283", "ai", "intelligence", "desktop", false],
@@ -47,11 +54,18 @@ export const KORDYN_V2_CONCEPTS = Object.freeze(rows.map(([
   device,
   targets: device === "desktop" ? desktopTargets : mobileTargets,
   foundationComparison,
+  comparisonScopes: comparisonScopes[id] || Object.freeze([]),
   status: foundationComparison ? "implemented foundation shell" : "pending domain implementation",
   captures: foundationComparison
     ? Object.freeze((device === "desktop" ? desktopTargets : mobileTargets).map((viewport) => Object.freeze({
       viewport,
       file: `${device}-${viewport}.png`
+    })))
+    : Object.freeze([]),
+  aiCaptures: comparisonScopes[id]?.includes("ai")
+    ? Object.freeze((device === "desktop" ? desktopTargets : mobileTargets).map((viewport) => Object.freeze({
+      viewport,
+      file: `${id}--${viewport}.png`
     })))
     : Object.freeze([])
 })));

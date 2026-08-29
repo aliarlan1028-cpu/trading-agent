@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "identity": "mobile-ai-mission-home--430x932",
+  "concept": {
+    "id": "mobile-ai-mission-home",
+    "file": ".impeccable/mocks/kordyn-v2-approved/mobile-ai-mission-home.png",
+    "sha256": "6e0eda474f6658ff9dbfcbc6b18d4503203a78ddb30e38aa22b0760c1c902c9b",
+    "storedPixels": {
+      "width": 853,
+      "height": 1844
+    },
+    "normalizedViewport": "430x932"
+  },
+  "actual": {
+    "file": "mobile-ai-mission-home--430x932.png",
+    "sha256": "b42e0ef4f6d34cd7d9ba4c84f333703db548d8605458e3e5bc65e6ba60a1ecd9",
+    "runner": "tests/run-kordyn-v2-ai-browser.mjs",
+    "fixture": "tests/kordyn-v2-production-fixture.js",
+    "productionSourceCommit": "587ee350773415846db795b45665b98ee28bf58e",
+    "device": "mobile",
+    "domainId": "ai",
+    "workspaceId": "missions"
+  },
+  "viewport": {
+    "name": "430x932",
+    "width": 430,
+    "height": 932
+  },
+  "document": {
+    "clientWidth": 430,
+    "scrollWidth": 430
+  },
+  "documentOverflow": 0,
+  "shellGeometry": {
+    "left": 0,
+    "top": 0,
+    "width": 430,
+    "height": 932
+  },
+  "diagnostics": {
+    "screenshotStructure": {
+      "variance": 0.020076015985707275,
+      "edgeDensity": 0.04213805177437729,
+      "nearFlat": false
+    },
+    "pixelDifference": {
+      "metric": 0.07484521239709911,
+      "role": "diagnostic only"
+    },
+    "contentAwareComparator": {
+      "applied": false,
+      "reason": "no fixed mobile shell threshold in Foundation Plan 01"
+    }
+  },
+  "artifacts": {
+    "normalizedReference": {
+      "file": "mobile-ai-mission-home--430x932--reference.png",
+      "sha256": "f3e8a97d69a54a9754c92b89fcba0c39821e7e88fbcd2ca37f24b2ece86d2049"
+    },
+    "overlay50": {
+      "file": "mobile-ai-mission-home--430x932--overlay.png",
+      "sha256": "02e45931212b7bcdb6c45de1dd5a4e1c41cd9c406a7f3bf653583788ce29193e"
+    },
+    "absoluteDifference": {
+      "file": "mobile-ai-mission-home--430x932--difference.png",
+      "sha256": "b75bfea5c5579fd40f994869090f01ae976c12a669b6531194846dc0ce40750a"
+    }
+  },
+  "releaseVerdict": "human region review required"
+}

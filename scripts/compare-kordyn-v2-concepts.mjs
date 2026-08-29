@@ -13,6 +13,19 @@ const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const reviewRoot = path.join(rootDir, ".impeccable/review/kordyn-v2");
 const approvedRoot = path.join(rootDir, ".impeccable/mocks/kordyn-v2-approved");
 const captureEvidenceFile = "capture-evidence.json";
+const SCOPE_CONFIG = Object.freeze({
+  shell: Object.freeze({
+    runner: "tests/run-kordyn-v2-shell-browser.mjs",
+    fixture: "tests/kordyn-v2-production-fixture.js",
+    captureKey: "captures"
+  }),
+  ai: Object.freeze({
+    runner: "tests/run-kordyn-v2-ai-browser.mjs",
+    fixture: "tests/kordyn-v2-production-fixture.js",
+    captureKey: "aiCaptures",
+    productionCommit: true
+  })
+});
 
 function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
@@ -91,13 +104,16 @@ export async function verifyApprovedConceptSource(concept) {
   return { bytes, sha256: actualHash };
 }
 
-function captureMap(evidence) {
+function captureMap(evidence, scopeConfig) {
   if (!evidence || typeof evidence !== "object" || Array.isArray(evidence) || evidence.schemaVersion !== 1) {
     throw new Error("invalid_capture_evidence");
   }
-  if (evidence.runner !== "tests/run-kordyn-v2-shell-browser.mjs"
-    || evidence.fixture !== "tests/kordyn-v2-production-fixture.js"
+  if (evidence.runner !== scopeConfig.runner
+    || evidence.fixture !== scopeConfig.fixture
     || !Array.isArray(evidence.captures)) {
+    throw new Error("invalid_capture_provenance");
+  }
+  if (scopeConfig.productionCommit && !/^[0-9a-f]{40}$/.test(evidence.productionSourceCommit || "")) {
     throw new Error("invalid_capture_provenance");
   }
   const mapped = new Map();
@@ -156,11 +172,11 @@ function pixelDifference(actual, reference) {
   return total / actual.length / 255;
 }
 
-function buildComparisonPlan() {
+function buildComparisonPlan(scope, scopeConfig) {
   const plan = [];
   const identities = new Set();
-  for (const concept of KORDYN_V2_CONCEPTS.filter((row) => row.foundationComparison === true)) {
-    for (const capture of concept.captures) {
+  for (const concept of KORDYN_V2_CONCEPTS.filter((row) => row.comparisonScopes.includes(scope))) {
+    for (const capture of concept[scopeConfig.captureKey]) {
       const identity = `${concept.id}--${capture.viewport}`;
       if (identities.has(identity)) throw new Error(`duplicate_output_identity:${identity}`);
       identities.add(identity);
@@ -192,7 +208,8 @@ function jsonBuffer(value) {
 }
 
 export async function compareKordynV2Concepts({ screenshotsDir: screenshotsInput, outputDir: outputInput, scope } = {}) {
-  if (scope !== "shell") throw new Error(`invalid_comparison_scope:${scope ?? "missing"}`);
+  const scopeConfig = SCOPE_CONFIG[scope];
+  if (!scopeConfig) throw new Error(`invalid_comparison_scope:${scope ?? "missing"}`);
   const screenshotsDir = await validatedEvidenceDirectory(screenshotsInput, "screenshots", { mustExist: true });
   const outputDir = await validatedEvidenceDirectory(outputInput, "output", { mustExist: false });
   if (outputDir === screenshotsDir || relativeInside(screenshotsDir, outputDir)) {
@@ -202,8 +219,8 @@ export async function compareKordynV2Concepts({ screenshotsDir: screenshotsInput
   for (const concept of KORDYN_V2_CONCEPTS) await verifyApprovedConceptSource(concept);
   const evidencePath = await regularContainedFile(screenshotsDir, captureEvidenceFile, "capture_evidence");
   const evidence = JSON.parse(await readFile(evidencePath, "utf8"));
-  const captures = captureMap(evidence);
-  const plan = buildComparisonPlan();
+  const captures = captureMap(evidence, scopeConfig);
+  const plan = buildComparisonPlan(scope, scopeConfig);
   const artifactBuffers = new Map();
   const comparisons = [];
 
@@ -285,6 +302,7 @@ export async function compareKordynV2Concepts({ screenshotsDir: screenshotsInput
         sha256: actualHash,
         runner: evidence.runner,
         fixture: evidence.fixture,
+        ...(scopeConfig.productionCommit ? { productionSourceCommit: evidence.productionSourceCommit } : {}),
         device: captured.device,
         domainId: captured.domainId,
         workspaceId: captured.workspaceId
@@ -323,12 +341,15 @@ export async function compareKordynV2Concepts({ screenshotsDir: screenshotsInput
     });
   }
 
+  const completed = KORDYN_V2_CONCEPTS
+    .filter((row) => row.comparisonScopes.includes(scope))
+    .map((row) => row.id);
   const pending = KORDYN_V2_CONCEPTS
-    .filter((row) => row.status === "pending domain implementation")
+    .filter((row) => !row.comparisonScopes.includes(scope))
     .map((row) => ({ id: row.id, status: row.status }));
   const counts = {
     concepts: KORDYN_V2_CONCEPTS.length,
-    completedConcepts: 2,
+    completedConcepts: completed.length,
     pendingConcepts: pending.length,
     comparisons: comparisons.length,
     artifacts: artifactBuffers.size + 1
@@ -338,9 +359,10 @@ export async function compareKordynV2Concepts({ screenshotsDir: screenshotsInput
     scope,
     sourceManifest: "docs/kordyn-v2-approved-concept-manifest.md",
     captureEvidence: `${path.relative(rootDir, screenshotsDir).split(path.sep).join("/")}/${captureEvidenceFile}`,
+    ...(scopeConfig.productionCommit ? { productionSourceCommit: evidence.productionSourceCommit } : {}),
     outputRoot: path.relative(rootDir, outputDir).split(path.sep).join("/"),
     counts,
-    completed: ["desktop-ai-mission-control", "mobile-ai-mission-home"],
+    completed,
     pending,
     comparisons,
     releaseVerdict: "human region review required"

@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "identity": "desktop-ai-signals--1440x900",
+  "concept": {
+    "id": "desktop-ai-signals",
+    "file": ".impeccable/mocks/kordyn-v2-approved/desktop-ai-signals.png",
+    "sha256": "beec4a413a6c1c174ea25fed47c862163415a9d577771feace2a80c715e2b283",
+    "storedPixels": {
+      "width": 1586,
+      "height": 992
+    },
+    "normalizedViewport": "1440x900"
+  },
+  "actual": {
+    "file": "desktop-ai-signals--1440x900.png",
+    "sha256": "02cfee554b4d942cdcc3adaea2c5abc19caf8c616ef564cdc7af97518ab76ce2",
+    "runner": "tests/run-kordyn-v2-ai-browser.mjs",
+    "fixture": "tests/kordyn-v2-production-fixture.js",
+    "productionSourceCommit": "587ee350773415846db795b45665b98ee28bf58e",
+    "device": "desktop",
+    "domainId": "ai",
+    "workspaceId": "intelligence"
+  },
+  "viewport": {
+    "name": "1440x900",
+    "width": 1440,
+    "height": 900
+  },
+  "document": {
+    "clientWidth": 1440,
+    "scrollWidth": 1440
+  },
+  "documentOverflow": 0,
+  "shellGeometry": {
+    "left": 0,
+    "top": 0,
+    "width": 1440,
+    "height": 900
+  },
+  "diagnostics": {
+    "screenshotStructure": {
+      "variance": 0.011804467762053595,
+      "edgeDensity": 0.027584491310441453,
+      "nearFlat": false
+    },
+    "pixelDifference": {
+      "metric": 0.06155372085048011,
+      "role": "diagnostic only"
+    },
+    "contentAwareComparator": {
+      "applied": false,
+      "reason": "no fixed mobile shell threshold in Foundation Plan 01"
+    }
+  },
+  "artifacts": {
+    "normalizedReference": {
+      "file": "desktop-ai-signals--1440x900--reference.png",
+      "sha256": "fb2a7503bf9ab88d97c26c079026df5bde954a3d98b9625a021ca0aa45dafb32"
+    },
+    "overlay50": {
+      "file": "desktop-ai-signals--1440x900--overlay.png",
+      "sha256": "bd79bd519b9e81c61969d63122a8e0568f066c1adec9e724dd816a7952dd71da"
+    },
+    "absoluteDifference": {
+      "file": "desktop-ai-signals--1440x900--difference.png",
+      "sha256": "d58820a392cb89a7c31a7e3974a96be1e4d1231261facf296814b3b2fc7b76c1"
+    }
+  },
+  "releaseVerdict": "human region review required"
+}
