@@ -164,13 +164,15 @@ export function KordynV2Root({ api, lang }) {
   const identity = useMemo(() => identityTruth(data), [data]);
   const supportContext = useMemo(() => buildAiSupportContext({ data, location, selection, state }), [data, location, selection, state]);
 
-  const destination = location.domainId === "ai" && location.workspaceId === "missions"
+  const destination = location.domainId === "ai" && location.workspaceId !== "dialog"
     ? (
       <Suspense fallback={<div className="kordynV2AiDomainLoading" role="status">正在加载 AI 交易员工作区…</div>}>
         <LazyAiDomain
           device={viewport}
+          workspaceId={location.workspaceId}
           data={data}
           actions={actions.ai}
+          actionsDisabled={state.kind !== "ready"}
           truth={truth}
           selection={selection}
           onSelect={select}

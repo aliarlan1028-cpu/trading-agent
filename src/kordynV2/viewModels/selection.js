@@ -5,6 +5,7 @@ import {
   selectionForNavigation
 } from "../../productShell.jsx";
 import { registerAiSupportSelection } from "./aiSupportProjection.js";
+import { resolveAiContextObject } from "./aiContextSelection.js";
 
 const V2_PRESENTATION_SCOPES = new Set(["account", "assets", "governance"]);
 
@@ -15,9 +16,10 @@ function canonicalCandidate(candidate) {
 }
 
 export function createV2Selection({ data = {}, candidate = null } = {}) {
-  const resolved = resolveShellObjectSelection(data, canonicalCandidate(candidate));
+  const aiContextObject = resolveAiContextObject(data, candidate);
+  const resolved = aiContextObject || resolveShellObjectSelection(data, canonicalCandidate(candidate));
   if (!resolved) return null;
-  const object = selectionForNavigation(resolved, resolved.workspaceId, data);
+  const object = aiContextObject || selectionForNavigation(resolved, resolved.workspaceId, data);
   if (!object) return null;
   const contextProjection = buildShellContext({ data, workspaceId: object.workspaceId, selectedObject: object });
   const stages = buildShellTrace(data, object.workspaceId, object);

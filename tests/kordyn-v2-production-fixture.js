@@ -25,6 +25,44 @@ const KORDYN_V2_FULL_AGENT_RUNS = [
 ];
 const KORDYN_V2_PROJECTED_AGENT_RUNS = projectOverviewSection({ agentRuns: KORDYN_V2_FULL_AGENT_RUNS }, "chat").agentRuns;
 
+const KORDYN_V2_PROJECTED_AI_CHAT = projectOverviewSection({
+  watchTriggers: [
+    { id: "watch-sol-allowlist", title: "SOL 白名单机会", symbol: "SOL/USDT", status: "awaiting_approval", thesis: "等待授权", updatedAt: "2026-08-27T06:31:00Z" },
+    {
+      id: "watch-eth-retest",
+      title: "ETH 突破回踩机会",
+      symbol: "ETH/USDT",
+      status: "active",
+      thesis: "正在监控入场条件，尚未下单",
+      strategyName: "Breakout Retest v3",
+      knowledgeSource: "波动环境指南 + 2 条真实复盘",
+      capabilities: ["行情", "市场结构", "风控", "执行"],
+      eventWindow: "FOMC · 6h",
+      updatedAt: "2026-08-27T06:32:11Z"
+    },
+    { title: "未识别观察哨事实", symbol: "ARB/USDT", status: "active", thesis: "仅本地查看，不能撤销" }
+  ]
+}, "chat");
+
+const KORDYN_V2_PROJECTED_AI_OPERATIONS = projectOverviewSection({
+  newsFeed: [
+    { id: "signal-cpi-flow", title: "CPI 前资金流重新定价", summary: "资金费率与成交量出现分化，只进入 AI 分析上下文。", sourceName: "Market Intelligence", symbols: ["BTC/USDT"], observedAt: "2026-08-27T06:30:00Z" },
+    { title: "未识别来源事实", summary: "来源未形成权威 identity，仍可只读查看。", sourceName: "Unidentified source", observedAt: "2026-08-27T06:29:00Z" }
+  ],
+  marketMovers: {
+    scannedAt: "2026-08-27T06:31:00Z",
+    movers: [
+      { id: "signal-sol-mover", instId: "SOL-USDT-SWAP", symbol: "SOL/USDT", last: 186.42, changePct: 8.6, quoteVolUsdt: 9_800_000, high24h: 190, low24h: 169, observedAt: "2026-08-27T06:31:00Z" },
+      { changePct: 7.2, quoteVolUsdt: 4_200_000, observedAt: "2026-08-27T06:31:00Z" }
+    ]
+  },
+  marketCalendarEvents: [
+    { id: "event-fomc-date", title: "FOMC 利率决议", startAt: "2026-09-17", timePrecision: "date", importance: "high", sourceName: "Federal Reserve", symbols: ["BTC/USDT", "ETH/USDT"], description: "官方只确认日期，未公布精确时刻。" },
+    { id: "event-payrolls-time", title: "美国非农就业数据", startAt: "2026-09-18T12:30:00Z", timePrecision: "datetime", importance: "high", sourceName: "BLS", symbols: ["BTC/USDT"], description: "权威来源提供了明确时间。" },
+    { title: "未识别日历事实", startAt: "2026-09-21", timePrecision: "date", sourceName: "Unidentified calendar", description: "保留只读，但不形成 Event identity。" }
+  ]
+}, "operationsCenter");
+
 export const KORDYN_V2_PRODUCTION_FIXTURE_JSON = JSON.stringify({
   revision: 41,
   source: "Read-only exchange projection",
@@ -99,21 +137,10 @@ export const KORDYN_V2_PRODUCTION_FIXTURE_JSON = JSON.stringify({
     { id: "action-sol-allowlist", objectId: "watch-sol-allowlist", objectType: "Watch", title: "SOL 白名单机会", detail: "一次性授权", status: "pending", severity: "high" }
   ],
   agentRuns: KORDYN_V2_PROJECTED_AGENT_RUNS,
-  watchTriggers: [
-    {
-      id: "watch-eth-retest",
-      title: "ETH 突破回踩机会",
-      symbol: "ETH/USDT",
-      status: "active",
-      thesis: "正在监控入场条件，尚未下单",
-      strategyName: "Breakout Retest v3",
-      knowledgeSource: "波动环境指南 + 2 条真实复盘",
-      capabilities: ["行情", "市场结构", "风控", "执行"],
-      eventWindow: "FOMC · 6h",
-      updatedAt: "2026-08-27T06:32:11Z"
-    },
-    { id: "watch-sol-allowlist", title: "SOL 白名单机会", symbol: "SOL/USDT", status: "awaiting_approval", thesis: "等待授权", updatedAt: "2026-08-27T06:31:00Z" }
-  ],
+  watchTriggers: KORDYN_V2_PROJECTED_AI_CHAT.watchTriggers,
+  newsFeed: KORDYN_V2_PROJECTED_AI_OPERATIONS.newsFeed,
+  marketMovers: KORDYN_V2_PROJECTED_AI_OPERATIONS.marketMovers,
+  marketCalendarEvents: KORDYN_V2_PROJECTED_AI_OPERATIONS.marketCalendarEvents,
   tradePlans: [
     { id: "plan-btc-mission", title: "BTC 趋势延续确认", symbol: "BTC/USDT", status: "awaiting_approval", agentRunId: "run-btc-analysis", rationale: "等待 Owner 确认", strategy: "Trend Continuation v1", timeframe: "1h" },
     { id: "plan-eth-follow", title: "ETH 趋势跟踪计划", symbol: "ETH/USDT", status: "approved", rationale: "已建仓 · 持有中", strategy: "Trend Follow v2", timeframe: "4h" },
@@ -130,9 +157,32 @@ export const KORDYN_V2_PRODUCTION_FIXTURE_JSON = JSON.stringify({
     { id: "trace-guard", workspaceId: "ai", objectType: "Watch", objectId: "watch-eth-retest", stage: "Guard", status: "complete", detail: "Hard controls passed", evidenceId: "risk-current" },
     { id: "trace-execute", workspaceId: "ai", objectType: "Watch", objectId: "watch-eth-retest", stage: "Execute", status: "waiting", detail: "No order submitted", evidenceId: "watch-eth-retest" },
     { id: "trace-monitor", workspaceId: "ai", objectType: "Watch", objectId: "watch-eth-retest", stage: "Monitor", status: "waiting", detail: "Waiting for retest", evidenceId: "watch-eth-retest" },
-    { id: "trace-review", workspaceId: "ai", objectType: "Watch", objectId: "watch-eth-retest", stage: "Review", status: "waiting", detail: "Review begins after outcome", evidenceId: "watch-eth-retest" }
+    { id: "trace-review", workspaceId: "ai", objectType: "Watch", objectId: "watch-eth-retest", stage: "Review", status: "waiting", detail: "Review begins after outcome", evidenceId: "watch-eth-retest" },
+    { id: "trace-signal-context", workspaceId: "ai", objectType: "Signal", objectId: "signal-cpi-flow", stage: "Sense", status: "complete", detail: "Authoritative intelligence fact loaded", evidenceId: "evidence-signal-cpi" },
+    { id: "trace-event-context", workspaceId: "ai", objectType: "Event", objectId: "event-fomc-date", stage: "Recall", status: "complete", detail: "Official calendar fact loaded", evidenceId: "evidence-event-fomc" }
   ]
 });
+
+const contextStateFixture = (kind, revision) => {
+  const fixture = JSON.parse(KORDYN_V2_PRODUCTION_FIXTURE_JSON);
+  return JSON.stringify({
+    ...fixture,
+    revision,
+    source: "Read-only AI context last-valid projection",
+    asOf: "2026-08-27T06:32:11Z",
+    lastValidSource: "Read-only AI context last-valid projection",
+    lastValidAt: "2026-08-27T06:32:11Z",
+    resourceState: {
+      ...fixture.resourceState,
+      chat: kind,
+      operationsCenter: kind
+    }
+  });
+};
+
+export const KORDYN_V2_AI_CONTEXT_STALE_FIXTURE_JSON = contextStateFixture("stale", 71);
+export const KORDYN_V2_AI_CONTEXT_DEGRADED_FIXTURE_JSON = contextStateFixture("degraded", 72);
+export const KORDYN_V2_AI_CONTEXT_FORBIDDEN_FIXTURE_JSON = contextStateFixture("forbidden", 73);
 
 const longContentFixture = JSON.parse(KORDYN_V2_PRODUCTION_FIXTURE_JSON);
 const longContentSource = "Read-only exchange projection · regional failover checkpoint · portfolio and runtime authority from current visible sources";

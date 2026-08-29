@@ -346,10 +346,14 @@ test("KordynV2Root lazy-loads one AI domain chunk and keeps its CSS out of share
   const aiCssInput = "src/kordynV2/domains/ai/ai.css";
   const shellCss = fs.readFileSync(path.join(rootDir, "src/kordynV2/styles/shell.css"), "utf8");
   const mobileCss = fs.readFileSync(path.join(rootDir, "src/kordynV2/styles/mobile-shell.css"), "utf8");
+  const rootSource = fs.readFileSync(path.join(rootDir, "src/kordynV2/KordynV2Root.jsx"), "utf8");
 
   assert.equal(dynamicImports.length, 1);
   assert.ok(Object.keys(result.metafile.inputs).some((input) => input.endsWith(aiCssInput)));
   assert.ok(outputs.some((output) => Object.keys(output.inputs || {}).some((input) => input.endsWith(aiCssInput))));
+  assert.match(rootSource, /location\.domainId === "ai"\s*&&\s*location\.workspaceId !== "dialog"/);
+  assert.match(rootSource, /workspaceId=\{location\.workspaceId\}/);
+  assert.match(rootSource, /actionsDisabled=\{state\.kind !== "ready"\}/);
   assert.doesNotMatch(`${shellCss}\n${mobileCss}`, /kordynV2(?:Mission|Queue|Attention|Decision|MobileTrader|MobileActive|MobileNeeds|MobileAccountImpact|MobileRecent)/);
 });
 

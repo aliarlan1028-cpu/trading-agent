@@ -44,6 +44,26 @@ function compactMarket(row) {
   return market;
 }
 
+function compactMarketMovers(value) {
+  if (!value || typeof value !== "object") return null;
+  const movers = Array.isArray(value.movers) ? value.movers : [];
+  return {
+    scannedAt: value.scannedAt,
+    updatedAt: value.updatedAt,
+    movers: movers.slice(0, 12).filter((row) => row && typeof row === "object").map((row) => ({
+      id: row.id,
+      instId: row.instId,
+      symbol: row.symbol,
+      last: row.last,
+      changePct: row.changePct,
+      quoteVolUsdt: row.quoteVolUsdt,
+      high24h: row.high24h,
+      low24h: row.low24h,
+      observedAt: row.observedAt
+    }))
+  };
+}
+
 function compactArmedSetup(row) {
   if (!row || typeof row !== "object") return row;
   // events 是观察过程的逐 tick 历史，strategyInstance 是可重新构建的完整策略快照；
@@ -443,6 +463,7 @@ export function projectOverviewSection(overview = {}, section = "chat") {
     dailyMarketBrief: compactDailyBrief(overview.dailyMarketBrief),
     marketIntelligenceSourceHealth: overview.marketIntelligenceSourceHealth || [],
     newsFeed: (overview.newsFeed || []).slice(0, 60),
+    marketMovers: compactMarketMovers(overview.marketMovers),
     accountSnapshots: (overview.accountSnapshots || []).slice(0, 6).map(compactAccountSnapshot),
     marketStream: overview.marketStream || null,
     opportunityEngine: overview.opportunityEngine || null

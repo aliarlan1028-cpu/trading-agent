@@ -4,6 +4,9 @@ import KordynV2Root from "../src/kordynV2/entry.jsx";
 import { parseJsonResponseText } from "../src/jsonResponseProvenance.js";
 import {
   KORDYN_V2_ADVERSE_HEALTH_FIXTURE_JSON,
+  KORDYN_V2_AI_CONTEXT_DEGRADED_FIXTURE_JSON,
+  KORDYN_V2_AI_CONTEXT_FORBIDDEN_FIXTURE_JSON,
+  KORDYN_V2_AI_CONTEXT_STALE_FIXTURE_JSON,
   KORDYN_V2_ADVERSE_SOURCE_CONTRADICTION_FIXTURE_JSON,
   KORDYN_V2_ATTENTION_BOTH_EMPTY_FIXTURE_JSON,
   KORDYN_V2_ATTENTION_PENDING_ONLY_EMPTY_FIXTURE_JSON,
@@ -43,6 +46,9 @@ import {
 
 const scenario = new URLSearchParams(window.location.search).get("scenario") || "default";
 const fixtureJson = ({
+  "ai-context-stale": KORDYN_V2_AI_CONTEXT_STALE_FIXTURE_JSON,
+  "ai-context-degraded": KORDYN_V2_AI_CONTEXT_DEGRADED_FIXTURE_JSON,
+  "ai-context-forbidden": KORDYN_V2_AI_CONTEXT_FORBIDDEN_FIXTURE_JSON,
   "facts-unknown": KORDYN_V2_UNKNOWN_FACTS_FIXTURE_JSON,
   "mission-empty": KORDYN_V2_EMPTY_MISSION_FIXTURE_JSON,
   "health-unknown": KORDYN_V2_UNKNOWN_HEALTH_FIXTURE_JSON,
@@ -82,17 +88,27 @@ const data = parseJsonResponseText(fixtureJson);
 const refreshedData = ["evidence-refresh", "evidence-refresh-null"].includes(scenario)
   ? parseJsonResponseText(KORDYN_V2_EVIDENCE_REFRESH_NEXT_FIXTURE_JSON)
   : null;
-const calls = { actions: 0, sections: [] };
+const calls = { actions: 0, actionRequests: [], sections: [] };
 
 window.__kordynV2BrowserCalls = calls;
 window.__kordynV2BrowserScenario = scenario;
 window.__kordynV2RawPositionMirrorCount = KORDYN_V2_POSITION_MIRRORS_RAW_COUNT;
+window.confirm = () => true;
 
 function BrowserHarness() {
   const [browserData, setBrowserData] = useState(data);
   const api = useMemo(() => ({
     data: browserData,
-    action: async () => { calls.actions += 1; return { ok: true }; },
+    action: async (endpoint, payload) => {
+      calls.actions += 1;
+      calls.actionRequests.push({ endpoint, payload });
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      if (endpoint === "/api/agent/memory") return { id: "memory-browser-1", stored: true };
+      if (endpoint === "/api/event-sources/refresh") return { status: "partial", attempted: 3, succeeded: 2, failed: 1, ingested: 4, reason: "one_source_failed" };
+      const watchMatch = endpoint.match(/^\/api\/watch-triggers\/([^/]+)\/cancel$/u);
+      if (watchMatch) return { message: "watch cancelled", watch: { id: decodeURIComponent(watchMatch[1]), status: "cancelled" } };
+      return { ok: true };
+    },
     ensureSection: async (section, options = {}) => {
       calls.sections.push({ section, force: options.force === true });
       return browserData;

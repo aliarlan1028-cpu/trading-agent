@@ -1,5 +1,5 @@
 import { buildPatrolView } from "../../../patrolView.js";
-import { buildEventRows } from "../../../viewData.js";
+import { buildAiContextFacts } from "./aiContextFacts.js";
 
 const unavailable = "Unavailable";
 const invalidArrayShape = Symbol("kordynV2.invalidArrayShape");
@@ -115,250 +115,6 @@ function deepFreeze(value, seen = new WeakSet()) {
 }
 
 const freezeProjection = (value) => deepFreeze(cloneData(value, new WeakMap(), false));
-
-function validEventInput(row) {
-  return plainRecord(row) && [row.title, row.shortTitle, row.name].some(nonEmptyText);
-}
-
-function eventIdentity(row) {
-  return ownCanonicalIdentifier(row, "id") || ownCanonicalIdentifier(row, "eventId");
-}
-
-function eventMoment(row) {
-  if (hasOwn(row, "due") && row.due) return row.due;
-  return hasOwn(row, "startAt") ? row.startAt : null;
-}
-
-function eventLabels(row) {
-  return [hasOwn(row, "title") ? row.title : null, hasOwn(row, "shortTitle") ? row.shortTitle : null]
-    .filter(nonEmptyText);
-}
-
-function sameEventTruth(left, right) {
-  if (eventMoment(left) !== eventMoment(right)) return false;
-  const rightLabels = eventLabels(right);
-  return eventLabels(left).some((label) => rightLabels.includes(label));
-}
-
-function normalizedEventCandidate(row, provenance) {
-  try {
-    const normalized = buildEventRows(provenance === "official"
-      ? { marketCalendarEvents: [row] }
-      : { events: [row] });
-    return plainRecord(normalized[0])
-      ? { provenance, row: normalized[0], fingerprint: canonicalFingerprint(normalized[0]) }
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-function identitySet(candidates) {
-  return new Set(candidates.map((candidate) => eventIdentity(candidate.row)).filter((identity) => identity !== null));
-}
-
-function fingerprintPrimitive(value) {
-  if (value === null) return "n;";
-  if (value === undefined) return "u;";
-  if (typeof value === "string") return `s${value.length}:${value}`;
-  if (typeof value === "boolean") return value ? "b1;" : "b0;";
-  if (typeof value === "number") {
-    if (Number.isNaN(value)) return "dNaN;";
-    if (value === Infinity) return "d+Inf;";
-    if (value === -Infinity) return "d-Inf;";
-    if (Object.is(value, -0)) return "d-0;";
-    return `d${value};`;
-  }
-  if (typeof value === "bigint") return `g${value};`;
-  return `x${typeof value};`;
-}
-
-function canonicalFingerprint(root) {
-  const chunks = [];
-  const seen = new WeakMap();
-  let nextReference = 0;
-  const stack = [{ kind: "value", value: root }];
-
-  try {
-    while (stack.length) {
-      const frame = stack.pop();
-      if (frame.kind === "text") {
-        chunks.push(frame.value);
-        continue;
-      }
-      const value = frame.value;
-      if (value === null || typeof value !== "object") {
-        chunks.push(fingerprintPrimitive(value));
-        continue;
-      }
-      if (seen.has(value)) {
-        chunks.push(`r${seen.get(value)};`);
-        continue;
-      }
-      const reference = nextReference;
-      nextReference += 1;
-      seen.set(value, reference);
-      const descriptors = Object.getOwnPropertyDescriptors(value);
-      const array = arrayClassification(value);
-      if (array === null) {
-        chunks.push(`x-array-${reference};`);
-        continue;
-      }
-      if (array) {
-        const lengthDescriptor = Object.hasOwn(descriptors, "length") ? descriptors.length : null;
-        const length = lengthDescriptor && "value" in lengthDescriptor ? lengthDescriptor.value : null;
-        if (!Number.isInteger(length) || length < 0 || length > 0xffffffff) {
-          chunks.push(`x-length-${reference};`);
-          continue;
-        }
-        chunks.push(`a${reference}:${length}[`);
-        stack.push({ kind: "text", value: "]" });
-        for (let index = length - 1; index >= 0; index -= 1) {
-          const descriptor = descriptors[index];
-          if (!descriptor) {
-            stack.push({ kind: "text", value: "h;" });
-          } else if (!descriptor.enumerable || !("value" in descriptor)) {
-            stack.push({ kind: "text", value: "x;" });
-          } else {
-            stack.push({ kind: "value", value: descriptor.value });
-            stack.push({ kind: "text", value: "i:" });
-          }
-        }
-        continue;
-      }
-
-      const descriptorKeys = Reflect.ownKeys(descriptors);
-      const keys = [];
-      for (let offset = 0; offset < descriptorKeys.length; offset += 1) {
-        const key = descriptorKeys[offset];
-        if (typeof key === "string" && descriptors[key].enumerable && "value" in descriptors[key]) keys.push(key);
-      }
-      keys.sort();
-      chunks.push(`o${reference}:${keys.length}{`);
-      stack.push({ kind: "text", value: "}" });
-      for (let offset = keys.length - 1; offset >= 0; offset -= 1) {
-        const key = keys[offset];
-        stack.push({ kind: "value", value: descriptors[key].value });
-        stack.push({ kind: "text", value: `k${key.length}:${key}=` });
-      }
-    }
-  } catch {
-    return "x-fingerprint;";
-  }
-  return chunks.join("");
-}
-
-function compareText(left, right) {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
-
-function compareEventCandidates(left, right) {
-  const provenanceOrder = Number(left.provenance !== "canonical") - Number(right.provenance !== "canonical");
-  if (provenanceOrder !== 0) return provenanceOrder;
-  const leftIdentity = eventIdentity(left.row);
-  const rightIdentity = eventIdentity(right.row);
-  const identityPresenceOrder = Number(leftIdentity === null) - Number(rightIdentity === null);
-  if (identityPresenceOrder !== 0) return identityPresenceOrder;
-  const identityOrder = compareText(leftIdentity || "", rightIdentity || "");
-  return identityOrder !== 0 ? identityOrder : compareText(left.fingerprint, right.fingerprint);
-}
-
-function selectEventCandidate(group) {
-  const ordered = group.slice().sort(compareEventCandidates);
-  const canonical = ordered.filter((candidate) => candidate.provenance === "canonical");
-  const official = ordered.filter((candidate) => candidate.provenance === "official");
-  const mirrors = canonical.filter((candidate) => official.some((officialCandidate) => {
-    const officialId = eventIdentity(officialCandidate.row);
-    return officialId !== null
-      && hasOwn(candidate.row, "scheduledKey")
-      && candidate.row.scheduledKey === `official_${officialId}`;
-  }));
-
-  if (mirrors.length) {
-    const identities = identitySet(mirrors);
-    if (identities.size === 1) {
-      const identity = identities.values().next().value;
-      return {
-        candidate: mirrors.find((item) => eventIdentity(item.row) === identity),
-        identity
-      };
-    }
-    if (identities.size > 1) return { candidate: mirrors[0], identity: null };
-  }
-  const officialIdentities = identitySet(official);
-  if (officialIdentities.size === 1) {
-    const identity = officialIdentities.values().next().value;
-    return {
-      candidate: official.find((item) => eventIdentity(item.row) === identity),
-      identity
-    };
-  }
-  if (officialIdentities.size > 1) return { candidate: ordered[0], identity: null };
-
-  const canonicalIdentities = identitySet(canonical);
-  if (canonicalIdentities.size === 1) {
-    const identity = canonicalIdentities.values().next().value;
-    return {
-      candidate: canonical.find((item) => eventIdentity(item.row) === identity),
-      identity
-    };
-  }
-  if (canonicalIdentities.size > 1) return { candidate: ordered[0], identity: null };
-  return { candidate: ordered[0], identity: null };
-}
-
-function reconcileEventRows(events, officialEvents) {
-  const candidates = [
-    ...events.map((row) => normalizedEventCandidate(row, "canonical")),
-    ...officialEvents.map((row) => normalizedEventCandidate(row, "official"))
-  ].filter(Boolean).sort(compareEventCandidates);
-  const parents = candidates.map((unused, index) => index);
-  const findRoot = (index) => {
-    let root = index;
-    while (parents[root] !== root) root = parents[root];
-    while (parents[index] !== index) {
-      const next = parents[index];
-      parents[index] = root;
-      index = next;
-    }
-    return root;
-  };
-  for (let left = 0; left < candidates.length; left += 1) {
-    for (let right = left + 1; right < candidates.length; right += 1) {
-      if (!sameEventTruth(candidates[left].row, candidates[right].row)) continue;
-      const leftRoot = findRoot(left);
-      const rightRoot = findRoot(right);
-      if (leftRoot !== rightRoot) {
-        const root = Math.min(leftRoot, rightRoot);
-        parents[leftRoot] = root;
-        parents[rightRoot] = root;
-      }
-    }
-  }
-  const grouped = new Map();
-  for (let index = 0; index < candidates.length; index += 1) {
-    const root = findRoot(index);
-    const group = grouped.get(root) || [];
-    group.push(candidates[index]);
-    grouped.set(root, group);
-  }
-  const groups = Array.from(grouped.values())
-    .map((group) => group.sort(compareEventCandidates))
-    .sort((left, right) => compareEventCandidates(left[0], right[0]));
-  const identityGroupCounts = new Map();
-  for (const group of groups) {
-    for (const identity of identitySet(group)) {
-      identityGroupCounts.set(identity, (identityGroupCounts.get(identity) || 0) + 1);
-    }
-  }
-  return groups.map((group) => {
-    const selected = selectEventCandidate(group);
-    const identity = selected.identity !== null && identityGroupCounts.get(selected.identity) === 1
-      ? selected.identity
-      : null;
-    return { row: selected.candidate.row, identity };
-  });
-}
 
 function safePatrolView(message) {
   if (!plainRecord(message)) return null;
@@ -538,57 +294,21 @@ function missionFor(run, plans, traces) {
   });
 }
 
-function intelligenceProjection(row, { id, kind, source }) {
-  const safeRow = cloneData(row, new WeakMap(), false);
-  const canonicalId = canonicalIdentifier(id) ? id : null;
-  return deepFreeze({
-    ...(plainRecord(safeRow) ? safeRow : {}),
-    provider: nonEmptyText(safeRow?.sourceName) ? safeRow.sourceName : nonEmptyText(safeRow?.source) ? safeRow.source : null,
-    id: canonicalId,
-    identity: canonicalId || unavailable,
-    kind,
-    source,
-    selectable: canonicalId !== null
-  });
-}
-
 export function buildAiDomainModel(data = {}) {
   const safeData = cloneData(data);
   const source = plainRecord(safeData) ? safeData : {};
+  const contextFacts = buildAiContextFacts(source, { trustedSnapshot: true });
   const plans = uniquelyIdentified(source.tradePlans);
   const traces = list(source.traces);
   const messages = arrayClassification(source.chatMessages) === true
     ? source.chatMessages
     : list(source.messages);
-  const eventInput = list(source.events).map((row) => cloneData(row)).filter(validEventInput);
-  const officialEventInput = list(source.marketCalendarEvents).map((row) => cloneData(row)).filter(validEventInput);
-  const events = reconcileEventRows(eventInput, officialEventInput)
-    .map(({ row, identity }) => intelligenceProjection(row, {
-      id: identity,
-      kind: "event",
-      source: "events"
-    }));
-  const news = list(source.newsFeed)
-    .filter(plainRecord)
-    .map((row) => intelligenceProjection(row, { id: ownCanonicalIdentifier(row, "id"), kind: "news", source: "newsFeed" }));
-  const movers = list(source.marketMovers?.movers)
-    .filter(plainRecord)
-    .map((row) => intelligenceProjection(row, {
-      id: ownCanonicalIdentifier(row, "id") || ownCanonicalIdentifier(row, "instId") || ownCanonicalIdentifier(row, "symbol"),
-      kind: "market_mover",
-      source: "marketMovers.movers"
-    }));
-  const knowledgeSource = arrayClassification(source.knowledge) === true ? source.knowledge : list(source.knowledge?.sources);
-  const knowledge = knowledgeSource
-    .filter(plainRecord)
-    .map((row) => intelligenceProjection(row, { id: ownCanonicalIdentifier(row, "id"), kind: "knowledge", source: "knowledge" }));
-
   return Object.freeze({
     missions: Object.freeze(uniquelyIdentified(source.agentRuns)
       .map((run) => missionFor(run, plans, traces))),
     patrols: Object.freeze(messages.map(safePatrolView).filter(Boolean).map(freezeProjection)),
-    intelligence: Object.freeze([...news, ...events, ...movers, ...knowledge]),
-    watches: Object.freeze(list(source.watchTriggers).map(freezeProjection).filter(plainRecord)),
-    events: Object.freeze(events)
+    intelligence: contextFacts.intelligence,
+    watches: contextFacts.watches,
+    events: contextFacts.events
   });
 }
