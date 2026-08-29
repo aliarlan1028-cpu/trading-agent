@@ -38,7 +38,7 @@ export function StateBoundary({ state = { kind: "not_loaded" }, children, onRetr
       <section className="kordynV2StatePanel" role={kind === "failed" ? "alert" : "status"}>
         <LoadingIcon className={kind === "loading" ? "is-spinning" : undefined} size={25} aria-hidden="true" />
         <div>
-          <strong>{TITLES[kind] || "当前事实不可用"}</strong>
+          <h2 data-kordyn-v2-state-heading>{TITLES[kind] || "当前事实不可用"}</h2>
           <p>{state.message || "Authoritative facts are unavailable."}</p>
         </div>
         {state.retryable && onRetry && (

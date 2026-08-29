@@ -433,9 +433,11 @@ body:has(.kordynV2Root) {
   background: var(--kordyn-v2-field);
 }
 
-.kordynV2StatePanel strong {
+.kordynV2StatePanel h2 {
   display: block;
-  margin-bottom: 4px;
+  margin: 0 0 4px;
+  font: inherit;
+  font-weight: bolder;
 }
 
 .kordynV2StatePanel p {
