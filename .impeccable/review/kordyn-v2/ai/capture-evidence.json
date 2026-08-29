@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "runner": "tests/run-kordyn-v2-ai-browser.mjs",
   "fixture": "tests/kordyn-v2-production-fixture.js",
-  "productionSourceCommit": "587ee350773415846db795b45665b98ee28bf58e",
+  "productionSourceCommit": "14cb43a0818d94703f83450c14d7582aafeccd9e",
   "representativeAgentRunFixtures": [
     {
       "id": "run-btc-analysis-fixture",
@@ -181,7 +181,7 @@
       "device": "mobile",
       "domainId": "ai",
       "workspaceId": "missions",
-      "sha256": "d3a94382550172c0a7d0868f248e2b9f9a958abe8b9897c815a7608c0359078c",
+      "sha256": "f5c8d0b59423115e173c94e3d2b4974fc691ead9ab30fd88108bf90c8bc04a82",
       "viewportGeometry": {
         "width": 390,
         "height": 844
@@ -205,7 +205,7 @@
       "device": "mobile",
       "domainId": "ai",
       "workspaceId": "missions",
-      "sha256": "dab7f7ff40aa1c8d52640f789ba03106ffa1a6a65d77c2ca9b1ddf69e843c4f9",
+      "sha256": "e1d293f05c4d90b19b4f206c09cd49a8a97eff5e81d09b5377529b92b1785f76",
       "viewportGeometry": {
         "width": 430,
         "height": 932

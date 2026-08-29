@@ -1,13 +1,21 @@
 # KORDYN V2 implementation evidence
 
-## Foundation checkpoint
+## Current governed comparison status
+
+- Current production and capture source: `14cb43a0818d94703f83450c14d7582aafeccd9e`.
+- Current comparison scope: Foundation Plan 01 shared shell plus the completed Plan 02 AI-domain checkpoint.
+- Completed concept comparisons: `4 / 15` — Desktop AI Mission, Desktop AI Signals, APP AI Mission, and APP AI Approval.
+- Pending domain implementation: `11 / 15` — no production comparison or fidelity claim is made for these remaining surfaces.
+- Current Task 5 verdict: all eight AI comparisons retain the machine verdict `human region review required`; original-size human region review found no remaining material topology, density, hierarchy, permission, state, or action-meaning mismatch.
+
+## Historical Foundation checkpoint — Plan 01 / Task 8
 
 - Foundation remediation base: `342278a01c2194e9791a3065297263d10e920993`.
 - Visual authority: the 15 immutable sources pinned by `docs/kordyn-v2-approved-concept-manifest.md`.
-- Current comparison scope: Foundation Plan 01 shared shell only.
-- Completed concept comparisons: `2 / 15` — Desktop AI Mission shell and Mobile AI Mission shell.
-- Pending domain implementation: `13 / 15` — no production comparison or fidelity claim is made for these surfaces.
-- Current independent verdict: **Task 8 APPROVE — 0 Critical / 0 Important / 0 Minor; visual 390/430 PASS.** The position Important was formally withdrawn after response-boundary verification. The Foundation gate is clear; Plan 02 is unblocked but has not been started.
+- Historical comparison scope at that checkpoint: Foundation Plan 01 shared shell only.
+- Historical completed comparisons at that checkpoint: `2 / 15` — Desktop AI Mission shell and Mobile AI Mission shell.
+- Historical pending count at that checkpoint: `13 / 15`.
+- Historical independent verdict: **Task 8 APPROVE — 0 Critical / 0 Important / 0 Minor; visual 390/430 PASS.** The position Important was formally withdrawn after response-boundary verification. Task 8 cleared the Foundation gate before Plan 02 began; the canonical current status is the `4 / 15` and `11 / 15` Task 5 status above.
 
 ## Staged concept coverage
 
@@ -91,7 +99,7 @@ The approved `853x1844` source (`6e0eda474f6658ff9dbfcbc6b18d4503203a78ddb30e38a
 - The concept’s unsupported daily PnL is not fabricated. Production overview response boundaries already call `server/positionView.mjs::normalizePositionsForUi`, which merges engine/REST/WS mirrors and emits canonical `quantity=coinSize`, `pnl/unrealizedPnl`, and `notional=coinSize×mark`. A test-only integration sends three real raw mirrors through that existing server projection before mounting the real Root and proves one position, `123.45` PnL, `3,400.00` notional, and no fabricated `0.00`; no client schema or backend/API change was added.
 - Loaded pending-action/risk-incident identity remains canonical and read-only. Notification, four roots, all five AI-local destinations, prompt, AI 客服, and evidence navigation invoke zero production writes.
 
-Final independent review reports `APPROVE`, `0 Critical / 0 Important / 0 Minor`, and original-resolution visual PASS at both `390x844` and `430x932`. The round-3 position Important was formally withdrawn because the actual server response boundary already owns normalization, backed by the integration contract above. Pixel metrics remain diagnostic only. Physical-device and live-payload variance remain a recorded non-blocking limitation. **The Foundation gate is clear; Plan 02 is unblocked but was not started by Task 8.**
+Final historical Task 8 review reports `APPROVE`, `0 Critical / 0 Important / 0 Minor`, and original-resolution visual PASS at both `390x844` and `430x932`. The round-3 position Important was formally withdrawn because the actual server response boundary already owns normalization, backed by the integration contract above. Pixel metrics remain diagnostic only. Physical-device and live-payload variance remain a recorded non-blocking limitation. Task 8 cleared the Foundation gate before Plan 02 began; the canonical current Task 5 status is recorded at the top of this document.
 
 ## Fresh isolated performance evidence
 
@@ -132,11 +140,11 @@ Completed freshly during Task 8:
 - hard scans found no `!important`, legacy stylesheet import, or production-fixture import under `src/kordynV2`;
 - `git diff --check`: exit `0` before report finalization.
 
-The final independent review supplements the mechanical gates with `APPROVE`, `0 Critical / 0 Important / 0 Minor`, and visual PASS at both required APP sizes. Plan 02 is unblocked by the Foundation gate but remains unstarted in this task.
+The final historical Task 8 review supplements the Foundation mechanical gates with `APPROVE`, `0 Critical / 0 Important / 0 Minor`, and visual PASS at both required APP sizes. At the close of Task 8, Plan 02 had not yet begun; that historical point is superseded by the canonical current Task 5 status above.
 
 ## Plan 02 AI domain checkpoint — Task 5
 
-Task 5 closes the AI-domain evidence gate against production source commit `587ee350773415846db795b45665b98ee28bf58e`. The evidence runner mounts the actual production `KordynV2Root` and its committed lazy AI domain. `tests/kordyn-v2-production-fixture.js` supplies bounded production-shaped data and authoritative delayed outcomes; it is not imported by production, contains no credentials, and performs no production write. The canonical capture sidecar, state sidecar, comparison index, and every AI geometry ledger record or inherit this exact production source commit.
+Task 5 closes the AI-domain evidence gate against production and capture source commit `14cb43a0818d94703f83450c14d7582aafeccd9e`. The evidence runner mounts the actual production `KordynV2Root` and its committed lazy AI domain. `tests/kordyn-v2-production-fixture.js` supplies bounded production-shaped data and authoritative delayed outcomes; it is not imported by production, contains no credentials, and performs no production write. The canonical capture sidecar, state sidecar, comparison index, and every AI geometry ledger record or inherit this exact product commit; the later evidence/docs commit does not replace this source provenance.
 
 ### Capability ownership — 8 / 8
 
@@ -179,7 +187,7 @@ Canonical `state-evidence.json` covers the 13 screenshots at the four immutable 
 
 The fresh master gate physically clicks real production rows and controls for Mission, Signal, Watch, Event, one-shot approval, dialog, translation, and PNG output. The identity chain is the clicked row type plus Root selected ID/type plus Context and Proof `Type / ID`. Mission Proof also exposes the exact `createdAt=2026-08-30T00:01:07.000Z` and `updatedAt=2026-08-30T00:12:11.000Z`; missing `completedAt` remains `Unavailable`.
 
-Approval is exercised with a delayed authoritative response: processing appears first, terminal success is absent before the response, and authoritative failed/partial outcomes remain visible. Dialog POST is followed by the authoritative GET reread. PNG evidence uses the real `html-to-image` path after fonts are ready; it is not stubbed. Keyboard focus containment, Escape close, focus return, APP target size, and zero authority writes in every capture document are asserted.
+Approval is exercised with a delayed authoritative response: processing appears first, terminal success is absent before the response, and authoritative failed/partial outcomes remain visible. Dialog POST is followed by the authoritative GET reread. PNG evidence uses the real `html-to-image` path after fonts are ready; it is not stubbed. Keyboard focus containment, Escape close, focus return, APP target size, and zero authority writes in every capture document are asserted. At both `390` and `430`, an open Approval removes the support launcher from rendering, layout, focus, and the accessible interaction path; support-primary, support-navigation, and primary-navigation overlap are all `0`. The primary action remains `52px` high, the bottom navigation remains `62px` high, and protected focus remains inside the Approval. Closing restores the enabled `56x56` support target; a trusted click opens its real sheet and Escape returns focus to the launcher.
 
 ### Canonical AI captures and comparisons
 
@@ -193,16 +201,16 @@ Capture root: `.impeccable/review/kordyn-v2/ai/` (`23` files: eight approved-sur
 | Signals Desktop `1180x800` | `ec3dd2b7709c267d0ab28cede138eef6935512651c52f4e49caa5b7900e169be` | `beec4a413a6c1c174ea25fed47c862163415a9d577771feace2a80c715e2b283` | `0` | `0.067879` | human region review |
 | Mission APP `390x844` | `8b716b0d6966ad0c9be36e47d0d66bbe5773c4185fa9aaf99c52043d1b383590` | `6e0eda474f6658ff9dbfcbc6b18d4503203a78ddb30e38aa22b0760c1c902c9b` | `0` | `0.078199` | human region review |
 | Mission APP `430x932` | `b42e0ef4f6d34cd7d9ba4c84f333703db548d8605458e3e5bc65e6ba60a1ecd9` | `6e0eda474f6658ff9dbfcbc6b18d4503203a78ddb30e38aa22b0760c1c902c9b` | `0` | `0.074845` | human region review |
-| Approval APP `390x844` | `d3a94382550172c0a7d0868f248e2b9f9a958abe8b9897c815a7608c0359078c` | `341997877d9cf8cbae27b6f2f31c5cb79b546927a3e5b3ac3d9efea5c11f0778` | `0` | `0.084381` | human region review |
-| Approval APP `430x932` | `dab7f7ff40aa1c8d52640f789ba03106ffa1a6a65d77c2ca9b1ddf69e843c4f9` | `341997877d9cf8cbae27b6f2f31c5cb79b546927a3e5b3ac3d9efea5c11f0778` | `0` | `0.085099` | human region review |
+| Approval APP `390x844` | `f5c8d0b59423115e173c94e3d2b4974fc691ead9ab30fd88108bf90c8bc04a82` | `341997877d9cf8cbae27b6f2f31c5cb79b546927a3e5b3ac3d9efea5c11f0778` | `0` | `0.084428` | human region review; protected actions isolated |
+| Approval APP `430x932` | `e1d293f05c4d90b19b4f206c09cd49a8a97eff5e81d09b5377529b92b1785f76` | `341997877d9cf8cbae27b6f2f31c5cb79b546927a3e5b3ac3d9efea5c11f0778` | `0` | `0.085137` | human region review; protected actions isolated |
 
 The comparator reports `15 concepts / 4 completed / 11 pending / 8 comparisons / 33 artifacts`. Its top-level verdict remains `human region review required`; pixel MAE is diagnostic only and no threshold was changed. Sidecar/index SHA-256 values are:
 
-- capture: `92b4fe33318bfe5943e9ac5bfc9ab2586e0979820222b1a07442bb174e0372b7`;
-- states: `e985164f705cbfbbecaf5bb384bf7f80639806431051533e46515c729f224a02`;
-- comparison index: `2b8bdf1028bb9ba0e7055ffde8712b643176e8178bf0904b791715ce6f08eef4`.
+- capture: `01023c1a1c9c4e97c2091e94563a637298d4a7a7b977b19203272183febf3e5e`;
+- states: `c4f4de0a765f2679992b257540e202318ccf71df7df535fbe18bbd5d6025df14`;
+- comparison index: `3bc9dcf35e871c86dbcb04f2ba1e348eb35c778c2f66fbd5de3ed301e2ab20b4`.
 
-All eight final actuals and every normalized reference, 50% overlay, absolute difference, and geometry ledger were reopened at original size. Desktop Mission retains the approved queue / active Mission / lifecycle / decision summary / related context / runtime receipt hierarchy. Desktop Signals retains filters / dense Registry / Inspector / decision boundary / Watch-Event-Intelligence lower registries. APP Mission retains account truth / active Mission / attention / account impact / recent completion / command order. APP Approval retains task / plan / account impact / 12-of-12 risk / AI-used facts / acknowledgement / sticky guarded actions. Production-shaped fact availability, exact labels, icons, and local density differ from the concept rasters, but no remaining difference materially recomposes topology, density, hierarchy, protected state, or action meaning.
+All eight final actuals and every normalized reference, 50% overlay, absolute difference, and geometry ledger were reopened at original size. Desktop Mission retains the approved queue / active Mission / lifecycle / decision summary / related context / runtime receipt hierarchy. Desktop Signals retains filters / dense Registry / Inspector / decision boundary / Watch-Event-Intelligence lower registries. APP Mission retains account truth / active Mission / attention / account impact / recent completion / command order. APP Approval retains task / plan / account impact / 12-of-12 risk / AI-used facts / acknowledgement / sticky guarded actions. The fresh Approval actuals contain no support-launcher sliver over the protected action region; the normalized reference still contains its historical launcher, so that local difference is an intentional safety correction rather than a product-model mismatch. Production-shaped fact availability, exact labels, icons, and local density differ from the concept rasters, but no remaining difference materially recomposes topology, density, hierarchy, protected state, or action meaning.
 
 ### Fresh Task 5 gates
 
@@ -210,7 +218,7 @@ All eight final actuals and every normalized reference, 50% overlay, absolute di
 - full repository suite: `1872 / 1872`, exit `0`;
 - ESLint: exit `0`;
 - production build: exit `0`, `1702` modules transformed;
-- isolated performance/manifest: public `375,992 / 450,000` JS and `15,304 / 40,000` CSS; AI shell `53,117 / 180,000` CSS; one unique public-owned structural V2 dynamic entry, exact AI child ownership, no legacy product styles;
+- isolated performance/manifest: public `375,992 / 450,000` JS and `15,304 / 40,000` CSS; AI shell `53,221 / 180,000` CSS; one unique public-owned structural V2 dynamic entry, exact AI child ownership, no legacy product styles;
 - Task 2 Mission, Task 3 Context, Task 4 Actions, AI visual regression, APP overflow, and Task 5 master real-Chrome gates: exit `0` at all required viewports;
 - Task 5 master: `8` captures, Mission/Signal/Watch/Event identity, failed+partial approval, Desktop+APP dialog/output, `13 / 13` states;
 - AI comparator: `4 / 11 / 8 / 33`, exit `0`, unchanged references and thresholds;

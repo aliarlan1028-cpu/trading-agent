@@ -3,7 +3,7 @@
   "scope": "ai",
   "sourceManifest": "docs/kordyn-v2-approved-concept-manifest.md",
   "captureEvidence": ".impeccable/review/kordyn-v2/ai/capture-evidence.json",
-  "productionSourceCommit": "587ee350773415846db795b45665b98ee28bf58e",
+  "productionSourceCommit": "14cb43a0818d94703f83450c14d7582aafeccd9e",
   "outputRoot": ".impeccable/review/kordyn-v2/ai-compare",
   "counts": {
     "concepts": 15,
@@ -85,7 +85,7 @@
         },
         "geometry": {
           "file": "desktop-ai-mission-control--1440x900--geometry.json",
-          "sha256": "3fbe4e651483378140663bd1e819a875358fe36f1ff5e07351438247e1be1722"
+          "sha256": "300f33d4eae897ddfd21786038913c7e6ba9b126c7a590b11b34e5a06b80947f"
         }
       },
       "pixelDifference": 0.05146525054466231,
@@ -111,7 +111,7 @@
         },
         "geometry": {
           "file": "desktop-ai-mission-control--1180x800--geometry.json",
-          "sha256": "4c46ea35a0104ce6a180ee3adf7d5430561355b11466cf1ed16131f72107f031"
+          "sha256": "6a12fbc4a772e6ccaae983291a3334fb32d32c22e1f080060e7138954ab60ab1"
         }
       },
       "pixelDifference": 0.06263197213913814,
@@ -137,7 +137,7 @@
         },
         "geometry": {
           "file": "desktop-ai-signals--1440x900--geometry.json",
-          "sha256": "d4fc73e56dc5953d5d921bc0ae895a0e9a7a01bce55055a541516d6cf1550e61"
+          "sha256": "75867a71dc845d46a54c4c71939047540bbe15d5756570b6e13d4051bf0e4209"
         }
       },
       "pixelDifference": 0.06155372085048011,
@@ -163,7 +163,7 @@
         },
         "geometry": {
           "file": "desktop-ai-signals--1180x800--geometry.json",
-          "sha256": "b745794759563e5542444df3ca97ee515c2645626eff87b24342d369a1d05947"
+          "sha256": "35efd54821d92f83eeec6d048d373b4219591491efc94a407f2e8b0a87e29c93"
         }
       },
       "pixelDifference": 0.06787851030242605,
@@ -189,7 +189,7 @@
         },
         "geometry": {
           "file": "mobile-ai-mission-home--390x844--geometry.json",
-          "sha256": "1dbdc4dda0c40db3efda86f2ca0aea560e7511929ef4938831be9276584d441b"
+          "sha256": "6744095a8f741803f24f291b73699edbe4febe9fd3f6b18c930772c6e4adcd91"
         }
       },
       "pixelDifference": 0.07819913155848478,
@@ -215,7 +215,7 @@
         },
         "geometry": {
           "file": "mobile-ai-mission-home--430x932--geometry.json",
-          "sha256": "9165c38313d5827b5d5d76cea570ae4d1954a6f1ef35bc28aa7457870d124447"
+          "sha256": "cb50327cced00af543f8b22e3aa68de86bf80bb6594aa869838fbb0cb12defdc"
         }
       },
       "pixelDifference": 0.07484521239709911,
@@ -233,18 +233,18 @@
         },
         "overlay50": {
           "file": "mobile-ai-task-approval--390x844--overlay.png",
-          "sha256": "25338151bb7f6157bd2f41b0a407ba2abc4e70781d97a7f68a0835669c548da8"
+          "sha256": "f318e73923040c28d457518263c9f8580b93ddef03b77c815b7df1983e6c764f"
         },
         "absoluteDifference": {
           "file": "mobile-ai-task-approval--390x844--difference.png",
-          "sha256": "0611eed51dab61d8921f3c5df0f139ed07410c63d4aad275005e60dd1c4fcdc8"
+          "sha256": "1680192a5424a8cc8206e4b778945afb9af811f7bc77cd2355bbcf6903b745e2"
         },
         "geometry": {
           "file": "mobile-ai-task-approval--390x844--geometry.json",
-          "sha256": "e2e9f1a2cbadb3ed7f46599864907be5829b6672c5a1e35c40cea1e57a8cbf5b"
+          "sha256": "331582acdd3bc6f6476cf54651ad563edd690a9f0105f7ffde6403b6dc475973"
         }
       },
-      "pixelDifference": 0.08438109841092836,
+      "pixelDifference": 0.08442757837934865,
       "releaseVerdict": "human region review required"
     },
     {
@@ -259,18 +259,18 @@
         },
         "overlay50": {
           "file": "mobile-ai-task-approval--430x932--overlay.png",
-          "sha256": "1431c80051fb3fd9730844ea15795a101f8e7765a35f81b3920b5087444b6976"
+          "sha256": "1d80ef3d8a5f20263c905296ed5c5b4955fde166530818e25b097d532344679d"
         },
         "absoluteDifference": {
           "file": "mobile-ai-task-approval--430x932--difference.png",
-          "sha256": "b650c6817a8ff5c32b5614314c8b9dbb8e7c04bbe1be9c253d77933617508308"
+          "sha256": "c6fd05e53de5782cfe46050a5b56845e469ce8751e849fc54278e499b34ce5f7"
         },
         "geometry": {
           "file": "mobile-ai-task-approval--430x932--geometry.json",
-          "sha256": "8357852c513b81fedf65f5bad05e0533dbd3ca54df39d6d7bab1dfeab03fa819"
+          "sha256": "c56189f07653363e9aa891cc760d69181d3c13bc209015ff79b3855c8eafada5"
         }
       },
-      "pixelDifference": 0.08509872418874725,
+      "pixelDifference": 0.08513721641299832,
       "releaseVerdict": "human region review required"
     }
   ],
