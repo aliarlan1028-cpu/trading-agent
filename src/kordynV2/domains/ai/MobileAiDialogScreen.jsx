@@ -3,8 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { AiOutputSheet } from "./AiOutputSheet.jsx";
 import { DialogComposer, DialogMessages, useAiDialogController } from "./AiDialogWorkspace.jsx";
 
-export function MobileAiDialogScreen({ model, actions = {}, onClose = () => {} }) {
-  const controller = useAiDialogController({ model, actions });
+export function MobileAiDialogScreen({ model, actions = {}, actionsDisabled = false, onClose = () => {} }) {
+  const controller = useAiDialogController({ model, actions, actionsDisabled });
   const dialogRef = useRef(null);
   const closeRef = useRef(null);
   const [output, setOutput] = useState(null);
@@ -37,9 +37,9 @@ export function MobileAiDialogScreen({ model, actions = {}, onClose = () => {} }
     <section ref={dialogRef} className="kordynV2AiMobileDialog" data-kordyn-v2-destination="ai/dialog" data-kordyn-v2-dialog-surface data-kordyn-v2-layout="dialog-full-screen" role="dialog" aria-modal="true" aria-labelledby="kordyn-v2-ai-mobile-dialog-title" onKeyDown={onKeyDown}>
       <header><button ref={closeRef} type="button" aria-label="关闭对话并返回任务" onClick={onClose}><X size={21} aria-hidden="true" /></button><span><MessageSquareText size={20} aria-hidden="true" /><strong id="kordyn-v2-ai-mobile-dialog-title" data-kordyn-v2-destination-title>AI 交易员 · 对话</strong></span><i aria-hidden="true" /></header>
       {controller.payload.sessions.length > 1 && <nav aria-label="对话会话">{controller.payload.sessions.map((session) => <button type="button" key={session.id} aria-current={session.id === controller.payload.activeSessionId ? "page" : undefined} onClick={() => controller.read(session.id)}>{session.title}</button>)}</nav>}
-      <DialogMessages messages={controller.payload.messages} onOutput={(message, trigger) => setOutput({ message, trigger })} />
-      <DialogComposer {...controller} />
-      {output && <AiOutputSheet message={output.message} actions={actions} returnFocus={output.trigger} onClose={() => setOutput(null)} />}
+      <DialogMessages messages={controller.payload.messages} actionsDisabled={actionsDisabled} onOutput={(message, trigger) => { if (!actionsDisabled) setOutput({ message, trigger }); }} />
+      <DialogComposer {...controller} actionsDisabled={actionsDisabled} />
+      {output && <AiOutputSheet message={output.message} actions={actions} actionsDisabled={actionsDisabled} returnFocus={output.trigger} onClose={() => setOutput(null)} />}
     </section>
   );
 }

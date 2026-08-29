@@ -52,6 +52,7 @@ function AttentionRail({ missions, selectedMission, selection, onSelect }) {
 
 export function AiMissionWorkspace({
   model,
+  actionsDisabled = false,
   selection,
   onSelect = () => {},
   onOpenDialog = () => {},
@@ -72,6 +73,7 @@ export function AiMissionWorkspace({
         <MissionRegistry missions={missions} selectedId={selectedMission?.id} onSelect={onSelect} />
         <MissionInspector
           mission={selectedMission}
+          actionsDisabled={actionsDisabled}
           selection={selection}
           onOpenProof={onOpenProof}
           onOpenApproval={onOpenApproval}

@@ -31,6 +31,42 @@ const validRequiredText = (value, { singleLine = false } = {}) => typeof value =
   && value.trim().length > 0
   && !(singleLine ? /[\u0000-\u001f\u007f]/u : /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u).test(value);
 
+const boundedResultText = (value, maximum = 240) => typeof value === "string"
+  && value.length > 0
+  && value.length <= maximum
+  && !/[\u0000-\u001f\u007f]/u.test(value)
+  ? value
+  : undefined;
+
+function approvalResultSnapshot(value) {
+  if (!value || typeof value !== "object") return Object.freeze({ ok: false, error: "invalid_approval_response" });
+  const snapshot = {};
+  if (typeof value.ok === "boolean") snapshot.ok = value.ok;
+  for (const key of ["error", "message"]) {
+    const text = boundedResultText(value[key]);
+    if (text !== undefined) snapshot[key] = text;
+  }
+  if (Number.isInteger(value.httpStatus) && value.httpStatus >= 100 && value.httpStatus <= 599) snapshot.httpStatus = value.httpStatus;
+  for (const key of ["approvalGranted", "executionSubmitted"]) {
+    if (typeof value[key] === "boolean") snapshot[key] = value[key];
+  }
+  for (const [key, fields] of [
+    ["plan", ["id", "status"]],
+    ["execution", ["status", "reason"]],
+    ["guard", ["label", "fix"]]
+  ]) {
+    const source = value[key];
+    if (!source || typeof source !== "object" || Array.isArray(source)) continue;
+    const projected = {};
+    for (const field of fields) {
+      const text = boundedResultText(source[field]);
+      if (text !== undefined) projected[field] = text;
+    }
+    if (Object.keys(projected).length) snapshot[key] = Object.freeze(projected);
+  }
+  return Object.freeze(snapshot);
+}
+
 function tagsSnapshot(value) {
   if (arrayClassification(value) !== true) return null;
   let descriptors;
@@ -98,14 +134,15 @@ export function createAiActions({
     if (!await runConfirm(message, options)) return cancelled;
     return runAction(endpoint, payload);
   };
-  const approvePlan = (planId) => {
+  const approvePlan = async (planId) => {
     if (!validIdentifier(planId)) return invalidInput;
-    return protect(
+    const result = await protect(
       "Approve this trade plan after the server revalidates risk and execution authority?",
       { title: "Approve trade plan" },
       `/api/trade-plans/${encodeURIComponent(planId)}/approve`,
       {}
     );
+    return result === cancelled ? result : approvalResultSnapshot(result);
   };
 
   const rejectPlan = (planId) => {

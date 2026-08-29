@@ -32,7 +32,8 @@ export function normalizeDialogPayload(value, fallback = {}) {
   };
 }
 
-export async function runDialogSend({ actions, message, sessionId = "" }) {
+export async function runDialogSend({ actions, actionsDisabled = false, message, sessionId = "" }) {
+  if (actionsDisabled) throw new Error("actions_disabled");
   const text = typeof message === "string" ? message.trim() : "";
   if (!text || typeof actions?.sendChatMessage !== "function" || typeof actions?.readChatSession !== "function") throw new Error("dialog_send_unavailable");
   const sent = await actions.sendChatMessage(text, sessionId);
@@ -43,7 +44,7 @@ export async function runDialogSend({ actions, message, sessionId = "" }) {
   return payload;
 }
 
-export function useAiDialogController({ model, actions }) {
+export function useAiDialogController({ model, actions, actionsDisabled = false }) {
   const [payload, setPayload] = useState(() => normalizeDialogPayload(model?.dialog || {}) || normalizeDialogPayload({}) || {});
   const [input, setInput] = useState("");
   const [state, setState] = useState({ kind: "ready", detail: "" });
@@ -71,12 +72,13 @@ export function useAiDialogController({ model, actions }) {
   }, []);
 
   const send = async () => {
+    if (actionsDisabled) return;
     const text = input.trim();
     if (!text || state.kind === "processing") return;
     const version = ++requestVersion.current;
     setState({ kind: "processing", detail: "消息已提交，等待服务器权威回复…" });
     try {
-      const raw = await runDialogSend({ actions, message: text, sessionId: payload.activeSessionId });
+      const raw = await runDialogSend({ actions, actionsDisabled, message: text, sessionId: payload.activeSessionId });
       if (version !== requestVersion.current) return;
       const next = normalizeDialogPayload(raw, payload);
       if (!next) throw new Error("dialog_read_failed");
@@ -91,7 +93,7 @@ export function useAiDialogController({ model, actions }) {
   return { payload, input, setInput, state, read, send };
 }
 
-export function DialogMessages({ messages, onOutput }) {
+export function DialogMessages({ messages, onOutput, actionsDisabled = false }) {
   return (
     <div className="kordynV2AiDialogMessages" aria-live="polite" aria-label="权威对话消息">
       {messages.length ? messages.map((message) => {
@@ -100,7 +102,7 @@ export function DialogMessages({ messages, onOutput }) {
         return (
           <article key={message.id} data-message-role={agent ? "agent" : "user"} data-kordyn-v2-message-id={message.id}>
             <span><Icon size={17} aria-hidden="true" /></span>
-            <div><header><strong>{agent ? "AI 交易员" : "你"}</strong><small>{message.createdAt}</small></header><p>{message.content}</p>{agent && <button type="button" data-kordyn-v2-message-output={message.id} onClick={(event) => onOutput(message, event.currentTarget)}><FileImage size={14} aria-hidden="true" />生成 PNG 输出</button>}</div>
+            <div><header><strong>{agent ? "AI 交易员" : "你"}</strong><small>{message.createdAt}</small></header><p>{message.content}</p>{agent && <button type="button" data-kordyn-v2-message-output={message.id} disabled={actionsDisabled} onClick={(event) => { if (!actionsDisabled) onOutput(message, event.currentTarget); }}><FileImage size={14} aria-hidden="true" />生成 PNG 输出</button>}</div>
           </article>
         );
       }) : <p className="kordynV2AiDialogEmpty" role="status"><strong>当前会话为空</strong><span>发送后仅显示服务器返回并重新读取的权威消息。</span></p>}
@@ -108,20 +110,20 @@ export function DialogMessages({ messages, onOutput }) {
   );
 }
 
-export function DialogComposer({ input, setInput, state, send }) {
+export function DialogComposer({ input, setInput, state, send, actionsDisabled = false }) {
   const processing = state.kind === "processing";
   return (
-    <form className="kordynV2AiDialogComposer" onSubmit={(event) => { event.preventDefault(); send(); }}>
+    <form className="kordynV2AiDialogComposer" onSubmit={(event) => { event.preventDefault(); if (!actionsDisabled) send(); }}>
       <label htmlFor="kordyn-v2-ai-dialog-input">消息输入</label>
-      <textarea id="kordyn-v2-ai-dialog-input" rows={2} value={input} disabled={processing} placeholder="输入指令，与 AI 交易员对话…" onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); } }} />
-      <button type="submit" disabled={processing || !input.trim()} aria-label="发送消息"><Send size={18} aria-hidden="true" /></button>
+      <textarea id="kordyn-v2-ai-dialog-input" rows={2} value={input} disabled={processing || actionsDisabled} placeholder="输入指令，与 AI 交易员对话…" onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); if (!actionsDisabled) send(); } }} />
+      <button type="submit" disabled={actionsDisabled || processing || !input.trim()} aria-label="发送消息"><Send size={18} aria-hidden="true" /></button>
       <small data-dialog-state={state.kind}>{state.kind === "ready" ? "真实发送 · 服务器权威回复" : state.detail}</small>
     </form>
   );
 }
 
-export function AiDialogWorkspace({ model, actions = {}, onClose = () => {} }) {
-  const controller = useAiDialogController({ model, actions });
+export function AiDialogWorkspace({ model, actions = {}, actionsDisabled = false, onClose = () => {} }) {
+  const controller = useAiDialogController({ model, actions, actionsDisabled });
   const closeRef = useRef(null);
   const dialogRef = useRef(null);
   const [output, setOutput] = useState(null);
@@ -155,9 +157,9 @@ export function AiDialogWorkspace({ model, actions = {}, onClose = () => {} }) {
       <header><span><MessageSquareText size={23} aria-hidden="true" /><span><h1 id="kordyn-v2-ai-dialog-title" data-kordyn-v2-destination-title>对话</h1><small>{controller.payload.provider ? `${controller.payload.provider.name} / ${controller.payload.provider.model}` : unavailable}</small></span></span><button ref={closeRef} type="button" aria-label="关闭对话并返回任务" onClick={onClose}><X size={20} aria-hidden="true" /></button></header>
       <div className="kordynV2AiDialogWorkbench">
         <aside aria-label="对话会话"><strong>会话</strong>{controller.payload.sessions.map((session) => <button type="button" key={session.id} aria-pressed={session.id === controller.payload.activeSessionId} onClick={() => controller.read(session.id)}><span>{session.title}</span><small>{session.updatedAt}</small></button>)}{!controller.payload.sessions.length && <p>{unavailable}</p>}</aside>
-        <main><DialogMessages messages={controller.payload.messages} onOutput={(message, trigger) => setOutput({ message, trigger })} /><DialogComposer {...controller} /></main>
+        <main><DialogMessages messages={controller.payload.messages} actionsDisabled={actionsDisabled} onOutput={(message, trigger) => { if (!actionsDisabled) setOutput({ message, trigger }); }} /><DialogComposer {...controller} actionsDisabled={actionsDisabled} /></main>
       </div>
-      {output && <AiOutputSheet message={output.message} actions={actions} returnFocus={output.trigger} onClose={() => setOutput(null)} />}
+      {output && <AiOutputSheet message={output.message} actions={actions} actionsDisabled={actionsDisabled} returnFocus={output.trigger} onClose={() => setOutput(null)} />}
     </section>
   );
 }

@@ -11,14 +11,14 @@ export async function exportPosterPng({ node, filename, fonts = document.fonts, 
   if (!node || typeof toPng !== "function" || typeof download !== "function") throw new Error("poster_export_unavailable");
   if (fonts?.ready) await fonts.ready;
   const dataUrl = await toPng(node, { pixelRatio: 2, cacheBust: true, backgroundColor: "#07111f" });
-  if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/png")) throw new Error("poster_png_invalid");
+  if (typeof dataUrl !== "string" || !/^data:image\/png;base64,(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(dataUrl) || dataUrl === "data:image/png;base64,") throw new Error("poster_png_invalid");
   await download(dataUrl, filename);
   return dataUrl;
 }
 
 const sourceContent = (message) => typeof message?.content === "string" ? message.content.trim() : "";
 
-export function AiOutputSheet({ message, actions = {}, onClose = () => {}, returnFocus = null }) {
+export function AiOutputSheet({ message, actions = {}, actionsDisabled = false, onClose = () => {}, returnFocus = null }) {
   const [language, setLanguage] = useState("zh");
   const [english, setEnglish] = useState("");
   const [state, setState] = useState({ kind: "ready", detail: "" });
@@ -50,6 +50,7 @@ export function AiOutputSheet({ message, actions = {}, onClose = () => {}, retur
   };
 
   const chooseEnglish = async () => {
+    if (actionsDisabled) return;
     if (english) { setLanguage("en"); return; }
     if (!source || typeof actions.translatePoster !== "function") { setLanguage("zh"); setState({ kind: "failed", detail: "英文翻译暂时不可用，已保留中文原稿。" }); return; }
     setState({ kind: "translating", detail: "等待服务器翻译" });
@@ -68,6 +69,7 @@ export function AiOutputSheet({ message, actions = {}, onClose = () => {}, retur
   };
 
   const download = async () => {
+    if (actionsDisabled) return;
     setState({ kind: "exporting", detail: "正在生成 PNG" });
     try {
       const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "");
@@ -103,9 +105,9 @@ export function AiOutputSheet({ message, actions = {}, onClose = () => {}, retur
         <div className="kordynV2AiOutputToolbar">
           <div role="group" aria-label="输出语言">
             <button type="button" aria-pressed={language === "zh"} disabled={processing} onClick={() => setLanguage("zh")}>中文</button>
-            <button type="button" aria-pressed={language === "en"} disabled={processing} onClick={chooseEnglish}><Languages size={15} aria-hidden="true" />English</button>
+            <button type="button" aria-pressed={language === "en"} disabled={processing || actionsDisabled} onClick={chooseEnglish}><Languages size={15} aria-hidden="true" />English</button>
           </div>
-          <button type="button" data-kordyn-v2-output-png disabled={processing || !source || (language === "en" && !english) || typeof actions.downloadPoster !== "function"} onClick={download}>
+          <button type="button" data-kordyn-v2-output-png disabled={actionsDisabled || processing || !source || (language === "en" && !english) || typeof actions.downloadPoster !== "function"} onClick={download}>
             <Download size={16} aria-hidden="true" />{state.kind === "exporting" ? "生成中…" : "下载 PNG"}
           </button>
         </div>

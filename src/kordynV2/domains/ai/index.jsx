@@ -8,6 +8,7 @@ import "./ai.css";
 export default function AiDomain({ device, workspaceId, data, actions, actionsDisabled, selection, truth, onSelect, onOpenDialog, onCloseDialog, onOpenProof }) {
   const model = useMemo(() => buildAiDomainModel(data), [data]);
   const [approval, setApproval] = useState(null);
+  const [approvalOutcomes, setApprovalOutcomes] = useState({});
   const [output, setOutput] = useState(null);
   const Presenter = aiPresenterForWorkspace(workspaceId, device);
   if (!Presenter) return null;
@@ -23,11 +24,14 @@ export default function AiDomain({ device, workspaceId, data, actions, actionsDi
         onOpenDialog={onOpenDialog}
         onClose={onCloseDialog}
         onOpenProof={onOpenProof}
-        onOpenApproval={(mission, trigger) => setApproval({ plan: mission.approval, trigger })}
-        onOpenOutput={(message, trigger) => setOutput({ message, trigger })}
+        onOpenApproval={(mission, trigger) => {
+          if (actionsDisabled || !mission?.approval?.planId) return;
+          setApproval({ plan: mission.approval, trigger });
+        }}
+        onOpenOutput={(message, trigger) => { if (!actionsDisabled) setOutput({ message, trigger }); }}
       />
-      {approval && <AiApprovalSheet plan={approval.plan} actions={actions} returnFocus={approval.trigger} onClose={() => setApproval(null)} />}
-      {output && <AiOutputSheet message={output.message} actions={actions} returnFocus={output.trigger} onClose={() => setOutput(null)} />}
+      {approval && <AiApprovalSheet plan={approval.plan} outcome={approvalOutcomes[approval.plan.planId] || null} actions={actions} actionsDisabled={actionsDisabled} onTerminal={(next) => setApprovalOutcomes((current) => ({ ...current, [approval.plan.planId]: next }))} returnFocus={approval.trigger} onClose={() => setApproval(null)} />}
+      {output && <AiOutputSheet message={output.message} actions={actions} actionsDisabled={actionsDisabled} returnFocus={output.trigger} onClose={() => setOutput(null)} />}
     </>
   );
 }

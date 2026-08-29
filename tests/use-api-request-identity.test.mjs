@@ -131,3 +131,66 @@ test("useApi aborts stale actions after base or token identity changes and only 
     globalThis.window = saved.window;
   }
 });
+
+test("useApi preserves only bounded authoritative approval facts from a 409 response", async () => {
+  const saved = {
+    fetch: globalThis.fetch,
+    localStorage: globalThis.localStorage,
+    location: globalThis.location,
+    window: globalThis.window
+  };
+  const store = new Map();
+  globalThis.localStorage = {
+    getItem: (key) => store.get(key) || null,
+    setItem: (key, value) => store.set(key, String(value)),
+    removeItem: (key) => store.delete(key)
+  };
+  globalThis.location = { search: "" };
+  globalThis.window = {
+    location: { origin: "https://app.example", hostname: "app.example", protocol: "https:" },
+    localStorage: globalThis.localStorage,
+    setTimeout,
+    clearTimeout,
+    addEventListener: () => {},
+    removeEventListener: () => {}
+  };
+  globalThis.fetch = async (url) => {
+    assert.match(String(url), /\/api\/trade-plans\/plan-409\/approve$/);
+    return {
+      ok: false,
+      status: 409,
+      text: async () => JSON.stringify({
+        ok: false,
+        error: "execution_not_submitted",
+        message: "批准已消费，但订单未提交。",
+        approvalGranted: true,
+        executionSubmitted: false,
+        plan: { id: "plan-409", status: "approved", privateKey: "must-not-leak" },
+        execution: { status: "risk_recheck_failed", reason: "capacity_changed", credentials: "must-not-leak" },
+        guard: { label: "容量已变化", fix: "刷新账户事实", secret: "must-not-leak" },
+        secret: "must-not-leak"
+      })
+    };
+  };
+
+  try {
+    const result = await renderUseApiWithoutEffects().action("/api/trade-plans/plan-409/approve");
+    assert.deepEqual(result, {
+      ok: false,
+      error: "execution_not_submitted",
+      httpStatus: 409,
+      message: "批准已消费，但订单未提交。",
+      approvalGranted: true,
+      executionSubmitted: false,
+      plan: { id: "plan-409", status: "approved" },
+      execution: { status: "risk_recheck_failed", reason: "capacity_changed" },
+      guard: { label: "容量已变化", fix: "刷新账户事实" }
+    });
+    assert.equal(JSON.stringify(result).includes("must-not-leak"), false);
+  } finally {
+    globalThis.fetch = saved.fetch;
+    globalThis.localStorage = saved.localStorage;
+    globalThis.location = saved.location;
+    globalThis.window = saved.window;
+  }
+});

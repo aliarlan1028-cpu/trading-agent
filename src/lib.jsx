@@ -12,6 +12,41 @@ import {
 import { acceptCoreSnapshot, acceptSectionSnapshot, clearSnapshotStore, createSnapshotStore, markSnapshotResource, observeSnapshotInvalidation, projectSnapshotStore, shouldRetryStaleSnapshot } from "./snapshotStore.js";
 import { connectionSecurityStatus, shouldAttemptNativeFallback } from "./connectionSecurity.js";
 
+const boundedApprovalText = (value, maximum = 240) => typeof value === "string"
+  && value.length > 0
+  && value.length <= maximum
+  && !/[\u0000-\u001f\u007f]/u.test(value)
+  ? value
+  : undefined;
+
+function boundedApprovalFailure(url, json, httpStatus) {
+  if (!/^\/api\/trade-plans\/[^/]+\/approve$/u.test(url) || !json || typeof json !== "object") return null;
+  const result = { ok: false, httpStatus };
+  for (const key of ["error", "message"]) {
+    const value = boundedApprovalText(json[key]);
+    if (value !== undefined) result[key] = value;
+  }
+  for (const key of ["approvalGranted", "executionSubmitted"]) {
+    if (typeof json[key] === "boolean") result[key] = json[key];
+  }
+  const projections = [
+    ["plan", ["id", "status"]],
+    ["execution", ["status", "reason"]],
+    ["guard", ["label", "fix"]]
+  ];
+  for (const [key, fields] of projections) {
+    const source = json[key];
+    if (!source || typeof source !== "object" || Array.isArray(source)) continue;
+    const projected = {};
+    for (const field of fields) {
+      const value = boundedApprovalText(source[field]);
+      if (value !== undefined) projected[field] = value;
+    }
+    if (Object.keys(projected).length) result[key] = projected;
+  }
+  return result;
+}
+
 export function TurnstileWidget({ siteKey, onToken }) {
   const hostRef = useRef(null);
   const callbackRef = useRef(onToken);
@@ -1057,6 +1092,12 @@ export function useApi() {
       if (!isCurrentRequest(context)) return { ok: false, error: "request_identity_changed" };
       const json = text ? parseJsonResponseText(text) : createJsonProjectionRecord();
       if (!response.ok) {
+        const approvalFailure = boundedApprovalFailure(url, json, response.status);
+        if (approvalFailure) {
+          setToast(approvalFailure.message || approvalFailure.error || t("操作失败", "Action failed"));
+          window.setTimeout(() => setToast(""), 4200);
+          return approvalFailure;
+        }
         const requestError = new Error(json.error || `${t("请求失败", "Request failed")} ${response.status}`);
         requestError.status = response.status;
         requestError.details = json.details;

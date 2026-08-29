@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { createRoot } from "react-dom/client";
 import KordynV2Root from "../src/kordynV2/entry.jsx";
+import { exportPosterPng } from "../src/kordynV2/domains/ai/AiOutputSheet.jsx";
 import { ConfirmHost } from "../src/confirm.jsx";
 import { parseJsonResponseText } from "../src/jsonResponseProvenance.js";
 
@@ -44,7 +45,8 @@ const fixture = {
   }]
 };
 
-const data = parseJsonResponseText(JSON.stringify(fixture));
+const requestedState = new URLSearchParams(location.search).get("state") || "loaded";
+const data = parseJsonResponseText(JSON.stringify({ ...fixture, resourceState: { ...fixture.resourceState, chat: requestedState } }));
 const calls = { actionRequests: [], downloads: [], confirms: [], chatReads: 0, chatReadResults: 0, chatWrites: 0 };
 let messages = fixture.chatMessages.slice();
 const sessions = [{ id: "chat-manual", title: "SOL 复核", status: "active", updatedAt: "2026-08-29T08:00:00.000Z" }];
@@ -52,6 +54,20 @@ const sessions = [{ id: "chat-manual", title: "SOL 复核", status: "active", up
 window.__task4Calls = calls;
 window.__task4ApprovalMode = "success";
 window.__task4TranslationFails = false;
+window.__task4MalformedPng = async () => {
+  try {
+    await exportPosterPng({
+      node: document.body,
+      filename: "malformed.png",
+      fonts: { ready: Promise.resolve() },
+      toPng: async () => "data:image/png-invalid;base64,AAAA",
+      download: async () => { calls.downloads.push({ prefix: "malformed", filename: "malformed.png" }); }
+    });
+    return "accepted";
+  } catch (error) {
+    return error?.message || String(error);
+  }
+};
 
 function chatPayload(sessionId = "chat-manual") {
   return { sessions, activeSessionId: sessionId, messages: messages.filter((message) => message.sessionId === sessionId), provider: { name: "Production fixture", model: "authority-contract" }, messageScope: "single-session" };
@@ -81,7 +97,7 @@ function BrowserHarness() {
       if (endpoint === "/api/trade-plans/plan-sol-approval/approve") {
         await new Promise((resolve) => setTimeout(resolve, 220));
         if (window.__task4ApprovalMode === "failure") return { ok: false, error: "risk_blocked" };
-        if (window.__task4ApprovalMode === "partial") return { plan: { id: "plan-sol-approval", status: "approved" }, approvalGranted: true, executionSubmitted: false, execution: { status: "risk_recheck_failed", reason: "capacity_changed" }, message: "批准已消费，但订单未提交。" };
+        if (window.__task4ApprovalMode === "partial") return { ok: false, error: "execution_not_submitted", httpStatus: 409, plan: { id: "plan-sol-approval", status: "approved" }, approvalGranted: true, executionSubmitted: false, execution: { status: "risk_recheck_failed", reason: "capacity_changed" }, guard: { label: "账户容量已变化", fix: "刷新账户事实" }, message: "批准已消费，但订单未提交。" };
         return { plan: { id: "plan-sol-approval", status: "approved" }, approvalGranted: true, executionSubmitted: true, execution: { status: "entry_pending" }, message: "计划已批准，入场单已提交到交易所。" };
       }
       if (endpoint === "/api/trade-plans/plan-sol-approval/cancel") {

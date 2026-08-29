@@ -23,7 +23,7 @@ function MissionFact({ label, value, icon: Icon }) {
     </div>
   );
 }
-export function MissionInspector({ mission, selection, onOpenProof = () => {}, onOpenApproval = () => {}, onOpenOutput = () => {} }) {
+export function MissionInspector({ mission, selection, actionsDisabled = false, onOpenProof = () => {}, onOpenApproval = () => {}, onOpenOutput = () => {} }) {
   if (!mission) {
     return (
       <article className="kordynV2AiMissionInspector is-empty" data-kordyn-v2-mission-inspector data-kordyn-v2-selected-mission="Unavailable">
@@ -78,8 +78,8 @@ export function MissionInspector({ mission, selection, onOpenProof = () => {}, o
       )}
 
       <footer className="kordynV2AiMissionInspectorFooter">
-        {approvalRequired && <button type="button" data-kordyn-v2-open-approval={mission.id} aria-haspopup="dialog" onClick={(event) => onOpenApproval(mission, event.currentTarget)}><ShieldAlert size={16} aria-hidden="true" />打开任务确认</button>}
-        {mission.output && <button type="button" data-kordyn-v2-open-output={mission.id} aria-haspopup="dialog" onClick={(event) => onOpenOutput(mission.output, event.currentTarget)}><FileImage size={16} aria-hidden="true" />生成 PNG 输出</button>}
+        {approvalRequired && <button type="button" data-kordyn-v2-open-approval={mission.id} aria-haspopup="dialog" disabled={actionsDisabled} onClick={(event) => { if (!actionsDisabled) onOpenApproval(mission, event.currentTarget); }}><ShieldAlert size={16} aria-hidden="true" />打开任务确认</button>}
+        {mission.output && <button type="button" data-kordyn-v2-open-output={mission.id} aria-haspopup="dialog" disabled={actionsDisabled} onClick={(event) => { if (!actionsDisabled) onOpenOutput(mission.output, event.currentTarget); }}><FileImage size={16} aria-hidden="true" />生成 PNG 输出</button>}
         <button
           type="button"
           aria-haspopup="dialog"

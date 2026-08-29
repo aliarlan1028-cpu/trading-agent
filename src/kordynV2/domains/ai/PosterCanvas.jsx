@@ -1,4 +1,5 @@
 const safeText = (value, fallback = "Unavailable") => typeof value === "string" && value.trim() ? value.trim() : fallback;
+const presentationText = (value) => safeText(value).replace(/^\s{0,3}#{1,6}\s+/gmu, "");
 
 function posterDate(value, language) {
   const time = Date.parse(value);
@@ -22,7 +23,7 @@ export function PosterCanvas({ message, language = "zh", content }) {
         <p><span>{english ? "GENERATED" : "生成时间"}</span><time>{posterDate(message?.createdAt, language)}</time></p>
       </section>
       <section className="kordynV2PosterBody">
-        <p>{safeText(content)}</p>
+        <p>{presentationText(content)}</p>
       </section>
       <footer>
         <span>{english ? "SYSTEM-GENERATED / NOT FINANCIAL ADVICE" : "系统生成 / 仅供参考 / 不构成投资建议"}</span>

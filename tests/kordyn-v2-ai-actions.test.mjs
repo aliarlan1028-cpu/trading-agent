@@ -41,14 +41,44 @@ test("AI approval and rejection retain deployed endpoints and raw results", asyn
     confirm: async () => true
   });
 
-  assert.equal(await ai.approvePlan("plan-1"), results[0]);
-  assert.equal(await ai.rejectPlan("plan-1"), results[1]);
+  assert.deepEqual(await ai.approvePlan("plan-1"), results[0]);
+  assert.deepEqual(await ai.rejectPlan("plan-1"), results[1]);
   assert.equal(await ai.cancelWatch("watch-1", "BTC/USDT"), results[2]);
   assert.deepEqual(calls, [
     ["/api/trade-plans/plan-1/approve", {}],
     ["/api/trade-plans/plan-1/cancel", { reason: "user_rejected" }],
     ["/api/watch-triggers/watch-1/cancel", {}]
   ]);
+});
+
+test("AI approval adapter preserves only bounded authoritative 409 facts", async () => {
+  const raw = {
+    ok: false,
+    error: "execution_not_submitted",
+    httpStatus: 409,
+    message: "批准已消费，但订单未提交。",
+    approvalGranted: true,
+    executionSubmitted: false,
+    plan: { id: "plan-409", status: "approved", privateKey: "must-not-leak" },
+    execution: { status: "risk_recheck_failed", reason: "capacity_changed", credentials: "must-not-leak" },
+    guard: { label: "容量已变化", fix: "刷新账户事实", secret: "must-not-leak" },
+    secret: "must-not-leak"
+  };
+  const ai = createAiActions({ action: async () => raw, confirm: async () => true });
+
+  const result = await ai.approvePlan("plan-409");
+  assert.deepEqual(result, {
+    ok: false,
+    error: "execution_not_submitted",
+    httpStatus: 409,
+    message: "批准已消费，但订单未提交。",
+    approvalGranted: true,
+    executionSubmitted: false,
+    plan: { id: "plan-409", status: "approved" },
+    execution: { status: "risk_recheck_failed", reason: "capacity_changed" },
+    guard: { label: "容量已变化", fix: "刷新账户事实" }
+  });
+  assert.equal(JSON.stringify(result).includes("must-not-leak"), false);
 });
 
 test("AI non-trading actions retain deployed request shapes and dependency results", async () => {

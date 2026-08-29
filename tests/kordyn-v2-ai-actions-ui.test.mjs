@@ -21,6 +21,9 @@ require("esbuild").buildSync({
       export { PosterCanvas } from "./src/kordynV2/domains/ai/PosterCanvas.jsx";
       export { AiDialogWorkspace, runDialogSend } from "./src/kordynV2/domains/ai/AiDialogWorkspace.jsx";
       export { MobileAiDialogScreen } from "./src/kordynV2/domains/ai/MobileAiDialogScreen.jsx";
+      export { AiMissionWorkspace } from "./src/kordynV2/domains/ai/AiMissionWorkspace.jsx";
+      export { MissionInspector } from "./src/kordynV2/domains/ai/MissionInspector.jsx";
+      export { MobileAiMissionScreen } from "./src/kordynV2/domains/ai/MobileAiMissionScreen.jsx";
       export { buildAiDomainModel } from "./src/kordynV2/domains/ai/aiModel.js";
       export { createAiActions } from "./src/kordynV2/domains/ai/aiActions.js";
       export { aiPresenterForWorkspace } from "./src/kordynV2/domains/ai/presenters.js";
@@ -40,7 +43,10 @@ require("esbuild").buildSync({
 const {
   AiApprovalSheet,
   AiDialogWorkspace,
+  AiMissionWorkspace,
   AiOutputSheet,
+  MissionInspector,
+  MobileAiMissionScreen,
   MobileAiDialogScreen,
   PosterCanvas,
   aiPresenterForWorkspace,
@@ -176,8 +182,79 @@ test("approval state remains processing until raw authoritative outcome is class
 
   assert.equal(classifyApprovalOutcome("approve", { ok: true }, approvalPlan.id), "failed");
   assert.equal(classifyApprovalOutcome("approve", { ...raw, executionSubmitted: false }, approvalPlan.id), "partial");
+  assert.equal(classifyApprovalOutcome("approve", {
+    ...raw,
+    ok: false,
+    error: "execution_not_submitted",
+    httpStatus: 409,
+    executionSubmitted: false
+  }, approvalPlan.id), "partial");
   assert.equal(classifyApprovalOutcome("approve", { ...raw, plan: { id: "another-plan", status: "approved" } }, approvalPlan.id), "failed");
   assert.equal(classifyApprovalOutcome("reject", { id: approvalPlan.id, status: "cancelled" }, approvalPlan.id), "succeeded");
+});
+
+test("terminal approval outcome is one-shot and failure copy separates recovery from bounded code", () => {
+  const actions = { approvePlan: () => {}, rejectPlan: () => {} };
+  const partial = render(AiApprovalSheet, {
+    plan: approvalPlan,
+    outcome: {
+      kind: "partial",
+      result: {
+        ok: false,
+        error: "execution_not_submitted",
+        httpStatus: 409,
+        approvalGranted: true,
+        executionSubmitted: false,
+        plan: { id: approvalPlan.id, status: "approved" },
+        execution: { status: "risk_recheck_failed", reason: "capacity_changed" }
+      }
+    },
+    actions
+  });
+  const partialButtons = [...partial.matchAll(/<button[^>]*>(?:.|\n)*?<\/button>/g)].map((match) => match[0]);
+  assert.equal(partialButtons.slice(-2).every((button) => /disabled=""/.test(button)), true);
+
+  const failed = render(AiApprovalSheet, {
+    plan: approvalPlan,
+    outcome: { kind: "failed", result: { ok: false, error: "risk_blocked", httpStatus: 409 } },
+    actions
+  });
+  assert.match(failed, /风控复核未通过/);
+  assert.match(failed, /检查风险边界后重新生成计划/);
+  assert.match(failed, /<code[^>]*>risk_blocked<\/code>/);
+});
+
+test("actionsDisabled propagates through Mission dialog approval and output controls", async () => {
+  const projectedMission = buildAiDomainModel({
+    agentRuns: [{ id: "run-sol-1", goal: "SOL", status: "awaiting_approval", tradePlanId: approvalPlan.id }],
+    tradePlans: [approvalPlan],
+    chatMessages: [message]
+  }).missions[0];
+  const mission = { ...projectedMission, output: message };
+  const actions = { approvePlan: () => {}, rejectPlan: () => {}, translatePoster: () => {}, downloadPoster: () => {}, sendChatMessage: () => {}, readChatSession: () => {} };
+  const inspector = render(MissionInspector, { mission, actionsDisabled: true });
+  assert.match(inspector.match(/<button[^>]*data-kordyn-v2-open-approval[^>]*>/)?.[0] || "", /disabled=""/);
+  assert.match(inspector.match(/<button[^>]*data-kordyn-v2-open-output[^>]*>/)?.[0] || "", /disabled=""/);
+
+  const desktopMission = render(AiMissionWorkspace, { model: { missions: [mission] }, actionsDisabled: true });
+  const mobileMission = render(MobileAiMissionScreen, { model: { missions: [mission] }, actionsDisabled: true });
+  assert.match(desktopMission.match(/<button[^>]*data-kordyn-v2-open-approval[^>]*>/)?.[0] || "", /disabled=""/);
+  assert.match(mobileMission.match(/<button[^>]*data-kordyn-v2-open-approval[^>]*>/)?.[0] || "", /disabled=""/);
+
+  const approval = render(AiApprovalSheet, { plan: approvalPlan, actions, actionsDisabled: true });
+  assert.match(approval.match(/<button[^>]*data-kordyn-v2-approval-primary[^>]*>/)?.[0] || "", /disabled=""/);
+  const output = render(AiOutputSheet, { message, actions, actionsDisabled: true });
+  assert.match(output.match(/<button[^>]*data-kordyn-v2-output-png[^>]*>/)?.[0] || "", /disabled=""/);
+  const dialog = render(AiDialogWorkspace, { model: { dialog: { messages: [message], sessions: [] } }, actions, actionsDisabled: true });
+  assert.match(dialog.match(/<textarea[^>]*id="kordyn-v2-ai-dialog-input"[^>]*>/)?.[0] || "", /disabled=""/);
+
+  let writes = 0;
+  await assert.rejects(runDialogSend({
+    actions: { sendChatMessage: async () => { writes += 1; }, readChatSession: async () => { writes += 1; } },
+    actionsDisabled: true,
+    message: "复核 SOL"
+  }), /actions_disabled/);
+  assert.equal(writes, 0);
 });
 
 test("poster translation accepts only the deployed translated field and otherwise returns to Chinese", () => {
@@ -210,6 +287,22 @@ test("PNG export waits for fonts and calls the injected downloader only after to
     download: () => { failedDownloads += 1; }
   }), /canvas failed/);
   assert.equal(failedDownloads, 0);
+
+  await assert.rejects(exportPosterPng({
+    node: {},
+    filename: "malformed.png",
+    fonts: { ready: Promise.resolve() },
+    toPng: async () => "data:image/png-invalid;base64,AAAA",
+    download: () => { failedDownloads += 1; }
+  }), /poster_png_invalid/);
+  assert.equal(failedDownloads, 0);
+});
+
+test("PosterCanvas removes Markdown heading markers from presentation text", () => {
+  const html = render(PosterCanvas, { message, language: "zh", content: "### SOL 结构复核\n等待人工确认。" });
+  const visibleText = html.replace(/<[^>]+>/g, " ");
+  assert.match(visibleText, /SOL 结构复核/);
+  assert.doesNotMatch(visibleText, /###/);
 });
 
 test("Desktop and APP use separate real dialog compositions through the lazy AI domain", () => {

@@ -143,18 +143,35 @@ async function verifyViewport(cdp, baseUrl, viewport) {
   const outcomeText = await evaluate(cdp, "document.querySelector('[data-kordyn-v2-approval-outcome]').textContent");
   if (expectedState === "succeeded") assert.match(outcomeText, /入场单已提交/);
   if (expectedState === "partial") assert.match(outcomeText, /订单未提交/);
-  if (expectedState === "failed") assert.match(outcomeText, /risk_blocked/);
+  if (expectedState === "failed") {
+    assert.match(outcomeText, /风控复核未通过/);
+    assert.match(outcomeText, /检查风险边界后重新生成计划/);
+    assert.equal(await evaluate(cdp, "document.querySelector('[data-kordyn-v2-approval-code]')?.textContent"), "risk_blocked");
+  }
   const outcomeGeometry = await evaluate(cdp, `(() => { const outcome=document.querySelector('[data-kordyn-v2-approval-outcome]')?.getBoundingClientRect(); return {top:outcome?.top,bottom:outcome?.bottom,visible:Boolean(outcome&&outcome.top>=0&&outcome.bottom<=innerHeight)}; })()`);
   assert.equal(outcomeGeometry.visible, true, `${width}: authoritative ${expectedState} outcome is visible without scrolling`);
   await capture(cdp, `${width}x${height}-approval-${expectedState}.png`, width, height);
   await press(cdp, "Escape");
   await waitForExpression(cdp, "!document.querySelector('[data-kordyn-v2-ai-approval-sheet]')", `${width}: approval closes`);
   assert.equal(await evaluate(cdp, `document.activeElement?.matches(${JSON.stringify(approvalTrigger)})`), true, `${width}: approval returns focus`);
+  if (["succeeded", "partial"].includes(expectedState)) {
+    const approvalWrites = await evaluate(cdp, "window.__task4Calls.actionRequests.filter((row)=>row.endpoint.includes('/trade-plans/')&&row.method==='POST').length");
+    await click(cdp, approvalTrigger);
+    await waitForExpression(cdp, `document.querySelector('[data-kordyn-v2-approval-outcome=${JSON.stringify(expectedState)}]')`, `${width}: terminal approval reopens`);
+    const terminalDisabled = await evaluate(cdp, "[...document.querySelectorAll('.kordynV2AiApprovalActions > button')].every((button)=>button.disabled)");
+    assert.equal(terminalDisabled, true, `${width}: terminal approval is one-shot`);
+    await evaluate(cdp, "document.querySelector('[data-kordyn-v2-approval-primary]').click(); document.querySelector('.kordynV2AiApprovalActions > button').click()");
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    assert.equal(await evaluate(cdp, "window.__task4Calls.actionRequests.filter((row)=>row.endpoint.includes('/trade-plans/')&&row.method==='POST').length"), approvalWrites, `${width}: terminal reopen cannot duplicate request`);
+    await press(cdp, "Escape");
+    await waitForExpression(cdp, "!document.querySelector('[data-kordyn-v2-ai-approval-sheet]')", `${width}: terminal approval closes`);
+  }
 
   const outputTrigger = "[data-kordyn-v2-open-output=\"run-sol-approval\"]";
   await click(cdp, outputTrigger);
   await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-ai-output-sheet]')", `${width}: output opens`);
   await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-ai-output-sheet]')?.contains(document.activeElement)", `${width}: output owns focus`);
+  assert.doesNotMatch(await evaluate(cdp, "document.querySelector('[data-kordyn-v2-poster-canvas]').textContent"), /###/);
   await evaluate(cdp, `window.__task4TranslationFails=${translationFails}`);
   await click(cdp, ".kordynV2AiOutputToolbar button:nth-child(2)");
   if (translationFails) {
@@ -212,6 +229,37 @@ async function verifyViewport(cdp, baseUrl, viewport) {
   return { width, height, device, outcome: expectedState, translation: translationFails ? "failed" : "english", screenshots: 4 + (width === 1440 ? 1 : 0) };
 }
 
+async function verifyActionsDisabledStates(cdp, baseUrl) {
+  const states = ["stale", "degraded", "failed", "forbidden", "disabled"];
+  await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, screenWidth: 1440, screenHeight: 900, deviceScaleFactor: 1, mobile: false });
+  for (const state of states) {
+    await cdp.send("Page.navigate", { url: `${baseUrl}${pagePath}?state=${state}` });
+    await waitForExpression(cdp, `window.__task4Ready && document.querySelector('[data-kordyn-v2-state=${JSON.stringify(state)}]')`, `${state}: real Root state`);
+    const beforePosts = await evaluate(cdp, "window.__task4Calls.actionRequests.filter((row)=>row.method==='POST').length");
+    if (["stale", "degraded"].includes(state)) {
+      assert.equal(await evaluate(cdp, "document.querySelector('[data-kordyn-v2-open-approval]').disabled"), true, `${state}: Mission approval disabled`);
+      assert.equal(await evaluate(cdp, "document.querySelector('[data-kordyn-v2-open-output]').disabled"), true, `${state}: Mission output disabled`);
+      await evaluate(cdp, "document.querySelector('[data-kordyn-v2-open-approval]').click(); document.querySelector('[data-kordyn-v2-open-output]').click()");
+      await click(cdp, "[data-kordyn-v2-dialog-trigger]");
+      await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-dialog-surface]') && window.__task4Calls.chatReadResults>0", `${state}: read-only dialog`);
+      assert.equal(await evaluate(cdp, "document.querySelector('#kordyn-v2-ai-dialog-input').disabled"), true, `${state}: chat input disabled`);
+      assert.equal(await evaluate(cdp, "document.querySelector('.kordynV2AiDialogComposer > button').disabled"), true, `${state}: chat POST disabled`);
+      await evaluate(cdp, "document.querySelector('.kordynV2AiDialogComposer').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})); document.querySelector('.kordynV2AiDialogComposer > button').click()");
+    } else {
+      assert.equal(await evaluate(cdp, "document.querySelector('[data-kordyn-v2-dialog-trigger], [data-kordyn-v2-open-approval], [data-kordyn-v2-open-output]')"), null, `${state}: unavailable Root hides action controls`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    assert.equal(await evaluate(cdp, "window.__task4Calls.actionRequests.filter((row)=>row.method==='POST').length"), beforePosts, `${state}: forced activation issues no POST`);
+  }
+  return states;
+}
+
+async function verifyMalformedPng(cdp) {
+  const downloads = await evaluate(cdp, "window.__task4Calls.downloads.length");
+  assert.equal(await evaluate(cdp, "window.__task4MalformedPng()"), "poster_png_invalid", "browser PNG validator rejects malformed MIME data URL");
+  assert.equal(await evaluate(cdp, "window.__task4Calls.downloads.length"), downloads, "malformed PNG cannot reach download adapter");
+}
+
 async function stopProcess(child) {
   if (!child || child.exitCode !== null) return;
   child.kill("SIGTERM");
@@ -236,7 +284,9 @@ async function main() {
     await cdp.send("Runtime.enable");
     const results = [];
     for (const viewport of viewports) results.push(await verifyViewport(cdp, `http://127.0.0.1:${vitePort}`, viewport));
-    process.stdout.write(`KORDYN V2 Task 4 browser PASS ${results.map((row) => `${row.width}x${row.height}:${row.outcome}/${row.translation}`).join(" ")} screenshots=${outputDir}\n`);
+    const disabledStates = await verifyActionsDisabledStates(cdp, `http://127.0.0.1:${vitePort}`);
+    await verifyMalformedPng(cdp);
+    process.stdout.write(`KORDYN V2 Task 4 browser PASS ${results.map((row) => `${row.width}x${row.height}:${row.outcome}/${row.translation}`).join(" ")} disabled=${disabledStates.join("+")} screenshots=${outputDir}\n`);
   } finally {
     cdp?.close();
     await stopProcess(chrome);
