@@ -3,15 +3,17 @@ import { CircleAlert, CircleCheck, ListFilter, Radio } from "lucide-react";
 const unavailable = "Unavailable";
 
 const GROUPS = Object.freeze([
-  { id: "working", label: "正在处理", stages: ["intent", "sense", "recall", "plan", "guard", "execute"] },
-  { id: "approval", label: "需要确认", stages: ["approval"] },
-  { id: "monitoring", label: "正在监控", stages: ["monitor"] },
-  { id: "reviewing", label: "复盘与完成", stages: ["review"] },
-  { id: "unavailable", label: "事实待定", stages: [null] }
+  { id: "analysis", label: "分析", stages: ["intent", "sense", "recall", "plan", "guard"] },
+  { id: "monitoring", label: "监控", stages: ["monitor"] },
+  { id: "approval", label: "待确认", stages: ["approval"] },
+  { id: "executing", label: "执行", stages: ["execute"] },
+  { id: "completed", label: "完成", stages: ["review"] }
 ]);
 
+const UNKNOWN_GROUP = Object.freeze({ id: "unavailable", label: "事实待定", stages: [null] });
+
 function missionGroup(mission) {
-  return GROUPS.find((group) => group.stages.includes(mission?.stage?.id)) || GROUPS.at(-1);
+  return GROUPS.find((group) => group.stages.includes(mission?.stage?.id)) || UNKNOWN_GROUP;
 }
 
 function canonicalMissionSelection(mission) {
@@ -64,16 +66,24 @@ export function MissionRegistry({ missions = [], selectedId, onSelect = () => {}
       <div className="kordynV2AiMissionRegistryScroll">
         {GROUPS.map((group) => {
           const groupRows = rows.filter((mission) => missionGroup(mission).id === group.id);
-          if (!groupRows.length) return null;
           return (
-            <section className="kordynV2AiMissionGroup" data-mission-group={group.id} key={group.id}>
+            <section className="kordynV2AiMissionGroup" data-mission-group={group.id} data-mission-count={groupRows.length} key={group.id}>
               <h3><span aria-hidden="true" />{group.label}<small>{groupRows.length}</small></h3>
               {groupRows.map((mission) => (
                 <MissionRow mission={mission} selectedId={selectedId} onSelect={onSelect} key={mission.id} />
               ))}
+              {!groupRows.length && <p className="kordynV2AiMissionGroupEmpty">当前 0</p>}
             </section>
           );
         })}
+        {rows.some((mission) => missionGroup(mission).id === UNKNOWN_GROUP.id) && (
+          <section className="kordynV2AiMissionGroup" data-mission-group={UNKNOWN_GROUP.id} data-mission-count={rows.filter((mission) => missionGroup(mission).id === UNKNOWN_GROUP.id).length}>
+            <h3><span aria-hidden="true" />{UNKNOWN_GROUP.label}<small>{rows.filter((mission) => missionGroup(mission).id === UNKNOWN_GROUP.id).length}</small></h3>
+            {rows.filter((mission) => missionGroup(mission).id === UNKNOWN_GROUP.id).map((mission) => (
+              <MissionRow mission={mission} selectedId={selectedId} onSelect={onSelect} key={mission.id} />
+            ))}
+          </section>
+        )}
         {!rows.length && (
           <div className="kordynV2AiMissionEmpty" role="status">
             <Radio size={20} aria-hidden="true" />

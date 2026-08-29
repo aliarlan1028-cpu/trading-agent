@@ -1,10 +1,10 @@
-import { ArrowRight, Bot, FileCheck2, FileImage, Link2, MessagesSquare, ShieldAlert } from "lucide-react";
+import { ArrowRight, Bot, FileCheck2, FileImage, Link2, ShieldAlert } from "lucide-react";
 import { MissionProgress } from "./MissionProgress.jsx";
 
 const unavailable = "Unavailable";
 const safeValue = (value) => value === null || value === undefined || value === "" ? unavailable : String(value);
-const proofRequest = (mission) => ({
-  panel: "proof",
+const evidenceRequest = (mission, panel) => ({
+  panel,
   candidate: {
     id: mission.id,
     type: "Agent run",
@@ -23,7 +23,7 @@ function MissionFact({ label, value, icon: Icon }) {
     </div>
   );
 }
-export function MissionInspector({ mission, selection, actionsDisabled = false, onOpenProof = () => {}, onOpenApproval = () => {}, onOpenOutput = () => {} }) {
+export function MissionInspector({ mission, actionsDisabled = false, onOpenProof = () => {}, onOpenApproval = () => {}, onOpenOutput = () => {} }) {
   if (!mission) {
     return (
       <article className="kordynV2AiMissionInspector is-empty" data-kordyn-v2-mission-inspector data-kordyn-v2-selected-mission="Unavailable">
@@ -40,6 +40,7 @@ export function MissionInspector({ mission, selection, actionsDisabled = false, 
       className="kordynV2AiMissionInspector"
       data-kordyn-v2-mission-inspector
       data-kordyn-v2-selected-mission={mission.id}
+      data-kordyn-v2-mission-stage={mission.stage?.id || "unavailable"}
       data-kordyn-v2-object-id={mission.id}
       data-kordyn-v2-object-type="Agent run"
     >
@@ -47,7 +48,7 @@ export function MissionInspector({ mission, selection, actionsDisabled = false, 
         <span className="kordynV2AiMissionGlyph" aria-hidden="true"><Bot size={21} /></span>
         <span>
           <h2>{safeValue(mission.title)}</h2>
-          <p>{safeValue(mission.summary)}</p>
+          <p>{safeValue(mission.summary)} · {safeValue(mission.nextAction)}</p>
         </span>
         <em data-stage-tone={mission.stage?.tone || "unavailable"}>{safeValue(mission.stage?.label)}</em>
       </header>
@@ -59,14 +60,14 @@ export function MissionInspector({ mission, selection, actionsDisabled = false, 
         {safeValue(mission.stage?.label)}
       </p>
 
-      <section className="kordynV2AiMissionDecision" aria-labelledby="kordyn-v2-ai-mission-decision-title">
-        <h3 id="kordyn-v2-ai-mission-decision-title">任务事实</h3>
+      <section className="kordynV2AiMissionDecision" aria-labelledby="kordyn-v2-ai-mission-decision-title" data-kordyn-v2-mission-decision-summary={mission.id}>
+        <h3 id="kordyn-v2-ai-mission-decision-title">决策摘要</h3>
         <dl>
-          <MissionFact icon={MessagesSquare} label="当前摘要" value={mission.summary} />
-          <MissionFact icon={FileCheck2} label="证据数量" value={mission.evidenceCount} />
-          <MissionFact icon={ArrowRight} label="下一步" value={mission.nextAction} />
-          <MissionFact icon={ShieldAlert} label="授权状态" value={mission.approval?.status} />
-          <MissionFact icon={Link2} label="Plan ID" value={mission.approval?.planId} />
+          <MissionFact icon={FileCheck2} label="Strategy" value={mission.decisionContext?.strategy} />
+          <MissionFact icon={Link2} label="Knowledge" value={mission.decisionContext?.knowledge?.join(" · ")} />
+          <MissionFact icon={ShieldAlert} label="Capability" value={mission.decisionContext?.capabilities?.join(" · ")} />
+          <MissionFact icon={ArrowRight} label="Event" value={mission.decisionContext?.events?.join(" · ")} />
+          <MissionFact icon={Link2} label="Position" value={mission.decisionContext?.positions?.join(" · ")} />
         </dl>
       </section>
 
@@ -83,12 +84,20 @@ export function MissionInspector({ mission, selection, actionsDisabled = false, 
         <button
           type="button"
           aria-haspopup="dialog"
-          data-kordyn-v2-mission-proof={mission.id}
-          onClick={(event) => onOpenProof(event.currentTarget, proofRequest(mission))}
+          data-kordyn-v2-mission-context={mission.id}
+          data-kordyn-v2-mission-related-context={mission.id}
+          onClick={(event) => onOpenProof(event.currentTarget, evidenceRequest(mission, "context"))}
         >
-          <Link2 size={16} aria-hidden="true" />查看 Context / Proof
+          <Link2 size={16} aria-hidden="true" />查看 Context
         </button>
-        <span title={`对象 ${safeValue(selection?.object?.id)}`}>{mission.id}</span>
+        <button
+          type="button"
+          aria-haspopup="dialog"
+          data-kordyn-v2-mission-proof={mission.id}
+          onClick={(event) => onOpenProof(event.currentTarget, evidenceRequest(mission, "proof"))}
+        >
+          <FileCheck2 size={16} aria-hidden="true" />查看 Proof
+        </button>
       </footer>
     </article>
   );

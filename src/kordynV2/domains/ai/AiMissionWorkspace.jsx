@@ -8,9 +8,20 @@ const unavailable = "Unavailable";
 function selectedMissionFor(model, selection) {
   const missions = Array.isArray(model?.missions) ? model.missions : [];
   const selectedId = selection?.object?.type === "Agent run" ? selection.object.id : null;
-  return missions.find((mission) => mission.id === selectedId) || missions[0] || null;
+  const selected = missions.find((mission) => mission.id === selectedId);
+  if (selected) return selected;
+  const priority = { monitor: 0, execute: 1, intent: 2, sense: 2, recall: 2, plan: 2, guard: 2, approval: 3, review: 4 };
+  return missions
+    .map((mission, index) => ({ mission, index, rank: priority[mission?.stage?.id] ?? 5 }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)[0]?.mission || null;
 }
-function AttentionRail({ missions, selectedMission, selection, onSelect }) {
+function firstListValue(values) {
+  return Array.isArray(values) && values.length ? values.join(" · ") : unavailable;
+}
+function missionProofRequest(mission) {
+  return { panel: "proof", candidate: { id: mission.id, type: "Agent run", workspaceId: "ai", route: "chat", evidence: mission.evidenceCount } };
+}
+function AttentionRail({ missions, selectedMission, selection, onSelect, onOpenProof }) {
   const approvalMissions = missions.filter((mission) => mission.stage?.id === "approval");
   return (
     <aside className="kordynV2AiAttentionRail" aria-label="Mission attention and context">
@@ -32,19 +43,28 @@ function AttentionRail({ missions, selectedMission, selection, onSelect }) {
         {!approvalMissions.length && <p>当前没有等待确认的 Mission。</p>}
       </section>
 
-      <section className="kordynV2AiAttentionPanel is-context">
-        <header><h2>当前上下文</h2><FileSearch size={17} aria-hidden="true" /></header>
+      <section className="kordynV2AiAttentionPanel is-context" data-kordyn-v2-mission-related-context={selectedMission?.id || unavailable}>
+        <header><h2>关联上下文</h2><FileSearch size={17} aria-hidden="true" /></header>
         <dl>
-          <div><dt>对象</dt><dd>{selectedMission?.id || unavailable}</dd></div>
-          <div><dt>类型</dt><dd>{selectedMission ? "Agent run" : unavailable}</dd></div>
-          <div><dt>Context</dt><dd>{selection?.context?.title || unavailable}</dd></div>
+          <div><dt>Strategy</dt><dd>{selectedMission?.decisionContext?.strategy || unavailable}</dd></div>
+          <div><dt>Knowledge</dt><dd>{firstListValue(selectedMission?.decisionContext?.knowledge)}</dd></div>
+          <div><dt>Capability</dt><dd>{firstListValue(selectedMission?.decisionContext?.capabilities)}</dd></div>
+          <div><dt>Event</dt><dd>{firstListValue(selectedMission?.decisionContext?.events)}</dd></div>
+          <div><dt>Position</dt><dd>{firstListValue(selectedMission?.decisionContext?.positions)}</dd></div>
           <div><dt>Evidence</dt><dd>{selectedMission?.evidenceCount ?? unavailable}</dd></div>
         </dl>
+        {selectedMission && <button type="button" className="kordynV2AiAttentionProof" data-kordyn-v2-attention-proof={selectedMission.id} onClick={(event) => onOpenProof(event.currentTarget, missionProofRequest(selectedMission))}><FileSearch size={15} aria-hidden="true" /><span><strong>打开 Context / Proof</strong><small>{selection?.context?.title || selectedMission.id}</small></span><ArrowRight size={15} aria-hidden="true" /></button>}
       </section>
 
-      <section className="kordynV2AiAttentionPanel is-trace">
-        <header><h2>Proof 状态</h2></header>
-        <p>{selection?.trace?.stages?.length ? `${selection.trace.stages.length} 个权威阶段` : unavailable}</p>
+      <section className="kordynV2AiAttentionPanel is-trace" data-kordyn-v2-mission-receipt={selectedMission?.id || unavailable}>
+        <header><h2>运行回执</h2></header>
+        <dl>
+          <div><dt>创建</dt><dd>{selectedMission?.receipt?.createdAt || unavailable}</dd></div>
+          <div><dt>更新</dt><dd>{selectedMission?.receipt?.updatedAt || unavailable}</dd></div>
+          <div><dt>完成</dt><dd>{selectedMission?.receipt?.completedAt || unavailable}</dd></div>
+          <div><dt>状态</dt><dd>{selectedMission?.receipt?.status || unavailable}</dd></div>
+          <div><dt>Proof</dt><dd>{selection?.trace?.stages?.length ? `${selection.trace.stages.length} 阶段` : unavailable}</dd></div>
+        </dl>
       </section>
     </aside>
   );
@@ -79,7 +99,7 @@ export function AiMissionWorkspace({
           onOpenApproval={onOpenApproval}
           onOpenOutput={onOpenOutput}
         />
-        <AttentionRail missions={missions} selectedMission={selectedMission} selection={selection} onSelect={onSelect} />
+        <AttentionRail missions={missions} selectedMission={selectedMission} selection={selection} onSelect={onSelect} onOpenProof={onOpenProof} />
       </div>
       <AiDialogPrompt commandBar onOpen={onOpenDialog} />
     </div>

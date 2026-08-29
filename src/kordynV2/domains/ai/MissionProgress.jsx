@@ -16,7 +16,7 @@ export function MissionProgress({ mission, compact = false }) {
   const currentId = mission?.stage?.id ?? null;
   const recognizedCurrent = FLOW.includes(currentId) ? currentId : null;
   return (
-    <ol className={`kordynV2AiMissionProgress${compact ? " is-compact" : ""}`} aria-label="Mission 进度">
+    <ol className={`kordynV2AiMissionProgress${compact ? " is-compact" : ""}`} aria-label="Mission 进度" data-kordyn-v2-mission-lifecycle={mission?.id || "Unavailable"}>
       {visibleStages(recognizedCurrent).map((stageId) => {
         const stage = missionStagePresentation(stageId);
         const current = stageId === recognizedCurrent;

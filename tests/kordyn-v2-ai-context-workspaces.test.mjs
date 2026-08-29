@@ -170,8 +170,9 @@ test("read-only Signal Watch and Event surfaces expose detail without canonical 
       }));
       assert.match(html, new RegExp(rawRow.title));
       assert.match(html, /data-kordyn-v2-readonly-fact="true"/);
-      assert.doesNotMatch(html, /data-kordyn-v2-object-id=/);
-      assert.doesNotMatch(html, /data-kordyn-v2-object-type=/);
+      const readOnlyTag = html.match(/<button[^>]*data-kordyn-v2-readonly-fact="true"[^>]*>/)?.[0] || "";
+      assert.doesNotMatch(readOnlyTag, /data-kordyn-v2-object-id=/);
+      assert.doesNotMatch(readOnlyTag, /data-kordyn-v2-object-type=/);
       assert.doesNotMatch(html, /data-kordyn-v2-context-proof=/);
       assert.match(html, /disabled=""/);
     }

@@ -154,6 +154,8 @@ async function verifyViewport(cdp, baseUrl, { width, height, device }) {
     const progress = mission.querySelector('.kordynV2AiMissionProgress');
     const actions = [...root.querySelectorAll('.kordynV2AiMobileAction')];
     const focusTarget = mission.querySelector('[data-kordyn-v2-mission-proof="run-btc-analysis"]');
+    const relatedContext = root.querySelector('section[data-kordyn-v2-mission-related-context="run-btc-analysis"]');
+    const evidenceFact = [...(relatedContext?.querySelectorAll('dt') || mission.querySelectorAll('dt'))].find((node) => ['Evidence','证据'].includes(node.textContent.trim()));
     focusTarget.focus();
     const focusStyle = getComputedStyle(focusTarget);
     const text = mission.textContent;
@@ -162,6 +164,7 @@ async function verifyViewport(cdp, baseUrl, { width, height, device }) {
       canvas:[root.querySelector('[data-kordyn-v2-work-canvas]').clientWidth,root.querySelector('[data-kordyn-v2-work-canvas]').scrollWidth],
       selectedId:root.dataset.kordynV2SelectedId,
       missionText:text,
+      contextEvidence:evidenceFact?.nextElementSibling?.textContent?.trim() || null,
       planVisible:root.textContent.includes('plan-btc-mission'),
       progressCount:progress.querySelectorAll('li').length,
       currentCount:progress.querySelectorAll('[aria-current="step"]').length,
@@ -175,9 +178,10 @@ async function verifyViewport(cdp, baseUrl, { width, height, device }) {
   assert.deepEqual(initial.document, [width, width], `${width}: no document overflow`);
   assert.ok(initial.canvas[1] <= initial.canvas[0] + 1, `${width}: no canvas overflow`);
   assert.equal(initial.selectedId, "run-btc-analysis");
-  for (const text of ["BTC 趋势延续结构", "账户、证据与硬风控已核对", "确认计划后继续监控", "3"]) {
+  for (const text of ["BTC 趋势延续结构", "账户、证据与硬风控已核对", "确认计划后继续监控"]) {
     assert.ok(initial.missionText.includes(text), `${width}: projected Mission exposes ${text}`);
   }
+  assert.equal(initial.contextEvidence, "3", `${width}: projected Mission Evidence remains visible in related Context`);
   assert.equal(initial.planVisible, true, `${width}: approval link remains visible`);
   assert.equal(initial.progressCount, 5, `${width}: five-stage density`);
   assert.equal(initial.currentCount, 1, `${width}: one current stage`);
@@ -194,17 +198,21 @@ async function verifyViewport(cdp, baseUrl, { width, height, device }) {
   const selected = await evaluate(cdp, `(() => {
     const root = document.querySelector('[data-kordyn-v2-shell="${device}"]');
     const mission = root.querySelector('[data-kordyn-v2-selected-mission="run-btc-complete"]');
+    const relatedContext = root.querySelector('section[data-kordyn-v2-mission-related-context="run-btc-complete"]');
+    const evidenceFact = [...(relatedContext?.querySelectorAll('dt') || mission.querySelectorAll('dt'))].find((node) => ['Evidence','证据'].includes(node.textContent.trim()));
     return {
       id:root.dataset.kordynV2SelectedId,
       text:mission.textContent,
+      evidence:evidenceFact?.nextElementSibling?.textContent?.trim() || null,
       stage:mission.querySelector('[aria-current="step"]')?.dataset.stageId || null
     };
   })()`);
   assert.equal(selected.id, "run-btc-complete");
   assert.equal(selected.stage, "review");
-  for (const text of ["BTC 突破回踩机会", "本轮结果已进入复盘", "查看实盘复盘", "2"]) {
+  for (const text of ["BTC 突破回踩机会", "本轮结果已进入复盘", "查看实盘复盘"]) {
     assert.ok(selected.text.includes(text), `${width}: selected Mission exposes ${text}`);
   }
+  assert.equal(selected.evidence, "2", `${width}: selected Mission Evidence remains visible in its device-specific Context`);
 
   await click(cdp, '[data-kordyn-v2-selected-mission="run-btc-complete"] [data-kordyn-v2-mission-proof="run-btc-complete"]');
 

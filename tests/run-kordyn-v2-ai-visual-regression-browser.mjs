@@ -230,6 +230,30 @@ async function verifyDesktopSignals(cdp, baseUrl, width, height) {
   await waitForExpression(cdp, "window.__kordynV2ShellReady && document.querySelector('[data-kordyn-v2-destination=\"ai/missions\"]')", `${width}: desktop Mission`);
   await click(cdp, '[data-kordyn-v2-workspace-target="intelligence"]');
   await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-destination=\"ai/intelligence\"] [data-kordyn-v2-signal-summary]')", `${width}: Signals summary`);
+  const material = await evaluate(cdp, `(() => ({
+    filterGroups:[...document.querySelectorAll('[data-kordyn-v2-signal-filter-group]')].map((node)=>node.dataset.kordynV2SignalFilterGroup),
+    operationGroups:[...document.querySelectorAll('[data-kordyn-v2-signal-operation]')].map((node)=>node.dataset.kordynV2SignalOperation),
+    denseRows:document.querySelectorAll('[data-kordyn-v2-signal-row-meta]').length
+  }))()`);
+  assert.deepEqual(material.filterGroups, ["category", "time", "availability"], `${width}: Signals exposes three real local filter groups`);
+  assert.deepEqual(material.operationGroups, ["watch", "event", "intelligence"], `${width}: Signals exposes three interactive operating registries`);
+  assert.ok(material.denseRows > 0, `${width}: Signals registry carries real source/time/type/selectability metadata`);
+  for (const [operation, type, id] of [["watch", "Watch", "watch-eth-retest"], ["event", "Event", "event-fomc-date"]]) {
+    await click(cdp, `[data-kordyn-v2-signal-operation="${operation}"] button[data-kordyn-v2-object-id="${id}"][data-kordyn-v2-object-type="${type}"]`);
+    await waitForExpression(cdp, `document.querySelector('[data-kordyn-v2-shell="desktop"]')?.dataset.kordynV2SelectedId === ${JSON.stringify(id)}`, `${width}: ${operation} lower registry selects canonical ${type}`);
+    for (const panel of ["context", "proof"]) {
+      await click(cdp, `[data-kordyn-v2-${panel}-trigger]`);
+      await waitForExpression(cdp, `document.querySelector('[data-kordyn-v2-overlay="${panel}"]')`, `${width}: ${operation} ${panel} opens`);
+      const identity = await evaluate(cdp, `document.querySelector('[data-kordyn-v2-overlay="${panel}"] .kordynV2OverlayIdentity')?.textContent?.trim()`);
+      assert.match(identity, new RegExp(`${type} / ${id}`), `${width}: ${operation} ${panel} uses Root canonical identity`);
+      await click(cdp, `[data-kordyn-v2-overlay="${panel}"] [data-kordyn-v2-overlay-close]`);
+      await waitForExpression(cdp, `!document.querySelector('[data-kordyn-v2-overlay="${panel}"]')`, `${width}: ${operation} ${panel} closes`);
+    }
+  }
+  const selectedBeforeLocalOverview = await evaluate(cdp, "document.querySelector('[data-kordyn-v2-shell=\"desktop\"]')?.dataset.kordynV2SelectedId");
+  await click(cdp, '[data-kordyn-v2-signal-operation="intelligence"] button[data-kordyn-v2-signal-overview-id="signal-cpi-flow"]');
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-selected-context=\"signal-cpi-flow\"]')", `${width}: intelligence overview updates the local Inspector`);
+  assert.equal(await evaluate(cdp, "document.querySelector('[data-kordyn-v2-shell=\"desktop\"]')?.dataset.kordynV2SelectedId"), selectedBeforeLocalOverview, `${width}: local intelligence overview does not fabricate a second canonical selection path`);
   const before = await evaluate(cdp, "document.querySelectorAll('.kordynV2AiContextRegistry [data-kordyn-v2-object-id]').length");
   await click(cdp, '[data-kordyn-v2-signal-filter="event"]');
   const after = await evaluate(cdp, "document.querySelectorAll('.kordynV2AiContextRegistry [data-kordyn-v2-object-id]').length");
@@ -241,8 +265,13 @@ async function verifyDesktopSignals(cdp, baseUrl, width, height) {
     const relation=rect('[data-kordyn-v2-relationship-lens="signal-decision-flow"]');
     const lower=rect('[data-kordyn-v2-signal-operational-context]');
     const prompt=rect('.kordynV2AiContextPrompt');
+    const filter=document.querySelector('.kordynV2AiContextFilter');
+    const filterLast=filter?.querySelector('[data-kordyn-v2-signal-availability="readonly"]')?.getBoundingClientRect();
+    const inspector=document.querySelector('.kordynV2AiContextInspector');
+    const description=inspector?.querySelector(':scope > section')?.getBoundingClientRect();
+    const inspectorFooter=inspector?.querySelector(':scope > footer')?.getBoundingClientRect();
     const columns=[...document.querySelector('.kordynV2AiSignalWorkbench').children].map((node)=>node.getBoundingClientRect().width);
-    return { summaryBottom:summary?.bottom, workbenchTop:workbench?.top, workbenchBottom:workbench?.bottom, relationTop:relation?.top, relationBottom:relation?.bottom, lowerTop:lower?.top, lowerBottom:lower?.bottom, promptTop:prompt?.top, columns, overflow:document.documentElement.scrollWidth-innerWidth };
+    return { summaryBottom:summary?.bottom, workbenchTop:workbench?.top, workbenchBottom:workbench?.bottom, relationTop:relation?.top, relationBottom:relation?.bottom, lowerTop:lower?.top, lowerBottom:lower?.bottom, promptTop:prompt?.top, columns, overflow:document.documentElement.scrollWidth-innerWidth, filterLastBottom:filterLast?.bottom, filterViewportBottom:filter?.getBoundingClientRect().bottom, inspectorDescriptionBottom:description?.bottom, inspectorFooterTop:inspectorFooter?.top };
   })()`);
   assert.ok(geometry.summaryBottom <= geometry.workbenchTop + 1);
   assert.ok(geometry.workbenchBottom <= geometry.relationTop + 1);
@@ -250,18 +279,71 @@ async function verifyDesktopSignals(cdp, baseUrl, width, height) {
   assert.ok(geometry.lowerBottom <= geometry.promptTop + 1);
   assert.ok(geometry.columns.length === 3 && geometry.columns.every((value) => value >= 120));
   assert.equal(geometry.overflow, 0);
+  assert.ok(geometry.filterLastBottom <= geometry.filterViewportBottom + 1, `${width}: all three local filter groups are initially visible ${JSON.stringify(geometry)}`);
+  assert.ok(geometry.inspectorDescriptionBottom <= geometry.inspectorFooterTop + 1, `${width}: evidence description clears Inspector actions ${JSON.stringify(geometry)}`);
   await capture(cdp, `desktop-signals-${width}x${height}.png`, width, height);
+  return geometry;
 }
 
 async function verifyDesktopMissionCommand(cdp, baseUrl, width, height) {
   await navigate(cdp, baseUrl, "/tests/kordyn-v2-ai-actions-browser.html", width, height);
   await waitForExpression(cdp, "window.__task4Ready && document.querySelector('[data-kordyn-v2-mission-command-bar]')", `${width}: Mission command bar`);
-  const geometry = await evaluate(cdp, `(() => { const work=document.querySelector('.kordynV2AiMissionWorkbench').getBoundingClientRect(); const command=document.querySelector('[data-kordyn-v2-mission-command-bar]').getBoundingClientRect(); const support=document.querySelector('[data-kordyn-v2-ai-support-trigger]').getBoundingClientRect(); const overlap=Math.max(0,Math.min(command.right,support.right)-Math.max(command.left,support.left))*Math.max(0,Math.min(command.bottom,support.bottom)-Math.max(command.top,support.top)); return {workBottom:work.bottom,workWidth:work.width,commandTop:command.top,commandRight:command.right,supportLeft:support.left,centerDelta:Math.abs((work.left+work.width/2)-(command.left+command.width/2)),width:command.width,supportOverlap:overlap,overflow:document.documentElement.scrollWidth-innerWidth}; })()`);
+  const material = await evaluate(cdp, `(() => ({
+    groups:[...document.querySelectorAll('[data-mission-group]')].map((node)=>node.dataset.missionGroup),
+    lifecycle:Boolean(document.querySelector('[data-kordyn-v2-mission-lifecycle]')),
+    decision:Boolean(document.querySelector('[data-kordyn-v2-mission-decision-summary]')),
+    related:Boolean(document.querySelector('[data-kordyn-v2-mission-related-context]')),
+    receipt:Boolean(document.querySelector('[data-kordyn-v2-mission-receipt]'))
+  }))()`);
+  assert.deepEqual(material.groups.slice(0, 5), ["analysis", "monitoring", "approval", "executing", "completed"], `${width}: Mission queue is organized by the five product stages`);
+  assert.deepEqual({ lifecycle:material.lifecycle, decision:material.decision, related:material.related, receipt:material.receipt }, { lifecycle:true, decision:true, related:true, receipt:true }, `${width}: Mission inspector carries lifecycle, decision, Context/Proof and runtime receipt`);
+  const geometry = await evaluate(cdp, `(() => { const work=document.querySelector('.kordynV2AiMissionWorkbench').getBoundingClientRect(); const command=document.querySelector('[data-kordyn-v2-mission-command-bar]').getBoundingClientRect(); const support=document.querySelector('[data-kordyn-v2-ai-support-trigger]').getBoundingClientRect(); const overlap=Math.max(0,Math.min(command.right,support.right)-Math.max(command.left,support.left))*Math.max(0,Math.min(command.bottom,support.bottom)-Math.max(command.top,support.top)); return {workBottom:work.bottom,workWidth:work.width,commandTop:command.top,commandBottom:command.bottom,commandHeight:command.height,commandLeftInset:command.left-work.left,commandRight:command.right,supportLeft:support.left,width:command.width,supportOverlap:overlap,overflow:document.documentElement.scrollWidth-innerWidth}; })()`);
   assert.ok(geometry.workBottom <= geometry.commandTop + 1);
-  assert.ok(geometry.centerDelta <= 1);
-  assert.ok(geometry.width >= Math.min(700, width * 0.5));
+  const expectedInset = width === 1180 ? 46 : 70;
+  const expectedWidth = geometry.workWidth - (width === 1180 ? 310 : 356);
+  const expectedWorkBottom = width === 1180 ? 690 : 776;
+  assert.ok(Math.abs(geometry.workBottom - expectedWorkBottom) <= 1, `${width}: Mission workbench preserves the approved footer breathing space ${JSON.stringify(geometry)}`);
+  assert.ok(Math.abs(geometry.commandLeftInset - expectedInset) <= 1, `${width}: Mission command follows the approved left content axis ${JSON.stringify(geometry)}`);
+  assert.ok(Math.abs(geometry.width - expectedWidth) <= 1, `${width}: Mission command preserves the approved long operating span ${JSON.stringify(geometry)}`);
+  if (width === 1440) {
+    assert.ok(geometry.commandTop >= 796 && geometry.commandTop <= 802 && geometry.commandHeight >= 70, `1440: Mission command aligns with the approved workbench footer ${JSON.stringify(geometry)}`);
+  }
   assert.equal(geometry.supportOverlap, 0, `${width}: centered Mission command bar clears AI support ${JSON.stringify(geometry)}`);
   assert.equal(geometry.overflow, 0);
+  const missionId = await evaluate(cdp, "document.querySelector('[data-kordyn-v2-mission-inspector]')?.dataset.kordynV2SelectedMission");
+  for (const [panel, selector] of [["context", `[data-kordyn-v2-mission-context="${missionId}"]`], ["proof", `[data-kordyn-v2-mission-proof="${missionId}"]`]]) {
+    await click(cdp, selector);
+    await waitForExpression(cdp, `document.querySelector('[data-kordyn-v2-overlay="${panel}"]')`, `${width}: Mission ${panel} opens from its real action`);
+    const identity = await evaluate(cdp, `document.querySelector('[data-kordyn-v2-overlay="${panel}"] .kordynV2OverlayIdentity')?.textContent?.trim()`);
+    assert.match(identity, new RegExp(`Agent run / ${missionId}`), `${width}: Mission ${panel} keeps the selected identity`);
+    await click(cdp, `[data-kordyn-v2-overlay="${panel}"] [data-kordyn-v2-overlay-close]`);
+    await waitForExpression(cdp, `!document.querySelector('[data-kordyn-v2-overlay="${panel}"]')`, `${width}: Mission ${panel} closes`);
+  }
+  let materialGeometry = null;
+  if (width === 1180) {
+    materialGeometry = await evaluate(cdp, `(() => {
+      const visible=(node, viewport)=>{ const rect=node?.getBoundingClientRect(); return Boolean(rect && rect.top >= viewport.top - 1 && rect.bottom <= viewport.bottom + 1); };
+      const decision=document.querySelector('[data-kordyn-v2-mission-decision-summary]');
+      const decisionViewport=decision?.getBoundingClientRect();
+      const decisionFacts=[...decision.querySelectorAll('dt')].map((node)=>({ label:node.textContent.trim(), visible:visible(node.parentElement, decisionViewport), bottom:node.parentElement.getBoundingClientRect().bottom }));
+      const context=document.querySelector('section[data-kordyn-v2-mission-related-context]');
+      const contextViewport=context?.getBoundingClientRect();
+      const contextFacts=[...context.querySelectorAll('dt')].map((node)=>({ label:node.textContent.trim(), visible:visible(node.parentElement, contextViewport), bottom:node.parentElement.getBoundingClientRect().bottom }));
+      const receipt=document.querySelector('[data-kordyn-v2-mission-receipt]');
+      const receiptViewport=receipt?.getBoundingClientRect();
+      const receiptFacts=[...receipt.querySelectorAll('dt')].map((node)=>({ label:node.textContent.trim(), visible:visible(node.parentElement, receiptViewport), bottom:node.parentElement.getBoundingClientRect().bottom }));
+      const footer=document.querySelector('.kordynV2AiMissionInspectorFooter');
+      const footerButtons=[...footer.querySelectorAll('button[data-kordyn-v2-mission-context],button[data-kordyn-v2-mission-proof]')].map((node)=>({ kind:node.dataset.kordynV2MissionContext ? 'context' : 'proof', left:node.getBoundingClientRect().left, right:node.getBoundingClientRect().right }));
+      return { decisionBottom:decisionViewport.bottom, decisionFacts, contextBottom:contextViewport.bottom, contextFacts, receiptBottom:receiptViewport.bottom, receiptFacts, footerButtons, duplicateEvidenceReceipt:Boolean(footer.querySelector('[data-kordyn-v2-mission-evidence-receipt]')) };
+    })()`);
+    const visibleLabels=(rows)=>rows.filter((row)=>row.visible).map((row)=>row.label);
+    assert.deepEqual(visibleLabels(materialGeometry.decisionFacts), ['Strategy', 'Knowledge', 'Capability', 'Event', 'Position'], `1180: five core decision facts remain visible ${JSON.stringify(materialGeometry)}`);
+    assert.deepEqual(materialGeometry.footerButtons.map((row)=>row.kind), ['context', 'proof'], `1180: footer keeps only the two real evidence actions ${JSON.stringify(materialGeometry)}`);
+    assert.equal(materialGeometry.duplicateEvidenceReceipt, false, `1180: footer does not repeat Context evidence or the hero next step ${JSON.stringify(materialGeometry)}`);
+    assert.deepEqual(visibleLabels(materialGeometry.contextFacts), ['Strategy', 'Knowledge', 'Capability', 'Event', 'Position', 'Evidence'], `1180: complete related Context remains visible ${JSON.stringify(materialGeometry)}`);
+    assert.deepEqual(visibleLabels(materialGeometry.receiptFacts), ['创建', '更新', '完成', '状态', 'Proof'], `1180: runtime receipt facts remain visible ${JSON.stringify(materialGeometry)}`);
+  }
+  return { geometry, materialGeometry };
 }
 
 const vitePort = await freePort();
@@ -281,12 +363,14 @@ try {
   const baseUrl = `http://127.0.0.1:${vitePort}`;
   const mobileMission = [];
   for (const viewport of [[390, 844], [430, 932]]) mobileMission.push(await verifyMobileMission(cdp, baseUrl, ...viewport));
+  const desktopSignals = [];
+  const desktopMission = [];
   for (const viewport of [[1440, 900], [1180, 800]]) {
-    await verifyDesktopMissionCommand(cdp, baseUrl, ...viewport);
-    await verifyDesktopSignals(cdp, baseUrl, ...viewport);
+    desktopMission.push({ width: viewport[0], ...(await verifyDesktopMissionCommand(cdp, baseUrl, ...viewport)) });
+    desktopSignals.push({ width: viewport[0], geometry: await verifyDesktopSignals(cdp, baseUrl, ...viewport) });
   }
   cdp.close();
-  console.log(`KORDYN V2 AI visual regression browser PASS captures=6 mobile=${JSON.stringify(mobileMission)} output=${outputDir}`);
+  console.log(`KORDYN V2 AI visual regression browser PASS captures=6 mobile=${JSON.stringify(mobileMission)} desktopMission=${JSON.stringify(desktopMission)} desktopSignals=${JSON.stringify(desktopSignals)} output=${outputDir}`);
 } finally {
   chrome.kill("SIGTERM");
   vite.kill("SIGTERM");

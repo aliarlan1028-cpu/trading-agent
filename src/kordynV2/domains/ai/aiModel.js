@@ -260,6 +260,56 @@ function nextActionFor(run) {
     : unavailable;
 }
 
+function firstBoundedText(...values) {
+  for (const value of values) {
+    if (nonEmptyText(value)) return value.trim().slice(0, 240);
+  }
+  return unavailable;
+}
+
+function boundedTextList(...values) {
+  const output = [];
+  const append = (value) => {
+    if (!nonEmptyText(value)) return;
+    const bounded = value.trim().slice(0, 120);
+    if (!output.includes(bounded)) output.push(bounded);
+  };
+  for (const value of values) {
+    if (arrayClassification(value) === true) {
+      for (const item of value) {
+        append(item);
+        if (output.length >= 8) break;
+      }
+    } else append(value);
+    if (output.length >= 8) break;
+  }
+  return output;
+}
+
+function missionDecisionContext(run, plan) {
+  const knowledge = boundedTextList(run.knowledgeSource, run.knowledgeSources, plan?.knowledgeSource, plan?.knowledgeSkillIds);
+  const capabilities = boundedTextList(run.capabilities, plan?.capabilities);
+  const events = boundedTextList(run.eventWindow, run.eventId, run.eventIds, plan?.eventWindow, plan?.eventId, plan?.eventIds);
+  const positions = boundedTextList(run.positionId, run.positionIds, plan?.positionId, plan?.positionIds);
+  return Object.freeze({
+    strategy: firstBoundedText(run.strategyName, run.strategy, plan?.strategy, plan?.strategyName),
+    knowledge: Object.freeze(knowledge),
+    capabilities: Object.freeze(capabilities),
+    events: Object.freeze(events),
+    positions: Object.freeze(positions)
+  });
+}
+
+function missionReceipt(run, latestStep) {
+  return Object.freeze({
+    createdAt: firstBoundedText(run.createdAt),
+    updatedAt: firstBoundedText(run.updatedAt, latestStep?.updatedAt, latestStep?.createdAt),
+    completedAt: firstBoundedText(run.completedAt),
+    status: firstBoundedText(run.status),
+    step: firstBoundedText(latestStep?.title, latestStep?.summary)
+  });
+}
+
 const finiteFact = (value, { positive = false, integer = false } = {}) => (
   typeof value === "number"
   && Number.isFinite(value)
@@ -415,6 +465,8 @@ function missionFor(run, plans, traces, data, messages) {
     stage: missionStagePresentation(stageForRun(run)),
     evidenceCount: evidenceCountFor(run, plan, traces),
     nextAction: nextActionFor(run),
+    decisionContext: missionDecisionContext(run, plan),
+    receipt: missionReceipt(run, latestStep),
     approval: plan ? projectApprovalTruth(plan, data) : null,
     output: outputMessageFor(run, plan, messages)
   });
