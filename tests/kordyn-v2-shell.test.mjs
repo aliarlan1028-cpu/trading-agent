@@ -84,6 +84,7 @@ test("Desktop shell follows the approved four-domain composition", () => {
     )
   );
   assert.match(html, /data-kordyn-v2-shell="desktop"/);
+  assert.match(html, /data-kordyn-v2-shell="desktop"[^>]*data-kordyn-v2-selected-id="mission-eth-retest"[^>]*data-kordyn-v2-selected-type="Mission"/);
   assert.equal((html.match(/data-kordyn-v2-domain-target=/g) || []).length, 4);
   assert.equal((html.match(/aria-current="page"/g) || []).length, 2);
   for (const label of ["AI 交易员", "账户交易", "智能资产", "系统治理", "任务", "情报", "观察哨", "事件日历", "对话"]) {
@@ -110,6 +111,7 @@ test("APP shell exposes exactly four full-label roots without a catch-all destin
   );
 
   assert.match(html, /data-kordyn-v2-shell="mobile"/);
+  assert.match(html, /data-kordyn-v2-shell="mobile"[^>]*data-kordyn-v2-selected-id="mission-eth-retest"[^>]*data-kordyn-v2-selected-type="Mission"/);
   assert.equal((html.match(/data-kordyn-v2-domain-target=/g) || []).length, 4);
   assert.equal((html.match(/data-kordyn-v2-workspace-target=/g) || []).length, 5);
   assert.equal((html.match(/aria-current="page"/g) || []).length, 2);
@@ -203,6 +205,45 @@ test("APP governed evidence exposes full decision facts with complete tab relati
   assert.equal((html.match(/tabindex="-1"/g) || []).length, 2);
   for (const value of ["Breakout Retest v3", "波动环境指南 + 2 条真实复盘", "行情 / 市场结构 / 风控 / 执行", "FOMC · 6h", "long 1.4"]) {
     assert.ok(html.includes(value), `missing governed decision fact: ${value}`);
+  }
+});
+
+test("APP Proof keeps bounded scalar details visible with stages and rejects unsafe coercion", () => {
+  const html = renderToStaticMarkup(React.createElement(MobileSheet, {
+    panel: "evidence",
+    selection: {
+      ...canonicalSelection,
+      trace: { objectId: "mission-eth-retest", stages: [{ id: "review", label: "Review", detail: "Receipt retained", status: "complete" }] }
+    },
+    initialEvidenceTab: "proof",
+    evidenceDetails: [
+      ["创建", "2026-08-27T05:20:00Z"],
+      ["更新", "Unavailable"],
+      ["完成", "2026-08-27T05:43:00Z"],
+      ["unsafe", { toString: () => "must-not-coerce" }],
+      ["x".repeat(80), "y".repeat(240)]
+    ],
+    onClose: () => {}
+  }));
+
+  for (const value of ["2026-08-27T05:20:00Z", "Unavailable", "2026-08-27T05:43:00Z", "Receipt retained"]) {
+    assert.ok(html.includes(value), `Proof keeps safe evidence detail: ${value}`);
+  }
+  assert.doesNotMatch(html, /must-not-coerce/);
+  assert.doesNotMatch(html, new RegExp("x{80}|y{240}"));
+});
+
+test("shell selected type fails closed when canonical selection has no trusted type", () => {
+  for (const Shell of [DesktopShell, MobileShell]) {
+    const html = renderToStaticMarkup(React.createElement(Shell, {
+      location: { domainId: "ai", workspaceId: "missions" },
+      truth: readyTruth,
+      state: { kind: "ready" },
+      selection: { object: { id: "mission-unknown" } },
+      identity: { name: "K0", notificationCount: 0 },
+      onNavigate: () => {}
+    }, React.createElement("main")));
+    assert.match(html, /data-kordyn-v2-selected-id="mission-unknown"[^>]*data-kordyn-v2-selected-type="none"/);
   }
 });
 

@@ -185,7 +185,12 @@ test("Desktop and APP Proof buttons request the visible fallback Mission without
         workspaceId: "ai",
         route: "chat",
         evidence: 3
-      }
+      },
+      details: [
+        ["创建", "Unavailable"],
+        ["更新", "Unavailable"],
+        ["完成", "Unavailable"]
+      ]
     });
   }
   assert.equal(calls.length, 2);

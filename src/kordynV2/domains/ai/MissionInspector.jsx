@@ -1,19 +1,9 @@
 import { ArrowRight, Bot, FileCheck2, FileImage, Link2, ShieldAlert } from "lucide-react";
 import { MissionProgress } from "./MissionProgress.jsx";
+import { missionEvidenceRequest } from "./missionEvidence.js";
 
 const unavailable = "Unavailable";
 const safeValue = (value) => value === null || value === undefined || value === "" ? unavailable : String(value);
-const evidenceRequest = (mission, panel) => ({
-  panel,
-  candidate: {
-    id: mission.id,
-    type: "Agent run",
-    workspaceId: "ai",
-    route: "chat",
-    evidence: mission.evidenceCount
-  }
-});
-
 function MissionFact({ label, value, icon: Icon }) {
   return (
     <div className="kordynV2AiMissionFact">
@@ -86,7 +76,7 @@ export function MissionInspector({ mission, actionsDisabled = false, onOpenProof
           aria-haspopup="dialog"
           data-kordyn-v2-mission-context={mission.id}
           data-kordyn-v2-mission-related-context={mission.id}
-          onClick={(event) => onOpenProof(event.currentTarget, evidenceRequest(mission, "context"))}
+          onClick={(event) => onOpenProof(event.currentTarget, missionEvidenceRequest(mission, "context"))}
         >
           <Link2 size={16} aria-hidden="true" />查看 Context
         </button>
@@ -94,7 +84,7 @@ export function MissionInspector({ mission, actionsDisabled = false, onOpenProof
           type="button"
           aria-haspopup="dialog"
           data-kordyn-v2-mission-proof={mission.id}
-          onClick={(event) => onOpenProof(event.currentTarget, evidenceRequest(mission, "proof"))}
+          onClick={(event) => onOpenProof(event.currentTarget, missionEvidenceRequest(mission, "proof"))}
         >
           <FileCheck2 size={16} aria-hidden="true" />查看 Proof
         </button>

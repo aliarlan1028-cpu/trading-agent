@@ -69,7 +69,7 @@ function SignalOperationTable({ kind, title, rows, selectedId, onInspect = () =>
               className={selectedId === row.id ? "is-selected" : ""}
               type="button"
               {...contextPresentationAttributes(row, type)}
-              aria-disabled={row.selectable !== true}
+              aria-description={row.selectable === true ? undefined : "只读事实，可查看详情，不会改变当前对象"}
               aria-pressed={row.selectable === true ? selectedId === row.id : undefined}
               key={`${kind}-operation-${index}`}
               onClick={() => runAiContextRowInteraction({ row, type, onInspect, onSelect, candidateFor: (value) => operationCandidate(value, type) })}
@@ -155,7 +155,7 @@ export function AiSignalsWorkspace({ model, actions = {}, actionsDisabled = fals
                   type="button"
                   key={`${type}-presentation-${index}`}
                   {...contextPresentationAttributes(row, type)}
-                  aria-disabled={!selectable}
+                  aria-description={selectable ? undefined : "只读事实，可查看详情，不会改变当前对象"}
                   onClick={() => runAiContextRowInteraction({ row, type, onInspect: setInspected, onSelect, candidateFor })}
                 >
                   <span className="kordynV2AiContextIcon" aria-hidden="true">{row.kind === "event" ? <CalendarDays size={16} /> : row.kind === "news" ? <Newspaper size={16} /> : <Sparkles size={16} />}</span>

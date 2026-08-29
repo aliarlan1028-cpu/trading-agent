@@ -1,6 +1,7 @@
 import { Bot, Braces, FileCheck2, ListChecks, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { AiSupport } from "./AiSupport.jsx";
+import { normalizeEvidenceDetails } from "./evidenceDetails.js";
 
 const unavailable = "Unavailable";
 const safeText = (value) => (
@@ -94,6 +95,7 @@ export function MobileSheet({ panel, selection, supportContext, initialEvidenceT
 
   const context = selection?.context || {};
   const stages = Array.isArray(selection?.trace?.stages) ? selection.trace.stages : [];
+  const details = normalizeEvidenceDetails(evidenceDetails);
   const selectedId = safeText(selection?.object?.id);
   const title = panel === "evidence" ? "对象证据" : "AI 客服 · 只读助理";
   const PanelIcon = panel === "evidence" ? FileCheck2 : Bot;
@@ -157,10 +159,10 @@ export function MobileSheet({ panel, selection, supportContext, initialEvidenceT
           ) : <>
             <p className="kordynV2MobileSheetIdentity">{safeText(selection?.object?.type)} / {selectedId}</p>
             {evidenceTab === "details" ? (
-            Array.isArray(evidenceDetails) && evidenceDetails.length ? (
+            details.length ? (
               <dl className="kordynV2MobileDecisionFacts">
-                {evidenceDetails.map(([label, value]) => (
-                  <div key={safeText(label)}><dt>{safeText(label)}</dt><dd>{safeText(value)}</dd></div>
+                {details.map(([label, value], index) => (
+                  <div key={`${label}-${index}`}><dt>{label}</dt><dd>{value}</dd></div>
                 ))}
               </dl>
             ) : <p className="kordynV2MobileEvidenceUnavailable">{unavailable}</p>
@@ -174,15 +176,20 @@ export function MobileSheet({ panel, selection, supportContext, initialEvidenceT
               ))}
             </dl>
             ) : (
-            <ol className="kordynV2MobileProofStages">
-              {stages.length ? stages.map((stage, index) => (
-                <li key={safeText(stage?.id) === unavailable ? index : safeText(stage.id)} data-stage-state={safeText(stage?.status).toLowerCase()}>
-                  <span>{String(index + 1).padStart(2, "0")}</span>
-                  <div><strong>{safeText(stage?.label)}</strong><small>{safeText(stage?.detail)}</small></div>
-                  <em>{safeText(stage?.status)}</em>
-                </li>
-              )) : <li className="is-empty">当前对象没有可用的阶段证据。</li>}
-            </ol>
+            <div className="kordynV2MobileProofContent">
+              {details.length > 0 && <dl className="kordynV2MobileDecisionFacts" data-kordyn-v2-proof-details>
+                {details.map(([label, value], index) => <div key={`${label}-${index}`}><dt>{label}</dt><dd>{value}</dd></div>)}
+              </dl>}
+              <ol className="kordynV2MobileProofStages">
+                {stages.length ? stages.map((stage, index) => (
+                  <li key={safeText(stage?.id) === unavailable ? index : safeText(stage.id)} data-stage-state={safeText(stage?.status).toLowerCase()}>
+                    <span>{String(index + 1).padStart(2, "0")}</span>
+                    <div><strong>{safeText(stage?.label)}</strong><small>{safeText(stage?.detail)}</small></div>
+                    <em>{safeText(stage?.status)}</em>
+                  </li>
+                )) : <li className="is-empty">当前对象没有可用的阶段证据。</li>}
+              </ol>
+            </div>
             )}
           </>}
         </div>

@@ -222,5 +222,7 @@ test("Desktop Signals lower operations are real interactive Watch Event and Inte
   const intelligence = html.slice(intelligenceStart, intelligenceEnd);
   assert.match(intelligence, /data-kordyn-v2-object-id="signal-recent"[^>]*data-kordyn-v2-object-type="Signal"/);
   assert.match(intelligence, /data-kordyn-v2-readonly-fact="true"/);
+  assert.match(intelligence, /data-kordyn-v2-readonly-fact="true"[^>]*aria-description="只读事实，可查看详情，不会改变当前对象"/);
+  assert.doesNotMatch(intelligence, /data-kordyn-v2-readonly-fact="true"[^>]*aria-disabled="true"/);
   assert.doesNotMatch(intelligence, /data-kordyn-v2-signal-overview-id/);
 });

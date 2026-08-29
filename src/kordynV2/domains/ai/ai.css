@@ -2419,7 +2419,7 @@
   background: rgba(35, 65, 107, 0.3);
 }
 
-.kordynV2AiContextRegistry > div > button[aria-disabled="true"] {
+.kordynV2AiContextRegistry > div > button[data-kordyn-v2-readonly-fact="true"] {
   color: var(--kordyn-v2-muted);
   border-style: dashed;
 }
@@ -2726,7 +2726,7 @@
   background: rgba(52, 120, 255, 0.1);
 }
 
-.kordynV2AiSignalOperation button[aria-disabled="true"] { cursor: default; opacity: 0.58; }
+.kordynV2AiSignalOperation button[data-kordyn-v2-readonly-fact="true"] { opacity: 0.58; }
 .kordynV2AiSignalOperation button > span { min-width: 0; display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 7px; }
 .kordynV2AiSignalOperation strong,
 .kordynV2AiSignalOperation small,

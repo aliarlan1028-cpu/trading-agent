@@ -1,5 +1,6 @@
 import { Braces, FileCheck2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { normalizeEvidenceDetails } from "./evidenceDetails.js";
 
 const unavailable = "Unavailable";
 const safeText = (value) => (
@@ -19,6 +20,7 @@ const CONTEXT_FIELDS = Object.freeze([
 export function ContextProof({ selection, request }) {
   const [panel, setPanel] = useState(null);
   const [requestedSelection, setRequestedSelection] = useState(undefined);
+  const [requestedDetails, setRequestedDetails] = useState(undefined);
   const dialogRef = useRef(null);
   const contextTriggerRef = useRef(null);
   const proofTriggerRef = useRef(null);
@@ -28,6 +30,7 @@ export function ContextProof({ selection, request }) {
     if (!request?.token || !["context", "proof"].includes(request.panel)) return;
     returnFocusRef.current = request.trigger;
     setRequestedSelection(request.selection);
+    setRequestedDetails(normalizeEvidenceDetails(request.details));
     setPanel(request.panel);
   }, [request?.panel, request?.selection, request?.token, request?.trigger]);
 
@@ -42,6 +45,7 @@ export function ContextProof({ selection, request }) {
   const open = (nextPanel, trigger) => {
     returnFocusRef.current = trigger;
     setRequestedSelection(undefined);
+    setRequestedDetails(undefined);
     setPanel(nextPanel);
   };
 
@@ -85,6 +89,7 @@ export function ContextProof({ selection, request }) {
   const context = activeSelection?.context || {};
   const stages = Array.isArray(activeSelection?.trace?.stages) ? activeSelection.trace.stages : [];
   const selectedId = safeText(activeSelection?.object?.id);
+  const activeDetails = requestedDetails === undefined ? [] : requestedDetails;
 
   return (
     <>
@@ -149,15 +154,20 @@ export function ContextProof({ selection, request }) {
                 ))}
               </dl>
             ) : (
-              <ol className="kordynV2ProofStages">
-                {stages.length ? stages.map((stage, index) => (
-                  <li key={safeText(stage?.id) === unavailable ? index : safeText(stage.id)} data-stage-state={safeText(stage?.status).toLowerCase()}>
-                    <span>{String(index + 1).padStart(2, "0")}</span>
-                    <div><strong>{safeText(stage?.label)}</strong><small>{safeText(stage?.detail)}</small></div>
-                    <em>{safeText(stage?.status)}</em>
-                  </li>
-                )) : <li className="is-empty">当前对象没有可用的阶段证据。</li>}
-              </ol>
+              <div className="kordynV2ProofContent">
+                {activeDetails.length > 0 && <dl className="kordynV2ProofDetails" data-kordyn-v2-proof-details>
+                  {activeDetails.map(([label, value], index) => <div key={`${label}-${index}`}><dt>{label}</dt><dd>{value}</dd></div>)}
+                </dl>}
+                <ol className="kordynV2ProofStages">
+                  {stages.length ? stages.map((stage, index) => (
+                    <li key={safeText(stage?.id) === unavailable ? index : safeText(stage.id)} data-stage-state={safeText(stage?.status).toLowerCase()}>
+                      <span>{String(index + 1).padStart(2, "0")}</span>
+                      <div><strong>{safeText(stage?.label)}</strong><small>{safeText(stage?.detail)}</small></div>
+                      <em>{safeText(stage?.status)}</em>
+                    </li>
+                  )) : <li className="is-empty">当前对象没有可用的阶段证据。</li>}
+                </ol>
+              </div>
             )}
           </section>
         </div>

@@ -9,6 +9,7 @@ import { MobileShell } from "./shell/MobileShell.jsx";
 import { useV2Viewport } from "./shell/useV2Viewport.js";
 import { buildAccountTruth } from "./viewModels/accountTruth.js";
 import { buildAiSupportContext } from "./viewModels/aiSupport.js";
+import { normalizeEvidenceDetails } from "./shell/evidenceDetails.js";
 import { createV2Selection } from "./viewModels/selection.js";
 import { normalizeResourceState } from "./viewModels/state.js";
 
@@ -153,7 +154,7 @@ export function KordynV2Root({ api, lang }) {
     const panel = ["details", "context", "proof"].includes(request?.panel) ? request.panel : "proof";
     setEvidenceRequest((current) => ({
       panel,
-      details: Array.isArray(request?.details) ? request.details : null,
+      details: normalizeEvidenceDetails(request?.details),
       selection: resolveEvidenceSelection({ data, selection, request }),
       token: (current?.token || 0) + 1,
       trigger

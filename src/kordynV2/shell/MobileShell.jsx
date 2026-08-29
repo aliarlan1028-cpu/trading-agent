@@ -24,6 +24,7 @@ export function MobileShell({
   const returnFocusRef = useRef(null);
   const supportTriggerRef = useRef(null);
   const selectedId = selection?.object?.id || "none";
+  const selectedType = typeof selection?.object?.type === "string" && selection.object.type.trim() ? selection.object.type : "none";
   const domain = KORDYN_V2_DOMAINS.find((item) => item.id === location.domainId) || KORDYN_V2_DOMAINS[0];
   const mobileTruth = useMemo(() => ({
     ...truth,
@@ -74,6 +75,7 @@ export function MobileShell({
       data-kordyn-v2-domain={location.domainId}
       data-kordyn-v2-workspace={location.workspaceId}
       data-kordyn-v2-selected-id={selectedId}
+      data-kordyn-v2-selected-type={selectedType}
     >
       <div
         className="kordynV2MobileBackground"

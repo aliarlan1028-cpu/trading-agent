@@ -1,6 +1,7 @@
 import { ArrowRight, Bot, CircleAlert, FileCheck2, FileImage, ShieldCheck } from "lucide-react";
 import { AiDialogPrompt } from "./AiDialogPrompt.jsx";
 import { MissionProgress } from "./MissionProgress.jsx";
+import { missionEvidenceRequest } from "./missionEvidence.js";
 
 const unavailable = "Unavailable";
 const safeValue = (value) => value === null || value === undefined || value === "" ? unavailable : String(value);
@@ -55,7 +56,7 @@ function MobileActiveMission({ mission, selection, actionsDisabled, onSelect, on
           type="button"
           aria-haspopup="dialog"
           data-kordyn-v2-mission-proof={mission.id}
-          onClick={(event) => onOpenProof(event.currentTarget, { panel: "proof", candidate: selectPayload(mission) })}
+          onClick={(event) => onOpenProof(event.currentTarget, missionEvidenceRequest(mission, "proof"))}
         >查看证据<ArrowRight size={16} aria-hidden="true" /></button>
         <span>{selection?.object?.id === mission.id ? "当前对象" : unavailable}</span>
       </footer>

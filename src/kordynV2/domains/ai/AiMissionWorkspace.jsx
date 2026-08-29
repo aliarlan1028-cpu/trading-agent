@@ -2,6 +2,7 @@ import { ArrowRight, Bot, CircleAlert, FileSearch } from "lucide-react";
 import { AiDialogPrompt } from "./AiDialogPrompt.jsx";
 import { MissionInspector } from "./MissionInspector.jsx";
 import { MissionRegistry } from "./MissionRegistry.jsx";
+import { missionEvidenceRequest } from "./missionEvidence.js";
 
 const unavailable = "Unavailable";
 
@@ -33,9 +34,6 @@ function ContextFact({ label, value }) {
 function ReceiptFact({ id, label, value, timestamp = false }) {
   const fact = timestamp ? compactTimestamp(value) : { exact: readableValue(value), display: readableValue(value) };
   return <div data-kordyn-v2-mission-receipt-fact={id}><dt>{label}</dt><dd title={fact.exact} aria-label={`${label} ${fact.exact}`}>{fact.display}</dd></div>;
-}
-function missionProofRequest(mission) {
-  return { panel: "proof", candidate: { id: mission.id, type: "Agent run", workspaceId: "ai", route: "chat", evidence: mission.evidenceCount } };
 }
 function AttentionRail({ missions, selectedMission, selection, onSelect, onOpenProof }) {
   const approvalMissions = missions.filter((mission) => mission.stage?.id === "approval");
@@ -69,7 +67,7 @@ function AttentionRail({ missions, selectedMission, selection, onSelect, onOpenP
           <ContextFact label="Position" value={firstListValue(selectedMission?.decisionContext?.positions)} />
           <ContextFact label="Evidence" value={selectedMission?.evidenceCount} />
         </dl>
-        {selectedMission && <button type="button" className="kordynV2AiAttentionProof" data-kordyn-v2-attention-proof={selectedMission.id} onClick={(event) => onOpenProof(event.currentTarget, missionProofRequest(selectedMission))}><FileSearch size={15} aria-hidden="true" /><span><strong>打开 Context / Proof</strong><small>{selection?.context?.title || selectedMission.id}</small></span><ArrowRight size={15} aria-hidden="true" /></button>}
+        {selectedMission && <button type="button" className="kordynV2AiAttentionProof" data-kordyn-v2-attention-proof={selectedMission.id} onClick={(event) => onOpenProof(event.currentTarget, missionEvidenceRequest(selectedMission, "proof"))}><FileSearch size={15} aria-hidden="true" /><span><strong>打开 Context / Proof</strong><small>{selection?.context?.title || selectedMission.id}</small></span><ArrowRight size={15} aria-hidden="true" /></button>}
       </section>
 
       <section className="kordynV2AiAttentionPanel is-trace" data-kordyn-v2-mission-receipt={selectedMission?.id || unavailable}>

@@ -648,6 +648,11 @@
     list-style: none;
   }
 
+  .kordynV2MobileProofContent {
+    display: grid;
+    gap: 12px;
+  }
+
   .kordynV2MobileProofStages li {
     min-height: 66px;
     padding: 10px;

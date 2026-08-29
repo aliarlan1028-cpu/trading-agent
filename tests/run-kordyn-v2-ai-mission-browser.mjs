@@ -230,12 +230,18 @@ async function verifyViewport(cdp, baseUrl, { width, height, device }) {
     const close = overlay.querySelector('[data-kordyn-v2-overlay-close], [data-kordyn-v2-mobile-sheet-close]');
     return {
       globalId:root.dataset.kordynV2SelectedId,
+      globalType:root.dataset.kordynV2SelectedType,
       identity,
+      text:overlay.textContent,
       closeFocused:close === document.activeElement
     };
   })()`);
   assert.equal(proof.globalId, "run-btc-complete", `${width}: Proof does not mutate global selection`);
+  assert.equal(proof.globalType, "Agent run", `${width}: Root exposes the selected canonical Mission type`);
   assert.match(proof.identity, /Agent run \/ run-btc-complete/, `${width}: Proof snapshots visible Mission identity`);
+  for (const exact of ["2026-08-27T05:20:00Z", "Unavailable", "2026-08-27T05:43:00Z"]) {
+    assert.ok(proof.text.includes(exact), `${width}: actual Mission Proof exposes receipt ${exact}`);
+  }
   assert.equal(proof.closeFocused, true, `${width}: Proof moves focus inside dialog`);
 
   await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });

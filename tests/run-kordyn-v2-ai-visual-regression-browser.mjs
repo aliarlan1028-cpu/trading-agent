@@ -238,7 +238,7 @@ async function verifyDesktopSignals(cdp, baseUrl, width, height) {
   assert.deepEqual(material.filterGroups, ["category", "time", "availability"], `${width}: Signals exposes three real local filter groups`);
   assert.deepEqual(material.operationGroups, ["watch", "event", "intelligence"], `${width}: Signals exposes three interactive operating registries`);
   assert.ok(material.denseRows > 0, `${width}: Signals registry carries real source/time/type/selectability metadata`);
-  for (const [operation, type, id] of [["watch", "Watch", "watch-eth-retest"], ["event", "Event", "event-fomc-date"], ["intelligence", "Signal", "signal-cpi-flow"]]) {
+  for (const [operation, type, id] of [["watch", "Watch", "watch-eth-retest"], ["event", "Event", "event-fomc-date"]]) {
     await click(cdp, `[data-kordyn-v2-signal-operation="${operation}"] button[data-kordyn-v2-object-id="${id}"][data-kordyn-v2-object-type="${type}"]`);
     await waitForExpression(cdp, `document.querySelector('[data-kordyn-v2-shell="desktop"]')?.dataset.kordynV2SelectedId === ${JSON.stringify(id)}`, `${width}: ${operation} lower registry selects canonical ${type}`);
     for (const panel of ["context", "proof"]) {
@@ -250,12 +250,27 @@ async function verifyDesktopSignals(cdp, baseUrl, width, height) {
       await waitForExpression(cdp, `!document.querySelector('[data-kordyn-v2-overlay="${panel}"]')`, `${width}: ${operation} ${panel} closes`);
     }
   }
-  const selectedBeforeReadonlyOverview = await evaluate(cdp, "document.querySelector('[data-kordyn-v2-shell=\"desktop\"]')?.dataset.kordynV2SelectedId");
+  const selectedBeforeReadonlyOverview = await evaluate(cdp, `(() => { const root=document.querySelector('[data-kordyn-v2-shell="desktop"]'); return { id:root?.dataset.kordynV2SelectedId, type:root?.dataset.kordynV2SelectedType }; })()`);
   const readonlyOverview = '[data-kordyn-v2-signal-operation="intelligence"] button[data-kordyn-v2-readonly-fact="true"]';
+  assert.equal(await evaluate(cdp, `document.querySelector(${JSON.stringify(readonlyOverview)})?.getAttribute('aria-disabled')`), null, `${width}: inspectable readonly intelligence is not announced as disabled`);
   await click(cdp, readonlyOverview);
   await waitForExpression(cdp, `document.querySelector('.kordynV2AiContextInspector h2')?.textContent?.includes('未识别来源事实')`, `${width}: readonly intelligence overview remains locally inspectable`);
-  assert.equal(await evaluate(cdp, "document.querySelector('[data-kordyn-v2-shell=\"desktop\"]')?.dataset.kordynV2SelectedId"), selectedBeforeReadonlyOverview, `${width}: readonly intelligence overview fails canonical selection closed`);
+  assert.deepEqual(await evaluate(cdp, `(() => { const root=document.querySelector('[data-kordyn-v2-shell="desktop"]'); return { id:root?.dataset.kordynV2SelectedId, type:root?.dataset.kordynV2SelectedType }; })()`), selectedBeforeReadonlyOverview, `${width}: readonly intelligence overview fails canonical selection closed`);
   assert.equal(await evaluate(cdp, `Boolean(document.querySelector(${JSON.stringify(readonlyOverview)})?.dataset.kordynV2ObjectId)`), false, `${width}: readonly intelligence overview exposes no partial canonical identity`);
+  const selectableSignal = '[data-kordyn-v2-signal-operation="intelligence"] button[data-kordyn-v2-object-id="signal-cpi-flow"][data-kordyn-v2-object-type="Signal"]';
+  const clickedType = await evaluate(cdp, `document.querySelector(${JSON.stringify(selectableSignal)})?.dataset.kordynV2ObjectType`);
+  await click(cdp, selectableSignal);
+  await waitForExpression(cdp, `document.querySelector('[data-kordyn-v2-selected-context="signal-cpi-flow"]')`, `${width}: selectable lower Intelligence synchronizes the Inspector after readonly inspection`);
+  const selectedSignalIdentity = await evaluate(cdp, `(() => { const root=document.querySelector('[data-kordyn-v2-shell="desktop"]'); const inspector=document.querySelector('[data-kordyn-v2-selected-context="signal-cpi-flow"]'); return { clickedType:${JSON.stringify(clickedType)}, inspectorId:inspector?.dataset.kordynV2SelectedContext, rootId:root?.dataset.kordynV2SelectedId, rootType:root?.dataset.kordynV2SelectedType }; })()`);
+  assert.deepEqual(selectedSignalIdentity, { clickedType:"Signal", inspectorId:"signal-cpi-flow", rootId:"signal-cpi-flow", rootType:"Signal" }, `${width}: clicked row, Inspector, and Root share one Signal identity`);
+  for (const panel of ["context", "proof"]) {
+    await click(cdp, `[data-kordyn-v2-${panel}-trigger]`);
+    await waitForExpression(cdp, `document.querySelector('[data-kordyn-v2-overlay="${panel}"]')`, `${width}: lower Intelligence ${panel} opens`);
+    const identity = await evaluate(cdp, `document.querySelector('[data-kordyn-v2-overlay="${panel}"] .kordynV2OverlayIdentity')?.textContent?.trim()`);
+    assert.match(identity, /Signal \/ signal-cpi-flow/, `${width}: lower Intelligence ${panel} matches Inspector and Root identity`);
+    await click(cdp, `[data-kordyn-v2-overlay="${panel}"] [data-kordyn-v2-overlay-close]`);
+    await waitForExpression(cdp, `!document.querySelector('[data-kordyn-v2-overlay="${panel}"]')`, `${width}: lower Intelligence ${panel} closes`);
+  }
   const before = await evaluate(cdp, "document.querySelectorAll('.kordynV2AiContextRegistry [data-kordyn-v2-object-id]').length");
   await click(cdp, '[data-kordyn-v2-signal-filter="event"]');
   const after = await evaluate(cdp, "document.querySelectorAll('.kordynV2AiContextRegistry [data-kordyn-v2-object-id]').length");
