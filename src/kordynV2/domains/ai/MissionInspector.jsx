@@ -3,6 +3,16 @@ import { MissionProgress } from "./MissionProgress.jsx";
 
 const unavailable = "Unavailable";
 const safeValue = (value) => value === null || value === undefined || value === "" ? unavailable : String(value);
+const proofRequest = (mission) => ({
+  panel: "proof",
+  candidate: {
+    id: mission.id,
+    type: "Agent run",
+    workspaceId: "ai",
+    route: "chat",
+    evidence: mission.evidenceCount
+  }
+});
 
 function MissionFact({ label, value, icon: Icon }) {
   return (
@@ -68,7 +78,12 @@ export function MissionInspector({ mission, selection, onOpenProof = () => {} })
       )}
 
       <footer className="kordynV2AiMissionInspectorFooter">
-        <button type="button" aria-haspopup="dialog" onClick={(event) => onOpenProof(event.currentTarget)}>
+        <button
+          type="button"
+          aria-haspopup="dialog"
+          data-kordyn-v2-mission-proof={mission.id}
+          onClick={(event) => onOpenProof(event.currentTarget, proofRequest(mission))}
+        >
           <Link2 size={16} aria-hidden="true" />查看 Context / Proof
         </button>
         <span title={`对象 ${safeValue(selection?.object?.id)}`}>{mission.id}</span>

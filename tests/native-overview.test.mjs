@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compactOverviewForNative } from "../server/overviewView.mjs";
+import { compactOverviewForNative, projectOverviewSection } from "../server/overviewView.mjs";
+import { KORDYN_V2_PRODUCTION_FIXTURE_JSON } from "./kordyn-v2-production-fixture.js";
 
 const candles = Array.from({ length: 800 }, (_, index) => ({
   time: index,
@@ -88,6 +89,80 @@ test("native overview removes repeated histories while preserving actionable sta
   assert.deepEqual(compact.evidenceBundles, []);
   assert.ok(JSON.stringify(compact).length < JSON.stringify(full).length * 0.08);
   assert.equal(full.markets[0].candles, candles, "must not mutate the desktop overview");
+});
+
+test("chat overview bounds the non-sensitive Agent Mission presentation projection", () => {
+  const projected = projectOverviewSection({
+    agentRuns: [{
+      id: "run-mission",
+      goal: "G".repeat(300),
+      tradePlanId: "plan-mission",
+      evidenceCount: 3,
+      status: "awaiting_approval",
+      presentation: { nextAction: "N".repeat(300), prompt: "drop" },
+      steps: [{ id: "step-mission", phase: "awaiting_approval", title: "T".repeat(300), summary: "S".repeat(300), raw: { secret: true } }],
+      toolTrace: [{ raw: true }],
+      prompt: "drop"
+    }],
+    tradePlans: [{ id: "plan-mission", agentRunId: "run-mission", status: "awaiting_approval" }]
+  }, "chat");
+  const run = projected.agentRuns[0];
+
+  assert.equal(run.goal.length, 240);
+  assert.equal(run.tradePlanId, "plan-mission");
+  assert.equal(run.evidenceCount, 3);
+  assert.deepEqual(run.presentation, { nextAction: "N".repeat(240) });
+  assert.equal(run.steps[0].summary, "S".repeat(240));
+  assert.equal(run.toolTrace, undefined);
+  assert.equal(run.prompt, undefined);
+  assert.equal(run.steps[0].raw, undefined);
+});
+
+test("chat overview drops overlong Mission linkage instead of truncating it into another identity", () => {
+  const projected = projectOverviewSection({
+    agentRuns: [{
+      id: "run-overlong-link",
+      goal: { unsafe: true },
+      tradePlanId: `plan-${"x".repeat(140)}`,
+      evidenceCount: Number.MAX_SAFE_INTEGER + 1,
+      presentation: { nextAction: { unsafe: true } },
+      steps: [{ id: "step-overlong", phase: "planning", summary: { unsafe: true } }]
+    }]
+  }, "chat").agentRuns[0];
+
+  assert.equal(projected.goal, undefined);
+  assert.equal(projected.tradePlanId, undefined);
+  assert.equal(projected.evidenceCount, undefined);
+  assert.equal(projected.presentation, undefined);
+  assert.equal(projected.steps[0].summary, undefined);
+});
+
+test("the authenticated browser fixture uses the exact production Agent-run projection shape", () => {
+  const fullAgentRuns = [
+    {
+      id: "run-btc-analysis",
+      goal: "BTC 趋势延续结构",
+      status: "awaiting_approval",
+      tradePlanId: "plan-btc-mission",
+      evidenceCount: 3,
+      presentation: { nextAction: "确认计划后继续监控" },
+      steps: [{ id: "step-btc-guard", phase: "awaiting_approval", title: "正在验证风险边界", summary: "账户、证据与硬风控已核对" }],
+      createdAt: "2026-08-27T06:21:07Z"
+    },
+    {
+      id: "run-btc-complete",
+      goal: "BTC 突破回踩机会",
+      status: "completed",
+      evidenceCount: 2,
+      presentation: { nextAction: "查看实盘复盘" },
+      steps: [{ id: "step-btc-review", phase: "decision", title: "正在复盘结果", summary: "本轮结果已进入复盘" }],
+      createdAt: "2026-08-27T05:20:00Z",
+      completedAt: "2026-08-27T05:43:00Z"
+    }
+  ];
+  const expected = JSON.parse(JSON.stringify(projectOverviewSection({ agentRuns: fullAgentRuns }, "chat").agentRuns));
+  const fixture = JSON.parse(KORDYN_V2_PRODUCTION_FIXTURE_JSON);
+  assert.deepEqual(fixture.agentRuns, expected);
 });
 
 test("native overview aggregates a complete lifecycle before truncating the fill ledger", () => {

@@ -47,7 +47,13 @@ function MobileActiveMission({ mission, selection, onSelect, onOpenProof }) {
       </dl>
       <footer>
         <button className="kordynV2AiMobileAction" type="button" onClick={() => onSelect(selectPayload(mission))}>查看任务<ArrowRight size={16} aria-hidden="true" /></button>
-        <button className="kordynV2AiMobileAction" type="button" aria-haspopup="dialog" onClick={(event) => onOpenProof(event.currentTarget)}>查看证据<ArrowRight size={16} aria-hidden="true" /></button>
+        <button
+          className="kordynV2AiMobileAction"
+          type="button"
+          aria-haspopup="dialog"
+          data-kordyn-v2-mission-proof={mission.id}
+          onClick={(event) => onOpenProof(event.currentTarget, { panel: "proof", candidate: selectPayload(mission) })}
+        >查看证据<ArrowRight size={16} aria-hidden="true" /></button>
         <span>{selection?.object?.id === mission.id ? "当前对象" : unavailable}</span>
       </footer>
     </section>

@@ -55,10 +55,19 @@ function compactArmedSetup(row) {
 function compactAgentRun(row) {
   if (!row || typeof row !== "object") return row;
   const text = (value, limit = 240) => value == null ? value : String(value).slice(0, limit);
+  const boundedString = (value, limit = 240) => typeof value === "string" ? value.slice(0, limit) : undefined;
+  const boundedIdentity = (value, limit = 120) => (
+    typeof value === "string" && value.length <= limit ? value : undefined
+  );
   const primary = [...(row.modelCalls || [])].reverse().find((call) => call?.role === "primary") || null;
   const critic = row.lastCriticReview || null;
+  const nextAction = boundedString(row.presentation?.nextAction);
   return {
     id: row.id,
+    goal: boundedString(row.goal),
+    tradePlanId: boundedIdentity(row.tradePlanId),
+    evidenceCount: Number.isSafeInteger(row.evidenceCount) && row.evidenceCount >= 0 ? row.evidenceCount : undefined,
+    presentation: nextAction === undefined ? undefined : { nextAction },
     traceId: row.traceId,
     sessionId: row.sessionId,
     source: text(row.source, 80),
@@ -92,6 +101,7 @@ function compactAgentRun(row) {
       id: step.id,
       phase: text(step.phase, 80),
       title: text(step.title),
+      summary: boundedString(step.summary),
       status: text(step.status, 80),
       createdAt: step.createdAt,
       completedAt: step.completedAt

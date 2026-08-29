@@ -59,6 +59,18 @@ function firstSelectionCandidate(data) {
   return null;
 }
 
+export function resolveEvidenceSelection({ data = EMPTY_DATA, selection = null, request = null } = {}) {
+  let hasCandidate = false;
+  let candidate = null;
+  try {
+    hasCandidate = Boolean(request && typeof request === "object" && Object.hasOwn(request, "candidate"));
+    if (hasCandidate) candidate = request.candidate;
+  } catch {
+    return null;
+  }
+  return hasCandidate ? createV2Selection({ data, candidate }) : selection;
+}
+
 export function KordynV2Root({ api, lang }) {
   const viewport = useV2Viewport();
   const data = api?.data || EMPTY_DATA;
@@ -143,11 +155,11 @@ export function KordynV2Root({ api, lang }) {
     setEvidenceRequest((current) => ({
       panel,
       details: Array.isArray(request?.details) ? request.details : null,
-      selection,
+      selection: resolveEvidenceSelection({ data, selection, request }),
       token: (current?.token || 0) + 1,
       trigger
     }));
-  }, [selection]);
+  }, [data, selection]);
 
   const identity = useMemo(() => identityTruth(data), [data]);
   const supportContext = useMemo(() => buildAiSupportContext({ data, location, selection, state }), [data, location, selection, state]);

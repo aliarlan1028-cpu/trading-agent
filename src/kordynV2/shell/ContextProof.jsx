@@ -18,6 +18,7 @@ const CONTEXT_FIELDS = Object.freeze([
 
 export function ContextProof({ selection, request }) {
   const [panel, setPanel] = useState(null);
+  const [requestedSelection, setRequestedSelection] = useState(undefined);
   const dialogRef = useRef(null);
   const contextTriggerRef = useRef(null);
   const proofTriggerRef = useRef(null);
@@ -26,8 +27,9 @@ export function ContextProof({ selection, request }) {
   useEffect(() => {
     if (!request?.token || !["context", "proof"].includes(request.panel)) return;
     returnFocusRef.current = request.trigger;
+    setRequestedSelection(request.selection);
     setPanel(request.panel);
-  }, [request?.panel, request?.token, request?.trigger]);
+  }, [request?.panel, request?.selection, request?.token, request?.trigger]);
 
   useEffect(() => {
     if (!panel) return undefined;
@@ -39,6 +41,7 @@ export function ContextProof({ selection, request }) {
 
   const open = (nextPanel, trigger) => {
     returnFocusRef.current = trigger;
+    setRequestedSelection(undefined);
     setPanel(nextPanel);
   };
 
@@ -78,9 +81,10 @@ export function ContextProof({ selection, request }) {
     }
   };
 
-  const context = selection?.context || {};
-  const stages = Array.isArray(selection?.trace?.stages) ? selection.trace.stages : [];
-  const selectedId = safeText(selection?.object?.id);
+  const activeSelection = requestedSelection === undefined ? selection : requestedSelection;
+  const context = activeSelection?.context || {};
+  const stages = Array.isArray(activeSelection?.trace?.stages) ? activeSelection.trace.stages : [];
+  const selectedId = safeText(activeSelection?.object?.id);
 
   return (
     <>
@@ -134,7 +138,7 @@ export function ContextProof({ selection, request }) {
                 <X size={18} aria-hidden="true" />
               </button>
             </header>
-            <p className="kordynV2OverlayIdentity">{safeText(selection?.object?.type)} / {selectedId}</p>
+            <p className="kordynV2OverlayIdentity">{safeText(activeSelection?.object?.type)} / {selectedId}</p>
             {panel === "context" ? (
               <dl className="kordynV2ContextFacts">
                 {CONTEXT_FIELDS.map(([label, key]) => (

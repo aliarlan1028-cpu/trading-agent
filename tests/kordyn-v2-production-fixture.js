@@ -1,4 +1,29 @@
 import { normalizePositionsForUi } from "../server/positionView.mjs";
+import { projectOverviewSection } from "../server/overviewView.mjs";
+
+const KORDYN_V2_FULL_AGENT_RUNS = [
+  {
+    id: "run-btc-analysis",
+    goal: "BTC 趋势延续结构",
+    status: "awaiting_approval",
+    tradePlanId: "plan-btc-mission",
+    evidenceCount: 3,
+    presentation: { nextAction: "确认计划后继续监控" },
+    steps: [{ id: "step-btc-guard", phase: "awaiting_approval", title: "正在验证风险边界", summary: "账户、证据与硬风控已核对" }],
+    createdAt: "2026-08-27T06:21:07Z"
+  },
+  {
+    id: "run-btc-complete",
+    goal: "BTC 突破回踩机会",
+    status: "completed",
+    evidenceCount: 2,
+    presentation: { nextAction: "查看实盘复盘" },
+    steps: [{ id: "step-btc-review", phase: "decision", title: "正在复盘结果", summary: "本轮结果已进入复盘" }],
+    createdAt: "2026-08-27T05:20:00Z",
+    completedAt: "2026-08-27T05:43:00Z"
+  }
+];
+const KORDYN_V2_PROJECTED_AGENT_RUNS = projectOverviewSection({ agentRuns: KORDYN_V2_FULL_AGENT_RUNS }, "chat").agentRuns;
 
 export const KORDYN_V2_PRODUCTION_FIXTURE_JSON = JSON.stringify({
   revision: 41,
@@ -73,10 +98,7 @@ export const KORDYN_V2_PRODUCTION_FIXTURE_JSON = JSON.stringify({
   pendingActions: [
     { id: "action-sol-allowlist", objectId: "watch-sol-allowlist", objectType: "Watch", title: "SOL 白名单机会", detail: "一次性授权", status: "pending", severity: "high" }
   ],
-  agentRuns: [
-    { id: "run-btc-analysis", title: "BTC 趋势延续结构", symbol: "BTC/USDT", status: "running", summary: "全市场快扫中", createdAt: "2026-08-27T06:21:07Z", updatedAt: "2026-08-27T06:32:11Z", durationMs: 664000 },
-    { id: "run-btc-complete", title: "BTC 突破回踩机会", symbol: "BTC/USDT", status: "completed", summary: "+1.28%", createdAt: "2026-08-27T05:20:00Z", completedAt: "2026-08-27T05:43:00Z", durationMs: 1380000 }
-  ],
+  agentRuns: KORDYN_V2_PROJECTED_AGENT_RUNS,
   watchTriggers: [
     {
       id: "watch-eth-retest",
@@ -93,6 +115,7 @@ export const KORDYN_V2_PRODUCTION_FIXTURE_JSON = JSON.stringify({
     { id: "watch-sol-allowlist", title: "SOL 白名单机会", symbol: "SOL/USDT", status: "awaiting_approval", thesis: "等待授权", updatedAt: "2026-08-27T06:31:00Z" }
   ],
   tradePlans: [
+    { id: "plan-btc-mission", title: "BTC 趋势延续确认", symbol: "BTC/USDT", status: "awaiting_approval", agentRunId: "run-btc-analysis", rationale: "等待 Owner 确认", strategy: "Trend Continuation v1", timeframe: "1h" },
     { id: "plan-eth-follow", title: "ETH 趋势跟踪计划", symbol: "ETH/USDT", status: "approved", rationale: "已建仓 · 持有中", strategy: "Trend Follow v2", timeframe: "4h" },
     { id: "plan-sol-complete", title: "SOL 波段反弹计划", symbol: "SOL/USDT", status: "completed", rationale: "+2.35%", strategy: "Swing Reclaim v1", timeframe: "1h" }
   ],
