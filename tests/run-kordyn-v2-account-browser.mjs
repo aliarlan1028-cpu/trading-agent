@@ -337,6 +337,8 @@ async function assertMobilePositionLabels(cdp, label) {
         text: node.textContent.trim(),
         width: rect.width,
         height: rect.height,
+        clientWidth: node.clientWidth,
+        scrollWidth: node.scrollWidth,
         lineHeight,
         lines: Math.round(rect.height / lineHeight),
         overflowWrap: style.overflowWrap,
@@ -344,18 +346,40 @@ async function assertMobilePositionLabels(cdp, label) {
         whiteSpace: style.whiteSpace
       };
     };
+    const rect = (selector) => {
+      const node = document.querySelector(selector);
+      if (!node) return null;
+      const box = node.getBoundingClientRect();
+      return { left: box.left, top: box.top, right: box.right, bottom: box.bottom, width: box.width, height: box.height };
+    };
     return {
+      layout: {
+        detail: rect('.kordynV2PositionMobileDetail'),
+        truth: rect('.kordynV2PositionTruth.is-mobile'),
+        inspector: rect('.kordynV2PositionInspector.is-mobile')
+      },
       symbol: measure('.kordynV2PositionTruth.is-mobile > header h2'),
       ownership: measure('.kordynV2PositionTruth.is-mobile .kordynV2PositionOwnership'),
-      source: measure('.kordynV2PositionTruth.is-mobile > footer > span:nth-child(2) strong')
+      source: measure('.kordynV2PositionTruth.is-mobile > footer > span:nth-child(2) strong'),
+      entry: measure('.kordynV2PositionTruth.is-mobile .kordynV2PositionPrimaryFacts > div:nth-child(2) dd'),
+      mark: measure('.kordynV2PositionTruth.is-mobile .kordynV2PositionPrimaryFacts > div:nth-child(3) dd'),
+      inspectorSource: measure('.kordynV2PositionInspector.is-mobile .kordynV2PositionEvidence dl > div:nth-child(1) dd'),
+      inspectorOwnership: measure('.kordynV2PositionInspector.is-mobile .kordynV2PositionEvidence dl > div:nth-child(2) dd'),
+      protectionReason: measure('.kordynV2PositionInspector.is-mobile .kordynV2PositionProtectionEvidence > header > span')
     };
   })()`);
-  for (const [name, fact] of Object.entries(geometry)) {
+  const { layout: _layout, ...facts } = geometry;
+  for (const [name, fact] of Object.entries(facts)) {
     assert.ok(fact, `${label}: ${name} exists`);
     assert.ok(fact.lines <= 1, `${label}: ${name} stays on one readable line ${JSON.stringify(fact)}`);
     assert.notEqual(fact.wordBreak, "break-all", `${label}: ${name} does not break every character`);
     assert.notEqual(fact.overflowWrap, "anywhere", `${label}: ${name} does not wrap at arbitrary characters`);
+    assert.ok(fact.scrollWidth <= fact.clientWidth + 1, `${label}: ${name} is fully visible without clipping ${JSON.stringify(fact)}`);
   }
+  assert.ok(geometry.layout.detail && geometry.layout.truth && geometry.layout.inspector, `${label}: mobile detail regions exist`);
+  assert.ok(geometry.layout.truth.width >= geometry.layout.detail.width - 1, `${label}: truth uses the readable mobile column ${JSON.stringify(geometry.layout)}`);
+  assert.ok(geometry.layout.inspector.width >= geometry.layout.detail.width - 1, `${label}: inspector uses the readable mobile column ${JSON.stringify(geometry.layout)}`);
+  assert.ok(geometry.layout.inspector.top >= geometry.layout.truth.bottom, `${label}: inspector stacks after truth ${JSON.stringify(geometry.layout)}`);
   assert.equal(geometry.symbol.text, "ETH/USDT", `${label}: selected symbol remains intact`);
   return geometry;
 }
