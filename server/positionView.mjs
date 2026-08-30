@@ -13,6 +13,28 @@ const num = (v) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 };
+const boundedIdentity = (value) => typeof value === "string"
+  && value.length > 0
+  && value.length <= 240
+  && value === value.trim()
+  && !/[\p{White_Space}\p{Cc}]/u.test(value)
+  ? value
+  : null;
+const accountIdFor = (row = {}) => boundedIdentity(row.accountId)
+  || boundedIdentity(row.exchangeAccountId)
+  || boundedIdentity(row.connectionAccountId);
+const exchangeFor = (row = {}) => {
+  const exchange = boundedIdentity(row.exchange);
+  return exchange ? exchange.toUpperCase() : null;
+};
+const bindingFor = (row = {}) => {
+  const accountId = accountIdFor(row);
+  const exchange = exchangeFor(row);
+  return accountId && exchange
+    ? { accountId, exchange, key: JSON.stringify([accountId, exchange]) }
+    : null;
+};
+const emptyPositionGroup = () => ({ engines: [], rests: [], websockets: [], others: [] });
 
 // 方向归一化:多/long/buy → "多";空/short/sell → "空"(UI 为中文,统一成中文,含 tone 可判)。
 export function canonDirection(d) {
@@ -78,63 +100,136 @@ export function newestAuthoritativePosition(rows = [], options = {}) {
   return { row, fresh: true, reason: null, observedAt: new Date(observedAtMs).toISOString(), ageMs: Math.max(0, ageMs) };
 }
 
-export function normalizePositionsForUi(positions = []) {
-  const groups = new Map();
+function executionIndex(options = {}) {
+  const provided = options && typeof options === "object" && Object.hasOwn(options, "executionOrders");
+  const orders = provided && Array.isArray(options.executionOrders) && options.executionOrders.length <= 10_000
+    ? options.executionOrders
+    : [];
+  const indexed = new Map();
+  for (const order of orders) {
+    const id = boundedIdentity(order?.id);
+    if (!id) continue;
+    const current = indexed.get(id) || { count: 0, order: null };
+    current.count += 1;
+    current.order = order;
+    indexed.set(id, current);
+  }
+  return { provided, indexed };
+}
+
+function engineExecutionBinding(engine, executionLookup, symbol, direction) {
+  const executionOrderId = boundedIdentity(engine?.executionOrderId);
+  if (!executionOrderId) return { state: "missing", binding: null };
+  if (!executionLookup.provided) return { state: "missing", binding: null };
+  const match = executionLookup.indexed.get(executionOrderId);
+  if (!match || match.count !== 1) return { state: "invalid", binding: null };
+  const executionSymbol = canonicalSymbol(match.order.symbol || match.order.instId);
+  const executionDirection = canonicalPositionDirection(match.order);
+  if ((executionSymbol && executionSymbol !== symbol) || (executionDirection && executionDirection !== direction)) {
+    return { state: "invalid", binding: null };
+  }
+  const binding = bindingFor(match.order);
+  return binding ? { state: "valid", binding } : { state: "invalid", binding: null };
+}
+
+function normalizedPositionGroup(g) {
+  const eng = newest(g.engines) || {};
+  const rest = newest(g.rests) || {};
+  const ws = newest(g.websockets) || {};
+  const other = newest(g.others) || {};
+  const hasEngine = Boolean(eng.id || g.engines.length);
+  const exchangeMirror = g.rests.length ? rest : g.websockets.length ? ws : null;
+  const mirrorAccountId = exchangeMirror
+    ? accountIdFor(exchangeMirror)
+    : null;
+  const base = hasEngine ? eng : (rest.id ? rest : ws.id ? ws : other); // 引擎行只提供托管身份与解释字段
+  const mark = num(rest.mark ?? rest.markPx) ?? num(ws.mark ?? ws.markPx) ?? num(eng.mark) ?? num(other.mark);
+  // 交易所 size 是合约张数，只有 coinSize 才是币量；缺 coinSize 时只能回退到同仓的引擎币量。
+  const coinQty = num(rest.coinSize) ?? num(ws.coinSize) ?? (hasEngine ? num(eng.quantity ?? eng.size) : null);
+  const leverage = num(rest.leverage) ?? num(ws.leverage) ?? num(eng.leverage) ?? num(other.leverage);
+  // 有交易所快照时，强平价只能以交易所字段为准；显式未知不能被引擎估算值覆盖。
+  const liqPx = num(rest.liqPx ?? rest.liquidationPrice) ?? num(ws.liqPx ?? ws.liquidationPrice) ?? (!g.rests.length && !g.websockets.length ? num(eng.liqPx ?? eng.liquidationPrice) : null);
+  const unrealizedPnl = num(rest.pnl ?? rest.unrealizedPnl) ?? num(ws.pnl ?? ws.unrealizedPnl) ?? num(eng.unrealizedPnl ?? eng.pnl) ?? num(other.unrealizedPnl ?? other.pnl);
+  const notional = coinQty !== null && mark !== null ? Math.abs(coinQty * mark) : null;
+  const margin = notional !== null && leverage ? notional / leverage : null;
+  const liqDistancePct = liqPx !== null && mark ? Math.abs((mark - liqPx) / mark) * 100 : null;
+  return {
+    ...base,
+    source: hasEngine ? "execution_engine" : (rest.source || ws.source || base.source),
+    symbol: base.symbol || rest.symbol || ws.symbol,
+    direction: canonDirection(base),
+    // 这些字段只说明当前 UI 财务事实实际选中的交易所镜像；不得从引擎行推断镜像所有权。
+    rawSyncedAt: exchangeMirror?.rawSyncedAt ?? null,
+    accountId: mirrorAccountId,
+    exchangeAccountId: exchangeMirror?.exchangeAccountId ?? null,
+    connectionAccountId: exchangeMirror?.connectionAccountId ?? null,
+    exchange: exchangeMirror ? exchangeFor(exchangeMirror) : null,
+    entry: num(rest.entry ?? rest.avgPx) ?? num(ws.entry ?? ws.avgPx) ?? num(eng.entry) ?? num(other.entry),
+    mark,
+    quantity: coinQty,            // 统一为币量(不再混合约张数/币量)
+    leverage,
+    unrealizedPnl,
+    pnl: unrealizedPnl,
+    roiPct: num(rest.roiPct) ?? num(ws.roiPct) ?? num(eng.roiPct) ?? num(other.roiPct), // 交易所杠杆化 ROI 优先
+    notional,                     // = 币量 × 标记价(此前前端读 notional 恒缺 → 敞口/分布恒 0)
+    margin,                       // = 名义 / 杠杆(此前前端读 margin 恒缺 → 保证金占用恒 —)
+    liquidationPrice: liqPx,      // 对齐前端读的字段名(此前读 liquidationPrice、真名 liqPx → 恒 —)
+    liqDistancePct,               // 补上(此前缺 → 强平距离恒判"安全")
+    exchangePositionKey: rest.exchangePositionKey || ws.exchangePositionKey || base.exchangePositionKey || null
+  };
+}
+
+export function normalizePositionsForUi(positions = [], options = {}) {
+  const baseGroups = new Map();
   for (const p of positions.filter(isOpen)) {
     const key = `${canonicalSymbol(p.symbol || p.instId)}::${canonDirection(p) || "unknown"}`;
-    const g = groups.get(key) || { engines: [], rests: [], websockets: [], others: [] };
+    const g = baseGroups.get(key) || emptyPositionGroup();
     if (p.source === "execution_engine") g.engines.push(p);
     else if (p.source === "exchange_rest") g.rests.push(p);
     else if (p.source === "exchange_ws") g.websockets.push(p);
     else g.others.push(p);
-    groups.set(key, g);
+    baseGroups.set(key, g);
   }
+  const indexedExecutions = executionIndex(options);
   const rows = [];
-  for (const [, g] of groups) {
-    const eng = newest(g.engines) || {};
-    const rest = newest(g.rests) || {};
-    const ws = newest(g.websockets) || {};
-    const other = newest(g.others) || {};
-    const hasEngine = Boolean(eng.id || g.engines.length);
-    const exchangeMirror = g.rests.length ? rest : g.websockets.length ? ws : null;
-    const mirrorAccountId = exchangeMirror
-      ? exchangeMirror.accountId || exchangeMirror.exchangeAccountId || exchangeMirror.connectionAccountId || null
-      : null;
-    const base = hasEngine ? eng : (rest.id ? rest : ws.id ? ws : other); // 引擎行只提供托管身份与解释字段
-    const mark = num(rest.mark ?? rest.markPx) ?? num(ws.mark ?? ws.markPx) ?? num(eng.mark) ?? num(other.mark);
-    // 交易所 size 是合约张数，只有 coinSize 才是币量；缺 coinSize 时只能回退到同仓的引擎币量。
-    const coinQty = num(rest.coinSize) ?? num(ws.coinSize) ?? (hasEngine ? num(eng.quantity ?? eng.size) : null);
-    const leverage = num(rest.leverage) ?? num(ws.leverage) ?? num(eng.leverage) ?? num(other.leverage);
-    // 有交易所快照时，强平价只能以交易所字段为准；显式未知不能被引擎估算值覆盖。
-    const liqPx = num(rest.liqPx ?? rest.liquidationPrice) ?? num(ws.liqPx ?? ws.liquidationPrice) ?? (!g.rests.length && !g.websockets.length ? num(eng.liqPx ?? eng.liquidationPrice) : null);
-    const unrealizedPnl = num(rest.pnl ?? rest.unrealizedPnl) ?? num(ws.pnl ?? ws.unrealizedPnl) ?? num(eng.unrealizedPnl ?? eng.pnl) ?? num(other.unrealizedPnl ?? other.pnl);
-    const notional = coinQty !== null && mark !== null ? Math.abs(coinQty * mark) : null;
-    const margin = notional !== null && leverage ? notional / leverage : null;
-    const liqDistancePct = liqPx !== null && mark ? Math.abs((mark - liqPx) / mark) * 100 : null;
-    rows.push({
-      ...base,
-      source: hasEngine ? "execution_engine" : (rest.source || ws.source || base.source),
-      symbol: base.symbol || rest.symbol || ws.symbol,
-      direction: canonDirection(base),
-      // 这些字段只说明当前 UI 财务事实实际选中的交易所镜像；不得从引擎行推断镜像所有权。
-      rawSyncedAt: exchangeMirror?.rawSyncedAt ?? null,
-      accountId: mirrorAccountId,
-      exchangeAccountId: exchangeMirror?.exchangeAccountId ?? null,
-      connectionAccountId: exchangeMirror?.connectionAccountId ?? null,
-      exchange: exchangeMirror?.exchange ?? null,
-      entry: num(rest.entry ?? rest.avgPx) ?? num(ws.entry ?? ws.avgPx) ?? num(eng.entry) ?? num(other.entry),
-      mark,
-      quantity: coinQty,            // 统一为币量(不再混合约张数/币量)
-      leverage,
-      unrealizedPnl,
-      pnl: unrealizedPnl,
-      roiPct: num(rest.roiPct) ?? num(ws.roiPct) ?? num(eng.roiPct) ?? num(other.roiPct), // 交易所杠杆化 ROI 优先
-      notional,                     // = 币量 × 标记价(此前前端读 notional 恒缺 → 敞口/分布恒 0)
-      margin,                       // = 名义 / 杠杆(此前前端读 margin 恒缺 → 保证金占用恒 —)
-      liquidationPrice: liqPx,      // 对齐前端读的字段名(此前读 liquidationPrice、真名 liqPx → 恒 —)
-      liqDistancePct,               // 补上(此前缺 → 强平距离恒判"安全")
-      exchangePositionKey: rest.exchangePositionKey || ws.exchangePositionKey || base.exchangePositionKey || null
-    });
+  for (const [baseKey, sourceGroup] of baseGroups) {
+    const symbol = baseKey.split("::")[0];
+    const direction = canonicalPositionDirection(sourceGroup.engines[0] || sourceGroup.rests[0] || sourceGroup.websockets[0] || {});
+    const mirrorGroups = new Map();
+    const unboundMirrors = emptyPositionGroup();
+    for (const [field, mirrors] of [["rests", sourceGroup.rests], ["websockets", sourceGroup.websockets]]) {
+      for (const mirror of mirrors) {
+        const binding = bindingFor(mirror);
+        if (!binding) unboundMirrors[field].push(mirror);
+        else {
+          const group = mirrorGroups.get(binding.key) || emptyPositionGroup();
+          group[field].push(mirror);
+          mirrorGroups.set(binding.key, group);
+        }
+      }
+    }
+
+    const unbound = emptyPositionGroup();
+    unbound.others.push(...sourceGroup.others);
+    for (const engine of sourceGroup.engines) {
+      const linked = engineExecutionBinding(engine, indexedExecutions, symbol, direction);
+      let target = null;
+      if (linked.state === "valid") {
+        target = mirrorGroups.get(linked.binding.key) || emptyPositionGroup();
+        mirrorGroups.set(linked.binding.key, target);
+      } else if (linked.state === "missing" && mirrorGroups.size === 1 && !unboundMirrors.rests.length && !unboundMirrors.websockets.length) {
+        target = mirrorGroups.values().next().value;
+      } else if (linked.state === "missing" && mirrorGroups.size === 0 && (unboundMirrors.rests.length || unboundMirrors.websockets.length)) {
+        // Compatibility for legacy single-owner mirrors that predate account linkage.
+        // They may supply display facts but still carry null provenance, so cannot prove protection.
+        target = unboundMirrors;
+      }
+      (target || unbound).engines.push(engine);
+    }
+
+    for (const group of mirrorGroups.values()) rows.push(normalizedPositionGroup(group));
+    if (unboundMirrors.rests.length || unboundMirrors.websockets.length) rows.push(normalizedPositionGroup(unboundMirrors));
+    if (unbound.engines.length || unbound.others.length) rows.push(normalizedPositionGroup(unbound));
   }
   return rows;
 }

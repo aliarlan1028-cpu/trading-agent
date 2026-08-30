@@ -1213,7 +1213,7 @@ function buildOverviewSectionSource(section, req, options = {}) {
     agentStatus: getAgentStatus(scopedDb),
     portfolio: scopedDb.portfolio,
     performance,
-    positions: normalizePositionsForUi(scopedDb.positions),
+    positions: normalizePositionsForUi(scopedDb.positions, { executionOrders: scopedDb.executionOrders }),
     markets: db.markets,
     activeMarket: db.markets.find((market) => market.status === "synced" || market.price) || db.markets[0],
     marketRegime: db.marketRegime || null,

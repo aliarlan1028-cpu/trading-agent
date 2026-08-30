@@ -362,6 +362,11 @@ function textField(record, fields, limit = 240) {
   return null;
 }
 
+function canonicalBindingIdentity(value, { uppercase = false } = {}) {
+  if (!validPositionIdentity(value)) return null;
+  return uppercase ? value.toUpperCase() : value;
+}
+
 function numericList(value) {
   const values = arrayValues(value);
   if (!values) return [];
@@ -485,6 +490,13 @@ function protectionProjection(source, position, execution, ownership, now) {
   if (stopLoss === null) return { state: "failed", reason: "local_stop_missing", stopPrice: null, snapshotId: null, asOf: null, source: textField(position, ["source"]) };
   if (!execution) return { state: "unavailable", reason: "execution_link_unavailable", stopPrice: stopLoss, snapshotId: null, asOf: null, source: textField(position, ["source"]) };
   if (!execution.stopClientOrderId) return { state: "failed", reason: "stop_identity_missing", stopPrice: stopLoss, snapshotId: null, asOf: null, source: execution.exchange };
+  const mirrorAccountId = canonicalBindingIdentity(textField(position, ["accountId", "exchangeAccountId"]));
+  const executionAccountId = canonicalBindingIdentity(execution.accountId);
+  const mirrorExchange = canonicalBindingIdentity(textField(position, ["exchange"]), { uppercase: true });
+  const executionExchange = canonicalBindingIdentity(execution.exchange, { uppercase: true });
+  const bindingMatches = mirrorAccountId && executionAccountId && mirrorAccountId === executionAccountId
+    && mirrorExchange && executionExchange && mirrorExchange === executionExchange;
+  if (!bindingMatches) return { state: "degraded", reason: "exchange_stop_snapshot_unverified", stopPrice: stopLoss, snapshotId: null, asOf: null, source: execution.exchange };
   const snapshot = latestProtectionSnapshot(source, position, execution);
   if (!snapshot) return { state: "unavailable", reason: "account_snapshot_unavailable", stopPrice: stopLoss, snapshotId: null, asOf: null, source: execution.exchange };
   if (!/^(?:ok|healthy|success)$/iu.test(snapshot.status || "")) return { state: "degraded", reason: "account_snapshot_degraded", stopPrice: stopLoss, snapshotId: snapshot.id, asOf: snapshot.createdAt, source: snapshot.exchange };
@@ -541,6 +553,8 @@ function positionProjection(source, position, executionRows, incidents, now) {
     symbol: textField(position, ["symbol", "instId"]),
     direction: textField(position, ["direction", "posSide", "side"]),
     source: textField(position, ["source"]),
+    accountId: textField(position, ["accountId", "exchangeAccountId"]),
+    exchange: textField(position, ["exchange"]),
     ownership,
     quantity: numericField(position, "quantity", "size", "pos", "qty"),
     entry: numericField(position, "entry", "entryPrice"),

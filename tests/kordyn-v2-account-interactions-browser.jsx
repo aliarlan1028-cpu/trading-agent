@@ -21,7 +21,14 @@ const rawPositionMirrors = Object.freeze([
     exchange: "OKX", rawSyncedAt: asOf
   })
 ]);
-const normalizedPositions = Object.freeze(normalizePositionsForUi(rawPositionMirrors).map((position) => Object.freeze(position)));
+const rawExecutionOrders = Object.freeze([Object.freeze({
+  id: "execution-1", positionId: "position-1", symbol: "ETH/USDT", direction: "long",
+  status: "protecting", filledQuantity: 2.4, stopClientOrderId: "stop-execution-1",
+  exchange: "OKX", accountId: "ex-okx-main"
+})]);
+const normalizedPositions = Object.freeze(normalizePositionsForUi(rawPositionMirrors, {
+  executionOrders: rawExecutionOrders
+}).map((position) => Object.freeze(position)));
 const data = Object.freeze({
   resourceState: Object.freeze({ cockpit: "loaded" }),
   source: "OKX",
@@ -36,11 +43,7 @@ const data = Object.freeze({
     algoOrdersComplete: true,
     algoOrders: Object.freeze([Object.freeze({ instId: "ETH-USDT-SWAP", algoClOrdId: "stop-execution-1", slTriggerPx: "3365" })])
   })]),
-  executionOrders: Object.freeze([Object.freeze({
-    id: "execution-1", positionId: "position-1", symbol: "ETH/USDT", direction: "long",
-    status: "protecting", filledQuantity: 2.4, stopClientOrderId: "stop-execution-1",
-    exchange: "OKX", accountId: "ex-okx-main"
-  })]),
+  executionOrders: rawExecutionOrders,
   reconciliationReports: Object.freeze([]),
   riskIncidents: Object.freeze([])
 });

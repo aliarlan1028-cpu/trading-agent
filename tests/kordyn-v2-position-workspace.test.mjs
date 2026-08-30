@@ -52,6 +52,7 @@ const {
 const resourceState = { cockpit: "loaded" };
 const validPosition = (overrides = {}) => ({
   positionId: "position-1", symbol: "ETH/USDT", direction: "long", source: "execution_engine",
+  accountId: "account-okx", exchange: "OKX",
   quantity: 2.4, entry: 3420.5, mark: 3468.2, liquidationPrice: 1980,
   unrealizedPnl: 114.48, notional: 8323.68, margin: 2774.56, leverage: 3,
   liqDistancePct: 42.6, stopLoss: 3365, takeProfits: [3515, 3590],
@@ -70,6 +71,16 @@ const validSnapshot = (overrides = {}) => ({
   createdAt: "2026-08-30T06:00:00Z", algoOrdersComplete: true,
   algoOrders: [{ instId: "ETH-USDT-SWAP", algoClOrdId: "stop-execution-1", slTriggerPx: "3365" }],
   ...overrides
+});
+const rawEnginePosition = (overrides = {}) => validPosition({
+  id: undefined, positionId: "position-1", instId: "ETH-USDT-SWAP", rawSyncedAt: undefined,
+  accountId: undefined, exchange: undefined, ...overrides
+});
+const rawExchangeMirror = (accountId, exchange, rawSyncedAt, overrides = {}) => ({
+  id: `mirror-${accountId}-${exchange}`, positionId: `mirror-${accountId}-${exchange}`,
+  symbol: "ETH/USDT", instId: "ETH-USDT-SWAP", source: "exchange_rest", direction: "long", posSide: "long",
+  coinSize: 2.4, mark: 3468.2, entry: 3420.5, liqPx: 1980, leverage: 3, pnl: 114.48,
+  accountId, exchange, rawSyncedAt, ...overrides
 });
 const modelNow = Date.parse("2026-08-30T06:01:00Z");
 const modelFixture = (overrides = {}) => buildAccountDomainModel({
@@ -172,7 +183,7 @@ test("raw engine and selected exchange mirror reach verified protection through 
       exchange: "OKX", rawSyncedAt: "2026-08-30T06:00:00Z"
     }
   ];
-  const positions = normalizePositionsForUi(rawPositions);
+  const positions = normalizePositionsForUi(rawPositions, { executionOrders: [validExecution()] });
   const model = buildAccountDomainModel({
     resourceState, positions, executionOrders: [validExecution()], accountSnapshots: [validSnapshot()], riskIncidents: []
   }, { now: modelNow });
@@ -181,6 +192,96 @@ test("raw engine and selected exchange mirror reach verified protection through 
     { state: model.positions[0].protection.state, snapshotId: model.positions[0].protection.snapshotId },
     { state: "verified", snapshotId: "snapshot-1" }
   );
+});
+
+test("normalizer never cross-binds an A execution to a B account or exchange mirror", () => {
+  const at = "2026-08-30T06:00:00Z";
+  const executionA = validExecution({ accountId: "account-a", exchange: "OKX" });
+  const snapshotA = validSnapshot({ accountId: "account-a", exchange: "OKX", createdAt: at });
+  for (const mirror of [
+    rawExchangeMirror("account-b", "OKX", at),
+    rawExchangeMirror("account-a", "BINANCE", at)
+  ]) {
+    const positions = normalizePositionsForUi([rawEnginePosition(), mirror], { executionOrders: [executionA] });
+    const managed = positions.find((position) => position.source === "execution_engine");
+    assert.deepEqual(
+      { rawSyncedAt: managed?.rawSyncedAt, accountId: managed?.accountId, exchange: managed?.exchange },
+      { rawSyncedAt: null, accountId: null, exchange: null }
+    );
+    const model = buildAccountDomainModel({
+      resourceState, positions, executionOrders: [executionA], accountSnapshots: [snapshotA], riskIncidents: []
+    }, { now: Date.parse(at) + 60_000 });
+    const projected = model.positions.find((position) => position.id === "position-1");
+    assert.notEqual(projected?.protection.state, "verified");
+  }
+});
+
+test("execution account binding selects A mirror even when B is newer or shares its timestamp", () => {
+  const atA = "2026-08-30T06:00:00Z";
+  const atB = "2026-08-30T06:01:00Z";
+  const executionA = validExecution({ accountId: "account-a", exchange: "OKX" });
+  const snapshotA = validSnapshot({ accountId: "account-a", exchange: "OKX", createdAt: atA });
+  for (const mirrorB of [
+    rawExchangeMirror("account-b", "OKX", atB),
+    rawExchangeMirror("account-b", "OKX", atA)
+  ]) {
+    const positions = normalizePositionsForUi([
+      rawEnginePosition(), mirrorB, rawExchangeMirror("account-a", "OKX", atA)
+    ], { executionOrders: [executionA] });
+    const managed = positions.find((position) => position.source === "execution_engine");
+    assert.deepEqual(
+      { rawSyncedAt: managed?.rawSyncedAt, accountId: managed?.accountId, exchange: managed?.exchange },
+      { rawSyncedAt: atA, accountId: "account-a", exchange: "OKX" }
+    );
+    const model = buildAccountDomainModel({
+      resourceState, positions, executionOrders: [executionA], accountSnapshots: [snapshotA], riskIncidents: []
+    }, { now: Date.parse(atA) + 60_000 });
+    assert.equal(model.positions.find((position) => position.id === "position-1")?.protection.state, "verified");
+  }
+});
+
+test("missing or conflicting execution linkage stays unbound when mirror accounts are ambiguous", () => {
+  const at = "2026-08-30T06:00:00Z";
+  const mirrors = [rawExchangeMirror("account-a", "OKX", at), rawExchangeMirror("account-b", "OKX", at)];
+  const missing = normalizePositionsForUi([rawEnginePosition({ executionOrderId: undefined }), ...mirrors]);
+  const duplicate = normalizePositionsForUi([rawEnginePosition(), ...mirrors], {
+    executionOrders: [
+      validExecution({ accountId: "account-a", exchange: "OKX" }),
+      validExecution({ accountId: "account-b", exchange: "OKX" })
+    ]
+  });
+  for (const positions of [missing, duplicate]) {
+    const managed = positions.find((position) => position.source === "execution_engine");
+    assert.deepEqual(
+      { rawSyncedAt: managed?.rawSyncedAt, accountId: managed?.accountId, exchange: managed?.exchange },
+      { rawSyncedAt: null, accountId: null, exchange: null }
+    );
+  }
+});
+
+test("frontend protection requires normalized mirror binding to equal its related Execution", () => {
+  const at = "2026-08-30T06:00:00Z";
+  const executionA = validExecution({ accountId: "account-a", exchange: "OKX" });
+  const snapshotA = validSnapshot({ accountId: "account-a", exchange: "OKX", createdAt: at });
+  for (const position of [
+    validPosition({ accountId: "account-b", exchange: "OKX", rawSyncedAt: at }),
+    validPosition({ accountId: "account-a", exchange: "BINANCE", rawSyncedAt: at }),
+    validPosition({ accountId: undefined, exchange: undefined, rawSyncedAt: at })
+  ]) {
+    const model = buildAccountDomainModel({
+      resourceState, positions: [position], executionOrders: [executionA], accountSnapshots: [snapshotA], riskIncidents: []
+    }, { now: Date.parse(at) + 60_000 });
+    assert.deepEqual(
+      { state: model.positions[0].protection.state, reason: model.positions[0].protection.reason },
+      { state: "degraded", reason: "exchange_stop_snapshot_unverified" }
+    );
+  }
+});
+
+test("section-v2 cockpit passes scoped execution linkage into the real position normalizer", () => {
+  const source = fs.readFileSync(path.join(rootDir, "server/index.mjs"), "utf8");
+  const sectionBuilder = source.match(/function buildOverviewSectionSource[\s\S]*?if \(section === "chat"\)/)?.[0] || "";
+  assert.match(sectionBuilder, /positions:\s*normalizePositionsForUi\(scopedDb\.positions,\s*\{\s*executionOrders:\s*scopedDb\.executionOrders\s*\}\)/);
 });
 
 test("exchange stop absence requires a post-open current-mirror structurally trustworthy snapshot", () => {

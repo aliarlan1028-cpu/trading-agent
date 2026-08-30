@@ -298,3 +298,64 @@ The focused Task 3 + Position/protection + Task 1/2 account/state/selection/lazy
 - Syntax checks for the server projection, frontend model, focused tests, and browser runner: exit 0.
 - Scope check contained only the seven explicitly authorized files listed above.
 - `git diff --check`: exit 0 before this report update; rerun in the final commit gate.
+
+## Final account / exchange mirror isolation correction after `4b6ea1c`
+
+### Why `4b6ea1c` was insufficient
+
+`4b6ea1c` correctly preserved only source-backed exchange-mirror provenance and added the two-minute proof boundary, but `normalizePositionsForUi()` still grouped rows by symbol + direction alone. In a multi-account or multi-exchange workspace, an engine Position whose related Execution belongs to account A could therefore inherit a newer mirror from account or exchange B. The frontend then selected A's account snapshot and compared only the snapshot/mirror timestamp, which could produce a false `verified` protection state when the timestamps happened to match.
+
+The remaining review finding was valid and stayed inside the user-authorized read-only account/exchange-linkage projection exception. No database, write API, trading, risk, permission, route contract, Task 4/5, Plan 04, screenshot, merge, push, or deploy behavior was changed.
+
+### Adversarial RED
+
+The focused RED added five executable contracts to the real normalizer → Account model chain:
+
+- account A Execution + only account B mirror cannot verify, even when A's snapshot has the same timestamp and matching stop;
+- with A and B mirrors, account A is selected for A's Execution even when B is newer or shares its timestamp;
+- another exchange with the same symbol/direction cannot cross-bind;
+- missing or duplicate/conflicting Execution linkage remains unbound when mirror ownership is ambiguous;
+- the section-v2 cockpit must pass its scoped `executionOrders` to the real normalizer, and frontend protection independently rejects missing/mismatched account or exchange provenance.
+
+Command:
+
+```text
+node scripts/run-tests-isolated.mjs tests/kordyn-v2-position-workspace.test.mjs
+```
+
+Result before production edits: exit 1; 26 tests, 21 passed / 5 failed. The five failures were exactly the cross-account/cross-exchange mirror attachment, ambiguous-linkage attachment, frontend binding acceptance, and missing real-call linkage described above.
+
+### Minimal GREEN and compatibility boundary
+
+- `normalizePositionsForUi(positions, { executionOrders })` builds a bounded unique Execution identity map. Duplicate or invalid IDs fail closed.
+- Engine rows with a unique explicit Execution bind only to exchange mirrors with the same canonical account and exchange. Mirror groups remain symbol + direction + account + exchange; newer data from another owner cannot displace the correct owner's mirror.
+- A missing link may use one sole unambiguous owner candidate, but multiple owner candidates remain unbound. Legacy mirrors without account/exchange may still supply display facts for existing callers, while provenance stays null and therefore cannot prove protection.
+- Manual/external rows retain their own mirror truth. No engine timestamp/account/exchange is promoted into mirror provenance.
+- The production section-v2 cockpit is the only runtime call changed and passes only its already scoped `executionOrders`.
+- `protectionProjection()` independently requires the normalized Position's bounded account and canonical exchange to equal its related Execution before either verified or explicit-missing proof is possible. Missing or mismatched ownership degrades to `exchange_stop_snapshot_unverified`.
+- The real Chrome fixture now supplies raw engine + Execution + mirror inputs to the real normalizer with `{ executionOrders }`; it does not manually inject normalized provenance.
+
+Fresh focused normalizer + Task 3 result:
+
+```text
+node scripts/run-tests-isolated.mjs tests/kordyn-v2-position-workspace.test.mjs tests/position-view.test.mjs
+```
+
+Result: exit 0; 33/33 passed; duration 247.022625 ms.
+
+Fresh Task 3 + Position/protection + Task 1/2 account/state/selection/lazy regression:
+
+```text
+node scripts/run-tests-isolated.mjs tests/kordyn-v2-position-workspace.test.mjs tests/position-view.test.mjs tests/position-protection-evidence.test.mjs tests/exchange-protection-accounting.test.mjs tests/position-manager-move-stop.test.mjs tests/kordyn-v2-account-model.test.mjs tests/kordyn-v2-account-actions.test.mjs tests/kordyn-v2-account-cockpit.test.mjs tests/kordyn-v2-account-interactions.test.mjs tests/kordyn-v2-ai-workspace.test.mjs tests/kordyn-v2-state-boundary.test.mjs tests/kordyn-v2-state.test.mjs tests/kordyn-v2-ai-context-selection.test.mjs
+```
+
+Result: exit 0; 170/170 passed, 0 failed; duration 742.131125 ms.
+
+### Fresh final gates for this correction
+
+- Real production Account browser runner: exit 0 with `Kordyn V2 account production interaction browser checks passed`; correct normalized account/exchange binding, verified protection, canonical selection, detail focus, and Back focus restoration all passed.
+- Full `npm test`: exit 0; 1,978/1,978 passed, 0 failed/cancelled/skipped/todo; duration 15,112.314416 ms; isolated test root cleaned.
+- `npm run lint`: exit 0, no findings.
+- `npm run build`: exit 0; 1,715 modules transformed in 2.80s; Account lazy CSS remained `index-DdtT6d4G.css`, 42.83 kB / 6.69 kB gzip.
+- The Impeccable detector was not rerun, preserving its exactly-once Task 3 contract.
+- Final syntax, scope, `git diff --check`, and clean-worktree evidence are recorded after the report update and commit.
