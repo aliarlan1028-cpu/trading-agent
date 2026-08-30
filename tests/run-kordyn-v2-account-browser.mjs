@@ -307,6 +307,142 @@ async function assertTouchTargets(cdp, label) {
   assert.deepEqual(small, [], `${label}: mobile controls stay >=44px`);
 }
 
+async function supportIsolationAtCurrentScroll(cdp, viewport, label, phase) {
+  const evidence = await evaluate(cdp, `(() => {
+    const shell = document.querySelector('[data-kordyn-v2-shell="${viewport.device}"]');
+    const canvas = shell?.querySelector('[data-kordyn-v2-work-canvas]');
+    const support = shell?.querySelector('[data-kordyn-v2-ai-support-trigger]');
+    const dock = shell?.querySelector('[data-kordyn-v2-support-dock]');
+    const box = (node) => {
+      if (!node) return null;
+      const rect = node.getBoundingClientRect();
+      return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height };
+    };
+    const overlap = (a, b) => !a || !b ? 0 : Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+    const supportRect = box(support);
+    const dockRect = box(dock);
+    const canvasRect = box(canvas);
+    const selector = '[data-kordyn-v2-object-id], button, a[href], input, select, textarea, [role="button"], td, dd, [role="status"], footer';
+    const candidates = [...(canvas?.querySelectorAll(selector) || [])].flatMap((node, index) => {
+      const rect = box(node);
+      const visible = rect && rect.width > 0 && rect.height > 0 && rect.right > 0 && rect.left < innerWidth && rect.bottom > 0 && rect.top < innerHeight;
+      if (!visible) return [];
+      const left = Math.max(0, rect.left);
+      const right = Math.min(innerWidth, rect.right);
+      const top = Math.max(0, rect.top);
+      const bottom = Math.min(innerHeight, rect.bottom);
+      const x = left + Math.max(0, right - left) / 2;
+      const y = top + Math.max(0, bottom - top) / 2;
+      const hit = document.elementFromPoint(x, y);
+      return [{
+        index,
+        tag: node.tagName,
+        id: node.dataset?.kordynV2ObjectId || null,
+        className: String(node.className || ''),
+        text: node.textContent?.trim().slice(0, 64) || '',
+        rect,
+        supportOverlap: overlap(supportRect, rect),
+        hitTestable: Boolean(hit && (hit === node || node.contains(hit)))
+      }];
+    });
+    const supportCenter = supportRect ? { x: supportRect.left + supportRect.width / 2, y: supportRect.top + supportRect.height / 2 } : null;
+    const supportHit = supportCenter ? document.elementFromPoint(supportCenter.x, supportCenter.y) : null;
+    const scroller = canvas?.closest('.kordynV2StateBoundary');
+    return {
+      phase: ${JSON.stringify(phase)},
+      viewport: [innerWidth, innerHeight],
+      support: supportRect,
+      dock: dockRect,
+      canvas: canvasRect,
+      dockCanvasOverlap: overlap(dockRect, canvasRect),
+      candidateCount: candidates.length,
+      intersections: candidates.filter((row) => row.supportOverlap > 0),
+      hitFailures: candidates.filter((row) => !row.hitTestable),
+      supportHitTestable: Boolean(supportHit && support && (supportHit === support || support.contains(supportHit))),
+      scroll: scroller ? { top: scroller.scrollTop, height: scroller.scrollHeight, clientHeight: scroller.clientHeight } : null
+    };
+  })()`);
+  assert.ok(evidence.support && evidence.canvas, `${label} ${phase}: support and work canvas exist`);
+  assert.deepEqual(evidence.intersections, [], `${label} ${phase}: support never intersects visible work-canvas rows, controls, or truth regions ${JSON.stringify(evidence.intersections)}`);
+  assert.deepEqual(evidence.hitFailures, [], `${label} ${phase}: visible work-canvas rows, controls, and truth regions remain hit-testable ${JSON.stringify(evidence.hitFailures)}`);
+  assert.ok(evidence.dock, `${label} ${phase}: support owns a reserved shell dock`);
+  assert.equal(evidence.dockCanvasOverlap, 0, `${label} ${phase}: reserved support dock does not overlap the work canvas ${JSON.stringify(evidence)}`);
+  assert.equal(evidence.supportHitTestable, true, `${label} ${phase}: support affordance remains hit-testable`);
+  return evidence;
+}
+
+async function assertAsset7HitTestable(cdp, viewport, label) {
+  const evidence = await evaluate(cdp, `(() => {
+    const object = document.querySelector('[data-kordyn-v2-object-id="ASSET7/USDT"][data-kordyn-v2-object-type="Market"]');
+    const row = object?.closest('article');
+    const watch = row?.querySelector('[data-kordyn-v2-watchlist-action]');
+    row?.scrollIntoView({ block: 'center', inline: 'nearest' });
+    const canvas = document.querySelector('[data-kordyn-v2-shell="${viewport.device}"] [data-kordyn-v2-work-canvas]');
+    const box = (node) => {
+      if (!node) return null;
+      const rect = node.getBoundingClientRect();
+      return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height };
+    };
+    const hit = (node) => {
+      const rect = node?.getBoundingClientRect();
+      if (!rect) return false;
+      const target = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return Boolean(target && (target === node || node.contains(target)));
+    };
+    const canvasRect = box(canvas);
+    const rowRect = box(row);
+    const objectRect = box(object);
+    const watchRect = box(watch);
+    return {
+      row: rowRect,
+      object: objectRect,
+      watch: watchRect,
+      canvas: canvasRect,
+      objectHitTestable: hit(object),
+      watchHitTestable: hit(watch),
+      fullyInsideCanvas: Boolean(rowRect && canvasRect && rowRect.left >= canvasRect.left && rowRect.right <= canvasRect.right && rowRect.top >= canvasRect.top && rowRect.bottom <= canvasRect.bottom)
+    };
+  })()`);
+  await flush(cdp);
+  assert.ok(evidence.row && evidence.object && evidence.watch, `${label}: ASSET7 row and watch exist`);
+  assert.equal(evidence.fullyInsideCanvas, true, `${label}: ASSET7 row is fully visible inside the work canvas ${JSON.stringify(evidence)}`);
+  assert.equal(evidence.objectHitTestable, true, `${label}: ASSET7 object is hit-testable`);
+  assert.equal(evidence.watchHitTestable, true, `${label}: ASSET7 watch action is hit-testable`);
+  return evidence;
+}
+
+async function assertSupportIsolation(cdp, viewport, label, { asset7 = false } = {}) {
+  const original = await evaluate(cdp, `(() => {
+    const canvas = document.querySelector('[data-kordyn-v2-shell="${viewport.device}"] [data-kordyn-v2-work-canvas]');
+    const scroller = canvas?.closest('.kordynV2StateBoundary');
+    return scroller ? scroller.scrollTop : 0;
+  })()`);
+  const setScroll = async (position) => {
+    await evaluate(cdp, `(() => {
+      const canvas = document.querySelector('[data-kordyn-v2-shell="${viewport.device}"] [data-kordyn-v2-work-canvas]');
+      const scroller = canvas?.closest('.kordynV2StateBoundary');
+      if (scroller) scroller.scrollTop = ${JSON.stringify(position)} === 'end' ? scroller.scrollHeight : 0;
+    })()`);
+    await flush(cdp);
+  };
+  await setScroll("start");
+  const start = await supportIsolationAtCurrentScroll(cdp, viewport, label, "start");
+  let asset7Evidence = null;
+  if (asset7) {
+    asset7Evidence = await assertAsset7HitTestable(cdp, viewport, label);
+    await supportIsolationAtCurrentScroll(cdp, viewport, label, "asset7");
+  }
+  await setScroll("end");
+  const end = await supportIsolationAtCurrentScroll(cdp, viewport, label, "end");
+  await evaluate(cdp, `(() => {
+    const canvas = document.querySelector('[data-kordyn-v2-shell="${viewport.device}"] [data-kordyn-v2-work-canvas]');
+    const scroller = canvas?.closest('.kordynV2StateBoundary');
+    if (scroller) scroller.scrollTop = ${Number(original) || 0};
+  })()`);
+  await flush(cdp);
+  return { start, end, ...(asset7Evidence ? { asset7: asset7Evidence } : {}) };
+}
+
 async function assertPriceBoundaryGeometry(cdp, label) {
   const geometry = await evaluate(cdp, `(() => {
     const rectFor = (tone) => {
@@ -676,7 +812,8 @@ async function captureProductionSurfaces(cdp, baseUrl) {
   await assertSelection(cdp, viewports.desktop1440, "position-eth", "Position", "desktop 1440 position capture");
   await assertNoOverflow(cdp, viewports.desktop1440, "desktop 1440 position capture");
   const desktop1440PriceBoundary = await assertPriceBoundaryGeometry(cdp, "desktop 1440 position capture");
-  captures.push(await capturePng(cdp, "desktop-account-position--1440x900.png", viewports.desktop1440, { priceBoundaryGeometry: desktop1440PriceBoundary }));
+  const desktop1440SupportIsolation = await assertSupportIsolation(cdp, viewports.desktop1440, "desktop 1440 position capture");
+  captures.push(await capturePng(cdp, "desktop-account-position--1440x900.png", viewports.desktop1440, { priceBoundaryGeometry: desktop1440PriceBoundary, supportIsolation: desktop1440SupportIsolation }));
 
   await navigatePage(cdp, baseUrl, viewports.desktop1180, "ready");
   await navigateAccount(cdp, "positions", viewports.desktop1180);
@@ -684,7 +821,8 @@ async function captureProductionSurfaces(cdp, baseUrl) {
   await assertSelection(cdp, viewports.desktop1180, "position-eth", "Position", "desktop 1180 position capture");
   await assertNoOverflow(cdp, viewports.desktop1180, "desktop 1180 position capture");
   const desktop1180PriceBoundary = await assertPriceBoundaryGeometry(cdp, "desktop 1180 position capture");
-  captures.push(await capturePng(cdp, "desktop-account-position--1180x800.png", viewports.desktop1180, { priceBoundaryGeometry: desktop1180PriceBoundary }));
+  const desktop1180SupportIsolation = await assertSupportIsolation(cdp, viewports.desktop1180, "desktop 1180 position capture");
+  captures.push(await capturePng(cdp, "desktop-account-position--1180x800.png", viewports.desktop1180, { priceBoundaryGeometry: desktop1180PriceBoundary, supportIsolation: desktop1180SupportIsolation }));
 
   await navigatePage(cdp, baseUrl, viewports.mobile390, "ready");
   await navigateAccount(cdp, "positions", viewports.mobile390);
@@ -694,7 +832,8 @@ async function captureProductionSurfaces(cdp, baseUrl) {
   await assertTouchTargets(cdp, "mobile 390 position capture");
   await assertNoOverflow(cdp, viewports.mobile390, "mobile 390 position capture");
   const mobile390LabelGeometry = await assertMobilePositionLabels(cdp, "mobile 390 position capture");
-  captures.push(await capturePng(cdp, "mobile-account-position--390x844.png", viewports.mobile390, { structuralOnly: true, labelGeometry: mobile390LabelGeometry }));
+  const mobile390SupportIsolation = await assertSupportIsolation(cdp, viewports.mobile390, "mobile 390 position capture");
+  captures.push(await capturePng(cdp, "mobile-account-position--390x844.png", viewports.mobile390, { structuralOnly: true, labelGeometry: mobile390LabelGeometry, supportIsolation: mobile390SupportIsolation }));
 
   await navigatePage(cdp, baseUrl, viewports.mobile430, "ready");
   await navigateAccount(cdp, "account", viewports.mobile430);
@@ -702,7 +841,8 @@ async function captureProductionSurfaces(cdp, baseUrl) {
   await assertSelection(cdp, viewports.mobile430, "ex-okx-main", "Account", "mobile 430 account capture");
   await assertTouchTargets(cdp, "mobile 430 account capture");
   await assertNoOverflow(cdp, viewports.mobile430, "mobile 430 account capture");
-  captures.push(await capturePng(cdp, "mobile-account-detail--430x932.png", viewports.mobile430, { structuralOnly: true }));
+  const mobile430SupportIsolation = await assertSupportIsolation(cdp, viewports.mobile430, "mobile 430 account capture");
+  captures.push(await capturePng(cdp, "mobile-account-detail--430x932.png", viewports.mobile430, { structuralOnly: true, supportIsolation: mobile430SupportIsolation }));
   return captures;
 }
 
@@ -859,6 +999,9 @@ async function captureStateScenarios(cdp, baseUrl) {
         };
       })()`);
       assert.ok(longContent.includesLast, `long-content keeps full bounded authoritative body ${JSON.stringify(longContent)}`);
+    }
+    if (["stale", "degraded", "long-content", "large-list"].includes(item.kind)) {
+      stateEvidenceExtras.supportIsolation = await assertSupportIsolation(cdp, item.viewport, `state ${item.kind}`, { asset7: item.kind === "large-list" });
     }
     const file = `state-${item.kind}--${viewportName(item.viewport)}.png`;
     states.push({
