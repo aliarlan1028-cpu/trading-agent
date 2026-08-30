@@ -408,3 +408,57 @@ The Impeccable detector was not rerun, preserving its exactly-once Task 3 contra
 - `npm run lint`: exit 0, no findings.
 - `npm run build`: exit 0; 1,715 modules transformed in 2.34s; Account lazy CSS remained `index-DdtT6d4G.css`, 42.83 kB / 6.69 kB gzip.
 - Final syntax, diff, scope, commit, and clean-worktree evidence is recorded after this report update.
+
+## Hostile Position / Execution sibling isolation after `fae4e8e`
+
+### Remaining review finding
+
+`fae4e8e` had fail-closed account and exchange alias resolution, but the shared Position UI normalizer still read record fields before establishing a safe record boundary. In particular, its open-row filter, source grouping, symbol/direction canonicalization, mirror ordering, and Execution binding could touch getters or revoked proxies. Its numeric helper also called `Number(value)` for arbitrary objects. One hostile Position or Execution sibling could therefore throw out of `normalizePositionsForUi()` and abort the shared section-v2 `common` payload, hiding unrelated valid Position facts.
+
+This correction remains inside the user-authorized read-only projection exception. It changes no database, schema, API action, route, permission, trading, execution, or risk behavior. The Impeccable detector was not rerun, preserving its exactly-once Task 3 contract.
+
+### RED
+
+Tests were added before the production correction for:
+
+- a valid Position pair beside revoked Position/mirror proxies;
+- accessor-backed `source`, `status`, `symbol`, and `direction` fields;
+- symbol-keyed, non-plain, and excessive-key Position records;
+- hostile timestamp and financial objects whose `Symbol.toPrimitive` throws;
+- Execution records with a symbol getter, get trap, revoked proxy, and a hostile same-ID sibling;
+- a real raw engine + correct account-bound mirror + hostile mirror sibling through `normalizePositionsForUi()` and `buildAccountDomainModel()`.
+
+Command:
+
+```text
+node scripts/run-tests-isolated.mjs tests/position-view.test.mjs tests/kordyn-v2-position-workspace.test.mjs
+```
+
+Result before production edits: exit 1; 41 tests, 36 passed / 5 failed; duration 202.704667 ms. The failures reproduced revoked Position access in the open-row filter, hostile numeric coercion, Execution symbol access, alias/proxy record survival under the whole-record contract, and a revoked sibling aborting the valid verified chain.
+
+### GREEN boundary
+
+- Both Position and Execution input collections are first read as bounded dense arrays through data descriptors. Invalid containers fail closed to an empty input.
+- Every record is independently snapshotted through own data descriptors before any filter, grouping, sorting, canonical identity, or linkage read. Arrays, accessors, symbol keys, excessive keys, non-plain prototypes, descriptor/prototype traps, and revoked proxies are rejected one record at a time.
+- Normalizer-consumed text and timestamp fields must remain bounded primitive scalars. Financial fields accept only finite numbers or bounded numeric strings; no object coercion is invoked.
+- Execution indexing and engine-to-Execution binding consume only these safe snapshots. An invalid hostile sibling is skipped without removing an unrelated valid binding.
+- Mirror ordering uses a local primitive-only timestamp parser. The exported accounting ordering helper was deliberately left unchanged so this read-only UI hardening does not alter unrelated accounting contracts.
+- A malformed row can no longer abort the shared section-v2 Position projection. Valid siblings keep their truthful financial facts, canonical account/exchange provenance, and protection evidence.
+
+Focused Position-view, Task 3, protection, and accounting compatibility result after the isolated sorter correction: exit 0; 63/63 passed; duration 258.367 ms.
+
+Fresh Task 3 + Position/protection + Task 1/2 account/state/selection/lazy regression:
+
+```text
+node scripts/run-tests-isolated.mjs tests/kordyn-v2-position-workspace.test.mjs tests/position-view.test.mjs tests/position-protection-evidence.test.mjs tests/exchange-protection-accounting.test.mjs tests/position-manager-move-stop.test.mjs tests/kordyn-v2-account-model.test.mjs tests/kordyn-v2-account-actions.test.mjs tests/kordyn-v2-account-cockpit.test.mjs tests/kordyn-v2-account-interactions.test.mjs tests/kordyn-v2-ai-workspace.test.mjs tests/kordyn-v2-state-boundary.test.mjs tests/kordyn-v2-state.test.mjs tests/kordyn-v2-ai-context-selection.test.mjs
+```
+
+Result: exit 0; 178/178 passed, 0 failed; duration 968.846667 ms.
+
+### Fresh final gates for this correction
+
+- Real production Account browser runner: exit 0 in 4.93s with `Kordyn V2 account production interaction browser checks passed`.
+- Full `npm test`: exit 0; 1,986/1,986 passed, 0 failed/cancelled/skipped/todo; duration 14,616.299042 ms; isolated test root cleaned.
+- `npm run lint`: exit 0, no findings.
+- `npm run build`: exit 0; 1,715 modules transformed in 1.61s; Account lazy CSS remained `index-DdtT6d4G.css`, 42.83 kB / 6.69 kB gzip.
+- Final syntax, diff, scope, commit, and clean-worktree evidence is recorded after this report update.

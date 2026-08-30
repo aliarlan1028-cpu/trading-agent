@@ -260,14 +260,14 @@ test("identical account aliases remain valid while invalid-present and accessor 
   });
   const proxyMirror = new Proxy(rawExchangeMirror("account-a", "OKX", at), {
     getOwnPropertyDescriptor(target, field) {
-      if (field === "exchangeAccountId") throw new Error("account alias descriptor must not escape");
+      if (field === "accountId") throw new Error("account alias descriptor must not escape");
       return Reflect.getOwnPropertyDescriptor(target, field);
     }
   });
-  for (const mirror of [
-    rawExchangeMirror("account-a", "OKX", at, { exchangeAccountId: 17 }),
-    accessorMirror,
-    proxyMirror
+  for (const { label, mirror, keepsDisplayFacts } of [
+    { label: "invalid-present", mirror: rawExchangeMirror("account-a", "OKX", at, { exchangeAccountId: 17 }), keepsDisplayFacts: true },
+    { label: "accessor", mirror: accessorMirror, keepsDisplayFacts: false },
+    { label: "proxy-descriptor", mirror: proxyMirror, keepsDisplayFacts: false }
   ]) {
     let model;
     let normalized;
@@ -279,11 +279,13 @@ test("identical account aliases remain valid while invalid-present and accessor 
       }, { now: Date.parse(at) + 60_000 });
     });
     const mirrorRow = normalized.find((position) => position.source === "exchange_rest");
-    assert.deepEqual(
-      { rawSyncedAt: mirrorRow?.rawSyncedAt, accountId: mirrorRow?.accountId, exchange: mirrorRow?.exchange },
-      { rawSyncedAt: null, accountId: null, exchange: null }
-    );
-    assert.notEqual(model.positions.find((position) => position.id === "position-1")?.protection.state, "verified");
+    if (keepsDisplayFacts) {
+      assert.deepEqual(
+        { rawSyncedAt: mirrorRow?.rawSyncedAt, accountId: mirrorRow?.accountId, exchange: mirrorRow?.exchange },
+        { rawSyncedAt: null, accountId: null, exchange: null }
+      );
+    } else assert.equal(mirrorRow, undefined);
+    assert.notEqual(model.positions.find((position) => position.id === "position-1")?.protection.state, "verified", label);
   }
 
   const accessorExecution = validExecution({ accountId: "account-a", exchange: "OKX" });
@@ -293,7 +295,7 @@ test("identical account aliases remain valid while invalid-present and accessor 
   });
   const proxyExecution = new Proxy(validExecution({ accountId: "account-a", exchange: "OKX" }), {
     getOwnPropertyDescriptor(target, field) {
-      if (field === "exchangeAccountId") throw new Error("execution account alias descriptor must not escape");
+      if (field === "accountId") throw new Error("execution account alias descriptor must not escape");
       return Reflect.getOwnPropertyDescriptor(target, field);
     }
   });
@@ -322,6 +324,29 @@ test("identical account aliases remain valid while invalid-present and accessor 
     assert.notEqual(protection?.state, "verified");
     assert.notEqual(protection?.reason, "exchange_stop_missing");
   }
+});
+
+test("a hostile Position sibling cannot hide a correct account-bound verified protection chain", () => {
+  const at = "2026-08-30T06:00:00Z";
+  const revoked = Proxy.revocable(rawExchangeMirror("account-hostile", "OKX", at), {});
+  revoked.revoke();
+  let model;
+  let positions;
+  assert.doesNotThrow(() => {
+    positions = normalizePositionsForUi([
+      rawEnginePosition(), rawExchangeMirror("account-okx", "OKX", at), revoked.proxy
+    ], { executionOrders: [validExecution()] });
+    model = buildAccountDomainModel({
+      resourceState, positions, executionOrders: [validExecution()],
+      accountSnapshots: [validSnapshot({ createdAt: at })], riskIncidents: []
+    }, { now: Date.parse(at) + 60_000 });
+  });
+  assert.equal(positions.length, 1);
+  assert.deepEqual(
+    { accountId: positions[0].accountId, exchange: positions[0].exchange, rawSyncedAt: positions[0].rawSyncedAt },
+    { accountId: "account-okx", exchange: "OKX", rawSyncedAt: at }
+  );
+  assert.equal(model.positions[0].protection.state, "verified");
 });
 
 test("frontend protection independently rejects conflicting or invalid normalized account aliases", () => {

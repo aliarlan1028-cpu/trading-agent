@@ -77,3 +77,105 @@ test("已平仓不进视图", () => {
   const closed = { ...ADA_ENGINE, id: "c", status: "closed" };
   assert.equal(normalizePositionsForUi([closed]).length, 0);
 });
+
+test("revoked, accessor, symbol-key, and non-plain Position siblings are isolated before grouping", () => {
+  const sourceAccessor = { ...ADA_EXCHANGE, id: "hostile-source" };
+  Object.defineProperty(sourceAccessor, "source", { enumerable: true, get() { throw new Error("source getter must not run"); } });
+  const statusAccessor = { ...ADA_EXCHANGE, id: "hostile-status" };
+  Object.defineProperty(statusAccessor, "status", { enumerable: true, get() { throw new Error("status getter must not run"); } });
+  const symbolAccessor = { ...ADA_EXCHANGE, id: "hostile-symbol" };
+  Object.defineProperty(symbolAccessor, "symbol", { enumerable: true, get() { throw new Error("symbol getter must not run"); } });
+  const directionAccessor = { ...ADA_EXCHANGE, id: "hostile-direction", posSide: undefined };
+  Object.defineProperty(directionAccessor, "direction", { enumerable: true, get() { throw new Error("direction getter must not run"); } });
+  const symbolKey = { ...ADA_EXCHANGE, id: "hostile-symbol-key", [Symbol("hostile")]: true };
+  const nonPlain = Object.assign(Object.create({ inherited: true }), ADA_EXCHANGE, { id: "hostile-prototype" });
+  const excessive = { ...ADA_EXCHANGE, id: "hostile-excessive" };
+  for (let index = 0; index < 260; index += 1) excessive[`extra${index}`] = index;
+  const hostileTimestamp = { ...ADA_EXCHANGE, id: "hostile-timestamp", rawSyncedAt: { [Symbol.toPrimitive]() { throw new Error("timestamp coercion must not run"); } } };
+  const revoked = Proxy.revocable({ ...ADA_EXCHANGE, id: "hostile-revoked" }, {});
+  revoked.revoke();
+
+  let rows;
+  assert.doesNotThrow(() => {
+    rows = normalizePositionsForUi([
+      ADA_ENGINE, ADA_EXCHANGE, revoked.proxy, sourceAccessor, statusAccessor, symbolAccessor, directionAccessor,
+      symbolKey, nonPlain, excessive, hostileTimestamp
+    ]);
+  });
+  assert.equal(rows.length, 1);
+  assert.deepEqual(
+    { source: rows[0].source, symbol: rows[0].symbol, quantity: rows[0].quantity, mark: rows[0].mark },
+    { source: "execution_engine", symbol: "ADA/USDT", quantity: 150, mark: 0.1912 }
+  );
+});
+
+test("hostile numeric coercion is never invoked and cannot displace a valid mirror", () => {
+  const hostileNumber = { [Symbol.toPrimitive]() { throw new Error("numeric coercion must not run"); } };
+  const hostileMirror = {
+    ...ADA_EXCHANGE,
+    id: "hostile-number",
+    rawSyncedAt: "2026-08-31T00:00:00.000Z",
+    mark: hostileNumber
+  };
+  let rows;
+  assert.doesNotThrow(() => {
+    rows = normalizePositionsForUi([ADA_ENGINE, ADA_EXCHANGE, hostileMirror]);
+  });
+  assert.equal(rows.length, 1);
+  assert.deepEqual(
+    { quantity: rows[0].quantity, mark: rows[0].mark, liquidationPrice: rows[0].liquidationPrice },
+    { quantity: 150, mark: 0.1912, liquidationPrice: 0.17 }
+  );
+});
+
+test("hostile Execution siblings cannot abort or rewrite an unrelated valid account-bound Position", () => {
+  const at = "2026-08-31T00:00:00.000Z";
+  const validEngine = { ...ADA_ENGINE, executionOrderId: "exec-valid" };
+  const validMirror = { ...ADA_EXCHANGE, accountId: "account-a", exchange: "OKX", rawSyncedAt: at };
+  const unrelatedEngine = {
+    id: "eng-sol", positionId: "position-sol", executionOrderId: "exec-hostile", symbol: "SOL/USDT",
+    source: "execution_engine", direction: "long", quantity: 2, entry: 20, mark: 21
+  };
+  const unrelatedMirror = {
+    id: "mirror-sol", symbol: "SOL/USDT", source: "exchange_rest", direction: "long", coinSize: 2,
+    mark: 21, entry: 20, leverage: 2, accountId: "account-b", exchange: "OKX", rawSyncedAt: at
+  };
+  const validExecution = {
+    id: "exec-valid", symbol: "ADA/USDT", direction: "long", accountId: "account-a", exchange: "OKX"
+  };
+  const symbolAccessor = {
+    id: "exec-hostile", direction: "long", accountId: "account-b", exchange: "OKX"
+  };
+  Object.defineProperty(symbolAccessor, "symbol", { enumerable: true, get() { throw new Error("execution symbol getter must not run"); } });
+  const hostileDuplicate = {
+    id: "exec-valid", direction: "long", accountId: "account-a", exchange: "OKX"
+  };
+  Object.defineProperty(hostileDuplicate, "symbol", { enumerable: true, get() { throw new Error("duplicate execution getter must not run"); } });
+  const getTrap = new Proxy({
+    id: "exec-hostile", symbol: "SOL/USDT", direction: "long", accountId: "account-b", exchange: "OKX"
+  }, {
+    get(target, field, receiver) {
+      if (field === "symbol" || field === "direction") throw new Error("execution get trap must not run");
+      return Reflect.get(target, field, receiver);
+    }
+  });
+  const revoked = Proxy.revocable({
+    id: "exec-hostile", symbol: "SOL/USDT", direction: "long", accountId: "account-b", exchange: "OKX"
+  }, {});
+  revoked.revoke();
+
+  for (const hostileExecution of [symbolAccessor, hostileDuplicate, getTrap, revoked.proxy]) {
+    let rows;
+    assert.doesNotThrow(() => {
+      rows = normalizePositionsForUi(
+        [validEngine, validMirror, unrelatedEngine, unrelatedMirror],
+        { executionOrders: [validExecution, hostileExecution] }
+      );
+    });
+    const valid = rows.find((row) => row.positionId === "eng" || row.id === "eng");
+    assert.deepEqual(
+      { source: valid?.source, accountId: valid?.accountId, exchange: valid?.exchange, mark: valid?.mark },
+      { source: "execution_engine", accountId: "account-a", exchange: "OKX", mark: 0.1912 }
+    );
+  }
+});

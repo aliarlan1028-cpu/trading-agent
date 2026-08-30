@@ -10,7 +10,11 @@ import { canonicalPositionDirection, canonicalSymbol } from "./positionIdentity.
 const isOpen = (p) => !p.status || p.status === "open";
 const num = (v) => {
   if (v === null || v === undefined || v === "") return null;
-  const n = Number(v);
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (typeof v !== "string" || v.length > 80) return null;
+  const text = v.trim();
+  if (!text) return null;
+  const n = Number(text);
   return Number.isFinite(n) ? n : null;
 };
 const boundedIdentity = (value) => typeof value === "string"
@@ -22,6 +26,90 @@ const boundedIdentity = (value) => typeof value === "string"
   : null;
 const ACCOUNT_ID_FIELDS = Object.freeze(["accountId", "exchangeAccountId", "connectionAccountId"]);
 const missingIdentity = Object.freeze({ state: "unbound", value: null });
+const MAX_NORMALIZE_ROWS = 10_000;
+const MAX_NORMALIZE_RECORD_KEYS = 256;
+const NORMALIZE_TEXT_FIELDS = Object.freeze([
+  "status", "source", "symbol", "instId", "direction", "posSide", "positionSide", "side", "exchangePositionKey"
+]);
+const NORMALIZE_TIMESTAMP_FIELDS = Object.freeze(["exchangeObservedAt", "rawSyncedAt", "updatedAt", "createdAt"]);
+const NORMALIZE_NUMERIC_FIELDS = Object.freeze([
+  "mark", "markPx", "coinSize", "quantity", "size", "pos", "positionAmt", "signedSize",
+  "leverage", "liqPx", "liquidationPrice", "pnl", "unrealizedPnl", "roiPct", "entry", "avgPx"
+]);
+
+function boundedArrayValues(value) {
+  try {
+    if (!Array.isArray(value)) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const length = descriptors.length?.value;
+    if (!Number.isSafeInteger(length) || length < 0 || length > MAX_NORMALIZE_ROWS) return null;
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.length !== length + 1 || keys.some((key) => (
+      key !== "length"
+      && (typeof key !== "string" || !/^(?:0|[1-9]\d*)$/u.test(key) || Number(key) >= length)
+    ))) return null;
+    const rows = new Array(length);
+    for (let index = 0; index < length; index += 1) {
+      const descriptor = descriptors[index];
+      if (!descriptor || !Object.hasOwn(descriptor, "value") || !descriptor.enumerable) return null;
+      rows[index] = descriptor.value;
+    }
+    return rows;
+  } catch {
+    return null;
+  }
+}
+
+function plainDataSnapshot(value) {
+  if (!value || typeof value !== "object") return null;
+  try {
+    if (Array.isArray(value)) return null;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.length > MAX_NORMALIZE_RECORD_KEYS || keys.some((key) => typeof key !== "string")) return null;
+    const snapshot = Object.create(null);
+    for (const key of keys) {
+      const descriptor = descriptors[key];
+      if (!descriptor || !Object.hasOwn(descriptor, "value")) return null;
+      Object.defineProperty(snapshot, key, {
+        configurable: true,
+        enumerable: true,
+        writable: true,
+        value: descriptor.value
+      });
+    }
+    return snapshot;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeInputSnapshot(value) {
+  const snapshot = plainDataSnapshot(value);
+  if (!snapshot) return null;
+  for (const field of NORMALIZE_TEXT_FIELDS) {
+    const scalar = snapshot[field];
+    if (scalar === null || scalar === undefined || scalar === "") continue;
+    if (typeof scalar !== "string" || scalar.length > 2_000) return null;
+  }
+  for (const field of NORMALIZE_TIMESTAMP_FIELDS) {
+    const scalar = snapshot[field];
+    if (scalar === null || scalar === undefined || scalar === "") continue;
+    if (typeof scalar === "number") {
+      if (!Number.isFinite(scalar)) return null;
+      continue;
+    }
+    if (typeof scalar !== "string" || scalar.length > 240 || !Number.isFinite(Date.parse(scalar))) return null;
+  }
+  for (const field of NORMALIZE_NUMERIC_FIELDS) {
+    const scalar = snapshot[field];
+    if (scalar === null || scalar === undefined || scalar === "") continue;
+    if (num(scalar) === null) return null;
+  }
+  return snapshot;
+}
 
 function identityFor(row, fields, { uppercase = false } = {}) {
   if (!row || typeof row !== "object") return { state: "invalid", value: null };
@@ -88,6 +176,17 @@ function newest(rows = []) {
   return rows.slice().sort((a, b) => positionFactObservedMs(b) - positionFactObservedMs(a))[0] || null;
 }
 
+function newestNormalized(rows = []) {
+  return rows.slice().sort((a, b) => normalizeObservedMs(b) - normalizeObservedMs(a))[0] || null;
+}
+
+function normalizeObservedMs(position = {}) {
+  const value = position.exchangeObservedAt || position.rawSyncedAt || position.updatedAt || position.createdAt || null;
+  if (typeof value !== "string" && typeof value !== "number") return Number.NEGATIVE_INFINITY;
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : Number.NEGATIVE_INFINITY;
+}
+
 export function positionFactObservedMs(position = {}) {
   const value = position.exchangeObservedAt || position.rawSyncedAt || position.updatedAt || position.createdAt || null;
   const timestamp = value ? new Date(value).getTime() : Number.NaN;
@@ -143,12 +242,22 @@ export function newestAuthoritativePosition(rows = [], options = {}) {
 }
 
 function executionIndex(options = {}) {
-  const provided = options && typeof options === "object" && Object.hasOwn(options, "executionOrders");
-  const orders = provided && Array.isArray(options.executionOrders) && options.executionOrders.length <= 10_000
-    ? options.executionOrders
-    : [];
+  let provided = false;
+  let rawOrders = null;
+  try {
+    const descriptor = options && typeof options === "object"
+      ? Object.getOwnPropertyDescriptor(options, "executionOrders")
+      : null;
+    provided = Boolean(descriptor);
+    if (descriptor && Object.hasOwn(descriptor, "value")) rawOrders = boundedArrayValues(descriptor.value);
+  } catch {
+    provided = true;
+  }
+  const orders = rawOrders || [];
   const indexed = new Map();
-  for (const order of orders) {
+  for (const value of orders) {
+    const order = normalizeInputSnapshot(value);
+    if (!order) continue;
     const identity = identityFor(order, ["id"]);
     if (identity.state !== "valid") continue;
     const id = identity.value;
@@ -176,10 +285,10 @@ function engineExecutionBinding(engine, executionLookup, symbol, direction) {
 }
 
 function normalizedPositionGroup(g) {
-  const eng = newest(g.engines) || {};
-  const rest = newest(g.rests) || {};
-  const ws = newest(g.websockets) || {};
-  const other = newest(g.others) || {};
+  const eng = newestNormalized(g.engines) || {};
+  const rest = newestNormalized(g.rests) || {};
+  const ws = newestNormalized(g.websockets) || {};
+  const other = newestNormalized(g.others) || {};
   const hasEngine = Boolean(eng.id || g.engines.length);
   const exchangeMirror = g.rests.length ? rest : g.websockets.length ? ws : null;
   const mirrorBinding = exchangeMirror ? bindingFor(exchangeMirror) : { state: "unbound", accountId: null, exchange: null };
@@ -223,8 +332,11 @@ function normalizedPositionGroup(g) {
 }
 
 export function normalizePositionsForUi(positions = [], options = {}) {
+  const inputRows = boundedArrayValues(positions);
+  if (!inputRows) return [];
+  const safePositions = inputRows.map(normalizeInputSnapshot).filter(Boolean);
   const baseGroups = new Map();
-  for (const p of positions.filter(isOpen)) {
+  for (const p of safePositions.filter(isOpen)) {
     const key = `${canonicalSymbol(p.symbol || p.instId)}::${canonDirection(p) || "unknown"}`;
     const g = baseGroups.get(key) || emptyPositionGroup();
     if (p.source === "execution_engine") g.engines.push(p);
