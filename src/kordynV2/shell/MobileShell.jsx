@@ -149,22 +149,27 @@ export function MobileShell({
             {children}
           </main>
         </StateBoundary>
-        <div className="kordynV2MobileSupportDock" data-kordyn-v2-support-dock>
-          <button
-            ref={supportTriggerRef}
-            className="kordynV2MobileSupportTrigger"
-            data-kordyn-v2-ai-support-trigger
-            type="button"
-            aria-haspopup="dialog"
-            aria-expanded={panel === "support"}
-            aria-label="AI 客服，只读助理"
-            onClick={() => openSheet("support", supportTriggerRef.current)}
-          >
-            <Bot size={22} strokeWidth={1.7} aria-hidden="true" />
-            <span><strong>AI 客服</strong><small>只读助理</small></span>
-          </button>
-        </div>
         <MobileBottomNavigation domainId={location.domainId} onNavigate={onNavigate} />
+      </div>
+      <div
+        className="kordynV2MobileSupportDock"
+        data-kordyn-v2-support-dock
+        inert={panel ? "" : undefined}
+        aria-hidden={panel ? "true" : undefined}
+      >
+        <button
+          ref={supportTriggerRef}
+          className="kordynV2MobileSupportTrigger"
+          data-kordyn-v2-ai-support-trigger
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded={panel === "support"}
+          aria-label="AI 客服，只读助理"
+          onClick={() => openSheet("support", supportTriggerRef.current)}
+        >
+          <Bot size={22} strokeWidth={1.7} aria-hidden="true" />
+          <span><strong>AI 客服</strong><small>只读助理</small></span>
+        </button>
       </div>
       <MobileSheet
         panel={panel}
