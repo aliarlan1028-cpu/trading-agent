@@ -40,6 +40,110 @@ body:has(.kordynV2Root) {
   background: rgba(52, 120, 255, 0.55);
 }
 
+body:has(.kordynV2Root) .cfmOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: #f2f6fd;
+  background: rgba(3, 9, 20, 0.74);
+}
+
+body:has(.kordynV2Root) .cfmCard {
+  width: min(420px, calc(100vw - 32px));
+  max-width: 100%;
+  padding: 20px;
+  border: 1px solid rgba(135, 164, 205, 0.34);
+  border-radius: 18px;
+  background:
+    linear-gradient(145deg, rgba(13, 24, 39, 0.98), rgba(5, 13, 25, 0.98)),
+    #091321;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.56), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  font-family: var(--kordyn-v2-font);
+}
+
+body:has(.kordynV2Root) .cfmCard--danger {
+  border-color: rgba(255, 89, 104, 0.58);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.56), 0 0 0 1px rgba(255, 89, 104, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+body:has(.kordynV2Root) .cfmHead {
+  margin: 0;
+  color: #f2f6fd;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+body:has(.kordynV2Root) .cfmMsg {
+  margin: 10px 0 0;
+  color: #c2cede;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+body:has(.kordynV2Root) .cfmFoot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+body:has(.kordynV2Root) .cfmBtn {
+  min-width: 92px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid rgba(135, 164, 205, 0.28);
+  border-radius: 12px;
+  color: #f2f6fd;
+  background: rgba(9, 19, 33, 0.98);
+  font: 650 13px var(--kordyn-v2-font);
+  cursor: pointer;
+}
+
+body:has(.kordynV2Root) .cfmOk {
+  border-color: rgba(52, 120, 255, 0.56);
+  background: #3478ff;
+  color: #fff;
+}
+
+body:has(.kordynV2Root) .cfmDanger {
+  border-color: rgba(255, 89, 104, 0.68);
+  background: #ff5968;
+  color: #14050a;
+}
+
+body:has(.kordynV2Root) .cfmCancel {
+  color: #c2cede;
+}
+
+body:has(.kordynV2Root) .cfmBtn:focus-visible {
+  outline: 2px solid #6a99ff;
+  outline-offset: 2px;
+}
+
+@media (max-width: 767px) {
+  body:has(.kordynV2Root) .cfmOverlay {
+    align-items: end;
+    padding: 14px;
+  }
+
+  body:has(.kordynV2Root) .cfmCard {
+    width: 100%;
+    border-radius: 18px;
+  }
+
+  body:has(.kordynV2Root) .cfmFoot {
+    flex-direction: column-reverse;
+  }
+
+  body:has(.kordynV2Root) .cfmBtn {
+    width: 100%;
+  }
+}
+
 .kordynV2DesktopShell {
   position: relative;
   width: 100%;

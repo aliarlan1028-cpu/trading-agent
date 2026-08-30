@@ -17,6 +17,7 @@ const mobileTargets = Object.freeze(["390x844", "430x932"]);
 const comparisonScopes = Object.freeze({
   "desktop-ai-mission-control": Object.freeze(["shell", "ai"]),
   "desktop-ai-signals": Object.freeze(["ai"]),
+  "desktop-account-position": Object.freeze(["account"]),
   "mobile-ai-mission-home": Object.freeze(["shell", "ai"]),
   "mobile-ai-task-approval": Object.freeze(["ai"])
 });
@@ -64,6 +65,12 @@ export const KORDYN_V2_CONCEPTS = Object.freeze(rows.map(([
     : Object.freeze([]),
   aiCaptures: comparisonScopes[id]?.includes("ai")
     ? Object.freeze((device === "desktop" ? desktopTargets : mobileTargets).map((viewport) => Object.freeze({
+      viewport,
+      file: `${id}--${viewport}.png`
+    })))
+    : Object.freeze([]),
+  accountCaptures: comparisonScopes[id]?.includes("account") && device === "desktop"
+    ? Object.freeze(desktopTargets.map((viewport) => Object.freeze({
       viewport,
       file: `${id}--${viewport}.png`
     })))

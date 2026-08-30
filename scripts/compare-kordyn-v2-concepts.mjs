@@ -24,6 +24,12 @@ const SCOPE_CONFIG = Object.freeze({
     fixture: "tests/kordyn-v2-production-fixture.js",
     captureKey: "aiCaptures",
     productionCommit: true
+  }),
+  account: Object.freeze({
+    runner: "tests/run-kordyn-v2-account-browser.mjs",
+    fixture: "tests/kordyn-v2-account-browser.jsx",
+    captureKey: "accountCaptures",
+    productionCommit: true
   })
 });
 
@@ -341,16 +347,21 @@ export async function compareKordynV2Concepts({ screenshotsDir: screenshotsInput
     });
   }
 
-  const completed = KORDYN_V2_CONCEPTS
+  const scopedConcepts = KORDYN_V2_CONCEPTS
     .filter((row) => row.comparisonScopes.includes(scope))
+  const completed = scopedConcepts
     .map((row) => row.id);
-  const pending = KORDYN_V2_CONCEPTS
+  const scopedPending = scopedConcepts
+    .filter((row) => !plan.some((item) => item.concept.id === row.id))
+    .map((row) => ({ id: row.id, status: row.status }));
+  const outOfScope = KORDYN_V2_CONCEPTS
     .filter((row) => !row.comparisonScopes.includes(scope))
     .map((row) => ({ id: row.id, status: row.status }));
+  const legacyPending = scope === "account" ? scopedPending : outOfScope;
   const counts = {
     concepts: KORDYN_V2_CONCEPTS.length,
     completedConcepts: completed.length,
-    pendingConcepts: pending.length,
+    pendingConcepts: legacyPending.length,
     comparisons: comparisons.length,
     artifacts: artifactBuffers.size + 1
   };
@@ -362,8 +373,17 @@ export async function compareKordynV2Concepts({ screenshotsDir: screenshotsInput
     ...(scopeConfig.productionCommit ? { productionSourceCommit: evidence.productionSourceCommit } : {}),
     outputRoot: path.relative(rootDir, outputDir).split(path.sep).join("/"),
     counts,
+    scopeCounts: {
+      manifestConcepts: KORDYN_V2_CONCEPTS.length,
+      scopedConcepts: scopedConcepts.length,
+      completedScopedConcepts: completed.length,
+      pendingScopedConcepts: scopedPending.length,
+      outOfScopeConcepts: outOfScope.length
+    },
     completed,
-    pending,
+    pending: legacyPending,
+    scopedPending,
+    outOfScope,
     comparisons,
     releaseVerdict: "human region review required"
   };

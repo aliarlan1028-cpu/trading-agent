@@ -36,7 +36,8 @@ test("performance budgets remain strict decimal-byte gates", () => {
   assert.deepEqual(performanceModule.KORDYN_V2_PERFORMANCE_BUDGETS, {
     publicCss: 40_000,
     publicJs: 450_000,
-    aiShellCss: 180_000
+    aiShellCss: 180_000,
+    accountDomainCss: 120_000
   });
 });
 
@@ -64,7 +65,16 @@ const validManifest = Object.freeze({
     src: "src/kordynV2/entry.jsx",
     isDynamicEntry: true,
     imports: ["index.html", "_react.js"],
+    dynamicImports: ["src/kordynV2/domains/account/index.jsx"],
     css: ["assets/v2.css"]
+  }),
+  "src/kordynV2/domains/account/index.jsx": Object.freeze({
+    file: "assets/account.js",
+    name: "index",
+    src: "src/kordynV2/domains/account/index.jsx",
+    isDynamicEntry: true,
+    imports: ["_react.js"],
+    css: ["assets/account.css"]
   })
 });
 
@@ -75,7 +85,9 @@ const validAssetStats = Object.freeze({
   "assets/legacy.js": Object.freeze({ raw: 30_000, gzip: 10_000 }),
   "assets/legacy.css": Object.freeze({ raw: 170_000, gzip: 26_000 }),
   "assets/v2.js": Object.freeze({ raw: 80_000, gzip: 25_000 }),
-  "assets/v2.css": Object.freeze({ raw: 120_000, gzip: 18_000 })
+  "assets/v2.css": Object.freeze({ raw: 120_000, gzip: 18_000 }),
+  "assets/account.js": Object.freeze({ raw: 70_000, gzip: 21_000 }),
+  "assets/account.css": Object.freeze({ raw: 48_000, gzip: 8_000 })
 });
 
 test("manifest graph ownership reports public, V2 shell, and legacy assets without following lazy siblings", () => {
@@ -110,10 +122,23 @@ test("manifest graph ownership reports public, V2 shell, and legacy assets witho
     cssGzip: 26_000,
     assets: ["assets/legacy.css", "assets/legacy.js"]
   });
+  assert.deepEqual(report.routes.accountDomain, {
+    entry: "src/kordynV2/domains/account/index.jsx",
+    js: 170_000,
+    jsGzip: 56_000,
+    css: 48_000,
+    cssGzip: 8_000,
+    assets: ["assets/account.css", "assets/account.js", "assets/react.js"],
+    lazyOwnedBy: "src/kordynV2/entry.jsx",
+    loadsLegacyProductStyles: false,
+    forbiddenLegacyCss: [],
+    sharedShellCss: []
+  });
   assert.deepEqual(report.budgets, {
     publicCss: { actual: 20_000, limit: 40_000, pass: true },
     publicJs: { actual: 300_000, limit: 450_000, pass: true },
-    aiShellCss: { actual: 140_000, limit: 180_000, pass: true }
+    aiShellCss: { actual: 140_000, limit: 180_000, pass: true },
+    accountDomainCss: { actual: 48_000, limit: 120_000, pass: true }
   });
 });
 
@@ -128,7 +153,7 @@ const coalescedV2Manifest = Object.freeze({
     name: "entry",
     isDynamicEntry: true,
     imports: ["index.html", "_react.js"],
-    dynamicImports: ["src/kordynV2/domains/ai/index.jsx"],
+    dynamicImports: ["src/kordynV2/domains/ai/index.jsx", "src/kordynV2/domains/account/index.jsx"],
     css: ["assets/v2.css"]
   }),
   "src/kordynV2/domains/ai/index.jsx": Object.freeze({
@@ -138,6 +163,14 @@ const coalescedV2Manifest = Object.freeze({
     isDynamicEntry: true,
     imports: ["_react.js"],
     css: ["assets/ai.css"]
+  }),
+  "src/kordynV2/domains/account/index.jsx": Object.freeze({
+    file: "assets/account.js",
+    name: "index",
+    src: "src/kordynV2/domains/account/index.jsx",
+    isDynamicEntry: true,
+    imports: ["_react.js"],
+    css: ["assets/account.css"]
   })
 });
 
@@ -159,6 +192,9 @@ test("Vite-coalesced V2 entry is resolved by unique public-owned structural iden
   assert.equal(report.routes.aiShell.loadsLegacyProductStyles, false);
   assert.ok(report.routes.aiShell.assets.includes("assets/v2.css"));
   assert.equal(report.routes.aiShell.assets.includes("assets/ai.css"), false, "inactive lazy AI child stays outside static shell closure");
+  assert.equal(report.routes.aiShell.assets.includes("assets/account.css"), false, "inactive lazy Account child stays outside static shell closure");
+  assert.equal(report.routes.accountDomain.entry, "src/kordynV2/domains/account/index.jsx");
+  assert.equal(report.routes.accountDomain.css, 48_000);
 });
 
 test("Vite-coalesced V2 entry resolution fails closed when the structural owner is ambiguous", () => {

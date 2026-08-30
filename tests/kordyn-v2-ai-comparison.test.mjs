@@ -71,6 +71,15 @@ test("AI comparison emits exactly four approved concepts and eight immutable-vie
     assert.equal(names.length, 33);
     const index = JSON.parse(await readFile(path.join(outputDir, "comparison-index.json"), "utf8"));
     assert.deepEqual(index.completed, expectedConcepts);
+    assert.deepEqual(index.scopeCounts, {
+      manifestConcepts: 15,
+      scopedConcepts: 4,
+      completedScopedConcepts: 4,
+      pendingScopedConcepts: 0,
+      outOfScopeConcepts: 11
+    });
+    assert.deepEqual(index.scopedPending, []);
+    assert.equal(index.outOfScope.length, 11);
     assert.equal(index.scope, "ai");
     assert.equal(index.productionSourceCommit, "a".repeat(40));
     assert.equal(index.comparisons.length, 8);

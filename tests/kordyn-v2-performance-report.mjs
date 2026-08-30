@@ -1,7 +1,8 @@
 export const KORDYN_V2_PERFORMANCE_BUDGETS = Object.freeze({
   publicCss: 40_000,
   publicJs: 450_000,
-  aiShellCss: 180_000
+  aiShellCss: 180_000,
+  accountDomainCss: 120_000
 });
 
 function record(value, label) {
@@ -154,6 +155,7 @@ export function analyzeV2BuildManifest({ manifest: manifestInput, assetStats: as
   const publicEntry = uniquePublicEntry(manifest);
   const v2Entry = resolveV2Entry(manifest, publicEntry);
   const legacyEntry = uniqueEntry(manifest, "src/productStyles.js", "legacy");
+  const accountEntry = uniqueEntry(manifest, "src/kordynV2/domains/account/index.jsx", "account");
   const dynamicImports = manifest[publicEntry]?.dynamicImports;
   if (!Array.isArray(dynamicImports) || !dynamicImports.includes(v2Entry)) {
     throw new Error("v2_entry_not_owned_by_public_graph");
@@ -161,19 +163,31 @@ export function analyzeV2BuildManifest({ manifest: manifestInput, assetStats: as
   if (!dynamicImports.includes(legacyEntry)) {
     throw new Error("legacy_entry_not_owned_by_public_graph");
   }
+  const v2DynamicImports = manifest[v2Entry]?.dynamicImports;
+  if (!Array.isArray(v2DynamicImports) || !v2DynamicImports.includes(accountEntry)) {
+    throw new Error("account_entry_not_owned_by_v2_lazy_graph");
+  }
 
   const publicClosure = staticClosure(manifest, publicEntry);
   const v2Closure = staticClosure(manifest, v2Entry);
   const legacyClosure = staticClosure(manifest, legacyEntry);
+  const accountClosure = staticClosure(manifest, accountEntry);
   if (v2Closure.has(legacyEntry)) throw new Error("v2_imports_legacy_styles");
+  if (accountClosure.has(legacyEntry)) throw new Error("account_imports_legacy_styles");
 
   const publicAssets = assetsForClosure(manifest, publicClosure);
   const v2Assets = assetsForClosure(manifest, v2Closure);
   const legacyAssets = assetsForClosure(manifest, legacyClosure);
+  const accountAssets = assetsForClosure(manifest, accountClosure);
   const forbiddenLegacyCss = [...v2Assets.css].filter((file) => legacyAssets.css.has(file)).sort();
   if (forbiddenLegacyCss.length > 0) {
     throw new Error(`v2_loads_legacy_css:${forbiddenLegacyCss.join(",")}`);
   }
+  const accountForbiddenLegacyCss = [...accountAssets.css].filter((file) => legacyAssets.css.has(file)).sort();
+  if (accountForbiddenLegacyCss.length > 0) {
+    throw new Error(`account_loads_legacy_css:${accountForbiddenLegacyCss.join(",")}`);
+  }
+  const sharedShellCss = [...accountAssets.css].filter((file) => v2Assets.css.has(file)).sort();
 
   const publicReport = summarize(publicEntry, publicAssets, assetStats);
   const aiShell = summarize(v2Entry, v2Assets, assetStats, {
@@ -181,9 +195,15 @@ export function analyzeV2BuildManifest({ manifest: manifestInput, assetStats: as
     forbiddenLegacyCss
   });
   const legacy = summarize(legacyEntry, legacyAssets, assetStats);
+  const accountDomain = summarize(accountEntry, accountAssets, assetStats, {
+    lazyOwnedBy: v2Entry,
+    loadsLegacyProductStyles: false,
+    forbiddenLegacyCss: accountForbiddenLegacyCss,
+    sharedShellCss
+  });
   return {
     public: publicReport,
-    routes: { aiShell, legacy },
+    routes: { aiShell, legacy, accountDomain },
     budgets: {
       publicCss: {
         actual: publicReport.css,
@@ -199,6 +219,11 @@ export function analyzeV2BuildManifest({ manifest: manifestInput, assetStats: as
         actual: aiShell.css,
         limit: KORDYN_V2_PERFORMANCE_BUDGETS.aiShellCss,
         pass: aiShell.css < KORDYN_V2_PERFORMANCE_BUDGETS.aiShellCss
+      },
+      accountDomainCss: {
+        actual: accountDomain.css,
+        limit: KORDYN_V2_PERFORMANCE_BUDGETS.accountDomainCss,
+        pass: accountDomain.css < KORDYN_V2_PERFORMANCE_BUDGETS.accountDomainCss
       }
     }
   };
