@@ -96,6 +96,10 @@ export function normalizePositionsForUi(positions = []) {
     const ws = newest(g.websockets) || {};
     const other = newest(g.others) || {};
     const hasEngine = Boolean(eng.id || g.engines.length);
+    const exchangeMirror = g.rests.length ? rest : g.websockets.length ? ws : null;
+    const mirrorAccountId = exchangeMirror
+      ? exchangeMirror.accountId || exchangeMirror.exchangeAccountId || exchangeMirror.connectionAccountId || null
+      : null;
     const base = hasEngine ? eng : (rest.id ? rest : ws.id ? ws : other); // 引擎行只提供托管身份与解释字段
     const mark = num(rest.mark ?? rest.markPx) ?? num(ws.mark ?? ws.markPx) ?? num(eng.mark) ?? num(other.mark);
     // 交易所 size 是合约张数，只有 coinSize 才是币量；缺 coinSize 时只能回退到同仓的引擎币量。
@@ -112,6 +116,12 @@ export function normalizePositionsForUi(positions = []) {
       source: hasEngine ? "execution_engine" : (rest.source || ws.source || base.source),
       symbol: base.symbol || rest.symbol || ws.symbol,
       direction: canonDirection(base),
+      // 这些字段只说明当前 UI 财务事实实际选中的交易所镜像；不得从引擎行推断镜像所有权。
+      rawSyncedAt: exchangeMirror?.rawSyncedAt ?? null,
+      accountId: mirrorAccountId,
+      exchangeAccountId: exchangeMirror?.exchangeAccountId ?? null,
+      connectionAccountId: exchangeMirror?.connectionAccountId ?? null,
+      exchange: exchangeMirror?.exchange ?? null,
       entry: num(rest.entry ?? rest.avgPx) ?? num(ws.entry ?? ws.avgPx) ?? num(eng.entry) ?? num(other.entry),
       mark,
       quantity: coinQty,            // 统一为币量(不再混合约张数/币量)

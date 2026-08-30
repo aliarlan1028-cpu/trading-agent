@@ -97,6 +97,12 @@ try {
   await Promise.all([cdp.send("Runtime.enable"), cdp.send("Page.enable")]);
   await cdp.send("Page.navigate", { url: `${baseUrl}${pagePath}` });
   await waitForExpression(cdp, "window.__kordynV2AccountInteractionsReady", "account harness ready");
+  const positionFixture = await evaluate(cdp, "window.__kordynV2AccountPositionFixture");
+  assert.deepEqual(
+    { rawCount: positionFixture.rawCount, normalizedCount: positionFixture.normalizedCount, accountId: positionFixture.accountId, exchange: positionFixture.exchange },
+    { rawCount: 2, normalizedCount: 1, accountId: "ex-okx-main", exchange: "OKX" }
+  );
+  assert.equal(Number.isFinite(Date.parse(positionFixture.rawSyncedAt)), true);
 
   const marketRoot = '[data-browser-account-workspace="market"]';
   await click(cdp, `${marketRoot} [data-kordyn-v2-object-id="BTC/USDT"]`);
@@ -125,6 +131,7 @@ try {
   await click(cdp, `${positionRoot} [data-kordyn-v2-object-id="position-1"][data-kordyn-v2-object-type="Position"]`);
   await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${positionRoot} [data-kordyn-v2-position-mobile-view="detail"] h2`)}) === document.activeElement`, "Position detail focus");
   assert.deepEqual(await evaluate(cdp, "window.__kordynV2AccountInteractionCalls.selections.at(-1)"), { id: "position-1", type: "Position", contextId: "position-1", traceId: "position-1" });
+  assert.equal(await evaluate(cdp, `document.querySelector(${JSON.stringify(`${positionRoot} [data-protection-surface="mobile-header"]`)})?.dataset.protectionState`), "verified");
   await click(cdp, `${positionRoot} [data-kordyn-v2-position-back="true"]`);
   await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${positionRoot} [data-kordyn-v2-object-id="position-1"][data-kordyn-v2-object-type="Position"]`)}) === document.activeElement`, "Position Back focus restoration");
 

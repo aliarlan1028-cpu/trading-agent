@@ -216,7 +216,9 @@ node tests/run-kordyn-v2-account-interactions-browser.mjs
 
 Result: exit 1 after 7.15s because the required real Position registry trigger did not exist in the production AccountDomain harness.
 
-GREEN: the existing production browser harness now mounts a third `AccountDomain` with `device="mobile"`, `workspaceId="positions"`, production-shaped Position / Execution / Snapshot fixtures, and the real `createV2Selection()`. Chrome clicks the real Position registry control, observes the actual detail heading as `document.activeElement`, verifies Position Object / Context / Trace identity, clicks the real Back control, and observes focus on the remounted initiating Position row. Result: exit 0 in 4.02s with `Kordyn V2 account production interaction browser checks passed`.
+GREEN at `9334373`: the existing production browser harness mounted a third `AccountDomain` with `device="mobile"`, `workspaceId="positions"`, consumer-shaped Position / Execution / Snapshot fixtures, and the real `createV2Selection()`. Chrome clicked the real Position registry control, observed the actual detail heading as `document.activeElement`, verified Position Object / Context / Trace identity, clicked the real Back control, and observed focus on the remounted initiating Position row. Result: exit 0 in 4.02s with `Kordyn V2 account production interaction browser checks passed`.
+
+Correction: calling that initial Position fixture “production-shaped” overstated its provenance. It manually supplied the already-normalized `rawSyncedAt` rather than exercising the real engine/exchange-mirror normalization boundary. The user-authorized projection correction below replaces it with raw engine + exchange mirror rows passed through the real `normalizePositionsForUi()`.
 
 ### 6. Risk-incident lifecycle and severity
 
@@ -244,3 +246,55 @@ Additional fresh gates:
 - `node --check` for `accountModel.js`, the Task 3 test, and the browser runner: exit 0.
 - Source inspection: no Task 3 `!important`, `/api/positions/`, `100vw`, horizontal overflow escape, or fixed large inner minimum width. APP targets retain the established 44px contract. `account.css` remains imported only by the lazy Account domain.
 - `git diff --check`: exit 0 before final report update; rerun in the final commit gate.
+
+## User-authorized narrow read-only projection exception
+
+### Decision / scope ruling
+
+After `9334373`, a read-only review proved that the cockpit endpoint normalizer discarded the selected exchange mirror timestamp needed by the already approved protection UI. The user explicitly authorized one narrow exception to the original frontend-only Task 3 boundary: preserve already source-backed mirror provenance in the existing cockpit UI projection and enforce the deployed two-minute proof freshness rule in the frontend model.
+
+Exact files in this exception:
+
+- `server/positionView.mjs`: existing read-only `normalizePositionsForUi()` output only;
+- `src/kordynV2/domains/account/accountModel.js`: protection freshness evaluation only;
+- `tests/position-view.test.mjs`;
+- `tests/kordyn-v2-position-workspace.test.mjs`;
+- `tests/kordyn-v2-account-interactions-browser.jsx`;
+- `tests/run-kordyn-v2-account-interactions-browser.mjs`;
+- this Task 3 report.
+
+No database, endpoint contract, API action, trading, risk, permission, route, Task 4/5, Plan 04, screenshot, merge, push, or deploy behavior changed.
+
+### Endpoint-shaped normalization RED → GREEN
+
+The integration starts with separate production-shaped `execution_engine` and `exchange_rest` rows, passes them through real `normalizePositionsForUi()`, and then passes the result through real `buildAccountDomainModel()`.
+
+RED: focused Task 3 exited 1 with 19/20 passed. A healthy current account snapshot with one matching stop remained degraded because normalization dropped the exchange mirror timestamp/linkage.
+
+Focused server RED: `position-view` exited 1 with 5/7 passed. The merged engine + REST row returned `rawSyncedAt`, `accountId`, and `exchange` as undefined; an engine-only row leaked its engine timestamp/binding as though it owned an exchange mirror.
+
+GREEN: the normalizer now carries `rawSyncedAt`, canonical account linkage, and exchange only from the same REST-first / WS-fallback exchange mirror selected by the existing normalized financial facts. It never infers a timestamp or borrows engine fallback ownership. Engine-only normalized rows have null mirror provenance. Pure exchange/manual rows retain their real mirror provenance. Results: `position-view` 7/7 and Task 3 20/20.
+
+### Deterministic freshness RED → GREEN
+
+RED: focused Task 3 exited 1 with 20/21 passed. A post-open, exact-mirror, complete, uniquely matching snapshot at 120,001 ms still rendered verified.
+
+GREEN: `buildAccountDomainModel(data, { now })` accepts a descriptor-safe finite deterministic time for tests and defaults to real `Date.now()` in production. Protection proof follows `server/positionManager.mjs::exchangeStopEvidence`: a snapshot must be healthy, post-open, exact-current-mirror, structurally trustworthy, complete, and no older than 120,000 ms. At 120,000 ms matching evidence remains verified; at 120,001 ms both matching and explicit-absence evidence degrade to `exchange_stop_snapshot_unverified`, never verified or failed/missing. Focused result: 21/21.
+
+### Corrected real Chrome chain
+
+Chrome RED: exit 1 in 2.53s. The actual mobile Position detail reached focus and canonical selection, but its protection header was degraded because the old fixture manually injected a fixed, stale normalized timestamp.
+
+GREEN: the browser fixture now creates current raw engine + REST mirror rows and calls real `normalizePositionsForUi()` before mounting production `AccountDomain`. The runner proves raw count 2 → normalized count 1, source-backed timestamp/account/exchange binding, actual Position click and heading focus, canonical Object / Context / Trace identity, verified protection, real Back, and focus restoration. Result: exit 0 in 4.17s with `Kordyn V2 account production interaction browser checks passed`.
+
+### Fresh authorized-exception regression
+
+The focused Task 3 + Position/protection + Task 1/2 account/state/selection/lazy command exited 0 with 165/165 passed, 0 failed; duration 676.730625 ms. The Impeccable detector was not rerun, preserving its exactly-once Task 3 contract.
+
+- Full `npm test`: exit 0; 1,973/1,973 passed, 0 failed/cancelled/skipped/todo; duration 14,560.910209 ms; isolated test root cleaned.
+- Real production Account browser runner: exit 0; normalization provenance, Position verified protection, canonical identity, focus entry, and Back restoration passed.
+- `npm run lint`: exit 0, no findings.
+- `npm run build`: exit 0, 1,715 modules transformed in 1.49s; Account lazy CSS remained `index-DdtT6d4G.css`, 42.83 kB / 6.69 kB gzip.
+- Syntax checks for the server projection, frontend model, focused tests, and browser runner: exit 0.
+- Scope check contained only the seven explicitly authorized files listed above.
+- `git diff --check`: exit 0 before this report update; rerun in the final commit gate.

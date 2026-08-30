@@ -1,21 +1,33 @@
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
+import { normalizePositionsForUi } from "../server/positionView.mjs";
 import AccountDomain from "../src/kordynV2/domains/account/index.jsx";
 import { createV2Selection } from "../src/kordynV2/viewModels/selection.js";
 
-const asOf = "2026-08-30T06:33:00Z";
+const asOf = new Date().toISOString();
+const openedAt = new Date(Date.parse(asOf) - 60_000).toISOString();
+const rawPositionMirrors = Object.freeze([
+  Object.freeze({
+    positionId: "position-1", symbol: "ETH/USDT", instId: "ETH-USDT-SWAP", direction: "long",
+    source: "execution_engine", quantity: 2.4, entry: 3420.5, mark: 3468.2,
+    liquidationPrice: 1980, unrealizedPnl: 114.48, notional: 8323.68, margin: 2774.56,
+    leverage: 3, liqDistancePct: 42.6, stopLossPrice: 3365, takeProfits: Object.freeze([3515, 3590]),
+    executionOrderId: "execution-1", openedAt
+  }),
+  Object.freeze({
+    id: "exchange-position-1", positionId: "exchange-position-1", symbol: "ETH/USDT", instId: "ETH-USDT-SWAP",
+    source: "exchange_rest", direction: "long", posSide: "long", coinSize: 2.4, mark: 3468.2,
+    entry: 3420.5, liqPx: 1980, leverage: 3, pnl: 114.48, accountId: "ex-okx-main",
+    exchange: "OKX", rawSyncedAt: asOf
+  })
+]);
+const normalizedPositions = Object.freeze(normalizePositionsForUi(rawPositionMirrors).map((position) => Object.freeze(position)));
 const data = Object.freeze({
   resourceState: Object.freeze({ cockpit: "loaded" }),
   source: "OKX",
   asOf,
   portfolio: Object.freeze({ totalEquityUsdt: 12000, availableMarginUsdt: 8600, marginSyncedAt: asOf }),
-  positions: Object.freeze([Object.freeze({
-    positionId: "position-1", symbol: "ETH/USDT", instId: "ETH-USDT-SWAP", direction: "long",
-    source: "execution_engine", quantity: 2.4, entry: 3420.5, mark: 3468.2,
-    liquidationPrice: 1980, unrealizedPnl: 114.48, notional: 8323.68, margin: 2774.56,
-    leverage: 3, liqDistancePct: 42.6, stopLossPrice: 3365, takeProfits: Object.freeze([3515, 3590]),
-    executionOrderId: "execution-1", openedAt: "2026-08-30T05:00:00Z", rawSyncedAt: asOf
-  })]),
+  positions: normalizedPositions,
   markets: Object.freeze([Object.freeze({ symbol: "BTC/USDT", price: 68230, changePct: -0.4, high24h: 69000, low24h: 67100, updatedAt: asOf, source: "OKX" })]),
   watchlist: Object.freeze([]),
   exchangeAccounts: Object.freeze([Object.freeze({ id: "ex-okx-main", exchange: "OKX", label: "OKX 统一账户", status: "configured", updatedAt: asOf })]),
@@ -36,6 +48,13 @@ const truth = Object.freeze({ mode: "full", equity: 12000, available: 8600, expo
 const state = Object.freeze({ kind: "ready", source: "OKX", lastValidAt: asOf });
 const calls = { selections: [], watchlist: 0, reconcile: 0, unhandled: 0 };
 window.__kordynV2AccountInteractionCalls = calls;
+window.__kordynV2AccountPositionFixture = Object.freeze({
+  rawCount: rawPositionMirrors.length,
+  normalizedCount: normalizedPositions.length,
+  rawSyncedAt: normalizedPositions[0]?.rawSyncedAt,
+  accountId: normalizedPositions[0]?.accountId,
+  exchange: normalizedPositions[0]?.exchange
+});
 window.addEventListener("unhandledrejection", (event) => { calls.unhandled += 1; event.preventDefault(); });
 
 function ProductionHarness({ workspaceId }) {

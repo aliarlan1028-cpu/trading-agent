@@ -24,18 +24,53 @@ test("合并行补齐前端要的派生字段(此前恒缺)", () => {
   assert.equal(r.direction, "多", "方向归一化为中文");
 });
 
+test("合并行只继承实际选中交易所镜像的同步时间与账户绑定", () => {
+  const rest = {
+    ...ADA_EXCHANGE, accountId: "okx-rest", exchange: "OKX", rawSyncedAt: "2026-08-30T06:00:00Z", mark: 0.1912
+  };
+  const ws = {
+    ...ADA_EXCHANGE, id: "ws", source: "exchange_ws", accountId: "okx-ws", exchange: "OKX-WS",
+    rawSyncedAt: "2026-08-30T06:01:00Z", mark: 0.1999
+  };
+  const [row] = normalizePositionsForUi([ADA_ENGINE, rest, ws]);
+  assert.equal(row.mark, 0.1912, "当前归一化事实优先 REST 时，镜像归属必须同时来自 REST");
+  assert.deepEqual(
+    { rawSyncedAt: row.rawSyncedAt, accountId: row.accountId, exchange: row.exchange },
+    { rawSyncedAt: "2026-08-30T06:00:00Z", accountId: "okx-rest", exchange: "OKX" }
+  );
+
+  const [wsOnly] = normalizePositionsForUi([ADA_ENGINE, ws]);
+  assert.deepEqual(
+    { rawSyncedAt: wsOnly.rawSyncedAt, accountId: wsOnly.accountId, exchange: wsOnly.exchange },
+    { rawSyncedAt: "2026-08-30T06:01:00Z", accountId: "okx-ws", exchange: "OKX-WS" }
+  );
+});
+
+test("没有交易所镜像时不把引擎时间或绑定冒充镜像事实", () => {
+  const [row] = normalizePositionsForUi([{
+    ...ADA_ENGINE, rawSyncedAt: "2026-08-30T06:00:00Z", accountId: "engine-account", exchange: "ENGINE"
+  }]);
+  assert.deepEqual(
+    { rawSyncedAt: row.rawSyncedAt, accountId: row.accountId, exchange: row.exchange },
+    { rawSyncedAt: null, accountId: null, exchange: null }
+  );
+});
+
 test("方向归一化:多/long/buy→多,空/short/sell→空", () => {
   for (const d of ["多", "long", "LONG", "buy"]) assert.equal(canonDirection(d), "多");
   for (const d of ["空", "short", "SHORT", "sell"]) assert.equal(canonDirection(d), "空");
 });
 
 test("纯手动/外部仓(无引擎行)保持来源标记、不误并", () => {
-  const manual = { id: "m", symbol: "SUI/USDT", source: "exchange_rest", direction: "short", size: 2, coinSize: 20, mark: 0.7, leverage: 5, liqPx: 0.9, unrealizedPnl: 0.3 };
+  const manual = { id: "m", symbol: "SUI/USDT", source: "exchange_rest", direction: "short", size: 2, coinSize: 20, mark: 0.7, leverage: 5, liqPx: 0.9, unrealizedPnl: 0.3, rawSyncedAt: "2026-08-30T06:02:00Z", accountId: "manual-account", exchange: "OKX" };
   const rows = normalizePositionsForUi([ADA_ENGINE, ADA_EXCHANGE, manual]);
   assert.equal(rows.length, 2, "不同币/方向不合并");
   const sui = rows.find((r) => r.symbol === "SUI/USDT");
   assert.equal(sui.source, "exchange_rest", "无引擎行→保持 手动/外部");
   assert.equal(sui.direction, "空");
+  assert.equal(sui.rawSyncedAt, manual.rawSyncedAt);
+  assert.equal(sui.accountId, manual.accountId);
+  assert.equal(sui.exchange, manual.exchange);
 });
 
 test("已平仓不进视图", () => {

@@ -29,6 +29,7 @@ require("esbuild").buildSync({
       export { buildAccountDomainModel } from "./src/kordynV2/domains/account/accountModel.js";
       export { runAccountAction, requestPositionExit } from "./src/kordynV2/domains/account/index.jsx";
       export { createV2Selection } from "./src/kordynV2/viewModels/selection.js";
+      export { normalizePositionsForUi } from "./server/positionView.mjs";
     `,
     resolveDir: rootDir,
     loader: "jsx"
@@ -45,7 +46,7 @@ require("esbuild").buildSync({
 const {
   PositionWorkspace, PositionRegistry, PositionInspector, MobilePositionScreen, DesktopShell, MobileShell,
   buildAccountDomainModel, createV2Selection, executionSelectionCandidate,
-  positionSelectionCandidate, requestPositionExit, runAccountAction
+  positionSelectionCandidate, requestPositionExit, runAccountAction, normalizePositionsForUi
 } = require(outFile);
 
 const resourceState = { cockpit: "loaded" };
@@ -70,10 +71,11 @@ const validSnapshot = (overrides = {}) => ({
   algoOrders: [{ instId: "ETH-USDT-SWAP", algoClOrdId: "stop-execution-1", slTriggerPx: "3365" }],
   ...overrides
 });
+const modelNow = Date.parse("2026-08-30T06:01:00Z");
 const modelFixture = (overrides = {}) => buildAccountDomainModel({
   resourceState, positions: [validPosition()], executionOrders: [validExecution()],
   accountSnapshots: [validSnapshot()], reconciliationReports: [], riskIncidents: [], ...overrides
-});
+}, { now: modelNow });
 
 function findElement(node, predicate) {
   if (!node || typeof node !== "object") return null;
@@ -160,6 +162,27 @@ test("source-backed protection distinguishes verified failed degraded and unavai
   assert.equal(unavailable.positions[0].ownership, "manual_external");
 });
 
+test("raw engine and selected exchange mirror reach verified protection through the real UI normalizer", () => {
+  const rawPositions = [
+    validPosition({ id: "engine-position-1", positionId: "position-1", instId: undefined, rawSyncedAt: undefined }),
+    {
+      id: "exchange-position-1", positionId: "exchange-position-1", symbol: "ETH/USDT", instId: "ETH-USDT-SWAP",
+      source: "exchange_rest", direction: "long", posSide: "long", coinSize: 2.4, mark: 3468.2,
+      entry: 3420.5, liqPx: 1980, leverage: 3, pnl: 114.48, accountId: "account-okx",
+      exchange: "OKX", rawSyncedAt: "2026-08-30T06:00:00Z"
+    }
+  ];
+  const positions = normalizePositionsForUi(rawPositions);
+  const model = buildAccountDomainModel({
+    resourceState, positions, executionOrders: [validExecution()], accountSnapshots: [validSnapshot()], riskIncidents: []
+  }, { now: modelNow });
+  assert.equal(positions.length, 1);
+  assert.deepEqual(
+    { state: model.positions[0].protection.state, snapshotId: model.positions[0].protection.snapshotId },
+    { state: "verified", snapshotId: "snapshot-1" }
+  );
+});
+
 test("exchange stop absence requires a post-open current-mirror structurally trustworthy snapshot", () => {
   const preOpen = modelFixture({
     positions: [validPosition({ rawSyncedAt: "2026-08-30T04:00:00Z" })],
@@ -196,6 +219,31 @@ test("exchange stop absence requires a post-open current-mirror structurally tru
   assert.deepEqual(
     { state: trustworthyAbsence.positions[0].protection.state, reason: trustworthyAbsence.positions[0].protection.reason },
     { state: "failed", reason: "exchange_stop_missing" }
+  );
+});
+
+test("exchange stop proof enforces the deterministic two-minute freshness boundary", () => {
+  const snapshotAt = Date.parse("2026-08-30T06:00:00Z");
+  const inputs = {
+    resourceState, positions: [validPosition()], executionOrders: [validExecution()],
+    accountSnapshots: [validSnapshot()], riskIncidents: []
+  };
+  const boundary = buildAccountDomainModel(inputs, { now: snapshotAt + 2 * 60_000 });
+  assert.equal(boundary.positions[0].protection.state, "verified");
+
+  const stale = buildAccountDomainModel(inputs, { now: snapshotAt + 2 * 60_000 + 1 });
+  assert.deepEqual(
+    { state: stale.positions[0].protection.state, reason: stale.positions[0].protection.reason },
+    { state: "degraded", reason: "exchange_stop_snapshot_unverified" }
+  );
+
+  const staleMissing = buildAccountDomainModel({
+    ...inputs,
+    accountSnapshots: [validSnapshot({ algoOrders: [] })]
+  }, { now: snapshotAt + 2 * 60_000 + 1 });
+  assert.deepEqual(
+    { state: staleMissing.positions[0].protection.state, reason: staleMissing.positions[0].protection.reason },
+    { state: "degraded", reason: "exchange_stop_snapshot_unverified" }
   );
 });
 

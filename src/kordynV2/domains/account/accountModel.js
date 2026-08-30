@@ -479,7 +479,7 @@ function positionOwnership(position) {
   return "unavailable";
 }
 
-function protectionProjection(source, position, execution, ownership) {
+function protectionProjection(source, position, execution, ownership, now) {
   const stopLoss = numericField(position, "stopLoss", "stopLossPrice");
   if (ownership !== "ai_managed") return { state: "unavailable", reason: "ownership_not_managed", stopPrice: stopLoss, snapshotId: null, asOf: null, source: null };
   if (stopLoss === null) return { state: "failed", reason: "local_stop_missing", stopPrice: null, snapshotId: null, asOf: null, source: textField(position, ["source"]) };
@@ -490,9 +490,11 @@ function protectionProjection(source, position, execution, ownership) {
   if (!/^(?:ok|healthy|success)$/iu.test(snapshot.status || "")) return { state: "degraded", reason: "account_snapshot_degraded", stopPrice: stopLoss, snapshotId: snapshot.id, asOf: snapshot.createdAt, source: snapshot.exchange };
   const openedAt = boundedTimestamp(position.openedAt);
   const mirrorAt = boundedTimestamp(position.rawSyncedAt);
+  const snapshotAt = Date.parse(snapshot.createdAt);
   const snapshotAfterOpen = openedAt && Date.parse(snapshot.createdAt) >= Date.parse(openedAt);
   const snapshotOwnsMirror = mirrorAt && mirrorAt === snapshot.createdAt;
-  if (!snapshotAfterOpen || !snapshotOwnsMirror || !snapshot.algoOrdersComplete || !snapshot.algoOrdersValid) {
+  const snapshotCurrent = now - snapshotAt <= 2 * 60_000;
+  if (!snapshotAfterOpen || !snapshotCurrent || !snapshotOwnsMirror || !snapshot.algoOrdersComplete || !snapshot.algoOrdersValid) {
     return { state: "degraded", reason: "exchange_stop_snapshot_unverified", stopPrice: stopLoss, snapshotId: snapshot.id, asOf: snapshot.createdAt, source: snapshot.exchange };
   }
   const instId = expectedInstrument(position);
@@ -524,7 +526,7 @@ function riskIncidentProjection(source) {
   return uniqueIdentityRows((source.riskIncidents || []).map(projectedRiskIncident).filter(Boolean), (incident) => incident.id).map(({ row }) => row);
 }
 
-function positionProjection(source, position, executionRows, incidents) {
+function positionProjection(source, position, executionRows, incidents, now) {
   const id = canonicalPositionIdentity(position);
   const relatedExecution = relatedExecutionFor(position, executionRows);
   const ownership = positionOwnership(position);
@@ -559,11 +561,15 @@ function positionProjection(source, position, executionRows, incidents) {
     observedAt: boundedTimestamp(position.rawSyncedAt) || boundedTimestamp(position.updatedAt) || boundedTimestamp(position.createdAt),
     relatedExecution,
     riskIncidents: linkedIncidents,
-    protection: protectionProjection(source, position, relatedExecution, ownership)
+    protection: protectionProjection(source, position, relatedExecution, ownership, now)
   };
 }
 
-export function buildAccountDomainModel(data = {}) {
+export function buildAccountDomainModel(data = {}, options = {}) {
+  const nowRead = ownDataRead(options, "now");
+  const now = nowRead.kind === "value" && typeof nowRead.value === "number" && Number.isFinite(nowRead.value)
+    ? nowRead.value
+    : Date.now();
   const { source, positionFactsAvailable, availability: sourceAvailability } = selectorSource(data);
   const portfolio = source.portfolio || Object.create(null);
   const positionView = buildPositionView(source);
@@ -576,7 +582,7 @@ export function buildAccountDomainModel(data = {}) {
   };
   const executionRows = safeExecutionRows(execution.orders);
   const riskIncidents = riskIncidentProjection(source);
-  const positions = positionView.positions.map((position) => positionProjection(source, position, executionRows, riskIncidents));
+  const positions = positionView.positions.map((position) => positionProjection(source, position, executionRows, riskIncidents, now));
   const markets = uniqueIdentityRows(buildMarketRows(source), (row) => validPositionIdentity(row.symbol) ? row.symbol : null).map(({ row }) => row);
   const accounts = accountProjection(source);
   const modelAvailability = {
