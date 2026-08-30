@@ -3,8 +3,12 @@ import { AccountWorkspace } from "./AccountWorkspace.jsx";
 import { buildAccountDomainModel } from "./accountModel.js";
 import { MarketWorkspace } from "./MarketWorkspace.jsx";
 import { MobileAccountScreen } from "./MobileAccountScreen.jsx";
+import { MobileExecutionScreen } from "./MobileExecutionScreen.jsx";
 import { MobileMarketScreen } from "./MobileMarketScreen.jsx";
 import { MobilePositionScreen } from "./MobilePositionScreen.jsx";
+import { FillWorkspace } from "./FillWorkspace.jsx";
+import { OrderWorkspace } from "./OrderWorkspace.jsx";
+import { PlanWorkspace } from "./PlanWorkspace.jsx";
 import { PositionWorkspace } from "./PositionWorkspace.jsx";
 import "./account.css";
 
@@ -67,9 +71,16 @@ export default function AccountDomain({ device, workspaceId, data, actions, acti
   const selectedPositionObjectId = ["Position", "Execution"].includes(selection?.object?.type)
     ? selection.object.id
     : null;
+  const selectedExecutionObjectId = ["Trade plan", "Execution", "Order", "Fill", "Closed trade", "Review"].includes(selection?.object?.type)
+    ? selection.object.id
+    : null;
 
   useEffect(() => {
-    if ((workspaceId === "market" && selectedMarketId) || (workspaceId === "positions" && selectedPositionObjectId)) {
+    if (
+      (workspaceId === "market" && selectedMarketId)
+      || (workspaceId === "positions" && selectedPositionObjectId)
+      || (["plans", "orders", "fills"].includes(workspaceId) && selectedExecutionObjectId)
+    ) {
       const next = mobileDrilldownTransition({ view: mobileView }, "open");
       setMobileView(next.view);
       setMobileFocus(next.focus);
@@ -77,7 +88,7 @@ export default function AccountDomain({ device, workspaceId, data, actions, acti
       setMobileView("list");
       setMobileFocus(null);
     }
-  }, [selectedMarketId, selectedPositionObjectId, workspaceId]);
+  }, [selectedExecutionObjectId, selectedMarketId, selectedPositionObjectId, workspaceId]);
 
   useEffect(() => {
     if (!mobileFocus) return;
@@ -111,6 +122,15 @@ export default function AccountDomain({ device, workspaceId, data, actions, acti
     }
     onSelect(candidate);
   };
+  const selectExecution = (candidate, event) => {
+    if (event?.currentTarget) mobileReturnFocusRef.current = event.currentTarget;
+    if (selection?.object?.type === candidate?.type && selection.object.id === candidate?.id) {
+      const next = mobileDrilldownTransition({ view: mobileView }, "open");
+      setMobileView(next.view);
+      setMobileFocus(next.focus);
+    }
+    onSelect(candidate);
+  };
   const openMobileDetail = (event) => {
     if (event?.currentTarget) mobileReturnFocusRef.current = event.currentTarget;
     const next = mobileDrilldownTransition({ view: mobileView }, "open");
@@ -128,11 +148,15 @@ export default function AccountDomain({ device, workspaceId, data, actions, acti
   if (device === "mobile") {
     if (workspaceId === "market") return <MobileMarketScreen {...shared} view={mobileView} onSelect={selectMarket} onOpenList={closeMobileDetail} detailHeadingRef={mobileDetailHeadingRef} returnFocusRef={mobileReturnFocusRef} />;
     if (workspaceId === "positions") return <MobilePositionScreen {...shared} view={mobileView} onSelect={selectPosition} onOpenList={closeMobileDetail} detailHeadingRef={mobileDetailHeadingRef} returnFocusRef={mobileReturnFocusRef} />;
+    if (["plans", "orders", "fills"].includes(workspaceId)) return <MobileExecutionScreen {...shared} workspaceId={workspaceId} view={mobileView} onSelect={selectExecution} onOpenList={closeMobileDetail} detailHeadingRef={mobileDetailHeadingRef} returnFocusRef={mobileReturnFocusRef} />;
     if (workspaceId === "account") return <MobileAccountScreen {...shared} view={mobileView} onOpenList={closeMobileDetail} onOpenDetail={openMobileDetail} detailHeadingRef={mobileDetailHeadingRef} returnFocusRef={mobileReturnFocusRef} />;
     return null;
   }
   if (workspaceId === "market") return <MarketWorkspace {...shared} />;
   if (workspaceId === "positions") return <PositionWorkspace {...shared} />;
+  if (workspaceId === "plans") return <PlanWorkspace {...shared} />;
+  if (workspaceId === "orders") return <OrderWorkspace {...shared} />;
+  if (workspaceId === "fills") return <FillWorkspace {...shared} />;
   if (workspaceId === "account") return <AccountWorkspace {...shared} />;
   return null;
 }
@@ -140,7 +164,11 @@ export default function AccountDomain({ device, workspaceId, data, actions, acti
 export { AccountWorkspace } from "./AccountWorkspace.jsx";
 export { MarketWorkspace } from "./MarketWorkspace.jsx";
 export { MobileAccountScreen } from "./MobileAccountScreen.jsx";
+export { MobileExecutionScreen } from "./MobileExecutionScreen.jsx";
 export { MobileMarketScreen } from "./MobileMarketScreen.jsx";
 export { MobilePositionScreen } from "./MobilePositionScreen.jsx";
 export { MarketInstrumentPicker } from "./MarketInstrumentPicker.jsx";
+export { FillWorkspace } from "./FillWorkspace.jsx";
+export { OrderWorkspace } from "./OrderWorkspace.jsx";
+export { PlanWorkspace } from "./PlanWorkspace.jsx";
 export { PositionWorkspace } from "./PositionWorkspace.jsx";

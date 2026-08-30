@@ -39,6 +39,12 @@ const accountSearchTextFields = Object.freeze([
 const accountSearchBooleanFields = Object.freeze([
   "enabled", "sourceStale", "stale", "isStale", "sourceDegraded", "degraded", "sourceForbidden", "forbidden", "permissionDenied"
 ]);
+const executionSearchTextFields = Object.freeze([
+  ...accountSearchTextFields,
+  "orderId", "tradeId", "executionOrderId", "tradeLifecycleKey", "tradePlanId", "planId",
+  "exchange", "accountId", "symbol", "instId", "title", "name", "strategy", "strategyName",
+  "direction", "side", "kind", "financialBasis", "completedAt", "closedAt"
+]);
 
 function validAccountSearchText(value) {
   return typeof value === "string"
@@ -94,13 +100,78 @@ function accountSearchSnapshot(row) {
   }
 }
 
+function primitiveSearchSnapshot(row, requiredIdFields = ["id"]) {
+  if (!row || typeof row !== "object") return null;
+  try {
+    if (Array.isArray(row)) return null;
+    const prototype = Object.getPrototypeOf(row);
+    if (prototype !== Object.prototype && prototype !== null) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(row);
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.length > 160) return null;
+    for (const key of keys) {
+      const descriptor = descriptors[key];
+      if (!descriptor?.enumerable) continue;
+      if (typeof key !== "string" || !Object.hasOwn(descriptor, "value")) return null;
+      const value = descriptor.value;
+      if (value === null || value === undefined) continue;
+      if (typeof value === "function" || typeof value === "symbol" || typeof value === "bigint") return null;
+      if (typeof value === "number" && !Number.isFinite(value)) return null;
+      if (typeof value === "string" && (value.length > 2_000 || /\p{Cc}/u.test(value))) return null;
+    }
+    const snapshot = {};
+    for (const field of executionSearchTextFields) {
+      const descriptor = descriptors[field];
+      if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, "value")) continue;
+      const value = descriptor.value;
+      if (value === null || value === undefined || value === "") continue;
+      if (typeof value === "number") {
+        if (!Number.isFinite(value)) return null;
+        snapshot[field] = value;
+      } else if (typeof value === "boolean") {
+        snapshot[field] = value;
+      } else if (validAccountSearchText(value)) {
+        snapshot[field] = value;
+      } else {
+        return null;
+      }
+    }
+    for (const field of accountSearchBooleanFields) {
+      const descriptor = descriptors[field];
+      if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, "value")) continue;
+      const value = descriptor.value;
+      if (value === null || value === undefined) continue;
+      if ((field === "forbidden" || field === "permissionDenied") && typeof value === "string" && validAccountSearchText(value)) {
+        snapshot[field] = value;
+        continue;
+      }
+      if (typeof value !== "boolean") return null;
+      snapshot[field] = value;
+    }
+    if (!requiredIdFields.some((field) => validAccountIdentity(snapshot[field]))) return null;
+    return Object.freeze(snapshot);
+  } catch {
+    return null;
+  }
+}
+
+const taskFourSelectionSources = Object.freeze({
+  "Trade plan": Object.freeze({ key: "tradePlans", project: (row) => primitiveSearchSnapshot(row, ["id"]), id: (row) => row.id }),
+  Order: Object.freeze({ key: "orders", project: (row) => primitiveSearchSnapshot(row, ["id", "orderId"]), id: (row) => row.id || row.orderId }),
+  Fill: Object.freeze({ key: "fills", project: (row) => primitiveSearchSnapshot(row, ["id", "tradeId"]), id: (row) => row.id || row.tradeId }),
+  Execution: Object.freeze({ key: "executionOrders", project: (row) => primitiveSearchSnapshot(row, ["id", "orderId"]), id: (row) => row.id || row.orderId }),
+  Review: Object.freeze({ key: "reviews", project: (row) => primitiveSearchSnapshot(row, ["id"]), id: (row) => row.id }),
+  "Closed trade": Object.freeze({ key: "closedTradeLifecycles", project: (row) => primitiveSearchSnapshot(row, ["id"]), id: (row) => row.id })
+});
+
 const searchCollections = Object.freeze([
   { key: "markets", type: "Market", route: "market", workspaceId: "live", sourceSection: "cockpit", id: (row) => row.symbol || row.id, title: (row) => row.symbol || row.name },
   { key: "exchangeAccounts", type: "Account", route: "marketAccount", workspaceId: "live", sourceSection: "cockpit", project: accountSearchSnapshot, id: canonicalAccountIdentity, title: (row) => row.label || row.exchange || canonicalAccountIdentity(row) },
   { key: "positions", type: "Position", route: "positions", workspaceId: "live", sourceSection: "cockpit", id: canonicalPositionIdentity, title: (row) => row.symbol || row.instId || row.name },
-  { key: "tradePlans", type: "Trade plan", route: "signalHub", workspaceId: "live", sourceSection: "cockpit", id: (row) => row.id, title: (row) => row.title || row.symbol || row.name },
-  { key: "orders", type: "Order", route: "tradeLedger", workspaceId: "live", sourceSection: "cockpit", id: (row) => row.id || row.orderId, title: (row) => row.title || row.symbol || row.id },
-  { key: "fills", type: "Fill", route: "tradeLedger", workspaceId: "live", sourceSection: "cockpit", id: (row) => row.id || row.tradeId, title: (row) => row.title || row.symbol || row.id },
+  { key: "tradePlans", type: "Trade plan", route: "signalHub", workspaceId: "live", sourceSection: "cockpit", project: taskFourSelectionSources["Trade plan"].project, id: (row) => row.id, title: (row) => row.title || row.symbol || row.name },
+  { key: "orders", type: "Order", route: "tradeLedger", workspaceId: "live", sourceSection: "cockpit", project: taskFourSelectionSources.Order.project, id: (row) => row.id || row.orderId, title: (row) => row.title || row.symbol || row.id },
+  { key: "fills", type: "Fill", route: "tradeLedger", workspaceId: "live", sourceSection: "cockpit", project: taskFourSelectionSources.Fill.project, id: (row) => row.id || row.tradeId, title: (row) => row.title || row.symbol || row.id },
+  { key: "closedTradeLifecycles", type: "Closed trade", route: "tradeLedger", workspaceId: "live", sourceSection: "cockpit", project: taskFourSelectionSources["Closed trade"].project, id: (row) => row.id, title: (row) => row.title || row.symbol || row.id },
   { key: "events", type: "Event", route: "eventsTasks:events", workspaceId: "ai", sourceSection: "chat", id: (row) => row.id || row.factId, title: (row) => row.title || row.shortTitle || row.message || row.id },
   { key: "eventRiskWindows", type: "Event", route: "eventRisk", workspaceId: "control", sourceSection: "riskCenter", id: (row) => row.id || row.eventId, title: (row) => row.title || row.shortTitle || row.id },
   { key: "watchTriggers", type: "Watch", route: "watch", workspaceId: "ai", sourceSection: "chat", id: (row) => row.id, title: (row) => row.title || row.analysisTitle || row.displayThesis || row.thesis || row.symbol },
@@ -109,8 +180,8 @@ const searchCollections = Object.freeze([
   { key: "auditLogs", type: "Audit log", route: "auditSystem", workspaceId: "operations", sourceSection: "operationsCenter", id: (row) => row.id, title: (row) => row.title || row.action || row.resource || row.id },
   { key: "mandates", type: "Mandate", route: "riskMandate", workspaceId: "control", sourceSection: "riskCenter", id: (row) => row.id, title: (row) => row.name || row.title || row.id },
   { key: "riskIncidents", type: "Risk incident", route: "riskCenter", workspaceId: "control", sourceSection: "riskCenter", id: (row) => row.id, title: (row) => row.title || row.type || row.id },
-  { key: "executionOrders", type: "Execution", route: "executionReview", workspaceId: "live", sourceSection: "cockpit", id: (row) => row.id || row.orderId, title: (row) => row.symbol || row.title || row.id },
-  { key: "reviews", type: "Review", route: "labReviews", workspaceId: "lab", sourceSection: "cockpit", id: (row) => row.id, title: (row) => row.title || row.symbol || row.id }
+  { key: "executionOrders", type: "Execution", route: "executionReview", workspaceId: "live", sourceSection: "cockpit", project: taskFourSelectionSources.Execution.project, id: (row) => row.id || row.orderId, title: (row) => row.symbol || row.title || row.id },
+  { key: "reviews", type: "Review", route: "labReviews", workspaceId: "lab", sourceSection: "cockpit", project: taskFourSelectionSources.Review.project, id: (row) => row.id, title: (row) => row.title || row.symbol || row.id }
 ]);
 
 export function shellStrategyCandidate(row = {}) {
@@ -284,6 +355,18 @@ function workspaceSelectionFailsClosed(data, workspaceId) {
   return ["stale", "degraded", "forbidden", "error", "failed", "loading", "not_loaded"].includes(state);
 }
 
+function taskFourIdentityMatches(data, candidate) {
+  const source = taskFourSelectionSources[candidate?.type];
+  if (!source) return null;
+  const candidateId = validAccountIdentity(candidate?.id) ? String(candidate.id) : "";
+  if (!candidateId) return 0;
+  const matches = asList(data[source.key])
+    .map(source.project)
+    .filter(Boolean)
+    .filter((row) => String(source.id(row) || "") === candidateId);
+  return matches.length;
+}
+
 export function resolveShellObjectSelection(data = {}, candidate = null, workspaceId = candidate?.workspaceId) {
   if (!candidate?.id || candidate.type === "Feature") return null;
   const candidateId = String(candidate.id);
@@ -291,6 +374,8 @@ export function resolveShellObjectSelection(data = {}, candidate = null, workspa
     .map(accountSearchSnapshot)
     .filter((row) => canonicalAccountIdentity(row) === candidateId);
   if ((candidate.type === "Account" || accountIdentityMatches.length > 0) && (!validAccountIdentity(candidate.id) || accountIdentityMatches.length !== 1)) return null;
+  const taskFourMatches = taskFourIdentityMatches(data, candidate);
+  if (taskFourMatches !== null && taskFourMatches !== 1) return null;
   const matches = buildShellSearchIndex(data).filter((row) => (
     row.id === candidateId
     && (!candidate.type || row.type === candidate.type)

@@ -2427,3 +2427,769 @@
     padding: 12px;
   }
 }
+
+.kordynV2ExecutionWorkspace {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 14px 18px 16px;
+  display: grid;
+  grid-template-rows: 42px minmax(0, 1fr);
+  gap: 10px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(77, 102, 255, 0.13), transparent 34%),
+    linear-gradient(180deg, rgba(6, 14, 28, 0.98), rgba(2, 8, 17, 0.99));
+}
+
+.kordynV2ExecutionWorkbench,
+.kordynV2OrderWorkbench,
+.kordynV2FillWorkbench {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(220px, 270px) minmax(360px, 1fr) minmax(260px, 320px);
+  overflow: hidden;
+  border: 1px solid var(--kordyn-v2-border);
+  border-radius: 14px;
+  background: rgba(5, 13, 24, 0.82);
+  box-shadow: 0 22px 54px rgba(0, 0, 0, 0.24);
+}
+
+.kordynV2OrderWorkbench {
+  grid-template-columns: minmax(300px, 380px) minmax(360px, 1fr) minmax(250px, 310px);
+}
+
+.kordynV2FillWorkbench {
+  grid-template-columns: minmax(300px, 380px) minmax(360px, 1fr) minmax(260px, 320px);
+}
+
+.kordynV2ExecutionRegistry,
+.kordynV2ClosedTradeRegistry,
+.kordynV2OrderLane {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 50px minmax(0, 1fr);
+  border-right: 1px solid var(--kordyn-v2-border);
+  background: rgba(3, 9, 18, 0.7);
+}
+
+.kordynV2FillRegistries,
+.kordynV2OrderLanes {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 0.86fr);
+  overflow: hidden;
+  border-right: 1px solid var(--kordyn-v2-border);
+}
+
+.kordynV2FillRegistries .kordynV2ExecutionRegistry,
+.kordynV2FillRegistries .kordynV2ClosedTradeRegistry,
+.kordynV2OrderLanes .kordynV2OrderLane {
+  border-right: 0;
+  border-bottom: 1px solid var(--kordyn-v2-border);
+}
+
+.kordynV2FillRegistries .kordynV2ClosedTradeRegistry,
+.kordynV2OrderLanes .kordynV2OrderLane:last-child {
+  border-bottom: 0;
+}
+
+.kordynV2ExecutionRegistry > header,
+.kordynV2ClosedTradeRegistry > header,
+.kordynV2OrderLane > header,
+.kordynV2ExecutionInspector > header {
+  min-width: 0;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--kordyn-v2-border);
+}
+
+.kordynV2ClosedTradeRegistry > header > span,
+.kordynV2OrderLane > header > span,
+.kordynV2ExecutionInspector > header > span {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kordynV2ExecutionRegistry h2,
+.kordynV2ClosedTradeRegistry h2,
+.kordynV2OrderLane h2,
+.kordynV2ExecutionInspector h2 {
+  margin: 0;
+  overflow: hidden;
+  color: var(--kordyn-v2-text-soft);
+  font-size: 13px;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kordynV2ExecutionRegistry > header span,
+.kordynV2ClosedTradeRegistry > header em,
+.kordynV2OrderLane > header em,
+.kordynV2ExecutionInspector > header em {
+  color: var(--kordyn-v2-muted);
+  font-family: var(--kordyn-v2-mono);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.kordynV2ExecutionRegistry > div,
+.kordynV2ClosedTradeRegistry > div,
+.kordynV2OrderLane > div {
+  min-width: 0;
+  min-height: 0;
+  padding: 6px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #263951 transparent;
+}
+
+.kordynV2ExecutionRegistry button,
+.kordynV2ClosedTradeRegistry button,
+.kordynV2OrderLane button {
+  width: 100%;
+  min-width: 0;
+  min-height: 74px;
+  padding: 11px 10px;
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  border: 0;
+  border-radius: 10px;
+  color: var(--kordyn-v2-text-soft);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.kordynV2ExecutionRegistry button:hover,
+.kordynV2ClosedTradeRegistry button:hover,
+.kordynV2OrderLane button:hover,
+.kordynV2ExecutionMobileRow:hover {
+  background: rgba(76, 112, 255, 0.1);
+}
+
+.kordynV2ExecutionRegistry button:focus-visible,
+.kordynV2ClosedTradeRegistry button:focus-visible,
+.kordynV2OrderLane button:focus-visible,
+.kordynV2ExecutionMobile button:focus-visible,
+.kordynV2ExecutionInspector button:focus-visible,
+.kordynV2ClosedTradeOutputSheet button:focus-visible {
+  outline: 2px solid rgba(107, 255, 199, 0.9);
+  outline-offset: 2px;
+}
+
+.kordynV2ExecutionRegistry button[data-selected="true"],
+.kordynV2ClosedTradeRegistry button[data-selected="true"],
+.kordynV2OrderLane button[data-selected="true"],
+.kordynV2ExecutionMobileRow[data-selected="true"] {
+  background: rgba(95, 115, 255, 0.18);
+  box-shadow: inset 3px 0 var(--kordyn-v2-cobalt);
+}
+
+.kordynV2ExecutionRegistry button span,
+.kordynV2ClosedTradeRegistry button span,
+.kordynV2OrderLane button span {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.kordynV2ExecutionRegistry button strong,
+.kordynV2ClosedTradeRegistry button strong,
+.kordynV2OrderLane button strong,
+.kordynV2ExecutionMobileRow strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #fff;
+  font-family: var(--kordyn-v2-mono);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kordynV2ExecutionRegistry button em,
+.kordynV2ClosedTradeRegistry button em,
+.kordynV2OrderLane button em {
+  flex: 0 0 auto;
+  color: var(--kordyn-v2-muted);
+  font-family: var(--kordyn-v2-mono);
+  font-size: 10px;
+  font-style: normal;
+}
+
+.kordynV2ExecutionRegistry button b,
+.kordynV2ClosedTradeRegistry button b,
+.kordynV2OrderLane button b {
+  min-width: 0;
+  color: var(--kordyn-v2-mint);
+  font-family: var(--kordyn-v2-mono);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.kordynV2ExecutionRegistry button small,
+.kordynV2ClosedTradeRegistry button small,
+.kordynV2OrderLane button small,
+.kordynV2ExecutionMobileRow small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--kordyn-v2-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-pnl-tone="positive"],
+[data-row-tone="healthy"] {
+  color: var(--kordyn-v2-mint);
+}
+
+[data-pnl-tone="negative"],
+[data-row-tone="critical"] {
+  color: var(--kordyn-v2-danger);
+}
+
+[data-row-tone="warning"] {
+  color: var(--kordyn-v2-amber);
+}
+
+.kordynV2ExecutionTruth,
+.kordynV2ExecutionInspector {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.kordynV2ExecutionTruth {
+  padding: 18px clamp(16px, 2vw, 30px);
+  display: grid;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  gap: 14px;
+  background:
+    radial-gradient(circle at 62% 20%, rgba(44, 203, 166, 0.12), transparent 32%),
+    linear-gradient(180deg, rgba(10, 21, 37, 0.8), rgba(5, 13, 24, 0.92));
+}
+
+.kordynV2ExecutionTruth.is-empty {
+  place-content: center;
+  grid-template-rows: auto;
+  color: var(--kordyn-v2-muted);
+  text-align: center;
+}
+
+.kordynV2ExecutionTruth.is-mobile {
+  overflow: visible;
+  border: 1px solid var(--kordyn-v2-border);
+  border-radius: 14px;
+}
+
+.kordynV2ExecutionTruth > header,
+.kordynV2ExecutionTruth > header > span,
+.kordynV2ExecutionBoundary,
+.kordynV2ExecutionRelatedRows button {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.kordynV2ExecutionTruth > header {
+  justify-content: space-between;
+}
+
+.kordynV2ExecutionTruth h2 {
+  margin: 0;
+  overflow: hidden;
+  color: #fff;
+  font-size: clamp(18px, 2vw, 28px);
+  letter-spacing: -0.035em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kordynV2ExecutionTruth > header em {
+  min-height: 28px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(107, 255, 199, 0.24);
+  border-radius: 999px;
+  color: var(--kordyn-v2-mint);
+  background: rgba(27, 91, 75, 0.2);
+  font-family: var(--kordyn-v2-mono);
+  font-size: 11px;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.kordynV2ExecutionLead,
+.kordynV2ExecutionFootnote,
+.kordynV2ExecutionNotice p {
+  margin: 0;
+  color: var(--kordyn-v2-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.kordynV2ExecutionFacts,
+.kordynV2ExecutionInspector dl {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.kordynV2ExecutionFacts {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.kordynV2ExecutionFacts > div,
+.kordynV2ExecutionInspector dl > div {
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid rgba(131, 160, 207, 0.14);
+  border-radius: 10px;
+  background: rgba(3, 9, 18, 0.42);
+}
+
+.kordynV2ExecutionFacts dt,
+.kordynV2ExecutionInspector dt {
+  color: var(--kordyn-v2-muted);
+  font-size: 10px;
+}
+
+.kordynV2ExecutionFacts dd,
+.kordynV2ExecutionInspector dd {
+  min-width: 0;
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--kordyn-v2-text-soft);
+  font-family: var(--kordyn-v2-mono);
+  font-size: 12px;
+}
+
+.kordynV2ExecutionBoundary {
+  padding: 13px;
+  justify-content: space-between;
+  border: 1px solid rgba(107, 255, 199, 0.18);
+  border-radius: 12px;
+  background: rgba(17, 62, 55, 0.22);
+}
+
+.kordynV2ExecutionBoundary span {
+  min-width: 0;
+}
+
+.kordynV2ExecutionBoundary strong,
+.kordynV2ExecutionBoundary p {
+  margin: 0;
+}
+
+.kordynV2ExecutionBoundary strong {
+  color: var(--kordyn-v2-text-soft);
+  font-size: 12px;
+}
+
+.kordynV2ExecutionBoundary p {
+  margin-top: 4px;
+  color: var(--kordyn-v2-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.kordynV2ExecutionBoundary em {
+  flex: 0 0 auto;
+  color: var(--kordyn-v2-mint);
+  font-family: var(--kordyn-v2-mono);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.kordynV2ExecutionBoundary em[data-tone="warning"] {
+  color: var(--kordyn-v2-amber);
+}
+
+.kordynV2ExecutionBoundary em[data-tone="critical"] {
+  color: var(--kordyn-v2-danger);
+}
+
+.kordynV2ExecutionInspector {
+  padding: 0 14px 14px;
+  display: grid;
+  grid-template-rows: 50px minmax(0, auto) auto auto;
+  align-content: start;
+  gap: 12px;
+  border-left: 1px solid var(--kordyn-v2-border);
+  background: rgba(3, 9, 18, 0.75);
+}
+
+.kordynV2ExecutionInspector.is-empty {
+  align-content: center;
+  color: var(--kordyn-v2-muted);
+}
+
+.kordynV2ExecutionInspector > header {
+  margin: 0 -14px;
+}
+
+.kordynV2ExecutionRelatedLink,
+.kordynV2ExecutionPrimaryAction,
+.kordynV2ExecutionInspector footer button,
+.kordynV2ClosedTradeOutputSheet footer button {
+  min-height: 44px;
+  padding: 0 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid var(--kordyn-v2-border-strong);
+  border-radius: 10px;
+  color: var(--kordyn-v2-text-soft);
+  background: rgba(11, 24, 43, 0.72);
+  cursor: pointer;
+  text-align: center;
+}
+
+.kordynV2ExecutionPrimaryAction,
+.kordynV2ExecutionInspector footer button:last-child {
+  border-color: rgba(107, 255, 199, 0.42);
+  color: #07110e;
+  background: linear-gradient(135deg, var(--kordyn-v2-mint), #77f7ff);
+}
+
+.kordynV2ExecutionRelatedLink:disabled,
+.kordynV2ExecutionPrimaryAction:disabled,
+.kordynV2ExecutionInspector footer button:disabled,
+.kordynV2ClosedTradeOutputSheet footer button:disabled {
+  border-color: var(--kordyn-v2-border);
+  color: var(--kordyn-v2-dim);
+  background: rgba(14, 22, 34, 0.62);
+  cursor: not-allowed;
+}
+
+.kordynV2ExecutionInspector footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 9px;
+}
+
+.kordynV2ExecutionOutcome {
+  margin: 0;
+  padding: 10px;
+  border: 1px solid rgba(244, 173, 86, 0.26);
+  border-radius: 10px;
+  color: var(--kordyn-v2-amber);
+  background: rgba(76, 48, 18, 0.2);
+  font-size: 12px;
+}
+
+.kordynV2ExecutionOutcome[data-action-state="failed"] {
+  border-color: rgba(255, 89, 104, 0.3);
+  color: var(--kordyn-v2-danger);
+  background: rgba(83, 25, 35, 0.22);
+}
+
+.kordynV2ExecutionRelatedRows {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.kordynV2ExecutionRelatedRows button {
+  min-height: 44px;
+  padding: 10px 12px;
+  justify-content: space-between;
+  border: 1px solid rgba(131, 160, 207, 0.16);
+  border-radius: 10px;
+  color: var(--kordyn-v2-text-soft);
+  background: rgba(3, 9, 18, 0.35);
+  cursor: pointer;
+}
+
+.kordynV2ExecutionNotice {
+  min-width: 0;
+  padding: 11px;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  border: 1px solid rgba(244, 173, 86, 0.22);
+  border-radius: 10px;
+  color: var(--kordyn-v2-amber);
+  background: rgba(83, 57, 24, 0.18);
+}
+
+.kordynV2ClosedTradeScrim {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  padding: 20px;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.58);
+}
+
+.kordynV2ClosedTradeOutputSheet {
+  width: min(620px, 100%);
+  max-height: min(680px, calc(100vh - 40px));
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid rgba(107, 255, 199, 0.3);
+  border-radius: 18px;
+  background: #07101c;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.42);
+}
+
+.kordynV2ClosedTradeOutputSheet > header,
+.kordynV2ClosedTradeOutputSheet > footer {
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--kordyn-v2-border);
+}
+
+.kordynV2ClosedTradeOutputSheet > footer {
+  border-top: 1px solid var(--kordyn-v2-border);
+  border-bottom: 0;
+}
+
+.kordynV2ClosedTradeOutputSheet > section {
+  min-width: 0;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.kordynV2ClosedTradeOutputSheet dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.kordynV2ClosedTradeOutputSheet dt {
+  color: var(--kordyn-v2-muted);
+  font-size: 10px;
+}
+
+.kordynV2ClosedTradeOutputSheet dd {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--kordyn-v2-text-soft);
+  font-family: var(--kordyn-v2-mono);
+  font-size: 12px;
+}
+
+.kordynV2ExecutionMobile {
+  min-width: 0;
+  min-height: 44px;
+  padding: 12px;
+  display: grid;
+  gap: 12px;
+  overflow: visible;
+}
+
+.kordynV2ExecutionMobile button {
+  min-height: 44px;
+}
+
+.kordynV2ExecutionMobileNav,
+.kordynV2ExecutionMobileHeading,
+.kordynV2ExecutionMobileList > header {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.kordynV2ExecutionMobileNav button {
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--kordyn-v2-border-strong);
+  border-radius: 999px;
+  color: var(--kordyn-v2-text-soft);
+  background: rgba(8, 18, 32, 0.78);
+}
+
+.kordynV2ExecutionMobileNav span {
+  color: var(--kordyn-v2-mint);
+  font-family: var(--kordyn-v2-mono);
+  font-size: 11px;
+}
+
+.kordynV2ExecutionMobileHeading {
+  align-items: flex-start;
+}
+
+.kordynV2ExecutionMobileHeading h2,
+.kordynV2ExecutionMobileHeading p,
+.kordynV2ExecutionMobileList h2 {
+  margin: 0;
+}
+
+.kordynV2ExecutionMobileHeading h2 {
+  color: #fff;
+  font-size: 22px;
+  letter-spacing: -0.035em;
+}
+
+.kordynV2ExecutionMobileHeading p {
+  max-width: 240px;
+  color: var(--kordyn-v2-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.kordynV2ExecutionMobileStack,
+.kordynV2ExecutionMobileDetail {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.kordynV2ExecutionMobileList {
+  min-width: 0;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  overflow: visible;
+  border: 1px solid var(--kordyn-v2-border);
+  border-radius: 16px;
+  background: rgba(4, 12, 22, 0.7);
+}
+
+.kordynV2ExecutionMobileList > header {
+  min-height: 44px;
+}
+
+.kordynV2ExecutionMobileList > header > span {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kordynV2ExecutionMobileList h2 {
+  overflow: hidden;
+  color: var(--kordyn-v2-text-soft);
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kordynV2ExecutionMobileList em {
+  color: var(--kordyn-v2-muted);
+  font-family: var(--kordyn-v2-mono);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.kordynV2ExecutionMobileList > p {
+  margin: 0;
+  color: var(--kordyn-v2-muted);
+  font-size: 12px;
+}
+
+.kordynV2ExecutionMobileRow {
+  width: 100%;
+  min-width: 0;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto 18px;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid rgba(131, 160, 207, 0.12);
+  border-radius: 13px;
+  color: var(--kordyn-v2-text-soft);
+  background: rgba(6, 16, 29, 0.64);
+  cursor: pointer;
+  text-align: left;
+}
+
+.kordynV2ExecutionMobileRow > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.kordynV2ExecutionMobileRow b {
+  max-width: 98px;
+  overflow: hidden;
+  font-family: var(--kordyn-v2-mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kordynV2ExecutionMobile .kordynV2ExecutionFacts,
+.kordynV2ExecutionMobile .kordynV2ExecutionInspector dl,
+.kordynV2ExecutionMobile .kordynV2ClosedTradeOutputSheet dl {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.kordynV2ExecutionMobile .kordynV2ExecutionInspector {
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+}
+
+.kordynV2ExecutionMobile .kordynV2ExecutionInspector > header {
+  min-height: 44px;
+  margin: 0;
+  border: 0;
+}
+
+.kordynV2ExecutionMobile .kordynV2ExecutionInspector footer {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 1180px) and (min-width: 768px) {
+  .kordynV2ExecutionWorkbench,
+  .kordynV2OrderWorkbench,
+  .kordynV2FillWorkbench {
+    grid-template-columns: minmax(200px, 236px) minmax(330px, 1fr) minmax(228px, 272px);
+  }
+
+  .kordynV2ExecutionFacts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 430px) {
+  .kordynV2ExecutionMobile {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+}
+
+@media (max-width: 390px) {
+  .kordynV2ExecutionMobile {
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .kordynV2ExecutionTruth.is-mobile {
+    padding: 12px;
+  }
+}

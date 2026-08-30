@@ -25,15 +25,45 @@ const rawExecutionOrders = Object.freeze([Object.freeze({
   id: "execution-1", positionId: "position-1", symbol: "ETH/USDT", direction: "long",
   status: "protecting", filledQuantity: 2.4, stopClientOrderId: "stop-execution-1",
   exchange: "OKX", accountId: "ex-okx-main"
+}), Object.freeze({
+  id: "execution-2", planId: "plan-2", positionId: "position-2", symbol: "BTC/USDT", direction: "short",
+  status: "closed", quantity: 0.3, filledQuantity: 0.3, entryPrice: 68600, stopLoss: 69240,
+  exchange: "OKX", accountId: "ex-okx-main", createdAt: openedAt, updatedAt: asOf
 })]);
 const normalizedPositions = Object.freeze(normalizePositionsForUi(rawPositionMirrors, {
   executionOrders: rawExecutionOrders
 }).map((position) => Object.freeze(position)));
 const data = Object.freeze({
-  resourceState: Object.freeze({ cockpit: "loaded" }),
+  resourceState: Object.freeze({ cockpit: "loaded", researchCenter: "loaded" }),
   source: "OKX",
   asOf,
   portfolio: Object.freeze({ totalEquityUsdt: 12000, availableMarginUsdt: 8600, marginSyncedAt: asOf }),
+  tradePlans: Object.freeze([Object.freeze({
+    id: "plan-2",
+    status: "awaiting_approval",
+    symbol: "BTC/USDT",
+    direction: "short",
+    strategy: "breakdown_guarded",
+    agentRunId: "mission-2",
+    executionOrderId: "execution-2",
+    createdAt: openedAt,
+    expiresAt: asOf,
+    entry_range: Object.freeze([68600, 68420]),
+    stopLoss: 69240,
+    takeProfit: Object.freeze([67200, 66000]),
+    quantity: 0.3,
+    leverage: 2,
+    riskPercent: 0.7,
+    evidenceIds: Object.freeze(["evidence-2"]),
+    lastRiskCheck: Object.freeze({ id: "risk-2", passed: true, summary: "账户保证金、最大亏损与事件窗口均已核对。", warnings: Object.freeze([]), blockers: Object.freeze([]) }),
+    accountImpact: Object.freeze({
+      equityUsdt: 12000,
+      availableMarginUsdt: 8600,
+      openPositionCount: 1,
+      projectedOpenPositionCount: 2,
+      estimatedMaxLossUsdt: 84
+    })
+  })]),
   positions: normalizedPositions,
   markets: Object.freeze([Object.freeze({ symbol: "BTC/USDT", price: 68230, changePct: -0.4, high24h: 69000, low24h: 67100, updatedAt: asOf, source: "OKX" })]),
   watchlist: Object.freeze([]),
@@ -44,6 +74,79 @@ const data = Object.freeze({
     algoOrders: Object.freeze([Object.freeze({ instId: "ETH-USDT-SWAP", algoClOrdId: "stop-execution-1", slTriggerPx: "3365" })])
   })]),
   executionOrders: rawExecutionOrders,
+  orders: Object.freeze([Object.freeze({
+    id: "order-2",
+    orderId: "okx-order-2",
+    executionOrderId: "execution-2",
+    planId: "plan-2",
+    symbol: "BTC/USDT",
+    side: "sell",
+    type: "limit",
+    status: "filled",
+    source: "exchange_rest",
+    exchange: "OKX",
+    accountId: "ex-okx-main",
+    quantity: 0.3,
+    filledQuantity: 0.3,
+    remainingQuantity: 0,
+    price: 68540,
+    avgFillPrice: 68535.2,
+    reduceOnly: false,
+    clientOrderId: "client-order-2",
+    exchangeOrderId: "okx-order-2",
+    createdAt: openedAt,
+    updatedAt: asOf
+  })]),
+  fills: Object.freeze([Object.freeze({
+    id: "fill-2",
+    tradeId: "okx-trade-2",
+    executionOrderId: "execution-2",
+    orderId: "order-2",
+    tradePlanId: "plan-2",
+    tradeLifecycleKey: "execution-2",
+    kind: "close",
+    symbol: "BTC/USDT",
+    direction: "short",
+    quantity: 0.3,
+    price: 67180,
+    realizedPnl: 406.56,
+    feeUsdt: 1.8,
+    source: "exchange_rest",
+    createdAt: asOf
+  })]),
+  reviews: Object.freeze([Object.freeze({
+    id: "review-2",
+    type: "trade",
+    status: "completed",
+    title: "BTC 执行复盘",
+    symbol: "BTC/USDT",
+    executionOrderId: "execution-2",
+    tradeLifecycleKey: "execution-2",
+    fillIds: Object.freeze(["fill-2"]),
+    netRealizedPnl: 402.96,
+    summary: "事件窗口内按保护边界退出。",
+    completedAt: asOf
+  })]),
+  closedTradeLifecycles: Object.freeze([Object.freeze({
+    id: "closed:execution-2",
+    executionOrderId: "execution-2",
+    tradeLifecycleKey: "execution-2",
+    fillIds: Object.freeze(["fill-2"]),
+    symbol: "BTC/USDT",
+    direction: "short",
+    quantity: 0.3,
+    entryPrice: 68540,
+    exitPrice: 67180,
+    realizedPnl: 406.56,
+    entryFeeUsdt: 1.8,
+    feeUsdt: 1.8,
+    fundingFeeUsdt: 0,
+    netRealizedPnl: 402.96,
+    closeCount: 1,
+    financialBasisComplete: true,
+    financialBasis: "exchange_fills_and_okx_funding_bills_reconciled",
+    createdAt: asOf
+  })]),
   reconciliationReports: Object.freeze([]),
   riskIncidents: Object.freeze([])
 });
@@ -60,24 +163,38 @@ window.__kordynV2AccountPositionFixture = Object.freeze({
 });
 window.addEventListener("unhandledrejection", (event) => { calls.unhandled += 1; event.preventDefault(); });
 
-function ProductionHarness({ workspaceId }) {
+function ProductionHarness({ workspaceId, device = "mobile" }) {
   const [selection, setSelection] = useState(null);
-  const actions = workspaceId === "market"
-    ? { addWatchlist: () => { calls.watchlist += 1; return Promise.reject(new Error("WATCHLIST_SECRET_NEVER_RENDER")); }, removeWatchlist: () => ({ ok: true }) }
-    : workspaceId === "account"
-      ? { reconcile: () => { calls.reconcile += 1; throw new Error("RECONCILE_SECRET_NEVER_RENDER"); } }
-      : { exitExecutionOrder: () => ({ ok: true }) };
+  const actions = {
+    addWatchlist: () => { calls.watchlist += 1; return Promise.reject(new Error("WATCHLIST_SECRET_NEVER_RENDER")); },
+    removeWatchlist: () => ({ ok: true }),
+    reconcile: () => { calls.reconcile += 1; throw new Error("RECONCILE_SECRET_NEVER_RENDER"); },
+    exitExecutionOrder: () => ({ ok: true }),
+    approvePlan: (planId) => { calls.approvePlan = [...(calls.approvePlan || []), planId]; return Promise.resolve({ plan: { id: planId, status: "approved" }, approvalGranted: true, executionSubmitted: false }); },
+    rejectPlan: (planId) => { calls.rejectPlan = [...(calls.rejectPlan || []), planId]; return Promise.resolve({ plan: { id: planId, status: "cancelled" }, rejected: true }); },
+    downloadClosedTradePoster: (executionId) => { calls.poster = [...(calls.poster || []), executionId]; return Promise.resolve({ ok: true }); }
+  };
   const onSelect = (candidate) => {
     const resolved = createV2Selection({ data, candidate });
     calls.selections.push(resolved ? { id: resolved.object.id, type: resolved.object.type, contextId: resolved.context.objectId, traceId: resolved.trace.objectId } : null);
     if (resolved) setSelection(resolved);
   };
   return (
-    <section data-browser-account-workspace={workspaceId} data-selected-id={selection?.object?.id || "none"}>
-      <AccountDomain device="mobile" workspaceId={workspaceId} data={data} actions={actions} truth={truth} state={state} selection={selection} onSelect={onSelect} />
+    <section data-browser-account-workspace={device === "mobile" ? workspaceId : `${device}-${workspaceId}`} data-selected-id={selection?.object?.id || "none"}>
+      <AccountDomain device={device} workspaceId={workspaceId} data={data} actions={actions} truth={truth} state={state} selection={selection} onSelect={onSelect} />
     </section>
   );
 }
 
-createRoot(document.getElementById("root")).render(<><ProductionHarness workspaceId="market" /><ProductionHarness workspaceId="account" /><ProductionHarness workspaceId="positions" /></>);
+createRoot(document.getElementById("root")).render(<>
+  <ProductionHarness workspaceId="market" />
+  <ProductionHarness workspaceId="account" />
+  <ProductionHarness workspaceId="positions" />
+  <ProductionHarness device="desktop" workspaceId="plans" />
+  <ProductionHarness device="desktop" workspaceId="orders" />
+  <ProductionHarness device="desktop" workspaceId="fills" />
+  <ProductionHarness workspaceId="plans" />
+  <ProductionHarness workspaceId="orders" />
+  <ProductionHarness workspaceId="fills" />
+</>);
 window.__kordynV2AccountInteractionsReady = true;

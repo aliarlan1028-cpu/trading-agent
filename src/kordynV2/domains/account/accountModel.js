@@ -120,6 +120,7 @@ function installRecordCollection(source, root, field, { requireEveryRecord = fal
   const read = ownDataRead(root, field);
   if (read.kind === "missing") return availability("absent");
   if (read.kind !== "value") return availability("invalid");
+  if (read.value === undefined) return availability("absent");
   const values = arrayValues(read.value);
   if (!values) return availability("invalid");
   const records = values.map(recordSnapshot);
@@ -134,6 +135,7 @@ function installWatchlist(source, root) {
   const read = ownDataRead(root, "watchlist");
   if (read.kind === "missing") return availability("absent");
   if (read.kind !== "value") return availability("invalid");
+  if (read.value === undefined) return availability("absent");
   const values = arrayValues(read.value);
   if (!values) return availability("invalid");
   const valid = [...new Set(values.filter(validPositionIdentity))];
@@ -261,7 +263,10 @@ function selectorSource(data) {
     availability: {
       markets: availability("invalid"), watchlist: availability("invalid"), accounts: availability("invalid"),
       accountSnapshots: availability("invalid"), reconciliation: availability("invalid"),
-      positions: availability("invalid"), riskIncidents: availability("invalid")
+      positions: availability("invalid"), riskIncidents: availability("invalid"),
+      plans: availability("invalid"), exchangeOrders: availability("invalid"),
+      executionOrders: availability("invalid"), fills: availability("invalid"),
+      reviews: availability("invalid"), closedTrades: availability("invalid")
     }
   };
 
@@ -272,7 +277,7 @@ function selectorSource(data) {
   for (const field of ["markets", "orders", "executionOrders", "fills", "reviews", "tradePlans", "reconciliationReports", "exchangeAccounts", "accountSnapshots", "riskIncidents"]) {
     collectionAvailability[field] = installRecordCollection(source, root, field);
   }
-  installRecordCollection(source, root, "closedTradeLifecycles", { requireEveryRecord: true });
+  collectionAvailability.closedTradeLifecycles = installRecordCollection(source, root, "closedTradeLifecycles");
   collectionAvailability.watchlist = installWatchlist(source, root);
 
   const positions = positionSource(root);
@@ -287,7 +292,13 @@ function selectorSource(data) {
       accountSnapshots: collectionAvailability.accountSnapshots,
       reconciliation: collectionAvailability.reconciliationReports,
       positions: availability(positions.state, positions.state === "loaded" ? positions.positions.length : null),
-      riskIncidents: collectionAvailability.riskIncidents
+      riskIncidents: collectionAvailability.riskIncidents,
+      plans: collectionAvailability.tradePlans,
+      exchangeOrders: collectionAvailability.orders,
+      executionOrders: collectionAvailability.executionOrders,
+      fills: collectionAvailability.fills,
+      reviews: collectionAvailability.reviews,
+      closedTrades: collectionAvailability.closedTradeLifecycles
     }
   };
 }
@@ -404,9 +415,19 @@ function projectedExecutionOrder(order) {
     positionId: textField(order, ["positionId"]),
     planId: textField(order, ["planId", "tradePlanId"]),
     agentRunId: textField(order, ["agentRunId", "runId"]),
+    source: textField(order, ["source"], 500),
+    side: textField(order, ["side", "direction"]),
+    orderType: textField(order, ["orderType", "type"]),
+    price: numericField(order, "price"),
+    entryPrice: numericField(order, "entryPrice"),
+    stopLoss: numericField(order, "stopLoss", "stopLossPrice"),
     stopClientOrderId: textField(order, ["stopClientOrderId"]),
     quantity: numericField(order, "quantity", "size"),
     filledQuantity: numericField(order, "filledQuantity"),
+    remainingQuantity: numericField(order, "remainingQuantity", "remaining"),
+    reduceOnly: typeof order.reduceOnly === "boolean" ? order.reduceOnly : null,
+    clientOrderId: textField(order, ["clientOrderId", "clOrdId"]),
+    exchangeOrderId: textField(order, ["exchangeOrderId", "ordId", "orderId"]),
     createdAt: boundedTimestamp(order.createdAt),
     updatedAt: boundedTimestamp(order.updatedAt),
     exitAction: order.exitAction && typeof order.exitAction === "object"
@@ -421,7 +442,229 @@ function projectedExecutionOrder(order) {
 }
 
 function safeExecutionRows(orders) {
-  return uniqueIdentityRows(orders.map(projectedExecutionOrder).filter(Boolean), (order) => order.id).map(({ row }) => row);
+  return uniqueIdentityRows(orders.map(projectedExecutionOrder).filter(Boolean), (order) => order.id)
+    .map(({ row }) => ({ ...row, exitAction: executionExitAction(row) }));
+}
+
+function projectedTradePlan(row) {
+  const id = textField(row, ["id"]);
+  if (!validPositionIdentity(id)) return null;
+  const entryRange = numericList(row.entry_range).slice(0, 4);
+  const entryRecord = recordSnapshot(row.entry);
+  const takeProfits = numericList(row.takeProfit).length
+    ? numericList(row.takeProfit)
+    : numericList(row.take_profit);
+  const riskRecord = recordSnapshot(row.lastRiskCheck);
+  const impactRecord = recordSnapshot(row.accountImpact);
+  const riskPercent = numericField(row, "max_loss_pct", "riskPercent")
+    ?? numericField(entryRecord || Object.create(null), "riskPercent");
+  const evidenceIds = [
+    ...numericOrIdentityList(row.evidenceIds),
+    ...numericOrIdentityList(row.knowledgeSkillIds),
+    textField(row, ["analysisBundleId"]),
+    textField(riskRecord || Object.create(null), ["id"])
+  ].filter(Boolean);
+  const status = textField(row, ["status", "state"]);
+  const symbol = textField(row, ["symbol", "instId"]);
+  const direction = textField(row, ["direction", "side"]);
+  const stopLoss = numericField(row, "stopLoss", "stop_loss");
+  const leverage = numericField(row, "leverage");
+  const entry = textField(entryRecord || Object.create(null), ["range"], 500)
+    || (entryRange.length >= 2 ? entryRange.join("–") : null);
+  const riskPassed = riskRecord?.passed === true;
+  const riskSummary = textField(riskRecord || Object.create(null), ["summary", "reason"], 2_000);
+  const accountImpact = {
+    equityUsdt: numericField(impactRecord || Object.create(null), "equityUsdt"),
+    availableMarginUsdt: numericField(impactRecord || Object.create(null), "availableMarginUsdt"),
+    openPositionCount: numericField(impactRecord || Object.create(null), "openPositionCount"),
+    projectedOpenPositionCount: numericField(impactRecord || Object.create(null), "projectedOpenPositionCount"),
+    estimatedMaxLossUsdt: numericField(impactRecord || Object.create(null), "estimatedMaxLossUsdt")
+  };
+  const missingFacts = [];
+  if (status !== "awaiting_approval") missingFacts.push("status");
+  if (!symbol) missingFacts.push("symbol");
+  if (!/^(?:long|short)$/iu.test(direction || "")) missingFacts.push("direction");
+  if (!entry) missingFacts.push("entry");
+  if (stopLoss === null) missingFacts.push("stopLoss");
+  if (!takeProfits.length) missingFacts.push("takeProfit");
+  if (leverage === null) missingFacts.push("leverage");
+  if (riskPercent === null) missingFacts.push("riskPercent");
+  if (!riskPassed || !riskSummary) missingFacts.push("riskResult");
+  if (!evidenceIds.length) missingFacts.push("evidence");
+  if (Object.values(accountImpact).some((value) => value === null)) missingFacts.push("accountImpact");
+  return {
+    id,
+    status,
+    symbol,
+    direction,
+    strategy: textField(row, ["strategy", "strategyName"], 500),
+    missionId: textField(row, ["agentRunId", "runId", "missionId"]),
+    executionOrderId: textField(row, ["executionOrderId"]),
+    createdAt: boundedTimestamp(row.createdAt),
+    expiresAt: boundedTimestamp(row.expiresAt),
+    entry,
+    stopLoss,
+    takeProfits,
+    quantity: numericField(row, "quantity", "size"),
+    leverage,
+    riskPercent,
+    risk: {
+      id: textField(riskRecord || Object.create(null), ["id"]),
+      passed: riskPassed,
+      summary: riskSummary,
+      warnings: textList(riskRecord?.warnings, 6),
+      blockers: textList(riskRecord?.blockers, 6)
+    },
+    evidenceIds: [...new Set(evidenceIds)].slice(0, 24),
+    accountImpact,
+    approval: {
+      planId: id,
+      status,
+      valid: missingFacts.length === 0,
+      missingFacts
+    }
+  };
+}
+
+function numericOrIdentityList(value) {
+  const values = arrayValues(value);
+  if (!values) return [];
+  return values.flatMap((item) => validPositionIdentity(item) ? [item] : []).slice(0, 32);
+}
+
+function textList(value, limit = 12) {
+  const values = arrayValues(value);
+  if (!values) return [];
+  return values.flatMap((item) => boundedText(item, 2_000) ? [item] : []).slice(0, limit);
+}
+
+function projectedExchangeOrder(row) {
+  const id = textField(row, ["id", "orderId"]);
+  if (!validPositionIdentity(id)) return null;
+  const status = textField(row, ["status", "state"]);
+  const accepted = /^(?:submitted|accepted|open|working|partially_filled|live)$/iu.test(status || "");
+  const filled = /^(?:filled|closed)$/iu.test(status || "");
+  return {
+    id,
+    orderId: textField(row, ["orderId"]),
+    executionOrderId: textField(row, ["executionOrderId"]),
+    planId: textField(row, ["planId", "tradePlanId"]),
+    symbol: textField(row, ["symbol", "instId"]),
+    side: textField(row, ["side", "direction"]),
+    orderType: textField(row, ["orderType", "type"]),
+    status,
+    source: textField(row, ["source"], 500),
+    exchange: textField(row, ["exchange"], 120),
+    accountId: textField(row, ["accountId", "exchangeAccountId"]),
+    quantity: numericField(row, "quantity", "size"),
+    filledQuantity: numericField(row, "filledQuantity", "accFillSz"),
+    remainingQuantity: numericField(row, "remainingQuantity", "remaining"),
+    price: numericField(row, "price"),
+    averageFillPrice: numericField(row, "avgFillPrice", "averageFillPrice"),
+    reduceOnly: typeof row.reduceOnly === "boolean" ? row.reduceOnly : null,
+    clientOrderId: textField(row, ["clientOrderId", "clOrdId"]),
+    exchangeOrderId: textField(row, ["exchangeOrderId", "ordId", "orderId"]),
+    createdAt: boundedTimestamp(row.createdAt),
+    updatedAt: boundedTimestamp(row.updatedAt),
+    finality: accepted ? "exchange_accepted" : filled ? "exchange_filled" : "exchange_status_only"
+  };
+}
+
+function projectedFill(row) {
+  const id = textField(row, ["id", "tradeId"]);
+  if (!validPositionIdentity(id)) return null;
+  return {
+    id,
+    tradeId: textField(row, ["tradeId", "exchangeTradeId"]),
+    executionOrderId: textField(row, ["executionOrderId"]),
+    orderId: textField(row, ["orderId"]),
+    planId: textField(row, ["tradePlanId", "planId"]),
+    tradeLifecycleKey: textField(row, ["tradeLifecycleKey"]),
+    kind: textField(row, ["kind"]),
+    partial: typeof row.partial === "boolean" ? row.partial : null,
+    symbol: textField(row, ["symbol", "instId"]),
+    direction: textField(row, ["direction", "side"]),
+    quantity: numericField(row, "quantity", "size"),
+    price: numericField(row, "price"),
+    feeUsdt: numericField(row, "feeUsdt", "feeCostUsdt", "fee"),
+    grossRealizedPnl: numericField(row, "realizedPnl", "grossRealizedPnl"),
+    fundingFeeUsdt: numericField(row, "fundingFeeUsdt"),
+    source: textField(row, ["source"], 500),
+    createdAt: boundedTimestamp(row.createdAt),
+    finality: "exchange_fill_recorded"
+  };
+}
+
+function projectedReview(row) {
+  if (textField(row, ["type"]) !== "trade") return null;
+  const id = textField(row, ["id"]);
+  if (!validPositionIdentity(id)) return null;
+  return {
+    id,
+    type: "trade",
+    status: textField(row, ["status", "state"]),
+    title: textField(row, ["title"], 1_000),
+    symbol: textField(row, ["symbol", "instId"]),
+    executionOrderId: textField(row, ["executionOrderId"]),
+    planId: textField(row, ["tradePlanId", "planId"]),
+    tradeLifecycleKey: textField(row, ["tradeLifecycleKey"]),
+    fillIds: numericOrIdentityList(row.fillIds),
+    netRealizedPnl: numericField(row, "netRealizedPnl"),
+    summary: textField(row, ["summary", "lesson"], 4_000),
+    createdAt: boundedTimestamp(row.createdAt),
+    completedAt: boundedTimestamp(row.completedAt),
+    updatedAt: boundedTimestamp(row.updatedAt)
+  };
+}
+
+function projectedClosedTrade(row) {
+  const id = textField(row, ["id"]);
+  if (!validPositionIdentity(id)) return null;
+  const financialBasisComplete = row.financialBasisComplete === true;
+  const netRealizedPnl = numericField(row, "netRealizedPnl");
+  return {
+    id,
+    executionOrderId: textField(row, ["executionOrderId"]),
+    planId: textField(row, ["tradePlanId", "planId"]),
+    tradeLifecycleKey: textField(row, ["tradeLifecycleKey"]),
+    fillIds: numericOrIdentityList(row.fillIds),
+    symbol: textField(row, ["symbol", "instId"]),
+    direction: textField(row, ["direction", "side"]),
+    quantity: numericField(row, "quantity", "size"),
+    entryPrice: numericField(row, "entryPrice", "entry"),
+    exitPrice: numericField(row, "exitPrice", "price"),
+    grossRealizedPnl: numericField(row, "realizedPnl", "grossRealizedPnl"),
+    entryFeeUsdt: numericField(row, "entryFeeUsdt"),
+    closeFeeUsdt: numericField(row, "feeUsdt", "closeFeeUsdt"),
+    fundingFeeUsdt: numericField(row, "fundingFeeUsdt"),
+    netRealizedPnl,
+    notionalUsdt: numericField(row, "notionalUsdt"),
+    closeCount: numericField(row, "closeCount"),
+    financialBasisComplete,
+    financialBasis: textField(row, ["financialBasis"], 1_000),
+    createdAt: boundedTimestamp(row.createdAt),
+    finality: financialBasisComplete && netRealizedPnl !== null ? "finance_reconciled" : "finance_unreconciled"
+  };
+}
+
+function explicitLifecycleMatch(left, right) {
+  if (left.tradeLifecycleKey && right.tradeLifecycleKey && left.tradeLifecycleKey === right.tradeLifecycleKey) return true;
+  if (left.executionOrderId && right.executionOrderId && left.executionOrderId === right.executionOrderId) return true;
+  return Boolean(left.id && Array.isArray(right.fillIds) && right.fillIds.includes(left.id));
+}
+
+function uniqueRelated(source, predicate) {
+  const matches = source.filter(predicate);
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function posterForClosedTrade(trade, executionRows) {
+  if (!trade.financialBasisComplete || trade.netRealizedPnl === null) return { state: "finance_unreconciled", executionId: null };
+  if (!trade.executionOrderId) return { state: "execution_unavailable", executionId: null };
+  const matches = executionRows.filter((row) => row.id === trade.executionOrderId);
+  if (matches.length !== 1) return { state: "execution_unavailable", executionId: null };
+  if (String(matches[0].status || "").toLowerCase() !== "closed") return { state: "execution_not_closed", executionId: matches[0].id };
+  return { state: "eligible", executionId: matches[0].id };
 }
 
 function relatedExecutionFor(position, executionRows) {
@@ -606,24 +849,52 @@ export function buildAccountDomainModel(data = {}, options = {}) {
   const { source, positionFactsAvailable, availability: sourceAvailability } = selectorSource(data);
   const portfolio = source.portfolio || Object.create(null);
   const positionView = buildPositionView(source);
-  const baseExecution = buildExecutionView(source);
+  const plans = uniqueIdentityRows((source.tradePlans || []).map(projectedTradePlan).filter(Boolean), (row) => row.id).map(({ row }) => row);
+  const executionRows = safeExecutionRows(source.executionOrders || []);
+  const orders = uniqueIdentityRows((source.orders || []).map(projectedExchangeOrder).filter(Boolean), (row) => row.id).map(({ row }) => row);
+  const projectedFills = uniqueIdentityRows((source.fills || []).map(projectedFill).filter(Boolean), (row) => row.id).map(({ row }) => row);
+  const projectedReviews = uniqueIdentityRows((source.reviews || []).map(projectedReview).filter(Boolean), (row) => row.id).map(({ row }) => row);
+  const projectedClosedTrades = uniqueIdentityRows((source.closedTradeLifecycles || []).map(projectedClosedTrade).filter(Boolean), (row) => row.id).map(({ row }) => row);
+  const executionSource = {
+    ...source,
+    executionOrders: executionRows,
+    fills: projectedFills,
+    reviews: projectedReviews
+  };
+  if (sourceAvailability.closedTrades.state === "loaded") executionSource.closedTradeLifecycles = projectedClosedTrades;
+  const baseExecution = buildExecutionView(executionSource);
   const execution = {
     ...baseExecution,
     orders: baseExecution.orders.map((order) => ({ ...order, exitAction: executionExitAction(order) })),
     performance: executionPerformance(source, baseExecution),
     totals: executionTotals(source)
   };
-  const executionRows = safeExecutionRows(execution.orders);
   const riskIncidents = riskIncidentProjection(source);
   const positions = positionView.positions.map((position) => positionProjection(source, position, executionRows, riskIncidents, now));
   const markets = uniqueIdentityRows(buildMarketRows(source), (row) => validPositionIdentity(row.symbol) ? row.symbol : null).map(({ row }) => row);
   const accounts = accountProjection(source);
+  const fills = execution.fills.map((row) => ({
+    ...row,
+    review: uniqueRelated(projectedReviews, (candidate) => explicitLifecycleMatch(row, candidate)),
+    closedTrade: uniqueRelated(projectedClosedTrades, (candidate) => explicitLifecycleMatch(row, candidate))
+  }));
+  const closedTrades = execution.closedTrades.map((row) => ({
+    ...row,
+    review: uniqueRelated(projectedReviews, (candidate) => explicitLifecycleMatch(row, candidate)),
+    poster: posterForClosedTrade(row, executionRows)
+  }));
   const modelAvailability = {
     markets: projectedAvailability(sourceAvailability.markets, markets.length),
     watchlist: sourceAvailability.watchlist,
     accounts: projectedAvailability(sourceAvailability.accounts, accounts.length),
     positions: projectedAvailability(sourceAvailability.positions, positions.length),
-    riskIncidents: projectedAvailability(sourceAvailability.riskIncidents, riskIncidents.length)
+    riskIncidents: projectedAvailability(sourceAvailability.riskIncidents, riskIncidents.length),
+    plans: projectedAvailability(sourceAvailability.plans, plans.length),
+    executionOrders: projectedAvailability(sourceAvailability.executionOrders, executionRows.length),
+    orders: projectedAvailability(sourceAvailability.exchangeOrders, orders.length),
+    fills: projectedAvailability(sourceAvailability.fills, fills.length),
+    reviews: projectedAvailability(sourceAvailability.reviews, projectedReviews.length),
+    closedTrades: projectedAvailability(sourceAvailability.closedTrades, closedTrades.length)
   };
 
   return {
@@ -646,10 +917,11 @@ export function buildAccountDomainModel(data = {}, options = {}) {
     positions,
     riskIncidents,
     openOrders: positionView.openOrders.slice(),
-    plans: (source.tradePlans || []).slice(),
+    plans,
+    orders,
     execution,
-    fills: execution.fills,
-    reviews: execution.reviews,
-    closedTrades: execution.closedTrades
+    fills,
+    reviews: projectedReviews,
+    closedTrades
   };
 }
