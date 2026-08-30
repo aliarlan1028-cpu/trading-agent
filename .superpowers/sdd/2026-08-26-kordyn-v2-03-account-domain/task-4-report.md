@@ -109,6 +109,32 @@ Result: exit 1.
 Failure: invalid related Execution candidate moved the production root from plans to orders and changed selection from plan-orphan to position-1.
 ```
 
+## Third post-review proof remediation
+
+Third read-only Task 4 review left exactly Important 1: the product code was correct, but the real AccountDomain Chrome gate only proved the APP closed-trade poster bottom sheet at one mobile width. I kept the fix to test/proof/report only and did not modify product code.
+
+Addressed proof gap:
+
+- The real AccountDomain Chrome runner now exercises the APP closed-trade poster sheet at both `390x844` and `430x932`.
+- Each width performs a real mobile viewport pass, clicks the actual APP closed-trade primary action, waits for the production `ClosedTradeOutputSheet`, verifies initial focus, horizontal no-overflow, bottom docking, long-body scroll geometry, Shift+Tab focus trap, real `downloadClosedTradePoster("execution-2")` returned state, Escape close, and trigger focus restoration.
+- The runner closes the sheet before any later APP action, so it does not use synthetic clicks behind an open modal/sheet.
+- No 390px product defect was exposed, so no product code was changed.
+
+Third proof-fix RED evidence:
+
+```text
+node tests/run-kordyn-v2-account-interactions-browser.mjs
+Result: exit 1.
+Failure: `mobilePosterProofWidths` was undefined; expected `[390, 430]`, proving the runner had no dual-width APP poster evidence.
+```
+
+Third proof-fix GREEN evidence:
+
+```text
+node tests/run-kordyn-v2-account-interactions-browser.mjs
+Result: exit 0; Kordyn V2 account production interaction browser checks passed.
+```
+
 ## Authority and safety decisions
 
 - `Trade plan` remains the deployed shell type; no new `Plan` object type was introduced.
@@ -174,7 +200,7 @@ The Chrome gate mounts real Account production components, plus the production `
 - APP `Trade plan`, `Execution`, `Order`, `Fill`, `Closed trade`, and `Review` list/detail rows;
 - APP approve processing/partial, repeat-tap disable, reject succeeded, closed-trade poster tap/download state, detail focus, Back focus restoration;
 - invalid related-object rejection without workspace/selection movement;
-- APP closed-trade bottom-sheet focus trap, Escape close, trigger focus restoration, long-content body scroll, bottom docking, and no-overflow geometry;
+- APP closed-trade bottom-sheet open/initial focus, Shift+Tab focus trap, real poster download returned state, Escape close, trigger focus restoration, long-content body scroll, bottom docking, and no-overflow geometry at both `390x844` and `430x932`;
 - desktop 1440/1180 and APP 390/430 no-overflow geometry.
 
 Full suite:
