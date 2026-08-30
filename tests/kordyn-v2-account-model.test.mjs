@@ -71,6 +71,73 @@ test("unloaded lifecycle data is not reconstructed from bounded fills", () => {
   assert.deepEqual(model.closedTrades, []);
 });
 
+test("latest reconciliation is projected from the source-backed cockpit report without inventing success", () => {
+  const model = buildAccountDomainModel({
+    reconciliationReports: [
+      {
+        id: "recon-older",
+        status: "ok",
+        severity: "low",
+        createdAt: "2026-08-26T09:00:00.000Z",
+        differences: []
+      },
+      {
+        id: "recon-newer",
+        status: "needs_attention",
+        severity: "high",
+        createdAt: "2026-08-26T10:00:00.000Z",
+        differences: [{ type: "size_mismatch", severity: "high", message: "Position size differs" }]
+      }
+    ]
+  });
+
+  assert.deepEqual(model.reconciliation, {
+    loaded: true,
+    latest: {
+      id: "recon-newer",
+      status: "needs_attention",
+      severity: "high",
+      createdAt: "2026-08-26T10:00:00.000Z",
+      differenceCount: 1,
+      differences: [{ type: "size_mismatch", severity: "high", message: "Position size differs" }]
+    }
+  });
+  assert.equal(model.reconciliation.latest.status === "ok", false);
+});
+
+test("missing and hostile reconciliation inputs remain bounded and unavailable", () => {
+  assert.deepEqual(buildAccountDomainModel({}).reconciliation, { loaded: false, latest: null });
+  assert.deepEqual(buildAccountDomainModel({ reconciliationReports: [] }).reconciliation, { loaded: true, latest: null });
+
+  const model = buildAccountDomainModel({
+    reconciliationReports: [
+      null,
+      {
+        id: "recon-safe",
+        status: "degraded",
+        createdAt: "2026-08-26T10:00:00.000Z",
+        differences: [
+          null,
+          { type: "snapshot_sync_error", severity: "medium", message: "Private snapshot is unavailable" },
+          { type: Symbol("hostile"), severity: "high", message: "must not render" }
+        ]
+      }
+    ]
+  });
+
+  assert.deepEqual(model.reconciliation, {
+    loaded: true,
+    latest: {
+      id: "recon-safe",
+      status: "degraded",
+      severity: null,
+      createdAt: "2026-08-26T10:00:00.000Z",
+      differenceCount: 3,
+      differences: [{ type: "snapshot_sync_error", severity: "medium", message: "Private snapshot is unavailable" }]
+    }
+  });
+});
+
 test("missing position and portfolio financial values remain unavailable instead of selector fallback zero", () => {
   const model = buildAccountDomainModel({
     portfolio: { totalEquityUsdt: null },

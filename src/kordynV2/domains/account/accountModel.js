@@ -130,6 +130,49 @@ function installWatchlist(source, root) {
   if (values) source.watchlist = values.filter((value) => typeof value === "string");
 }
 
+function boundedText(value, maxLength = 2_000) {
+  return typeof value === "string" && value.length > 0 && value.length <= maxLength ? value : null;
+}
+
+function reconciliationDifference(value) {
+  const difference = recordSnapshot(value);
+  if (!difference) return null;
+  for (const [field, limit] of [["type", 240], ["severity", 120], ["message", 2_000]]) {
+    if (Object.hasOwn(difference, field) && difference[field] !== null && difference[field] !== undefined && !boundedText(difference[field], limit)) return null;
+  }
+  const type = boundedText(difference.type, 240);
+  const severity = boundedText(difference.severity, 120);
+  const message = boundedText(difference.message, 2_000);
+  if (!type && !severity && !message) return null;
+  return { type, severity, message };
+}
+
+function reconciliationProjection(source) {
+  if (!Object.hasOwn(source, "reconciliationReports")) return { loaded: false, latest: null };
+  const reports = source.reconciliationReports;
+  if (!reports.length) return { loaded: true, latest: null };
+  const rows = reports.map((report, index) => {
+    const createdAt = boundedText(report.createdAt, 240);
+    const timestamp = createdAt && Number.isFinite(Date.parse(createdAt)) ? Date.parse(createdAt) : 0;
+    return { report, index, timestamp };
+  }).sort((a, b) => b.timestamp - a.timestamp || a.index - b.index);
+  const report = rows[0]?.report;
+  if (!report) return { loaded: true, latest: null };
+  const rawDifferences = arrayValues(report.differences);
+  const differences = rawDifferences ? rawDifferences.map(reconciliationDifference).filter(Boolean) : [];
+  return {
+    loaded: true,
+    latest: {
+      id: boundedText(report.id, 240),
+      status: boundedText(report.status, 240),
+      severity: boundedText(report.severity, 120),
+      createdAt: boundedText(report.createdAt, 240),
+      differenceCount: rawDifferences ? rawDifferences.length : null,
+      differences
+    }
+  };
+}
+
 function positionSource(root) {
   const read = ownDataRead(root, "positions");
   if (read.kind !== "value") return { available: false, loaded: false, positions: [] };
@@ -164,7 +207,7 @@ function selectorSource(data) {
   for (const field of ["portfolio", "performance", "executionOrderStatus", "tradeDataStatus"]) {
     installRecord(source, root, field);
   }
-  for (const field of ["markets", "orders", "executionOrders", "fills", "reviews", "tradePlans"]) {
+  for (const field of ["markets", "orders", "executionOrders", "fills", "reviews", "tradePlans", "reconciliationReports"]) {
     installRecordCollection(source, root, field);
   }
   installRecordCollection(source, root, "closedTradeLifecycles", { requireEveryRecord: true });
@@ -254,6 +297,7 @@ export function buildAccountDomainModel(data = {}) {
     },
     markets: buildMarketRows(source),
     watchlist: (source.watchlist || []).slice(),
+    reconciliation: reconciliationProjection(source),
     positions,
     openOrders: positionView.openOrders.slice(),
     plans: (source.tradePlans || []).slice(),

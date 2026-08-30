@@ -16,6 +16,7 @@ import { normalizeResourceState } from "./viewModels/state.js";
 const unavailable = "Unavailable";
 const EMPTY_DATA = Object.freeze({});
 const LazyAiDomain = lazy(() => import("./domains/ai/index.jsx"));
+const LazyAccountDomain = lazy(() => import("./domains/account/index.jsx"));
 
 const safeText = (value, fallback = unavailable) => (
   ["string", "number", "boolean"].includes(typeof value) && value !== "" ? String(value) : fallback
@@ -182,7 +183,23 @@ export function KordynV2Root({ api, lang }) {
         />
       </Suspense>
     )
-    : <DestinationBoundary domain={domain} workspace={workspace} location={location} state={state} />;
+    : location.domainId === "account" && ["market", "account"].includes(location.workspaceId)
+      ? (
+        <Suspense fallback={<div className="kordynV2AccountDomainLoading" role="status">正在加载账户交易工作区…</div>}>
+          <LazyAccountDomain
+            device={viewport}
+            workspaceId={location.workspaceId}
+            data={data}
+            actions={actions.account}
+            actionsDisabled={state.kind !== "ready"}
+            truth={truth}
+            state={state}
+            selection={selection}
+            onSelect={select}
+          />
+        </Suspense>
+      )
+      : <DestinationBoundary domain={domain} workspace={workspace} location={location} state={state} />;
 
   const Shell = viewport === "mobile" ? MobileShell : DesktopShell;
   return (

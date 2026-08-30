@@ -332,7 +332,7 @@ test("approval-required Missions disclose authoritative status without Task 2 wr
   }
 });
 
-test("KordynV2Root lazy-loads one AI domain chunk and keeps its CSS out of shared shell inputs", () => {
+test("KordynV2Root keeps AI in one lazy domain chunk with CSS isolated from Account and the shared shell", () => {
   fs.rmSync(graphDir, { force: true, recursive: true });
   const result = require("esbuild").buildSync({
     entryPoints: [path.join(rootDir, "src/kordynV2/KordynV2Root.jsx")],
@@ -349,13 +349,20 @@ test("KordynV2Root lazy-loads one AI domain chunk and keeps its CSS out of share
   const outputs = Object.values(result.metafile.outputs);
   const dynamicImports = outputs.flatMap((output) => output.imports || []).filter((item) => item.kind === "dynamic-import");
   const aiCssInput = "src/kordynV2/domains/ai/ai.css";
+  const accountCssInput = "src/kordynV2/domains/account/account.css";
+  const aiEntryOutputs = outputs.filter((output) => Object.hasOwn(output.inputs || {}, "src/kordynV2/domains/ai/index.jsx"));
+  const accountEntryOutputs = outputs.filter((output) => Object.hasOwn(output.inputs || {}, "src/kordynV2/domains/account/index.jsx"));
   const shellCss = fs.readFileSync(path.join(rootDir, "src/kordynV2/styles/shell.css"), "utf8");
   const mobileCss = fs.readFileSync(path.join(rootDir, "src/kordynV2/styles/mobile-shell.css"), "utf8");
   const rootSource = fs.readFileSync(path.join(rootDir, "src/kordynV2/KordynV2Root.jsx"), "utf8");
 
-  assert.equal(dynamicImports.length, 1);
+  assert.equal(dynamicImports.length, 2);
+  assert.equal(aiEntryOutputs.length, 1);
+  assert.equal(accountEntryOutputs.length, 1);
+  assert.notEqual(aiEntryOutputs[0], accountEntryOutputs[0]);
   assert.ok(Object.keys(result.metafile.inputs).some((input) => input.endsWith(aiCssInput)));
-  assert.ok(outputs.some((output) => Object.keys(output.inputs || {}).some((input) => input.endsWith(aiCssInput))));
+  assert.ok(Object.hasOwn(aiEntryOutputs[0].inputs, aiCssInput));
+  assert.equal(Object.hasOwn(aiEntryOutputs[0].inputs, accountCssInput), false);
   assert.match(rootSource, /const destination = location\.domainId === "ai"/);
   assert.doesNotMatch(rootSource, /DialogSurface/);
   assert.match(rootSource, /workspaceId=\{location\.workspaceId\}/);

@@ -1,0 +1,1220 @@
+.kordynV2MarketWorkspace,
+.kordynV2AccountWorkspace {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 14px 18px 16px;
+  display: grid;
+  grid-template-rows: 42px minmax(0, 1fr);
+  gap: 10px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 56% 38%, rgba(36, 82, 147, 0.09), transparent 38%),
+    linear-gradient(180deg, rgba(5, 13, 25, 0.96), rgba(3, 9, 18, 0.99));
+}
+
+.kordynV2AccountWorkspaceTitle {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.kordynV2AccountWorkspaceTitle > span {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.kordynV2AccountWorkspaceTitle h1,
+.kordynV2AccountWorkspaceTitle h2,
+.kordynV2MarketPicker h2,
+.kordynV2MarketRange h2,
+.kordynV2MarketContext h2,
+.kordynV2AccountLedger h2,
+.kordynV2Reconciliation h2 {
+  margin: 0;
+  color: var(--kordyn-v2-text);
+  font-weight: 680;
+  letter-spacing: -0.025em;
+}
+
+.kordynV2AccountWorkspaceTitle h1 {
+  font-size: 22px;
+}
+
+.kordynV2AccountWorkspaceTitle small {
+  overflow: hidden;
+  color: var(--kordyn-v2-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kordynV2AccountWorkspaceTitle > em {
+  min-height: 28px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(32, 215, 148, 0.22);
+  border-radius: 7px;
+  color: var(--kordyn-v2-mint);
+  background: rgba(19, 74, 61, 0.18);
+  font-family: var(--kordyn-v2-mono);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.kordynV2AccountWorkspaceTitle > button {
+  min-height: 34px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--kordyn-v2-border-strong);
+  border-radius: 8px;
+  color: var(--kordyn-v2-text-soft);
+  background: #0a1625;
+  cursor: pointer;
+}
+
+.kordynV2AccountWorkspaceTitle > button:disabled {
+  color: var(--kordyn-v2-dim);
+  cursor: not-allowed;
+}
+
+.kordynV2MarketWorkbench {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(210px, 238px) minmax(330px, 1fr) minmax(224px, 270px);
+  overflow: hidden;
+  border: 1px solid var(--kordyn-v2-border);
+  border-radius: 12px;
+  background: rgba(6, 14, 25, 0.76);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.2);
+}
+
+.kordynV2MarketPicker {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 46px minmax(0, 1fr);
+  border-right: 1px solid var(--kordyn-v2-border);
+  background: rgba(4, 12, 22, 0.82);
+}
+
+.kordynV2MarketPicker > header,
+.kordynV2MarketContext > header,
+.kordynV2MarketRange > header,
+.kordynV2AccountLedger > header {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.kordynV2MarketPicker > header {
+  padding: 0 13px;
+  border-bottom: 1px solid var(--kordyn-v2-border);
+}
+
+.kordynV2MarketPicker h2,
+.kordynV2MarketContext h2,
+.kordynV2MarketRange h2,
+.kordynV2AccountLedger h2,
+.kordynV2Reconciliation h2 {
+  font-size: 14px;
+}
+
+.kordynV2MarketPicker > header > span {
+  color: var(--kordyn-v2-muted);
+  font-family: var(--kordyn-v2-mono);
+  font-size: 11px;
+}
+
+.kordynV2MarketPickerRows {
+  min-width: 0;
+  min-height: 0;
+  padding: 5px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #263951 transparent;
+}
+
+.kordynV2MarketPickerRows > article {
+  position: relative;
+  min-width: 0;
+  min-height: 64px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: stretch;
+  border-bottom: 1px solid rgba(135, 160, 194, 0.1);
+  background: transparent;
+}
+
+.kordynV2MarketPickerRows > article[data-selected="true"] {
+  background: rgba(27, 63, 112, 0.28);
+  box-shadow: inset 2px 0 var(--kordyn-v2-cobalt);
+}
+
+.kordynV2MarketSelect {
+  min-width: 0;
+  min-height: 62px;
+  padding: 8px 5px 8px 9px;
+  display: grid;
+  grid-template-columns: 31px minmax(0, 1fr);
+  grid-template-rows: repeat(2, auto);
+  align-content: center;
+  align-items: center;
+  gap: 2px 8px;
+  border: 0;
+  color: var(--kordyn-v2-text-soft);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.kordynV2MarketSelect:hover {
+  color: #fff;
+  background: rgba(54, 101, 170, 0.08);
+}
+
+.kordynV2MarketGlyph {
+  grid-row: 1 / 3;
+  width: 31px;
+  height: 31px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(85, 135, 223, 0.3);
+  border-radius: 50%;
+  color: #9ab9f6;
+  background: #0b1c31;
+  font-family: var(--kordyn-v2-mono);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.kordynV2MarketSelect > span:nth-child(2) {
+  min-width: 0;
+  display: contents;
+}
+
+.kordynV2MarketSelect strong,
+.kordynV2MarketSelect small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kordynV2MarketSelect strong {
+  align-self: end;
+  font-family: var(--kordyn-v2-mono);
+  font-size: 12px;
+}
+
+.kordynV2MarketSelect small {
+  align-self: start;
+  color: var(--kordyn-v2-muted);
+  font-family: var(--kordyn-v2-mono);
+  font-size: 10px;
+}
+
+.kordynV2MarketSelect em {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  display: none;
+}
+
+.kordynV2MarketWatchAction {
+  min-width: 34px;
+  min-height: 44px;
+  margin: auto 2px auto 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  color: var(--kordyn-v2-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.kordynV2MarketWatchAction[data-kordyn-v2-watchlist-action="remove"] {
+  color: var(--kordyn-v2-cobalt-soft);
+}
+
+.kordynV2MarketWatchAction:disabled {
+  color: var(--kordyn-v2-dim);
+  cursor: not-allowed;
+}
+
+.kordynV2MarketAnalytic {
+  min-width: 0;
+  min-height: 0;
+  padding: 18px clamp(16px, 2vw, 28px);
+  display: grid;
+  grid-template-rows: auto auto auto minmax(124px, 1fr) auto;
+  gap: 15px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 52% 46%, rgba(39, 93, 172, 0.13), transparent 48%),
+    linear-gradient(180deg, rgba(9, 21, 37, 0.7), rgba(5, 14, 25, 0.84));
+}
+
+.kordynV2MarketAnalytic > header {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.kordynV2MarketAnalytic > header > span {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.kordynV2MarketAnalytic > header strong {
+  overflow: hidden;
+  font-family: var(--kordyn-v2-mono);
+  font-size: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kordynV2MarketAnalytic > header button,
+.kordynV2Reconciliation footer button {
+  min-height: 36px;
+  padding: 0 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid rgba(76, 127, 222, 0.52);
+  border-radius: 8px;
+  color: #8fb1fa;
+  background: rgba(20, 48, 91, 0.3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.kordynV2MarketAnalytic > header button:disabled,
+.kordynV2Reconciliation footer button:disabled {
+  border-color: var(--kordyn-v2-border);
+  color: var(--kordyn-v2-dim);
+  background: rgba(16, 25, 37, 0.48);
+  cursor: not-allowed;
+}
+
+.kordynV2MarketPrice {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+
+.kordynV2MarketPrice > strong {
+  overflow: hidden;
+  color: #fff;
+  font-family: var(--kordyn-v2-mono);
+  font-size: clamp(32px, 4vw, 54px);
+  font-weight: 580;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  text-overflow: ellipsis;
+}
+
+.kordynV2MarketPrice > em,
+.kordynV2MarketSelect > em {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--kordyn-v2-muted);
+  font-family: var(--kordyn-v2-mono);
+  font-style: normal;
+}
+
+[data-market-trend="positive"] {
+  color: var(--kordyn-v2-mint);
+}
+
+[data-market-trend="negative"] {
+  color: var(--kordyn-v2-danger);
+}
+
+.kordynV2MarketFacts {
+  min-width: 0;
+  margin: 0;
+  padding: 0 0 14px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-bottom: 1px solid var(--kordyn-v2-border);
+}
+
+.kordynV2MarketFacts > div {
+  min-width: 0;
+  padding: 0 12px;
+  border-right: 1px solid rgba(135, 160, 194, 0.12);
+}
+
+.kordynV2MarketFacts > div:first-child {
+  padding-left: 0;
+}
+
+.kordynV2MarketFacts > div:last-child {
+  padding-right: 0;
+  border-right: 0;
+}
+
+.kordynV2MarketFacts dt,
+.kordynV2MarketRange dt,
+.kordynV2MarketContext dt,
+.kordynV2AccountMetrics dt,
+.kordynV2Reconciliation dt {
+  color: var(--kordyn-v2-muted);
+  font-size: 10px;
+}
+
+.kordynV2MarketFacts dd,
+.kordynV2MarketRange dd,
+.kordynV2MarketContext dd,
+.kordynV2AccountMetrics dd,
+.kordynV2Reconciliation dd {
+  min-width: 0;
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--kordyn-v2-text-soft);
+  font-family: var(--kordyn-v2-mono);
+  font-size: 12px;
+}
+
+.kordynV2MarketRange {
+  min-width: 0;
+  min-height: 0;
+  padding: 22px 0 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.kordynV2MarketRange > header span {
+  color: var(--kordyn-v2-dim);
+  font-size: 10px;
+}
+
+.kordynV2MarketRangeTrack {
+  position: relative;
+  height: 8px;
+  margin: 26px 5px 12px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, rgba(255, 89, 104, 0.68), rgba(68, 119, 217, 0.74) 50%, rgba(32, 215, 148, 0.7));
+  box-shadow: 0 0 18px rgba(52, 120, 255, 0.12);
+}
+
+.kordynV2MarketRangeTrack[data-range-available="false"] {
+  background: var(--kordyn-v2-border);
+  box-shadow: none;
+}
+
+.kordynV2MarketRangeTrack > i {
+  position: absolute;
+  top: 50%;
+  left: var(--market-position);
+  width: 15px;
+  height: 15px;
+  border: 3px solid #dce9ff;
+  border-radius: 50%;
+  background: var(--kordyn-v2-cobalt);
+  box-shadow: 0 3px 16px rgba(52, 120, 255, 0.52);
+  transform: translate(-50%, -50%);
+  transition: left 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.kordynV2MarketRange dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.kordynV2MarketRange dl > div:nth-child(2) {
+  text-align: center;
+}
+
+.kordynV2MarketRange dl > div:last-child {
+  text-align: right;
+}
+
+.kordynV2MarketProvenance {
+  min-width: 0;
+  padding-top: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 0.65fr);
+  gap: 12px;
+  border-top: 1px solid var(--kordyn-v2-border);
+}
+
+.kordynV2MarketProvenance > span,
+.kordynV2AccountSource > span {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 6px;
+  align-items: center;
+}
+
+.kordynV2MarketProvenance svg,
+.kordynV2AccountSource svg {
+  grid-row: 1 / 3;
+  color: var(--kordyn-v2-cobalt-soft);
+}
+
+.kordynV2MarketProvenance small,
+.kordynV2AccountSource small {
+  color: var(--kordyn-v2-muted);
+  font-size: 9px;
+}
+
+.kordynV2MarketProvenance strong,
+.kordynV2MarketProvenance time,
+.kordynV2AccountSource strong,
+.kordynV2AccountSource time {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--kordyn-v2-text-soft);
+  font-family: var(--kordyn-v2-mono);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kordynV2MarketContext {
+  min-width: 0;
+  min-height: 0;
+  padding: 0 14px 16px;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--kordyn-v2-border);
+  background: rgba(7, 17, 29, 0.76);
+}
+
+.kordynV2MarketContext > header {
+  min-height: 48px;
+  border-bottom: 1px solid var(--kordyn-v2-border);
+}
+
+.kordynV2MarketContext > header svg {
+  color: var(--kordyn-v2-cobalt-soft);
+}
+
+.kordynV2MarketContext dl {
+  min-width: 0;
+  margin: 0;
+}
+
+.kordynV2MarketContext dl > div {
+  min-width: 0;
+  padding: 13px 0;
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid rgba(135, 160, 194, 0.09);
+}
+
+.kordynV2MarketContext dd {
+  margin: 0;
+  text-align: right;
+}
+
+.kordynV2MarketContext > p,
+.kordynV2AccountLedger > p {
+  margin: auto 0 0;
+  padding-top: 16px;
+  color: var(--kordyn-v2-muted);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.kordynV2AccountEmpty {
+  margin: 0;
+  padding: 22px 12px;
+  color: var(--kordyn-v2-muted);
+  line-height: 1.5;
+  text-align: center;
+}
+
+.kordynV2AccountWorkbench {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(330px, 0.75fr);
+  overflow: hidden;
+  border: 1px solid var(--kordyn-v2-border);
+  border-radius: 12px;
+  background: rgba(6, 14, 25, 0.76);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.2);
+}
+
+.kordynV2AccountLedger {
+  min-width: 0;
+  min-height: 0;
+  padding: 20px clamp(18px, 2.6vw, 34px);
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(circle at 28% 32%, rgba(35, 87, 160, 0.12), transparent 44%),
+    linear-gradient(180deg, rgba(9, 20, 35, 0.78), rgba(5, 13, 23, 0.86));
+}
+
+.kordynV2AccountLedger > header > span {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.kordynV2AccountLedger > header svg {
+  color: var(--kordyn-v2-mint);
+}
+
+.kordynV2AccountLedger > header em {
+  color: var(--kordyn-v2-mint);
+  font-family: var(--kordyn-v2-mono);
+  font-size: 10px;
+  font-style: normal;
+}
+
+.kordynV2AccountMetrics {
+  min-width: 0;
+  margin: 30px 0 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid var(--kordyn-v2-border);
+}
+
+.kordynV2AccountMetrics > div {
+  min-width: 0;
+  min-height: 88px;
+  padding: 17px 8px 16px 0;
+  border-bottom: 1px solid var(--kordyn-v2-border);
+}
+
+.kordynV2AccountMetrics > div:nth-child(odd) {
+  border-right: 1px solid var(--kordyn-v2-border);
+}
+
+.kordynV2AccountMetrics > div:nth-child(even) {
+  padding-left: 22px;
+}
+
+.kordynV2AccountMetrics dt {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.kordynV2AccountMetrics dt svg {
+  color: var(--kordyn-v2-cobalt-soft);
+}
+
+.kordynV2AccountMetrics dd {
+  margin-top: 10px;
+  color: var(--kordyn-v2-text);
+  font-size: clamp(18px, 2vw, 26px);
+  letter-spacing: -0.025em;
+}
+
+.kordynV2AccountSource {
+  min-width: 0;
+  margin-top: 24px;
+  padding: 14px 0;
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 18px;
+  border-top: 1px solid var(--kordyn-v2-border);
+  border-bottom: 1px solid var(--kordyn-v2-border);
+}
+
+.kordynV2Reconciliation {
+  min-width: 0;
+  min-height: 0;
+  padding: 20px 18px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid var(--kordyn-v2-border);
+  background: rgba(7, 17, 29, 0.86);
+}
+
+.kordynV2Reconciliation > header {
+  min-width: 0;
+  padding-bottom: 16px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--kordyn-v2-border);
+}
+
+.kordynV2Reconciliation > header > span {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.kordynV2Reconciliation > header svg {
+  margin-top: 1px;
+  flex: 0 0 auto;
+  color: var(--kordyn-v2-amber);
+}
+
+.kordynV2Reconciliation > header small {
+  display: block;
+  margin-top: 5px;
+  color: var(--kordyn-v2-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.kordynV2Reconciliation > header em {
+  min-height: 26px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--kordyn-v2-border-strong);
+  border-radius: 7px;
+  color: var(--kordyn-v2-muted);
+  background: rgba(24, 35, 50, 0.58);
+  font-size: 10px;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.kordynV2Reconciliation > header em[data-reconciliation-tone="healthy"] {
+  border-color: rgba(32, 215, 148, 0.28);
+  color: var(--kordyn-v2-mint);
+  background: rgba(20, 75, 61, 0.22);
+}
+
+.kordynV2Reconciliation > header em[data-reconciliation-tone="critical"] {
+  border-color: rgba(255, 89, 104, 0.34);
+  color: #ff8490;
+  background: rgba(93, 28, 40, 0.25);
+}
+
+.kordynV2Reconciliation > header em[data-reconciliation-tone="warning"] {
+  border-color: rgba(244, 173, 86, 0.3);
+  color: #f5c27e;
+  background: rgba(83, 57, 24, 0.25);
+}
+
+.kordynV2Reconciliation > dl {
+  min-width: 0;
+  margin: 0;
+}
+
+.kordynV2Reconciliation > dl > div {
+  min-width: 0;
+  min-height: 43px;
+  padding: 8px 0;
+  display: grid;
+  grid-template-columns: minmax(90px, 0.8fr) minmax(0, 1.2fr);
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid rgba(135, 160, 194, 0.09);
+}
+
+.kordynV2Reconciliation dd {
+  margin: 0;
+  text-align: right;
+}
+
+.kordynV2ReconciliationDifferences {
+  min-width: 0;
+  min-height: 0;
+  margin-top: 12px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #263951 transparent;
+}
+
+.kordynV2ReconciliationDifferences > article {
+  min-width: 0;
+  padding: 9px 0;
+  display: grid;
+  grid-template-columns: 7px minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
+  border-bottom: 1px solid rgba(135, 160, 194, 0.08);
+}
+
+.kordynV2ReconciliationDifferences i {
+  width: 6px;
+  height: 6px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--kordyn-v2-amber);
+}
+
+.kordynV2ReconciliationDifferences i[data-difference-severity="high"],
+.kordynV2ReconciliationDifferences i[data-difference-severity="critical"] {
+  background: var(--kordyn-v2-danger);
+  box-shadow: 0 0 9px rgba(255, 89, 104, 0.36);
+}
+
+.kordynV2ReconciliationDifferences span {
+  min-width: 0;
+}
+
+.kordynV2ReconciliationDifferences strong,
+.kordynV2ReconciliationDifferences small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.kordynV2ReconciliationDifferences strong {
+  color: var(--kordyn-v2-text-soft);
+  font-family: var(--kordyn-v2-mono);
+  font-size: 10px;
+}
+
+.kordynV2ReconciliationDifferences small {
+  margin-top: 4px;
+  color: var(--kordyn-v2-muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.kordynV2Reconciliation footer {
+  min-width: 0;
+  margin-top: auto;
+  padding-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid var(--kordyn-v2-border);
+}
+
+.kordynV2Reconciliation footer span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--kordyn-v2-muted);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kordynV2AccountMobile {
+  display: none;
+}
+
+.kordynV2MarketWorkspace button:focus-visible,
+.kordynV2AccountWorkspace button:focus-visible,
+.kordynV2AccountMobile button:focus-visible {
+  outline: 2px solid var(--kordyn-v2-cobalt-soft);
+  outline-offset: 2px;
+}
+
+@media (max-width: 1180px) and (min-width: 768px) {
+  .kordynV2MarketWorkspace,
+  .kordynV2AccountWorkspace {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .kordynV2MarketWorkbench {
+    grid-template-columns: 210px minmax(320px, 1fr) 222px;
+  }
+
+  .kordynV2MarketAnalytic {
+    padding-right: 15px;
+    padding-left: 15px;
+  }
+
+  .kordynV2MarketContext {
+    padding-right: 11px;
+    padding-left: 11px;
+  }
+
+  .kordynV2AccountWorkbench {
+    grid-template-columns: minmax(0, 1fr) 330px;
+  }
+}
+
+@media (max-width: 767px) {
+  .kordynV2MarketWorkspace,
+  .kordynV2AccountWorkspace {
+    display: none;
+  }
+
+  .kordynV2AccountMobile {
+    width: 100%;
+    min-width: 0;
+    min-height: 100%;
+    padding: 14px 12px 100px;
+    display: block;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 70% 8%, rgba(42, 91, 172, 0.1), transparent 32%),
+      linear-gradient(180deg, rgba(3, 10, 20, 0.76), rgba(5, 13, 24, 0.92));
+  }
+
+  .kordynV2AccountMobile button {
+    min-height: 44px;
+  }
+
+  .kordynV2AccountMobileHeading {
+    margin-bottom: 14px;
+  }
+
+  .kordynV2AccountMobileHeading h2 {
+    margin: 0;
+    color: var(--kordyn-v2-text);
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+  }
+
+  .kordynV2AccountMobileHeading p {
+    margin: 5px 0 0;
+    color: var(--kordyn-v2-muted);
+    font-size: 12px;
+  }
+
+  .kordynV2AccountMobileNav {
+    min-width: 0;
+    min-height: 46px;
+    margin: -5px 0 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border-bottom: 1px solid var(--kordyn-v2-border);
+  }
+
+  .kordynV2AccountMobileNav > button {
+    padding: 0 6px 0 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    border: 0;
+    color: var(--kordyn-v2-text-soft);
+    background: transparent;
+  }
+
+  .kordynV2AccountMobileNav > span {
+    min-width: 0;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--kordyn-v2-muted);
+    font-family: var(--kordyn-v2-mono);
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .kordynV2AccountMobile .kordynV2MarketPicker {
+    display: block;
+    overflow: visible;
+    border: 1px solid var(--kordyn-v2-border);
+    border-radius: 13px;
+    background: rgba(7, 17, 30, 0.74);
+  }
+
+  .kordynV2AccountMobile .kordynV2MarketPicker > header {
+    min-height: 46px;
+  }
+
+  .kordynV2AccountMobile .kordynV2MarketPickerRows {
+    padding: 4px 8px;
+    overflow: visible;
+  }
+
+  .kordynV2AccountMobile .kordynV2MarketPickerRows > article {
+    min-height: 70px;
+    grid-template-columns: minmax(0, 1fr) 44px;
+  }
+
+  .kordynV2AccountMobile .kordynV2MarketSelect {
+    min-height: 68px;
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+  }
+
+  .kordynV2AccountMobile .kordynV2MarketGlyph {
+    width: 38px;
+    height: 38px;
+  }
+
+  .kordynV2AccountMobile .kordynV2MarketSelect em {
+    grid-column: 3;
+    display: inline-flex;
+    font-size: 10px;
+  }
+
+  .kordynV2AccountMobile .kordynV2MarketWatchAction {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .kordynV2MarketAnalytic.is-mobile {
+    padding: 17px 15px;
+    display: grid;
+    grid-template-rows: auto auto auto auto auto;
+    gap: 17px;
+    overflow: visible;
+    border: 1px solid var(--kordyn-v2-border);
+    border-radius: 13px;
+    background:
+      radial-gradient(circle at 56% 34%, rgba(39, 93, 172, 0.12), transparent 44%),
+      rgba(7, 17, 30, 0.74);
+  }
+
+  .kordynV2MarketAnalytic.is-mobile > header button {
+    min-height: 44px;
+  }
+
+  .kordynV2MarketAnalytic.is-mobile .kordynV2MarketPrice {
+    display: block;
+  }
+
+  .kordynV2MarketAnalytic.is-mobile .kordynV2MarketPrice > strong {
+    display: block;
+    font-size: 36px;
+  }
+
+  .kordynV2MarketAnalytic.is-mobile .kordynV2MarketPrice > em {
+    margin-top: 9px;
+  }
+
+  .kordynV2MarketAnalytic.is-mobile .kordynV2MarketFacts {
+    gap: 8px;
+  }
+
+  .kordynV2MarketAnalytic.is-mobile .kordynV2MarketFacts > div {
+    padding: 0 8px;
+  }
+
+  .kordynV2MarketAnalytic.is-mobile .kordynV2MarketRange {
+    padding-top: 8px;
+  }
+
+  .kordynV2MarketAnalytic.is-mobile .kordynV2MarketProvenance {
+    grid-template-columns: 1fr;
+  }
+
+  .kordynV2MobileAccountTruth {
+    min-width: 0;
+    border: 1px solid var(--kordyn-v2-border);
+    border-radius: 13px;
+    background: rgba(7, 17, 30, 0.76);
+  }
+
+  .kordynV2MobileAccountTruth > header {
+    min-width: 0;
+    min-height: 60px;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border-bottom: 1px solid var(--kordyn-v2-border);
+  }
+
+  .kordynV2MobileAccountTruth > header > span {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .kordynV2MobileAccountTruth > header svg {
+    color: var(--kordyn-v2-cobalt-soft);
+  }
+
+  .kordynV2MobileAccountTruth > header button {
+    max-width: 56%;
+    padding: 0 8px;
+    overflow: hidden;
+    border: 1px solid var(--kordyn-v2-border);
+    border-radius: 8px;
+    color: var(--kordyn-v2-muted);
+    background: rgba(10, 22, 38, 0.7);
+    font-family: var(--kordyn-v2-mono);
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .kordynV2MobileAccountTruth > header button:disabled {
+    color: var(--kordyn-v2-dim);
+  }
+
+  .kordynV2MobileAccountTruth dl {
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .kordynV2MobileAccountTruth dl > div {
+    min-width: 0;
+    min-height: 72px;
+    padding: 13px;
+    border-right: 1px solid rgba(135, 160, 194, 0.1);
+    border-bottom: 1px solid rgba(135, 160, 194, 0.1);
+  }
+
+  .kordynV2MobileAccountTruth dl > div:nth-child(even) {
+    border-right: 0;
+  }
+
+  .kordynV2MobileAccountTruth dt {
+    color: var(--kordyn-v2-muted);
+    font-size: 10px;
+  }
+
+  .kordynV2MobileAccountTruth dd {
+    margin: 8px 0 0;
+    overflow-wrap: anywhere;
+    color: var(--kordyn-v2-text);
+    font-family: var(--kordyn-v2-mono);
+    font-size: 16px;
+  }
+
+  .kordynV2MobileAccountTruth > footer {
+    min-width: 0;
+    min-height: 46px;
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    color: var(--kordyn-v2-muted);
+    font-size: 10px;
+  }
+
+  .kordynV2MobileAccountTruth > footer span {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--kordyn-v2-mint);
+  }
+
+  .kordynV2MobileAccountTruth > footer time {
+    min-width: 0;
+    overflow: hidden;
+    font-family: var(--kordyn-v2-mono);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .kordynV2MobileReconciliationLink {
+    width: 100%;
+    min-width: 0;
+    margin-top: 12px;
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border: 1px solid var(--kordyn-v2-border);
+    border-radius: 12px;
+    color: var(--kordyn-v2-text-soft);
+    background: rgba(8, 19, 33, 0.7);
+    text-align: left;
+  }
+
+  .kordynV2MobileReconciliationLink span {
+    min-width: 0;
+  }
+
+  .kordynV2MobileReconciliationLink strong,
+  .kordynV2MobileReconciliationLink small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .kordynV2MobileReconciliationLink small {
+    margin-top: 5px;
+    color: var(--kordyn-v2-muted);
+    font-family: var(--kordyn-v2-mono);
+    font-size: 9px;
+  }
+
+  .kordynV2Reconciliation.is-mobile {
+    padding: 16px 14px;
+    overflow: visible;
+    border: 1px solid var(--kordyn-v2-border);
+    border-radius: 13px;
+    background: rgba(7, 17, 30, 0.76);
+  }
+
+  .kordynV2Reconciliation.is-mobile > dl > div {
+    grid-template-columns: minmax(88px, 0.7fr) minmax(0, 1.3fr);
+  }
+
+  .kordynV2Reconciliation.is-mobile footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .kordynV2Reconciliation.is-mobile footer button {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .kordynV2Reconciliation.is-mobile footer span {
+    min-height: 18px;
+    text-align: center;
+  }
+}
+
+@media (max-width: 430px) {
+  .kordynV2AccountMobile {
+    padding-right: 11px;
+    padding-left: 11px;
+  }
+
+  .kordynV2MarketAnalytic.is-mobile {
+    padding-right: 13px;
+    padding-left: 13px;
+  }
+}
+
+@media (max-width: 390px) {
+  .kordynV2AccountMobile {
+    padding-right: 9px;
+    padding-left: 9px;
+  }
+
+  .kordynV2AccountMobile .kordynV2MarketSelect {
+    grid-template-columns: 34px minmax(0, 1fr) auto;
+    gap: 2px 6px;
+  }
+
+  .kordynV2AccountMobile .kordynV2MarketGlyph {
+    width: 34px;
+    height: 34px;
+  }
+
+  .kordynV2MarketAnalytic.is-mobile .kordynV2MarketPrice > strong {
+    font-size: 32px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kordynV2MarketRangeTrack > i {
+    transition: none;
+  }
+}
