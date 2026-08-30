@@ -309,11 +309,22 @@ test("production-compatible numeric strings remain selectable while authoritativ
         upl: "3",
         initialMargin: "10"
       },
+      {
+        positionId: "numeric-sibling",
+        quantity: 1,
+        markPrice: 25,
+        unrealizedPnl: -1,
+        margin: 5
+      },
       { positionId: "zero-string", qty: "0", price: "50", pnl: "0", margin: "0" }
     ]
   });
 
-  assert.deepEqual(model.positions.map((row) => row.id), ["numeric-strings"]);
+  assert.deepEqual(model.positions.map((row) => row.id), ["numeric-strings", "numeric-sibling"]);
+  assert.deepEqual(
+    { exposure: model.truth.exposure, unrealizedPnl: model.truth.unrealizedPnl, margin: model.truth.margin },
+    { exposure: 125, unrealizedPnl: 2, margin: 15 }
+  );
 });
 
 test("derived products and aggregate sums cannot overflow into financial truth", () => {

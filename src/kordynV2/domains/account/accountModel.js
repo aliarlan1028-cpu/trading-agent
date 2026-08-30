@@ -6,6 +6,9 @@ const MAX_COLLECTION_LENGTH = 10_000;
 const missingRead = Object.freeze({ kind: "missing" });
 const invalidRead = Object.freeze({ kind: "invalid" });
 const finiteFinancial = (value) => typeof value === "number" && Number.isFinite(value) ? value : null;
+const finitePositionFinancial = (value) => typeof value === "string" && value !== ""
+  ? finiteFinancial(Number(value))
+  : finiteFinancial(value);
 const finiteCount = (value) => Number.isSafeInteger(value) && value >= 0 ? value : null;
 const firstKnown = (...values) => values.find((value) => value !== null && value !== undefined);
 const POSITION_IDENTITY_FIELDS = Object.freeze(["id", "positionId", "instId", "symbol"]);
@@ -175,11 +178,11 @@ function selectorSource(data) {
 function positionNotional(position = {}) {
   const direct = firstKnown(position.notional, position.notionalUsdt, position.marketValue);
   if (direct !== undefined) {
-    const value = finiteFinancial(direct);
+    const value = finitePositionFinancial(direct);
     return value === null ? null : Math.abs(value);
   }
-  const quantity = finiteFinancial(firstKnown(position.quantity, position.size, position.pos, position.qty));
-  const mark = finiteFinancial(firstKnown(position.markPrice, position.mark, position.price, position.entryPrice, position.entry));
+  const quantity = finitePositionFinancial(firstKnown(position.quantity, position.size, position.pos, position.qty));
+  const mark = finitePositionFinancial(firstKnown(position.markPrice, position.mark, position.price, position.entryPrice, position.entry));
   if (quantity === null || mark === null) return null;
   return finiteFinancial(Math.abs(quantity * mark));
 }
@@ -243,10 +246,10 @@ export function buildAccountDomainModel(data = {}) {
       available: finiteFinancial(portfolio.availableMarginUsdt),
       exposure: aggregatePositionFact(positionFactsAvailable, positionView.positions, positionNotional),
       unrealizedPnl: aggregatePositionFact(positionFactsAvailable, positionView.positions, (position) => (
-        finiteFinancial(firstKnown(position.unrealizedPnl, position.pnl, position.upl))
+        finitePositionFinancial(firstKnown(position.unrealizedPnl, position.pnl, position.upl))
       )),
       margin: aggregatePositionFact(positionFactsAvailable, positionView.positions, (position) => (
-        finiteFinancial(firstKnown(position.margin, position.initialMargin))
+        finitePositionFinancial(firstKnown(position.margin, position.initialMargin))
       ))
     },
     markets: buildMarketRows(source),
