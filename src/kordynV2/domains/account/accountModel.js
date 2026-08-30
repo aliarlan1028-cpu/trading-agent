@@ -446,7 +446,29 @@ function safeExecutionRows(orders) {
     .map(({ row }) => ({ ...row, exitAction: executionExitAction(row) }));
 }
 
-function projectedTradePlan(row) {
+function tradePlanAccountImpact(row, source, positions, positionFactsAvailable, riskPercent) {
+  const explicit = recordSnapshot(row.accountImpact) || Object.create(null);
+  const portfolio = source?.portfolio || Object.create(null);
+  const equityUsdt = numericField(explicit, "equityUsdt")
+    ?? numericField(portfolio, "totalEquityUsdt", "equityUsdt");
+  const availableMarginUsdt = numericField(explicit, "availableMarginUsdt")
+    ?? numericField(portfolio, "availableMarginUsdt", "availableMargin");
+  const openPositionCount = numericField(explicit, "openPositionCount")
+    ?? (positionFactsAvailable ? finiteCount(positions.length) : null);
+  const projectedOpenPositionCount = numericField(explicit, "projectedOpenPositionCount")
+    ?? (openPositionCount === null ? null : openPositionCount + 1);
+  const estimatedMaxLossUsdt = numericField(explicit, "estimatedMaxLossUsdt")
+    ?? (equityUsdt !== null && riskPercent !== null ? Number((equityUsdt * riskPercent / 100).toFixed(2)) : null);
+  return {
+    equityUsdt,
+    availableMarginUsdt,
+    openPositionCount,
+    projectedOpenPositionCount,
+    estimatedMaxLossUsdt
+  };
+}
+
+function projectedTradePlan(row, source, positions, positionFactsAvailable) {
   const id = textField(row, ["id"]);
   if (!validPositionIdentity(id)) return null;
   const entryRange = numericList(row.entry_range).slice(0, 4);
@@ -455,7 +477,6 @@ function projectedTradePlan(row) {
     ? numericList(row.takeProfit)
     : numericList(row.take_profit);
   const riskRecord = recordSnapshot(row.lastRiskCheck);
-  const impactRecord = recordSnapshot(row.accountImpact);
   const riskPercent = numericField(row, "max_loss_pct", "riskPercent")
     ?? numericField(entryRecord || Object.create(null), "riskPercent");
   const evidenceIds = [
@@ -473,13 +494,7 @@ function projectedTradePlan(row) {
     || (entryRange.length >= 2 ? entryRange.join("–") : null);
   const riskPassed = riskRecord?.passed === true;
   const riskSummary = textField(riskRecord || Object.create(null), ["summary", "reason"], 2_000);
-  const accountImpact = {
-    equityUsdt: numericField(impactRecord || Object.create(null), "equityUsdt"),
-    availableMarginUsdt: numericField(impactRecord || Object.create(null), "availableMarginUsdt"),
-    openPositionCount: numericField(impactRecord || Object.create(null), "openPositionCount"),
-    projectedOpenPositionCount: numericField(impactRecord || Object.create(null), "projectedOpenPositionCount"),
-    estimatedMaxLossUsdt: numericField(impactRecord || Object.create(null), "estimatedMaxLossUsdt")
-  };
+  const accountImpact = tradePlanAccountImpact(row, source, positions, positionFactsAvailable, riskPercent);
   const missingFacts = [];
   if (status !== "awaiting_approval") missingFacts.push("status");
   if (!symbol) missingFacts.push("symbol");
@@ -648,9 +663,30 @@ function projectedClosedTrade(row) {
 }
 
 function explicitLifecycleMatch(left, right) {
-  if (left.tradeLifecycleKey && right.tradeLifecycleKey && left.tradeLifecycleKey === right.tradeLifecycleKey) return true;
-  if (left.executionOrderId && right.executionOrderId && left.executionOrderId === right.executionOrderId) return true;
-  return Boolean(left.id && Array.isArray(right.fillIds) && right.fillIds.includes(left.id));
+  let matched = false;
+  const compare = (leftValue, rightValue) => {
+    if (!leftValue || !rightValue) return true;
+    if (leftValue !== rightValue) return false;
+    matched = true;
+    return true;
+  };
+  if (!compare(left.tradeLifecycleKey, right.tradeLifecycleKey)) return false;
+  if (!compare(left.executionOrderId, right.executionOrderId)) return false;
+  const leftFillIds = Array.isArray(left.fillIds) ? left.fillIds : [];
+  const rightFillIds = Array.isArray(right.fillIds) ? right.fillIds : [];
+  if (left.kind && left.id && rightFillIds.length) {
+    if (!rightFillIds.includes(left.id)) return false;
+    matched = true;
+  }
+  if (right.kind && right.id && leftFillIds.length) {
+    if (!leftFillIds.includes(right.id)) return false;
+    matched = true;
+  }
+  if (leftFillIds.length && rightFillIds.length) {
+    if (!leftFillIds.some((id) => rightFillIds.includes(id))) return false;
+    matched = true;
+  }
+  return matched;
 }
 
 function uniqueRelated(source, predicate) {
@@ -849,7 +885,10 @@ export function buildAccountDomainModel(data = {}, options = {}) {
   const { source, positionFactsAvailable, availability: sourceAvailability } = selectorSource(data);
   const portfolio = source.portfolio || Object.create(null);
   const positionView = buildPositionView(source);
-  const plans = uniqueIdentityRows((source.tradePlans || []).map(projectedTradePlan).filter(Boolean), (row) => row.id).map(({ row }) => row);
+  const plans = uniqueIdentityRows(
+    (source.tradePlans || []).map((row) => projectedTradePlan(row, source, positionView.positions, positionFactsAvailable)).filter(Boolean),
+    (row) => row.id
+  ).map(({ row }) => row);
   const executionRows = safeExecutionRows(source.executionOrders || []);
   const orders = uniqueIdentityRows((source.orders || []).map(projectedExchangeOrder).filter(Boolean), (row) => row.id).map(({ row }) => row);
   const projectedFills = uniqueIdentityRows((source.fills || []).map(projectedFill).filter(Boolean), (row) => row.id).map(({ row }) => row);

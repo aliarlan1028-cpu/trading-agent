@@ -53,6 +53,36 @@ Modified:
 - Regression exposed by wider Task 1–4 batch: the new `executionOrders` projection temporarily dropped the Task 3 `relatedExecution.exitAction`; this was fixed by applying existing `executionExitAction()` after safe projection.
 - Regression exposed by full `npm test`: the Task 4 primitive shell projection initially rejected existing string `forbidden` source metadata on Review rows. The final helper preserves string `forbidden`/`permissionDenied` only in the Task 4 primitive projection so existing `sourceForbidden` behavior remains intact.
 
+## Post-review remediation
+
+Independent Task 4 review returned Critical 0, Important 8, Minor 1. I verified all nine findings against the current code and kept remediation inside Task 4.
+
+Addressed findings:
+
+- I1: `Trade plan` account-impact presentation now derives bounded values from authoritative portfolio and loaded positions when deployed plans omit `plan.accountImpact`; tests no longer mask this with fixture-only `accountImpact`.
+- I2: APP closed-trade poster now opens the same bounded output sheet as desktop and calls only `downloadClosedTradePoster(executionId)`.
+- I3: APP plan approve/reject now uses authoritative processing/result state with disabled repeat taps and partial/failed/succeeded feedback.
+- I4: explicit lifecycle/execution/fill linkage now fails closed when any present explicit identifiers conflict.
+- I5: related-object controls in the production root now move to an Account workspace capable of rendering the selected `Execution`, `Order`, `Fill`, `Closed trade`, or `Review` object while preserving canonical Object/Context/Trace identity.
+- I6: desktop and APP order/fill workspaces distinguish unavailable/invalid/loading/failed/forbidden/disabled/stale/degraded from authoritative loaded-empty lists.
+- I7: plan action state is keyed by selected plan id so Plan A results cannot render under Plan B.
+- I8: the Account browser gate now covers desktop 1440/1180 and APP 390/430, no-overflow geometry, APP approve/reject outcomes, poster tap, and real action-state transitions.
+- M1: `ClosedTradeOutputSheet` uses the body as the long-content scroll container while keeping the dialog shell and focus trap stable.
+
+Review-fix RED evidence:
+
+```text
+node scripts/run-tests-isolated.mjs tests/kordyn-v2-execution-workspaces.test.mjs
+Result: exit 1; 19 tests; 15 passed; 4 failed.
+Failures covered missing derived plan account impact, conflicting explicit lifecycle linkage, absent/invalid availability copy, and closed-trade output body scrolling.
+```
+
+```text
+node tests/run-kordyn-v2-account-interactions-browser.mjs
+Result: exit 1 during iterative RED runs.
+Failures covered desktop Account overflow at 1440, related Execution selection not landing in a renderable Account workspace, and APP Trade plan action state never entering processing.
+```
+
 ## Authority and safety decisions
 
 - `Trade plan` remains the deployed shell type; no new `Plan` object type was introduced.
@@ -71,7 +101,7 @@ node /Users/ely/.codex/skills/impeccable/scripts/detect.mjs --json src/kordynV2/
 []
 ```
 
-No subsequent product UI code changes were retained after this detector run.
+The review-fix pass intentionally did not run the detector again because the review instruction explicitly said the detector had already run once and must not be rerun.
 
 ## Verification
 
@@ -79,21 +109,21 @@ Fresh focused Task 4:
 
 ```text
 node scripts/run-tests-isolated.mjs tests/kordyn-v2-execution-workspaces.test.mjs
-Result: exit 0; 15/15 passed.
+Result: exit 0; 19/19 passed.
 ```
 
 Task 4 plus legacy execution/poster compatibility:
 
 ```text
 node scripts/run-tests-isolated.mjs tests/kordyn-v2-execution-workspaces.test.mjs tests/trade-lifecycle-boundary.test.mjs tests/okx-net-fill-classification.test.mjs tests/manual-exit-attribution.test.mjs tests/closed-trade-poster.test.mjs
-Result: exit 0; 105/105 passed.
+Result: exit 0; 109/109 passed.
 ```
 
 Task 1–4 account/state/selection/lazy/protection/normalizer/execution regression batch:
 
 ```text
 node scripts/run-tests-isolated.mjs tests/kordyn-v2-position-workspace.test.mjs tests/position-view.test.mjs tests/position-protection-evidence.test.mjs tests/exchange-protection-accounting.test.mjs tests/position-manager-move-stop.test.mjs tests/kordyn-v2-account-model.test.mjs tests/kordyn-v2-account-actions.test.mjs tests/kordyn-v2-account-cockpit.test.mjs tests/kordyn-v2-account-interactions.test.mjs tests/kordyn-v2-ai-workspace.test.mjs tests/kordyn-v2-state-boundary.test.mjs tests/kordyn-v2-state.test.mjs tests/kordyn-v2-ai-context-selection.test.mjs tests/kordyn-v2-execution-workspaces.test.mjs tests/trade-lifecycle-boundary.test.mjs tests/okx-net-fill-classification.test.mjs tests/manual-exit-attribution.test.mjs tests/closed-trade-poster.test.mjs
-Result: exit 0; 309/309 passed.
+Result: exit 0; 313/313 passed.
 ```
 
 Prototype visual contract regression after shell projection correction:
@@ -110,19 +140,20 @@ node tests/run-kordyn-v2-account-interactions-browser.mjs
 Result: exit 0; Kordyn V2 account production interaction browser checks passed.
 ```
 
-The Chrome gate mounts real `AccountDomain` production components and clicks:
+The Chrome gate mounts real Account production components, plus the production `KordynV2Root` shell for related-object workspace navigation, and clicks:
 
 - Desktop `Trade plan`, `Execution`, `Order`, `Fill`, `Closed trade`, and `Review`;
 - Desktop plan approval partial result;
 - Desktop closed-trade output sheet and `downloadClosedTradePoster("execution-2")`;
 - APP `Trade plan`, `Execution`, `Order`, `Fill`, `Closed trade`, and `Review` list/detail rows;
-- APP detail focus and Back focus restoration.
+- APP approve processing/partial, repeat-tap disable, reject succeeded, closed-trade poster tap/download state, detail focus, Back focus restoration;
+- desktop 1440/1180 and APP 390/430 no-overflow geometry.
 
 Full suite:
 
 ```text
 npm test
-Result: exit 0; 2027/2027 passed.
+Result: exit 0; 2031/2031 passed.
 ```
 
 Lint:

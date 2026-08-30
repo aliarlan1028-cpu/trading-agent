@@ -1,4 +1,6 @@
 import { ArrowLeft, BookOpen, Check, ChevronRight, FileText, GitCommitHorizontal, ReceiptText, Scale, Waypoints } from "lucide-react";
+import { useRef, useState } from "react";
+import { ClosedTradeOutputSheet } from "./ClosedTradeOutputSheet.jsx";
 import { FillEvidence, FillTruth, closedTradeSelectionCandidate, fillSelectionCandidate, reviewSelectionCandidate, selectedFillObject } from "./FillWorkspace.jsx";
 import { OrderInspector, OrderTruth, executionWorkspaceSelectionCandidate, orderSelectionCandidate, selectedOrderFor } from "./OrderWorkspace.jsx";
 import { PlanEvidence, PlanTruth, planSelectionCandidate, runPlanDecision, selectedPlanFor } from "./PlanWorkspace.jsx";
@@ -7,6 +9,18 @@ const unavailable = "Unavailable";
 const text = (value) => typeof value === "string" && value ? value : unavailable;
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
 const number = (value) => finite(value) ? new Intl.NumberFormat("en-US", { maximumFractionDigits: 8 }).format(value) : unavailable;
+const availabilityState = (availability) => typeof availability?.state === "string" && availability.state ? availability.state : "absent";
+const availabilityCount = (rows, state) => state === "loaded" ? rows.length : unavailable;
+const availabilityCopy = (label, state, loadedEmpty) => {
+  if (state === "loaded") return loadedEmpty;
+  if (state === "invalid") return `${label}事实不可用。`;
+  if (state === "loading" || state === "processing") return `${label}正在加载。`;
+  if (state === "failed") return `${label}加载失败。`;
+  if (state === "forbidden") return `${label}无权限读取。`;
+  if (state === "disabled") return `${label}当前已禁用。`;
+  if (state === "stale" || state === "degraded") return `${label}状态非最新，请刷新。`;
+  return `${label}明确未加载。`;
+};
 
 function selectedCandidate(selection, candidate) {
   return selection?.object?.type === candidate?.type && selection.object.id === candidate?.id;
@@ -62,10 +76,12 @@ function PlanList({ model, selection, returnFocusRef, onSelect }) {
 function OrderList({ model, selection, returnFocusRef, onSelect }) {
   const executions = Array.isArray(model?.execution?.orders) ? model.execution.orders : [];
   const orders = Array.isArray(model?.orders) ? model.orders : [];
+  const executionState = availabilityState(model?.availability?.executionOrders);
+  const orderState = availabilityState(model?.availability?.orders);
   return (
     <div className="kordynV2ExecutionMobileStack">
       <section className="kordynV2ExecutionMobileList" aria-label="移动 Execution 列表">
-        <header><span><Waypoints size={18} aria-hidden="true" /><h2>Execution 意图</h2></span><em>{executions.length}</em></header>
+        <header><span><Waypoints size={18} aria-hidden="true" /><h2>Execution 意图</h2></span><em>{availabilityCount(executions, executionState)}</em></header>
         {executions.map((row) => (
           <MobileRow
             key={row.id}
@@ -79,10 +95,10 @@ function OrderList({ model, selection, returnFocusRef, onSelect }) {
             value={text(row.status)}
           />
         ))}
-        {!executions.length && <p role="status">当前没有可用 Execution 对象。</p>}
+        {!executions.length && <p role="status">{availabilityCopy("Execution 意图", executionState, "当前没有可用 Execution 对象。")}</p>}
       </section>
       <section className="kordynV2ExecutionMobileList" aria-label="移动 Order 列表">
-        <header><span><GitCommitHorizontal size={18} aria-hidden="true" /><h2>Order 交易所事实</h2></span><em>{orders.length}</em></header>
+        <header><span><GitCommitHorizontal size={18} aria-hidden="true" /><h2>Order 交易所事实</h2></span><em>{availabilityCount(orders, orderState)}</em></header>
         {orders.map((row) => (
           <MobileRow
             key={row.id}
@@ -96,7 +112,7 @@ function OrderList({ model, selection, returnFocusRef, onSelect }) {
             value={text(row.status)}
           />
         ))}
-        {!orders.length && <p role="status">当前没有可用 Order 对象。</p>}
+        {!orders.length && <p role="status">{availabilityCopy("Order 交易所事实", orderState, "当前没有可用 Order 对象。")}</p>}
       </section>
     </div>
   );
@@ -106,10 +122,13 @@ function FillList({ model, selection, returnFocusRef, onSelect }) {
   const fills = Array.isArray(model?.fills) ? model.fills : [];
   const closedTrades = Array.isArray(model?.closedTrades) ? model.closedTrades : [];
   const reviews = Array.isArray(model?.reviews) ? model.reviews : [];
+  const fillsState = availabilityState(model?.availability?.fills);
+  const closedTradesState = availabilityState(model?.availability?.closedTrades);
+  const reviewsState = availabilityState(model?.availability?.reviews);
   return (
     <div className="kordynV2ExecutionMobileStack">
       <section className="kordynV2ExecutionMobileList" aria-label="移动 Fill 列表">
-        <header><span><ReceiptText size={18} aria-hidden="true" /><h2>Fill 流水</h2></span><em>{fills.length}</em></header>
+        <header><span><ReceiptText size={18} aria-hidden="true" /><h2>Fill 流水</h2></span><em>{availabilityCount(fills, fillsState)}</em></header>
         {fills.map((row) => (
           <MobileRow
             key={row.id}
@@ -124,10 +143,10 @@ function FillList({ model, selection, returnFocusRef, onSelect }) {
             tone={finite(row.grossRealizedPnl) && row.grossRealizedPnl < 0 ? "critical" : finite(row.grossRealizedPnl) ? "healthy" : "neutral"}
           />
         ))}
-        {!fills.length && <p role="status">当前没有成交。</p>}
+        {!fills.length && <p role="status">{availabilityCopy("Fill 流水", fillsState, "当前没有成交。")}</p>}
       </section>
       <section className="kordynV2ExecutionMobileList" aria-label="移动 Closed trade 列表">
-        <header><span><Scale size={18} aria-hidden="true" /><h2>Closed trade</h2></span><em>{closedTrades.length}</em></header>
+        <header><span><Scale size={18} aria-hidden="true" /><h2>Closed trade</h2></span><em>{availabilityCount(closedTrades, closedTradesState)}</em></header>
         {closedTrades.map((row) => (
           <MobileRow
             key={row.id}
@@ -142,10 +161,10 @@ function FillList({ model, selection, returnFocusRef, onSelect }) {
             tone={finite(row.netRealizedPnl) && row.netRealizedPnl < 0 ? "critical" : finite(row.netRealizedPnl) ? "healthy" : "neutral"}
           />
         ))}
-        {!closedTrades.length && <p role="status">完整生命周期明确未加载或暂无记录。</p>}
+        {!closedTrades.length && <p role="status">{availabilityCopy("Closed trade", closedTradesState, "暂无完整平仓生命周期。")}</p>}
       </section>
       <section className="kordynV2ExecutionMobileList" aria-label="移动 Review 列表">
-        <header><span><BookOpen size={18} aria-hidden="true" /><h2>Review</h2></span><em>{reviews.length}</em></header>
+        <header><span><BookOpen size={18} aria-hidden="true" /><h2>Review</h2></span><em>{availabilityCount(reviews, reviewsState)}</em></header>
         {reviews.map((row) => (
           <MobileRow
             key={row.id}
@@ -159,20 +178,20 @@ function FillList({ model, selection, returnFocusRef, onSelect }) {
             value={text(row.status)}
           />
         ))}
-        {!reviews.length && <p role="status">暂无真实交易复盘对象。</p>}
+        {!reviews.length && <p role="status">{availabilityCopy("Review", reviewsState, "暂无真实交易复盘对象。")}</p>}
       </section>
     </div>
   );
 }
 
-function MobileDetail({ workspaceId, model, selection, actions, actionsDisabled, headingRef, onSelect }) {
+function MobileDetail({ workspaceId, model, selection, actions, actionsDisabled, headingRef, onSelect, planActionState, onPlanState, onOpenPoster, posterTriggerRef }) {
   if (workspaceId === "plans") {
     const plan = selectedPlanFor(model, selection);
-    const decide = (kind) => runPlanDecision({ kind, plan, actions, actionsDisabled });
+    const decide = (kind) => runPlanDecision({ kind, plan, actions, actionsDisabled, onState: onPlanState(plan) });
     return (
       <div className="kordynV2ExecutionMobileDetail">
         <PlanTruth plan={plan} headingRef={headingRef} mobile />
-        <PlanEvidence plan={plan} actions={actions} actionsDisabled={actionsDisabled} actionState={null} onDecision={decide} onSelect={onSelect} />
+        <PlanEvidence plan={plan} actions={actions} actionsDisabled={actionsDisabled} actionState={planActionState(plan)} onDecision={decide} onSelect={onSelect} />
       </div>
     );
   }
@@ -189,7 +208,7 @@ function MobileDetail({ workspaceId, model, selection, actions, actionsDisabled,
   return (
     <div className="kordynV2ExecutionMobileDetail">
       <FillTruth selected={selected} headingRef={headingRef} mobile />
-      <FillEvidence selected={selected} actionsDisabled={actionsDisabled} onSelect={onSelect} onOpenPoster={() => {}} posterTriggerRef={null} />
+      <FillEvidence selected={selected} actionsDisabled={actionsDisabled} onSelect={onSelect} onOpenPoster={onOpenPoster} posterTriggerRef={posterTriggerRef} />
     </div>
   );
 }
@@ -206,6 +225,18 @@ export function MobileExecutionScreen({
   detailHeadingRef = null,
   returnFocusRef = null
 }) {
+  const [planActionStates, setPlanActionStates] = useState(() => Object.create(null));
+  const [posterTrade, setPosterTrade] = useState(null);
+  const posterTriggerRef = useRef(null);
+  const planActionState = (plan) => {
+    const planId = planSelectionCandidate(plan)?.id || null;
+    return planId ? planActionStates[planId] || null : null;
+  };
+  const onPlanState = (plan) => (next) => {
+    const planId = planSelectionCandidate(plan)?.id || null;
+    if (!planId) return;
+    setPlanActionStates((current) => ({ ...current, [planId]: next }));
+  };
   const label = workspaceId === "plans" ? "计划" : workspaceId === "orders" ? "订单" : "成交";
   if (view === "detail") {
     return (
@@ -214,7 +245,8 @@ export function MobileExecutionScreen({
           <button type="button" data-kordyn-v2-execution-back={workspaceId} onClick={(event) => onOpenList(event)}><ArrowLeft size={18} aria-hidden="true" />{label}列表</button>
           <span><Check size={15} aria-hidden="true" />对象分离</span>
         </header>
-        <MobileDetail workspaceId={workspaceId} model={model} selection={selection} actions={actions} actionsDisabled={actionsDisabled} headingRef={detailHeadingRef} onSelect={onSelect} />
+        <MobileDetail workspaceId={workspaceId} model={model} selection={selection} actions={actions} actionsDisabled={actionsDisabled} headingRef={detailHeadingRef} onSelect={onSelect} planActionState={planActionState} onPlanState={onPlanState} onOpenPoster={setPosterTrade} posterTriggerRef={posterTriggerRef} />
+        {posterTrade && <ClosedTradeOutputSheet closedTrade={posterTrade} actions={actions} actionsDisabled={actionsDisabled} onClose={() => setPosterTrade(null)} returnFocus={posterTriggerRef.current} />}
       </div>
     );
   }

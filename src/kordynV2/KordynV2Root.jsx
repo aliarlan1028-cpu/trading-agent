@@ -17,6 +17,17 @@ const unavailable = "Unavailable";
 const EMPTY_DATA = Object.freeze({});
 const LazyAiDomain = lazy(() => import("./domains/ai/index.jsx"));
 const LazyAccountDomain = lazy(() => import("./domains/account/index.jsx"));
+const ACCOUNT_WORKSPACE_BY_OBJECT_TYPE = Object.freeze({
+  Market: "market",
+  Account: "account",
+  Position: "positions",
+  "Trade plan": "plans",
+  Execution: "orders",
+  Order: "orders",
+  Fill: "fills",
+  "Closed trade": "fills",
+  Review: "fills"
+});
 
 const safeText = (value, fallback = unavailable) => (
   ["string", "number", "boolean"].includes(typeof value) && value !== "" ? String(value) : fallback
@@ -58,6 +69,13 @@ function firstSelectionCandidate(data) {
     }
   }
   return null;
+}
+
+function accountLocationForSelection(candidate, viewport) {
+  const scope = typeof candidate?.workspaceId === "string" ? candidate.workspaceId : "";
+  if (scope && !["account", "live"].includes(scope)) return null;
+  const workspaceId = ACCOUNT_WORKSPACE_BY_OBJECT_TYPE[candidate?.type];
+  return workspaceId ? v2LocationForWorkspace("account", workspaceId, viewport) : null;
 }
 
 export function resolveEvidenceSelection({ data = EMPTY_DATA, selection = null, request = null } = {}) {
@@ -133,8 +151,13 @@ export function KordynV2Root({ api, lang }) {
   }, [data, defaultCandidate, selectedCandidate]);
 
   const select = useCallback((candidate) => {
+    const targetLocation = accountLocationForSelection(candidate, viewport);
+    if (targetLocation) {
+      returnPromptFocusRef.current = false;
+      setLocation(targetLocation);
+    }
     setSelectedCandidate(candidate && typeof candidate === "object" ? { id: candidate.id, type: candidate.type } : null);
-  }, []);
+  }, [viewport]);
 
   const truth = useMemo(() => buildAccountTruth(data, domain.truthMode), [data, domain.truthMode]);
   const resourceState = data?.resourceState?.[location.resourceSection] || (api?.data ? "loaded" : "loading");

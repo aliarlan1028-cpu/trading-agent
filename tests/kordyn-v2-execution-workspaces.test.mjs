@@ -203,17 +203,6 @@ const selection = (id, type) => ({ object: { id, type }, context: { objectId: id
 const readyState = { kind: "ready", source: "OKX cockpit", lastValidAt: completedAt };
 const truth = { mode: "full", equity: 28640.72, available: 13870.1, exposure: 8232 };
 
-function findElement(node, predicate) {
-  if (!node || typeof node !== "object") return null;
-  if (typeof node.type === "function") return findElement(node.type(node.props), predicate);
-  if (predicate(node)) return node;
-  for (const child of React.Children.toArray(node.props?.children)) {
-    const found = findElement(child, predicate);
-    if (found) return found;
-  }
-  return null;
-}
-
 test("account execution model projects distinct bounded Trade plan, Execution, Order, Fill, Review, and Closed trade records", () => {
   const model = modelFixture();
   assert.deepEqual(model.plans.map((row) => row.id), ["plan-1"]);
@@ -229,6 +218,26 @@ test("account execution model projects distinct bounded Trade plan, Execution, O
   assert.equal(model.closedTrades[0].review?.id, "review-1");
   assert.deepEqual(model.closedTrades[0].poster, { state: "eligible", executionId: "execution-1" });
   assert.doesNotThrow(() => JSON.stringify(model));
+});
+
+test("Trade plan authorization derives bounded account impact from authoritative portfolio and positions when deployed plans omit accountImpact", () => {
+  const model = modelFixture({
+    portfolio: { totalEquityUsdt: 10_000, availableMarginUsdt: 7_200 },
+    positions: [
+      { positionId: "pos-open-1", symbol: "ETH/USDT", quantity: 1, markPrice: 3420, margin: 900 },
+      { positionId: "pos-open-2", instId: "BTC-USDT-SWAP", quantity: "0.1", mark: "68200", initialMargin: "1200" }
+    ],
+    tradePlans: [plan({ accountImpact: undefined })]
+  });
+  assert.deepEqual(model.plans[0].accountImpact, {
+    equityUsdt: 10_000,
+    availableMarginUsdt: 7_200,
+    openPositionCount: 2,
+    projectedOpenPositionCount: 3,
+    estimatedMaxLossUsdt: 80
+  });
+  assert.equal(model.plans[0].approval.valid, true);
+  assert.deepEqual(model.plans[0].approval.missingFacts, []);
 });
 
 test("execution projections retain authoritative zero while missing finance remains null", () => {
@@ -294,6 +303,17 @@ test("review and lifecycle linkage requires exact unique source-backed evidence 
   assert.equal(ambiguous.closedTrades[0].review, null);
 });
 
+test("conflicting explicit lifecycle, execution, or fill identifiers fail closed instead of OR-linking related records", () => {
+  const model = modelFixture({
+    fills: [fill({ executionOrderId: "execution-1", tradeLifecycleKey: "execution-1" })],
+    reviews: [review({ executionOrderId: "execution-1", tradeLifecycleKey: "conflicting-lifecycle", fillIds: ["fill-1"] })],
+    closedTradeLifecycles: [lifecycle({ executionOrderId: "conflicting-execution", tradeLifecycleKey: "execution-1", fillIds: ["other-fill"] })]
+  });
+  assert.equal(model.fills[0].review, null);
+  assert.equal(model.fills[0].closedTrade, null);
+  assert.equal(model.closedTrades[0].review, null);
+});
+
 test("exchange acceptance, fill receipt, and financial reconciliation remain separate finality facts", () => {
   const model = modelFixture({
     orders: [order({ status: "accepted", filledQuantity: 0, remainingQuantity: 2.4 })],
@@ -345,6 +365,35 @@ test("Desktop execution workspaces render distinct registries, dominant truth, a
   assert.match(fills, /data-kordyn-v2-object-type="Fill"/u);
   assert.match(fills, /已平仓生命周期|净实现盈亏/u);
   assert.doesNotMatch(fills, /data-kordyn-v2-object-type="Position"/u);
+});
+
+test("execution workspaces preserve absent and invalid resource states instead of showing loaded-empty copy", () => {
+  const props = { truth, state: readyState, actions: {}, actionsDisabled: false, selection: null, onSelect() {} };
+  const absent = modelFixture({
+    executionOrders: undefined,
+    orders: undefined,
+    fills: undefined,
+    reviews: undefined,
+    closedTradeLifecycles: undefined
+  });
+  const absentOrders = renderToStaticMarkup(React.createElement(OrderWorkspace, { ...props, model: absent }));
+  const absentMobile = renderToStaticMarkup(React.createElement(MobileExecutionScreen, { ...props, model: absent, workspaceId: "orders", view: "list" }));
+  assert.match(absentOrders, /Execution 意图明确未加载|Order 交易所事实明确未加载/u);
+  assert.match(absentMobile, /Execution 意图明确未加载|Order 交易所事实明确未加载/u);
+  assert.doesNotMatch(absentOrders, /当前没有可用的 Execution 对象|当前没有可用的 Order 对象/u);
+
+  const invalid = modelFixture({
+    executionOrders: [{}],
+    orders: [{}],
+    fills: [{}],
+    reviews: [{}],
+    closedTradeLifecycles: [{}]
+  });
+  const invalidOrders = renderToStaticMarkup(React.createElement(OrderWorkspace, { ...props, model: invalid }));
+  const invalidFills = renderToStaticMarkup(React.createElement(MobileExecutionScreen, { ...props, model: invalid, workspaceId: "fills", view: "list" }));
+  assert.match(invalidOrders, /Execution 意图事实不可用|Order 交易所事实不可用/u);
+  assert.match(invalidFills, /Fill 流水事实不可用|Closed trade 事实不可用|Review 事实不可用/u);
+  assert.doesNotMatch(invalidFills, /当前没有成交|暂无真实交易复盘对象/u);
 });
 
 test("plan decisions reuse the authoritative settlement classifier without optimistic success", async () => {
@@ -403,18 +452,16 @@ test("APP execution screen uses list-detail flows with canonical controls and fo
   for (const [workspaceId, objectId, objectType] of [
     ["plans", "plan-1", "Trade plan"], ["orders", "order-1", "Order"], ["fills", "fill-1", "Fill"]
   ]) {
-    const tree = MobileExecutionScreen({
+    const html = renderToStaticMarkup(React.createElement(MobileExecutionScreen, {
       workspaceId,
       model,
       view: "detail",
       selection: selection(objectId, objectType),
       detailHeadingRef: { current: null },
       onOpenList() {}, onSelect() {}
-    });
-    const heading = findElement(tree, (node) => node.type === "h2" && node.props?.tabIndex === -1);
-    const back = findElement(tree, (node) => node.type === "button" && node.props?.["data-kordyn-v2-execution-back"] === workspaceId);
-    assert.ok(heading, workspaceId);
-    assert.ok(back, workspaceId);
+    }));
+    assert.match(html, new RegExp(`data-kordyn-v2-execution-back="${workspaceId}"`, "u"));
+    assert.match(html, /tabindex="-1"/u, workspaceId);
   }
   const html = renderToStaticMarkup(React.createElement(MobileExecutionScreen, { workspaceId: "orders", model, view: "list", selection: null }));
   assert.doesNotMatch(html, /<table/u);
@@ -425,4 +472,11 @@ test("APP execution controls have the Account-owned 44px touch contract and no h
   assert.match(css, /\.kordynV2ExecutionMobile[\s\S]*min-height:\s*44px/u);
   assert.doesNotMatch(css, /\.kordynV2ExecutionMobile[^}]*100vw/u);
   assert.doesNotMatch(css, /\.kordynV2ExecutionMobile[^}]*overflow-x:\s*(?:auto|scroll)/u);
+});
+
+test("ClosedTradeOutputSheet body is the scroll container for long reconciled output while shell focus remains trapped", () => {
+  const css = fs.readFileSync(path.join(rootDir, "src/kordynV2/domains/account/account.css"), "utf8");
+  assert.match(css, /\.kordynV2ClosedTradeOutputBody\s*\{[\s\S]*min-height:\s*0/u);
+  assert.match(css, /\.kordynV2ClosedTradeOutputBody\s*\{[\s\S]*overflow-y:\s*auto/u);
+  assert.doesNotMatch(css, /\.kordynV2ClosedTradeOutputSheet\s*>\s*section\s*\{[\s\S]*overflow-y:\s*auto/u);
 });

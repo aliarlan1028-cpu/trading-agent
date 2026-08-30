@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { normalizePositionsForUi } from "../server/positionView.mjs";
 import AccountDomain from "../src/kordynV2/domains/account/index.jsx";
+import { KordynV2Root } from "../src/kordynV2/KordynV2Root.jsx";
 import { createV2Selection } from "../src/kordynV2/viewModels/selection.js";
 
 const asOf = new Date().toISOString();
@@ -55,14 +56,24 @@ const data = Object.freeze({
     leverage: 2,
     riskPercent: 0.7,
     evidenceIds: Object.freeze(["evidence-2"]),
-    lastRiskCheck: Object.freeze({ id: "risk-2", passed: true, summary: "账户保证金、最大亏损与事件窗口均已核对。", warnings: Object.freeze([]), blockers: Object.freeze([]) }),
-    accountImpact: Object.freeze({
-      equityUsdt: 12000,
-      availableMarginUsdt: 8600,
-      openPositionCount: 1,
-      projectedOpenPositionCount: 2,
-      estimatedMaxLossUsdt: 84
-    })
+    lastRiskCheck: Object.freeze({ id: "risk-2", passed: true, summary: "账户保证金、最大亏损与事件窗口均已核对。", warnings: Object.freeze([]), blockers: Object.freeze([]) })
+  }), Object.freeze({
+    id: "plan-3",
+    status: "awaiting_approval",
+    symbol: "SOL/USDT",
+    direction: "long",
+    strategy: "mean_reversion_guarded",
+    agentRunId: "mission-3",
+    createdAt: openedAt,
+    expiresAt: asOf,
+    entry_range: Object.freeze([188, 190]),
+    stopLoss: 181,
+    takeProfit: Object.freeze([198, 206]),
+    quantity: 12,
+    leverage: 2,
+    riskPercent: 0.4,
+    evidenceIds: Object.freeze(["evidence-3"]),
+    lastRiskCheck: Object.freeze({ id: "risk-3", passed: true, summary: "账户权益、保证金和持仓数量均来自当前账户事实。", warnings: Object.freeze([]), blockers: Object.freeze([]) })
   })]),
   positions: normalizedPositions,
   markets: Object.freeze([Object.freeze({ symbol: "BTC/USDT", price: 68230, changePct: -0.4, high24h: 69000, low24h: 67100, updatedAt: asOf, source: "OKX" })]),
@@ -170,8 +181,14 @@ function ProductionHarness({ workspaceId, device = "mobile" }) {
     removeWatchlist: () => ({ ok: true }),
     reconcile: () => { calls.reconcile += 1; throw new Error("RECONCILE_SECRET_NEVER_RENDER"); },
     exitExecutionOrder: () => ({ ok: true }),
-    approvePlan: (planId) => { calls.approvePlan = [...(calls.approvePlan || []), planId]; return Promise.resolve({ plan: { id: planId, status: "approved" }, approvalGranted: true, executionSubmitted: false }); },
-    rejectPlan: (planId) => { calls.rejectPlan = [...(calls.rejectPlan || []), planId]; return Promise.resolve({ plan: { id: planId, status: "cancelled" }, rejected: true }); },
+    approvePlan: (planId) => {
+      calls.approvePlan = [...(calls.approvePlan || []), planId];
+      return new Promise((resolve) => window.setTimeout(() => resolve({ plan: { id: planId, status: "approved" }, approvalGranted: true, executionSubmitted: false }), 80));
+    },
+    rejectPlan: (planId) => {
+      calls.rejectPlan = [...(calls.rejectPlan || []), planId];
+      return new Promise((resolve) => window.setTimeout(() => resolve({ id: planId, status: "cancelled" }), 60));
+    },
     downloadClosedTradePoster: (executionId) => { calls.poster = [...(calls.poster || []), executionId]; return Promise.resolve({ ok: true }); }
   };
   const onSelect = (candidate) => {
@@ -186,7 +203,22 @@ function ProductionHarness({ workspaceId, device = "mobile" }) {
   );
 }
 
+function RootHarness() {
+  const api = {
+    data,
+    ensureSection: () => Promise.resolve(),
+    action: () => Promise.resolve({ ok: true }),
+    notify: () => {},
+    download: (endpoint, filename) => {
+      calls.rootDownloads = [...(calls.rootDownloads || []), { endpoint, filename }];
+      return Promise.resolve({ ok: true });
+    }
+  };
+  return <section data-browser-v2-root><KordynV2Root api={api} lang="zh" /></section>;
+}
+
 createRoot(document.getElementById("root")).render(<>
+  <RootHarness />
   <ProductionHarness workspaceId="market" />
   <ProductionHarness workspaceId="account" />
   <ProductionHarness workspaceId="positions" />

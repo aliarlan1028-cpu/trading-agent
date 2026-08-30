@@ -98,8 +98,9 @@ function PlanTruth({ plan, headingRef = null, mobile = false }) {
 function PlanEvidence({ plan, actions, actionsDisabled, actionState, onDecision, onSelect }) {
   if (!plan) return <aside className="kordynV2ExecutionInspector is-empty"><p>选择计划后查看风险与授权证据。</p></aside>;
   const processing = actionState?.kind === "processing";
-  const approvable = plan.status === "awaiting_approval" && plan.approval?.valid === true && !actionsDisabled && !processing && typeof actions?.approvePlan === "function";
-  const rejectable = plan.status === "awaiting_approval" && !actionsDisabled && !processing && typeof actions?.rejectPlan === "function";
+  const terminal = actionState?.kind === "partial" || actionState?.kind === "succeeded";
+  const approvable = plan.status === "awaiting_approval" && plan.approval?.valid === true && !actionsDisabled && !processing && !terminal && typeof actions?.approvePlan === "function";
+  const rejectable = plan.status === "awaiting_approval" && !actionsDisabled && !processing && !terminal && typeof actions?.rejectPlan === "function";
   return (
     <aside className="kordynV2ExecutionInspector" aria-label="风险与授权证据">
       <header><span><ShieldCheck aria-hidden="true" /><h2>风险与授权证据</h2></span><em>{plan.evidenceIds?.length || 0}</em></header>
@@ -123,8 +124,14 @@ function PlanEvidence({ plan, actions, actionsDisabled, actionState, onDecision,
 
 export function PlanWorkspace({ model, truth, state, selection, actions = {}, actionsDisabled = false, onSelect = () => {} }) {
   const selected = selectedPlanFor(model, selection);
-  const [actionState, setActionState] = useState(null);
-  const decide = (kind) => runPlanDecision({ kind, plan: selected, actions, actionsDisabled, onState: setActionState });
+  const [actionStates, setActionStates] = useState(() => Object.create(null));
+  const selectedPlanId = planSelectionCandidate(selected)?.id || null;
+  const actionState = selectedPlanId ? actionStates[selectedPlanId] || null : null;
+  const setSelectedActionState = (next) => {
+    if (!selectedPlanId) return;
+    setActionStates((current) => ({ ...current, [selectedPlanId]: next }));
+  };
+  const decide = (kind) => runPlanDecision({ kind, plan: selected, actions, actionsDisabled, onState: setSelectedActionState });
   return (
     <div className="kordynV2ExecutionWorkspace" data-kordyn-v2-execution-workspace="plans" data-kordyn-v2-truth-mode={validatedTruthMode(truth?.mode)}>
       <header className="kordynV2AccountWorkspaceTitle"><span><h1>计划</h1><small>意图、风险、授权与服务器最终性</small></span><em role="status" data-resource-tone={resourceTone(state?.kind)}>{text(state?.kind)}</em></header>

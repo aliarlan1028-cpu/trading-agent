@@ -81,6 +81,47 @@ async function viewport(cdp, width, height, mobile = false) {
   await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile });
 }
 
+async function isolateRoot(cdp, selector) {
+  const found = await evaluate(cdp, `(() => {
+    const selector = ${JSON.stringify(selector)};
+    const roots = [...document.querySelectorAll("[data-browser-v2-root], [data-browser-account-workspace]")];
+    for (const root of roots) root.hidden = !root.matches(selector);
+    document.body.style.margin = "0";
+    return Boolean(document.querySelector(selector));
+  })()`);
+  assert.equal(found, true, `isolated root exists: ${selector}`);
+}
+
+async function assertNoOverflow(cdp, selector, label) {
+  const geometry = await evaluate(cdp, `(() => {
+    const root = document.querySelector(${JSON.stringify(selector)});
+    if (!root) return null;
+    return {
+      innerWidth: window.innerWidth,
+      documentScrollWidth: document.documentElement.scrollWidth,
+      bodyScrollWidth: document.body.scrollWidth,
+      rootClientWidth: root.clientWidth,
+      rootScrollWidth: root.scrollWidth,
+      offenders: [...document.body.querySelectorAll("*")].flatMap((node) => {
+        const rect = node.getBoundingClientRect();
+        if (rect.right <= window.innerWidth + 1 && rect.left >= -1) return [];
+        return [{
+          tag: node.tagName,
+          className: String(node.className || ""),
+          role: node.getAttribute("role") || "",
+          right: Math.round(rect.right),
+          left: Math.round(rect.left),
+          width: Math.round(rect.width)
+        }];
+      }).slice(0, 8)
+    };
+  })()`);
+  assert.ok(geometry, `${label} geometry root exists`);
+  assert.ok(geometry.documentScrollWidth <= geometry.innerWidth + 1, `${label} document overflow: ${JSON.stringify(geometry)}`);
+  assert.ok(geometry.bodyScrollWidth <= geometry.innerWidth + 1, `${label} body overflow: ${JSON.stringify(geometry)}`);
+  assert.ok(geometry.rootScrollWidth <= geometry.rootClientWidth + 1, `${label} root overflow: ${JSON.stringify(geometry)}`);
+}
+
 async function stop(process) {
   if (!process || process.exitCode !== null) return;
   process.kill("SIGTERM");
@@ -141,6 +182,8 @@ try {
 
   await viewport(cdp, 1440, 900, false);
   const planDesktopRoot = '[data-browser-account-workspace="desktop-plans"]';
+  await isolateRoot(cdp, planDesktopRoot);
+  await assertNoOverflow(cdp, planDesktopRoot, "desktop plans 1440");
   await click(cdp, `${planDesktopRoot} [data-kordyn-v2-object-id="plan-2"][data-kordyn-v2-object-type="Trade plan"]`);
   await waitForExpression(cdp, `document.querySelector(${JSON.stringify(planDesktopRoot)})?.dataset.selectedId === "plan-2"`, "desktop Trade plan canonical selection");
   assert.deepEqual(await evaluate(cdp, "window.__kordynV2AccountInteractionCalls.selections.at(-1)"), { id: "plan-2", type: "Trade plan", contextId: "plan-2", traceId: "plan-2" });
@@ -148,7 +191,10 @@ try {
   await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${planDesktopRoot} [role="status"][data-action-state="partial"]`)})`, "desktop Trade plan partial authority result");
   assert.deepEqual(await evaluate(cdp, "window.__kordynV2AccountInteractionCalls.approvePlan"), ["plan-2"]);
 
+  await viewport(cdp, 1180, 820, false);
   const orderDesktopRoot = '[data-browser-account-workspace="desktop-orders"]';
+  await isolateRoot(cdp, orderDesktopRoot);
+  await assertNoOverflow(cdp, orderDesktopRoot, "desktop orders 1180");
   await click(cdp, `${orderDesktopRoot} [data-kordyn-v2-object-id="execution-2"][data-kordyn-v2-object-type="Execution"]`);
   await waitForExpression(cdp, `document.querySelector(${JSON.stringify(orderDesktopRoot)})?.dataset.selectedId === "execution-2"`, "desktop Execution canonical selection");
   assert.deepEqual(await evaluate(cdp, "window.__kordynV2AccountInteractionCalls.selections.at(-1)"), { id: "execution-2", type: "Execution", contextId: "execution-2", traceId: "execution-2" });
@@ -157,6 +203,8 @@ try {
   assert.deepEqual(await evaluate(cdp, "window.__kordynV2AccountInteractionCalls.selections.at(-1)"), { id: "order-2", type: "Order", contextId: "order-2", traceId: "order-2" });
 
   const fillDesktopRoot = '[data-browser-account-workspace="desktop-fills"]';
+  await isolateRoot(cdp, fillDesktopRoot);
+  await assertNoOverflow(cdp, fillDesktopRoot, "desktop fills 1180");
   await click(cdp, `${fillDesktopRoot} [data-kordyn-v2-object-id="fill-2"][data-kordyn-v2-object-type="Fill"]`);
   await waitForExpression(cdp, `document.querySelector(${JSON.stringify(fillDesktopRoot)})?.dataset.selectedId === "fill-2"`, "desktop Fill canonical selection");
   assert.deepEqual(await evaluate(cdp, "window.__kordynV2AccountInteractionCalls.selections.at(-1)"), { id: "fill-2", type: "Fill", contextId: "fill-2", traceId: "fill-2" });
@@ -174,15 +222,47 @@ try {
   await waitForExpression(cdp, `document.querySelector(${JSON.stringify(fillDesktopRoot)})?.dataset.selectedId === "review-2"`, "desktop Review canonical selection");
   assert.deepEqual(await evaluate(cdp, "window.__kordynV2AccountInteractionCalls.selections.at(-1)"), { id: "review-2", type: "Review", contextId: "review-2", traceId: "review-2" });
 
+  await viewport(cdp, 1440, 900, false);
+  const rootShell = '[data-browser-v2-root]';
+  await isolateRoot(cdp, rootShell);
+  await click(cdp, `${rootShell} [data-kordyn-v2-domain-target="account"]`);
+  await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${rootShell} [data-kordyn-v2-shell="desktop"]`)})?.dataset.kordynV2Workspace === "market"`, "root account market workspace");
+  await click(cdp, `${rootShell} [data-kordyn-v2-workspace-target="plans"]`);
+  await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${rootShell} [data-kordyn-v2-shell="desktop"]`)})?.dataset.kordynV2Workspace === "plans"`, "root plans workspace");
+  await assertNoOverflow(cdp, rootShell, "desktop root account plans 1440");
+  await click(cdp, `${rootShell} [data-kordyn-v2-object-id="plan-2"][data-kordyn-v2-object-type="Trade plan"]`);
+  await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${rootShell} [data-kordyn-v2-shell="desktop"]`)})?.dataset.kordynV2SelectedId === "plan-2"`, "root Trade plan selection");
+  await click(cdp, `${rootShell} .kordynV2ExecutionRelatedLink[data-kordyn-v2-object-type="Execution"]`);
+  await waitForExpression(cdp, `(() => { const root = document.querySelector(${JSON.stringify(`${rootShell} [data-kordyn-v2-shell="desktop"]`)}); return root?.dataset.kordynV2Workspace === "orders" && root?.dataset.kordynV2SelectedId === "execution-2" && root?.dataset.kordynV2SelectedType === "Execution"; })()`, "root related Execution lands in orders");
+  await click(cdp, `${rootShell} [data-kordyn-v2-object-id="fill-2"][data-kordyn-v2-object-type="Fill"]`);
+  await waitForExpression(cdp, `(() => { const root = document.querySelector(${JSON.stringify(`${rootShell} [data-kordyn-v2-shell="desktop"]`)}); return root?.dataset.kordynV2Workspace === "fills" && root?.dataset.kordynV2SelectedId === "fill-2" && root?.dataset.kordynV2SelectedType === "Fill"; })()`, "root related Fill lands in fills");
+
   await viewport(cdp, 390, 844, true);
   const planMobileRoot = '[data-browser-account-workspace="plans"]';
+  await isolateRoot(cdp, planMobileRoot);
+  await assertNoOverflow(cdp, planMobileRoot, "APP plans 390");
   await click(cdp, `${planMobileRoot} [data-kordyn-v2-object-id="plan-2"][data-kordyn-v2-object-type="Trade plan"]`);
   await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${planMobileRoot} [data-kordyn-v2-execution-mobile-view="detail"] h2`)}) === document.activeElement`, "APP Trade plan detail focus");
   assert.deepEqual(await evaluate(cdp, "window.__kordynV2AccountInteractionCalls.selections.at(-1)"), { id: "plan-2", type: "Trade plan", contextId: "plan-2", traceId: "plan-2" });
+  const plan2ApproveCalls = await evaluate(cdp, "window.__kordynV2AccountInteractionCalls.approvePlan?.filter((id) => id === 'plan-2').length || 0");
+  await click(cdp, `${planMobileRoot} .kordynV2ExecutionInspector footer button:last-child`);
+  await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${planMobileRoot} [role="status"][data-action-state="processing"]`)})`, "APP Trade plan processing authority state");
+  assert.equal(await evaluate(cdp, `document.querySelector(${JSON.stringify(`${planMobileRoot} .kordynV2ExecutionInspector footer button:last-child`)})?.disabled`), true);
+  await click(cdp, `${planMobileRoot} .kordynV2ExecutionInspector footer button:last-child`);
+  assert.equal(await evaluate(cdp, "window.__kordynV2AccountInteractionCalls.approvePlan?.filter((id) => id === 'plan-2').length || 0"), plan2ApproveCalls + 1);
+  await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${planMobileRoot} [role="status"][data-action-state="partial"]`)})`, "APP Trade plan partial authority result");
   await click(cdp, `${planMobileRoot} [data-kordyn-v2-execution-back="plans"]`);
   await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${planMobileRoot} [data-kordyn-v2-object-id="plan-2"][data-kordyn-v2-object-type="Trade plan"]`)}) === document.activeElement`, "APP Trade plan Back focus restoration");
+  await click(cdp, `${planMobileRoot} [data-kordyn-v2-object-id="plan-3"][data-kordyn-v2-object-type="Trade plan"]`);
+  await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${planMobileRoot} [data-kordyn-v2-execution-mobile-view="detail"] h2`)}) === document.activeElement`, "APP second Trade plan detail focus");
+  assert.equal(await evaluate(cdp, `document.querySelector(${JSON.stringify(`${planMobileRoot} [role="status"][data-action-state]`)}) === null`), true);
+  await click(cdp, `${planMobileRoot} .kordynV2ExecutionInspector footer button:first-child`);
+  await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${planMobileRoot} [role="status"][data-action-state="succeeded"]`)})`, "APP Trade plan reject terminal result");
+  assert.deepEqual(await evaluate(cdp, "window.__kordynV2AccountInteractionCalls.rejectPlan"), ["plan-3"]);
 
   const orderMobileRoot = '[data-browser-account-workspace="orders"]';
+  await isolateRoot(cdp, orderMobileRoot);
+  await assertNoOverflow(cdp, orderMobileRoot, "APP orders 390");
   await click(cdp, `${orderMobileRoot} [data-kordyn-v2-object-id="execution-2"][data-kordyn-v2-object-type="Execution"]`);
   await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${orderMobileRoot} [data-kordyn-v2-execution-mobile-view="detail"] h2`)}) === document.activeElement`, "APP Execution detail focus");
   assert.deepEqual(await evaluate(cdp, "window.__kordynV2AccountInteractionCalls.selections.at(-1)"), { id: "execution-2", type: "Execution", contextId: "execution-2", traceId: "execution-2" });
@@ -192,7 +272,10 @@ try {
   await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${orderMobileRoot} [data-kordyn-v2-execution-mobile-view="detail"] h2`)}) === document.activeElement`, "APP Order detail focus");
   assert.deepEqual(await evaluate(cdp, "window.__kordynV2AccountInteractionCalls.selections.at(-1)"), { id: "order-2", type: "Order", contextId: "order-2", traceId: "order-2" });
 
+  await viewport(cdp, 430, 932, true);
   const fillMobileRoot = '[data-browser-account-workspace="fills"]';
+  await isolateRoot(cdp, fillMobileRoot);
+  await assertNoOverflow(cdp, fillMobileRoot, "APP fills 430");
   await click(cdp, `${fillMobileRoot} [data-kordyn-v2-object-id="fill-2"][data-kordyn-v2-object-type="Fill"]`);
   await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${fillMobileRoot} [data-kordyn-v2-execution-mobile-view="detail"] h2`)}) === document.activeElement`, "APP Fill detail focus");
   assert.deepEqual(await evaluate(cdp, "window.__kordynV2AccountInteractionCalls.selections.at(-1)"), { id: "fill-2", type: "Fill", contextId: "fill-2", traceId: "fill-2" });
@@ -201,6 +284,12 @@ try {
   await click(cdp, `${fillMobileRoot} [data-kordyn-v2-object-id="closed:execution-2"][data-kordyn-v2-object-type="Closed trade"]`);
   await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${fillMobileRoot} [data-kordyn-v2-execution-mobile-view="detail"] h2`)}) === document.activeElement`, "APP Closed trade detail focus");
   assert.deepEqual(await evaluate(cdp, "window.__kordynV2AccountInteractionCalls.selections.at(-1)"), { id: "closed:execution-2", type: "Closed trade", contextId: "closed:execution-2", traceId: "closed:execution-2" });
+  const posterBefore = await evaluate(cdp, "window.__kordynV2AccountInteractionCalls.poster?.length || 0");
+  await click(cdp, `${fillMobileRoot} .kordynV2ExecutionPrimaryAction`);
+  await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${fillMobileRoot} [data-kordyn-v2-closed-trade-output-scrim]`)})`, "APP Closed trade output sheet");
+  await click(cdp, `${fillMobileRoot} .kordynV2ClosedTradeOutputSheet footer button`);
+  await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${fillMobileRoot} [data-output-state="returned"]`)})`, "APP Closed trade poster returned");
+  assert.equal(await evaluate(cdp, "window.__kordynV2AccountInteractionCalls.poster?.length || 0"), posterBefore + 1);
   await click(cdp, `${fillMobileRoot} [data-kordyn-v2-execution-back="fills"]`);
   await click(cdp, `${fillMobileRoot} [data-kordyn-v2-object-id="review-2"][data-kordyn-v2-object-type="Review"]`);
   await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${fillMobileRoot} [data-kordyn-v2-execution-mobile-view="detail"] h2`)}) === document.activeElement`, "APP Review detail focus");
