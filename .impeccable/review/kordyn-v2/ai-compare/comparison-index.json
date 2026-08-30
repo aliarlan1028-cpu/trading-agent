@@ -3,7 +3,7 @@
   "scope": "ai",
   "sourceManifest": "docs/kordyn-v2-approved-concept-manifest.md",
   "captureEvidence": ".impeccable/review/kordyn-v2/ai/capture-evidence.json",
-  "productionSourceCommit": "14cb43a0818d94703f83450c14d7582aafeccd9e",
+  "productionSourceCommit": "0f44ddfa2e5f9344a9820e1d68c25dd34eaad9e3",
   "outputRoot": ".impeccable/review/kordyn-v2/ai-compare",
   "counts": {
     "concepts": 15,
@@ -85,7 +85,7 @@
         },
         "geometry": {
           "file": "desktop-ai-mission-control--1440x900--geometry.json",
-          "sha256": "300f33d4eae897ddfd21786038913c7e6ba9b126c7a590b11b34e5a06b80947f"
+          "sha256": "c553c312dd32e9123a174af92f78240ed73f4885bbab85b442806364e4c4497f"
         }
       },
       "pixelDifference": 0.05146525054466231,
@@ -111,7 +111,7 @@
         },
         "geometry": {
           "file": "desktop-ai-mission-control--1180x800--geometry.json",
-          "sha256": "6a12fbc4a772e6ccaae983291a3334fb32d32c22e1f080060e7138954ab60ab1"
+          "sha256": "d41d0314f028973ed74196f2619f3fd667b63492ddb87633d9a00393cb06fe6a"
         }
       },
       "pixelDifference": 0.06263197213913814,
@@ -129,18 +129,18 @@
         },
         "overlay50": {
           "file": "desktop-ai-signals--1440x900--overlay.png",
-          "sha256": "bd79bd519b9e81c61969d63122a8e0568f066c1adec9e724dd816a7952dd71da"
+          "sha256": "52e111386b5250900d7f2cd20c297e39ffab08698eca04b1b25ca17f941c6534"
         },
         "absoluteDifference": {
           "file": "desktop-ai-signals--1440x900--difference.png",
-          "sha256": "d58820a392cb89a7c31a7e3974a96be1e4d1231261facf296814b3b2fc7b76c1"
+          "sha256": "163da5dccdd96b739d64703095b6d8fe83e7852a594c9b5f1ebd900acc1cf9f6"
         },
         "geometry": {
           "file": "desktop-ai-signals--1440x900--geometry.json",
-          "sha256": "75867a71dc845d46a54c4c71939047540bbe15d5756570b6e13d4051bf0e4209"
+          "sha256": "9e3c3c7aeb6b7103ad57fbcd41367ae1fd7d4b595f121828bbee6226eeb9793f"
         }
       },
-      "pixelDifference": 0.06155372085048011,
+      "pixelDifference": 0.06154249072056806,
       "releaseVerdict": "human region review required"
     },
     {
@@ -155,18 +155,18 @@
         },
         "overlay50": {
           "file": "desktop-ai-signals--1180x800--overlay.png",
-          "sha256": "b738d4d8ffefdef54e8da7aa9eda21b3539ed5ad216b4bb0f2bf86a6eb1009e1"
+          "sha256": "e3ccf1c1acf4c3c6b4101013ee5f2eb3b13fb1fae39eb26b8072542941e42227"
         },
         "absoluteDifference": {
           "file": "desktop-ai-signals--1180x800--difference.png",
-          "sha256": "ea89078c2b99c840c63f192f36bedf8389bae7da2aa4300e838f6943a79b2b9c"
+          "sha256": "6cab886566e9b44fa7d79ce4574fabe73bc1807ea2f7318519ff51a01379e4ab"
         },
         "geometry": {
           "file": "desktop-ai-signals--1180x800--geometry.json",
-          "sha256": "35efd54821d92f83eeec6d048d373b4219591491efc94a407f2e8b0a87e29c93"
+          "sha256": "7a00b9d0c0a0b6383be70fb4f5051bb001ef2aec7b149c47ae395f99f09c7084"
         }
       },
-      "pixelDifference": 0.06787851030242605,
+      "pixelDifference": 0.06788042539049519,
       "releaseVerdict": "human region review required"
     },
     {
@@ -189,7 +189,7 @@
         },
         "geometry": {
           "file": "mobile-ai-mission-home--390x844--geometry.json",
-          "sha256": "6744095a8f741803f24f291b73699edbe4febe9fd3f6b18c930772c6e4adcd91"
+          "sha256": "9a3d78590dbdf6a5a37a0aaa62606625bfe38ea72095d06477c8555502190193"
         }
       },
       "pixelDifference": 0.07819913155848478,
@@ -215,7 +215,7 @@
         },
         "geometry": {
           "file": "mobile-ai-mission-home--430x932--geometry.json",
-          "sha256": "cb50327cced00af543f8b22e3aa68de86bf80bb6594aa869838fbb0cb12defdc"
+          "sha256": "e3e8c854c0fae5262d8302ecaf807dc8f02a6952ac00079bac9305e49002fbde"
         }
       },
       "pixelDifference": 0.07484521239709911,
@@ -241,7 +241,7 @@
         },
         "geometry": {
           "file": "mobile-ai-task-approval--390x844--geometry.json",
-          "sha256": "331582acdd3bc6f6476cf54651ad563edd690a9f0105f7ffde6403b6dc475973"
+          "sha256": "b58c19b8911dc3dc6cea8fbe6f6eaab2d1fb6e04e355181a1a579308627755f1"
         }
       },
       "pixelDifference": 0.08442757837934865,
@@ -267,7 +267,7 @@
         },
         "geometry": {
           "file": "mobile-ai-task-approval--430x932--geometry.json",
-          "sha256": "c56189f07653363e9aa891cc760d69181d3c13bc209015ff79b3855c8eafada5"
+          "sha256": "24361008f941ddcaa91d2f8c2e44fb6ad723d0f59c96a0535ee4accf57731342"
         }
       },
       "pixelDifference": 0.08513721641299832,

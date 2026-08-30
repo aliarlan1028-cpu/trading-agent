@@ -16,7 +16,7 @@
     "sha256": "e1d293f05c4d90b19b4f206c09cd49a8a97eff5e81d09b5377529b92b1785f76",
     "runner": "tests/run-kordyn-v2-ai-browser.mjs",
     "fixture": "tests/kordyn-v2-production-fixture.js",
-    "productionSourceCommit": "14cb43a0818d94703f83450c14d7582aafeccd9e",
+    "productionSourceCommit": "0f44ddfa2e5f9344a9820e1d68c25dd34eaad9e3",
     "device": "mobile",
     "domainId": "ai",
     "workspaceId": "missions"

@@ -2,7 +2,7 @@
 
 ## Current governed comparison status
 
-- Current production and capture source: `14cb43a0818d94703f83450c14d7582aafeccd9e`.
+- Current production and capture source: `0f44ddfa2e5f9344a9820e1d68c25dd34eaad9e3`.
 - Current comparison scope: Foundation Plan 01 shared shell plus the completed Plan 02 AI-domain checkpoint.
 - Completed concept comparisons: `4 / 15` — Desktop AI Mission, Desktop AI Signals, APP AI Mission, and APP AI Approval.
 - Pending domain implementation: `11 / 15` — no production comparison or fidelity claim is made for these remaining surfaces.
@@ -144,7 +144,7 @@ The final historical Task 8 review supplements the Foundation mechanical gates w
 
 ## Plan 02 AI domain checkpoint — Task 5
 
-Task 5 closes the AI-domain evidence gate against production and capture source commit `14cb43a0818d94703f83450c14d7582aafeccd9e`. The evidence runner mounts the actual production `KordynV2Root` and its committed lazy AI domain. `tests/kordyn-v2-production-fixture.js` supplies bounded production-shaped data and authoritative delayed outcomes; it is not imported by production, contains no credentials, and performs no production write. The canonical capture sidecar, state sidecar, comparison index, and every AI geometry ledger record or inherit this exact product commit; the later evidence/docs commit does not replace this source provenance.
+Task 5 closes the AI-domain evidence gate against production and capture source commit `0f44ddfa2e5f9344a9820e1d68c25dd34eaad9e3`. The evidence runner mounts the actual production `KordynV2Root` and its committed lazy AI domain. `tests/kordyn-v2-production-fixture.js` supplies bounded production-shaped data and authoritative delayed outcomes; it is not imported by production, contains no credentials, and performs no production write. The canonical capture sidecar, state sidecar, comparison index, and every AI geometry ledger record or inherit this exact product commit; the later evidence/docs commit does not replace this source provenance.
 
 ### Capability ownership — 8 / 8
 
@@ -189,6 +189,17 @@ The fresh master gate physically clicks real production rows and controls for Mi
 
 Approval is exercised with a delayed authoritative response: processing appears first, terminal success is absent before the response, and authoritative failed/partial outcomes remain visible. Dialog POST is followed by the authoritative GET reread. PNG evidence uses the real `html-to-image` path after fonts are ready; it is not stubbed. Keyboard focus containment, Escape close, focus return, APP target size, and zero authority writes in every capture document are asserted. At both `390` and `430`, an open Approval removes the support launcher from rendering, layout, focus, and the accessible interaction path; support-primary, support-navigation, and primary-navigation overlap are all `0`. The primary action remains `52px` high, the bottom navigation remains `62px` high, and protected focus remains inside the Approval. Closing restores the enabled `56x56` support target; a trusted click opens its real sheet and Escape returns focus to the launcher.
 
+### Whole-branch final-review closure
+
+The final product commit is `0f44ddfa2e5f9344a9820e1d68c25dd34eaad9e3`, based on `98a7969665ccaca9aa07a003f4f813b67fce623a`. It closes only the four whole-branch review findings:
+
+- Approval blockers/warnings, chat roles/content, and Context Watch status/source now accept bounded primitive string/finite-number/boolean facts only. Null-prototype records, accessors, arbitrary coercion hooks, iterators, and sibling malformed objects are omitted or shown as `Unavailable`; independent Mission, Signal, Watch, and Event truth remains present. The initial regressions failed `40 / 38 / 2` with both null-prototype crashes. A sibling boolean-role regression then failed `35 / 34 / 1`; the final primitive and string-only-role boundaries pass.
+- Desktop Watch/Event and APP Signal/Watch/Event readonly rows are real clickable inspection controls: `aria-disabled` and native disabled semantics are absent; `data-kordyn-v2-readonly-fact="true"` and `aria-description="只读事实，可查看详情，不会改变当前对象"` disclose the boundary. Trusted CDP clicks change the local Inspector, preserve exact Root ID/type, expose no partial canonical row attributes or Proof, and leave selectable sibling synchronization intact.
+- At `1440x900` stale, the retained notice is `176,128–1230,162`, the Context/Proof dock is `1250.640625,137–1415,167`, and overlap is `0px²`. At `1180x820` degraded, the respective rectangles are `160,120–970,154` and `1001.640625,126–1166,156`, also `0px²`. The full `Read-only AI context last-valid projection · 2026-08-27T06:32:11Z` remains visible, and both dock actions stay focusable and accept trusted clicks.
+- A rejected real PNG generation path shows only `PNG 生成暂时失败，未开始下载。请重试。`; a secret-like thrown diagnostic is absent from the sheet and page DOM. No download occurs on failure, retry remains usable and focused, and success is rendered only after the real canvas export is restored and produces a download.
+
+Each fix has an adversarial mutation: generic scalar coercion fails `40 / 38 / 2`; restored readonly disabled semantics fail the real Desktop Watch click; removed notice spacing restores `4108.984375px²` overlap; restored raw PNG error copy exposes the secret-like diagnostic. All mutations were independently restored before the product commit.
+
 ### Canonical AI captures and comparisons
 
 Capture root: `.impeccable/review/kordyn-v2/ai/` (`23` files: eight approved-surface captures, 13 state captures, and two sidecars). Comparison root: `.impeccable/review/kordyn-v2/ai-compare/` (`33` files: 24 reference/overlay/difference PNGs, eight geometry ledgers, and one index).
@@ -197,8 +208,8 @@ Capture root: `.impeccable/review/kordyn-v2/ai/` (`23` files: eight approved-sur
 | --- | --- | --- | ---: | ---: | --- |
 | Mission Desktop `1440x900` | `9e8a1fae3e0e208a042017aa70294b06ba2fadd94336df74bbef07370c694770` | `55f988f9c87d1dce83d528bd2ad224b0951542cbab32eca018bf6c78818dbc20` | `0` | `0.051465` | `0.037187 ≤ 0.0415`; structure accepted |
 | Mission Desktop `1180x800` | `9c8815bb273f083283deb19fcb82093df148788820742d0f75edf375527015a2` | `55f988f9c87d1dce83d528bd2ad224b0951542cbab32eca018bf6c78818dbc20` | `0` | `0.062632` | `0.047456 ≤ 0.0475`; structure accepted |
-| Signals Desktop `1440x900` | `02cfee554b4d942cdcc3adaea2c5abc19caf8c616ef564cdc7af97518ab76ce2` | `beec4a413a6c1c174ea25fed47c862163415a9d577771feace2a80c715e2b283` | `0` | `0.061554` | human region review |
-| Signals Desktop `1180x800` | `ec3dd2b7709c267d0ab28cede138eef6935512651c52f4e49caa5b7900e169be` | `beec4a413a6c1c174ea25fed47c862163415a9d577771feace2a80c715e2b283` | `0` | `0.067879` | human region review |
+| Signals Desktop `1440x900` | `1e134ec13519e4f9d9f1ecd35c4df3a61c83a995a31d3800bb7a3edfe41d1f16` | `beec4a413a6c1c174ea25fed47c862163415a9d577771feace2a80c715e2b283` | `0` | `0.061542` | human region review |
+| Signals Desktop `1180x800` | `818dfa20fa2b7749f7db07e2537204a5d27786b2acffa70c5a54fd5690fd327d` | `beec4a413a6c1c174ea25fed47c862163415a9d577771feace2a80c715e2b283` | `0` | `0.067880` | human region review |
 | Mission APP `390x844` | `8b716b0d6966ad0c9be36e47d0d66bbe5773c4185fa9aaf99c52043d1b383590` | `6e0eda474f6658ff9dbfcbc6b18d4503203a78ddb30e38aa22b0760c1c902c9b` | `0` | `0.078199` | human region review |
 | Mission APP `430x932` | `b42e0ef4f6d34cd7d9ba4c84f333703db548d8605458e3e5bc65e6ba60a1ecd9` | `6e0eda474f6658ff9dbfcbc6b18d4503203a78ddb30e38aa22b0760c1c902c9b` | `0` | `0.074845` | human region review |
 | Approval APP `390x844` | `f5c8d0b59423115e173c94e3d2b4974fc691ead9ab30fd88108bf90c8bc04a82` | `341997877d9cf8cbae27b6f2f31c5cb79b546927a3e5b3ac3d9efea5c11f0778` | `0` | `0.084428` | human region review; protected actions isolated |
@@ -206,23 +217,23 @@ Capture root: `.impeccable/review/kordyn-v2/ai/` (`23` files: eight approved-sur
 
 The comparator reports `15 concepts / 4 completed / 11 pending / 8 comparisons / 33 artifacts`. Its top-level verdict remains `human region review required`; pixel MAE is diagnostic only and no threshold was changed. Sidecar/index SHA-256 values are:
 
-- capture: `01023c1a1c9c4e97c2091e94563a637298d4a7a7b977b19203272183febf3e5e`;
-- states: `c4f4de0a765f2679992b257540e202318ccf71df7df535fbe18bbd5d6025df14`;
-- comparison index: `3bc9dcf35e871c86dbcb04f2ba1e348eb35c778c2f66fbd5de3ed301e2ab20b4`.
+- capture: `18dc78a6a3a2a0b25753728a74ab5d69cea897c2325e203564f0a275a69a7a7b`;
+- states: `d6fa17ee724650e9b7a21c3486e3fe9c16713b8a493fc62cc0e18f8e964193df`;
+- comparison index: `b90d8a6f66475476091db449b2f5a7a99183bd3b56bf96eeac0258ff58836123`.
 
 All eight final actuals and every normalized reference, 50% overlay, absolute difference, and geometry ledger were reopened at original size. Desktop Mission retains the approved queue / active Mission / lifecycle / decision summary / related context / runtime receipt hierarchy. Desktop Signals retains filters / dense Registry / Inspector / decision boundary / Watch-Event-Intelligence lower registries. APP Mission retains account truth / active Mission / attention / account impact / recent completion / command order. APP Approval retains task / plan / account impact / 12-of-12 risk / AI-used facts / acknowledgement / sticky guarded actions. The fresh Approval actuals contain no support-launcher sliver over the protected action region; the normalized reference still contains its historical launcher, so that local difference is an intentional safety correction rather than a product-model mismatch. Production-shaped fact availability, exact labels, icons, and local density differ from the concept rasters, but no remaining difference materially recomposes topology, density, hierarchy, protected state, or action meaning.
 
 ### Fresh Task 5 gates
 
-- focused Task 1–5 and safety regression: `180 / 180`, exit `0`;
-- full repository suite: `1872 / 1872`, exit `0`;
+- focused Task 1–5 and safety regression: `182 / 182`, exit `0`;
+- full repository suite: `1874 / 1874`, exit `0`;
 - ESLint: exit `0`;
 - production build: exit `0`, `1702` modules transformed;
-- isolated performance/manifest: public `375,992 / 450,000` JS and `15,304 / 40,000` CSS; AI shell `53,221 / 180,000` CSS; one unique public-owned structural V2 dynamic entry, exact AI child ownership, no legacy product styles;
+- isolated performance/manifest: public `375,992 / 450,000` JS and `15,304 / 40,000` CSS; AI shell `53,279 / 180,000` CSS; one unique public-owned structural V2 dynamic entry, exact AI child ownership, no legacy product styles;
 - Task 2 Mission, Task 3 Context, Task 4 Actions, AI visual regression, APP overflow, and Task 5 master real-Chrome gates: exit `0` at all required viewports;
 - Task 5 master: `8` captures, Mission/Signal/Watch/Event identity, failed+partial approval, Desktop+APP dialog/output, `13 / 13` states;
 - AI comparator: `4 / 11 / 8 / 33`, exit `0`, unchanged references and thresholds;
 - Impeccable exact JSX/registry detector: exit `0`, `[]`;
-- production presentation source is unchanged by Task 5; only registries and evidence/test harness files are added or modified.
+- the final-fix product commit changes only the ten scoped AI presentation/model/style files and four regression files. It does not change capability registries, API/auth/permissions/trading/risk/reference/threshold contracts, or any production fixture.
 
 Task 5 does not enable a flag, cut over traffic, start Plan 03, modify API/auth/permissions/trading/risk behavior, deploy, merge, push, or remove legacy production code.
