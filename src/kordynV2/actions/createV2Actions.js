@@ -1,4 +1,5 @@
 import { uiConfirm } from "../../confirm.jsx";
+import { createAccountActions } from "../domains/account/accountActions.js";
 import { createAiActions } from "../domains/ai/aiActions.js";
 
 const cancelled = Object.freeze({ ok: false, cancelled: true });
@@ -17,12 +18,6 @@ export function createV2Actions({
     if (!await confirm(message, options)) return cancelled;
     return action(endpoint, payload);
   };
-  const reconcile = () => protect(
-    "Run account, order, protection, and ledger reconciliation now? The result is written to audit.",
-    { title: "Run reconciliation" },
-    "/api/reconciler/run",
-    { mode: "manual_ui" }
-  );
   const flattenAll = () => protect(
     "Close every position at market? New entries will pause until authoritative reconciliation confirms completion.",
     { danger: true, title: "Flatten all positions" },
@@ -42,14 +37,16 @@ export function createV2Actions({
   };
   const runNavigate = (...args) => navigate(...args);
   const runDownload = (...args) => download(...args);
+  const ai = createAiActions({ action, confirm, notify, download, navigate });
+  const account = createAccountActions({ action, confirm, navigate, download, ai });
 
   return Object.freeze({
-    ai: createAiActions({ action, confirm, notify, download, navigate }),
-    account: Object.freeze({}),
+    ai,
+    account,
     assets: Object.freeze({}),
     governance: Object.freeze({}),
     global: Object.freeze({
-      reconcile,
+      reconcile: account.reconcile,
       flattenAll,
       setKillSwitch,
       navigate: runNavigate,
