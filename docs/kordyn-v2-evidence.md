@@ -2,9 +2,10 @@
 
 ## Current governed comparison status
 
-- Current Account product source: `857e0787adde4b8529a26a1ec3775fee3b49a4e0`.
-- Current Account capture-test source: `41db7e2feca86e71ef1d874d3c94372ea56a393a`.
-- Current Account evidence commit: `b1533631a59089ca79c1de148f3a178f549631c4`.
+- Current Account product source: `312a3c590c8759940cfbf82fc9eb1342c7bbcc79`.
+- Current Account capture-test source: `e3eb0b3c216eafe9a63ed6b40ec998f693ba50a2`.
+- Current Account detector-record commit: `ffdd653a22495ff5c6a1cc5dccc36b8f10dcbee2`.
+- Current Account evidence commit: `6000a338520cbb628e8889a283a6ce0127426eff`.
 - Current comparison scope: Foundation Plan 01 shared shell, completed Plan 02 AI-domain checkpoint, and completed Plan 03 Account Position checkpoint.
 - Completed governed concept comparisons: `5 / 15` — Desktop AI Mission, Desktop AI Signals, APP AI Mission, APP AI Approval, and Desktop Account Position.
 - Pending domain implementation: `10 / 15` — no production comparison or fidelity claim is made for these remaining surfaces.
@@ -12,7 +13,7 @@
 
 ## Plan 03 Account-domain checkpoint — Task 5
 
-Task 5 closes the Account-domain state/capability/evidence gate against product source `857e0787adde4b8529a26a1ec3775fee3b49a4e0`, capture-test source `41db7e2feca86e71ef1d874d3c94372ea56a393a`, and evidence commit `b1533631a59089ca79c1de148f3a178f549631c4`. The earlier `bfbdce394dc21617b5b0ab070e62f475a5e77bd4` / `8481550253838203c596757a69915f7b8c725f7d` / `41df7ae66ccc0d3ae87ffabae4688b19559acd73` chain is historical and superseded; it is not the source of the final pixels or claims.
+Task 5 closes the Account-domain state/capability/evidence gate against product source `312a3c590c8759940cfbf82fc9eb1342c7bbcc79`, capture-test source `e3eb0b3c216eafe9a63ed6b40ec998f693ba50a2`, detector-record commit `ffdd653a22495ff5c6a1cc5dccc36b8f10dcbee2`, and evidence commit `6000a338520cbb628e8889a283a6ce0127426eff`. The pre-support-review `857e0787adde4b8529a26a1ec3775fee3b49a4e0` / `41db7e2feca86e71ef1d874d3c94372ea56a393a` / `b1533631a59089ca79c1de148f3a178f549631c4` / `4e009a1` chain and the still earlier `bfbdce394dc21617b5b0ab070e62f475a5e77bd4` / `8481550253838203c596757a69915f7b8c725f7d` / `41df7ae66ccc0d3ae87ffabae4688b19559acd73` chain are historical and superseded; neither is the source of the final pixels or claims.
 
 The Account master browser runner mounts the real production `KordynV2Root`, lazy `domains/account/index.jsx`, real Account presenters, canonical selection resolver, state boundary, `ConfirmHost`, and `createV2Actions().account`. Its fixture is production-shaped and credential-free; all protected actions are captured as fixture-authority writes inside the browser ledger and no production write interface is called.
 
@@ -38,7 +39,7 @@ The state/capability test rejects invented cancel/amend, client poster generatio
 
 ### Account state evidence — 13 / 13
 
-The Account state sidecar is `.impeccable/review/kordyn-v2/account/state-evidence.json` with SHA-256 `bdd5a283b4b90dc3126fac43d5e5f29f5566c3b091b740677dec9ffed23327da`. It records `13` real Root-mounted state screenshots, all with document overflow `0`.
+The Account state sidecar is `.impeccable/review/kordyn-v2/account/state-evidence.json` with SHA-256 `d6ba3026bd600136e26e21e6f3fff61471f2b0f25f683276a8466809a5985e58`. It records `13` real Root-mounted state screenshots, all with document overflow `0`.
 
 | State | Evidence note |
 | --- | --- |
@@ -64,25 +65,27 @@ Capture root: `.impeccable/review/kordyn-v2/account/` (`19` files: 17 PNGs and t
 
 | Capture | Dimensions | SHA-256 | Overflow | Role |
 | --- | ---: | --- | ---: | --- |
-| `desktop-account-position--1440x900.png` | `1440x900` | `add8445cf6d4901fcb1219fc177cd9c3e417d08f27de6988c018f30d34d57677` | `0` | governed comparison actual; entry/mark non-overlap |
-| `desktop-account-position--1180x800.png` | `1180x800` | `40cb9608d41c2e0ed9fc773100522bcb4765ace0bce91a4f1167cbd80151deed` | `0` | governed comparison actual; entry/mark non-overlap |
-| `mobile-account-position--390x844.png` | `390x844` | `0fb5e03e40bda817ff729c3dbcde3f7924138a54a7c392853266220705787b00` | `0` | structural APP evidence; stacked readable detail |
-| `mobile-account-detail--430x932.png` | `430x932` | `c6ce6303f5c059dca5bc78485466869785bb5c1eabf24f236c067e4d52a131a9` | `0` | structural APP evidence only |
+| `desktop-account-position--1440x900.png` | `1440x900` | `7eff9bfd8c1001b23861f9dccc6fb89620da9f01e14669dc1bb873b1a5c1b871` | `0` | governed comparison actual; entry/mark non-overlap; support dock outside canvas |
+| `desktop-account-position--1180x800.png` | `1180x800` | `0656942a67e22a6301c58a4b3cda27d355d4708065d087a01f3762e14d0d3cf2` | `0` | governed comparison actual; entry/mark non-overlap; support dock outside canvas |
+| `mobile-account-position--390x844.png` | `390x844` | `eaef45dcd2dfbf088462337af26e64eff49d48ee16f94c1ad085051987d0885e` | `0` | structural APP evidence; stacked readable detail; reserved support strip |
+| `mobile-account-detail--430x932.png` | `430x932` | `d4a46110a54cb61df047d76248bd8bd8536e71b406fbe8ad7f402cc390d0cf8d` | `0` | structural APP evidence; reserved support strip |
 
-Capture sidecar SHA-256: `9d624cb2ca5b68a4a1e16aa635e0d767e2fbd3efcb8ddfeffb9ffd2df01bb584`. Comparison index SHA-256: `da75c82120f6009320cffdbca736296967ccdbea5ca702cb3ff1ca0805b240f2`.
+Capture sidecar SHA-256: `601132fc9e5b770fb44fc5f95f7dc8d539af09c0a3ebecdfaac1e1bad4e3f996`. Comparison index SHA-256: `cdff14f01f69620f9d15b2397f2bc961fb943c4c58956079c49384dca110caa5`.
 
 | Identity | Approved source SHA-256 | Actual SHA-256 | Pixel MAE | Machine verdict |
 | --- | --- | --- | ---: | --- |
-| `desktop-account-position--1440x900` | `38d6a875aa1cd26af0ef19510fe993255c572d97468ad9a940d734c92acfd148` | `add8445cf6d4901fcb1219fc177cd9c3e417d08f27de6988c018f30d34d57677` | `0.054754` | human region review required |
-| `desktop-account-position--1180x800` | `38d6a875aa1cd26af0ef19510fe993255c572d97468ad9a940d734c92acfd148` | `40cb9608d41c2e0ed9fc773100522bcb4765ace0bce91a4f1167cbd80151deed` | `0.054895` | human region review required |
+| `desktop-account-position--1440x900` | `38d6a875aa1cd26af0ef19510fe993255c572d97468ad9a940d734c92acfd148` | `7eff9bfd8c1001b23861f9dccc6fb89620da9f01e14669dc1bb873b1a5c1b871` | `0.054344026870007264` | human region review required |
+| `desktop-account-position--1180x800` | `38d6a875aa1cd26af0ef19510fe993255c572d97468ad9a940d734c92acfd148` | `0656942a67e22a6301c58a4b3cda27d355d4708065d087a01f3762e14d0d3cf2` | `0.054280473856209155` | human region review required |
 
 Account scope-local comparison truth is explicit in the index: manifest `15`, scoped concepts `1`, completed scoped concepts `1`, scoped pending `0`, out of scope `14`. Cumulative governed coverage is now `5 / 15`; the remaining non-Account and future-domain rasters are not reclassified as Account pending and are not filled with stale screenshots.
 
-Original-size human review opened all `23` final PNG images: 17 Account actual/state captures and six Account comparison reference/overlay/difference images. The Desktop Account Position actual keeps the Account domain, Position workspace, selected `Position / position-eth`, Context/Proof access, protection evidence, safety action, related execution/protection record table, Account truth strip, and bounded AI support. Recorded deltas versus the immutable concept include the production surface's current two-position fixture, replacement of the richer concept chart cockpit with a bounded price-boundary/evidence composition, and production-shaped `Unavailable` facts where the concept uses denser illustrative market data. These deltas are recorded for human region review; no pixel-equivalence claim is made.
+Original-size human review opened all `23` final PNG images after the support-dock correction: 17 Account actual/state captures and six Account comparison reference/overlay/difference images. The Desktop Account Position actual keeps the Account domain, Position workspace, selected `Position / position-eth`, Context/Proof access, protection evidence, safety action, related execution/protection record table, Account truth strip, and bounded AI support in reserved shell chrome. Recorded deltas versus the immutable concept include the production surface's current two-position fixture, replacement of the richer concept chart cockpit with a bounded price-boundary/evidence composition, and production-shaped `Unavailable` facts where the concept uses denser illustrative market data. These deltas are recorded for human region review; no pixel-equivalence claim is made.
 
 The interaction ledger contains `11` accepted steps. Desktop `1440x900` covers Market, Account, Position, and Trade plan; Desktop `1180x800` covers Execution, Order, Fill, Closed trade, and Review. APP `390x844` clicks a real Position, and APP `430x932` clicks a real Trade plan; both open real Context and Proof sheets, align visible type/id with Root selection, close through the product interaction, and return focus. Missing Execution candidates at Desktop `1440` and APP `430` retain the prior selection and record `failClosed:true`.
 
-The Desktop price labels no longer collide: at `1440x900` entry bottom is `504.5` and mark top is `512.5`; at `1180x800` entry bottom is `545` and mark top is `553`. At `390px`, the detail, truth, and inspector each occupy the full `372px` content width; symbol, sources, ownership labels, entry/mark prices, and protection reason are all one-line, `word-break:keep-all`, `white-space:nowrap`, and not clipped.
+The Desktop price labels no longer collide: at `1440x900` entry bottom is `485` and mark top is `493`; at `1180x800` entry bottom is `545` and mark top is `553`. At `390px`, the detail, truth, and inspector each occupy the full `372px` content width; symbol, sources, ownership labels, entry/mark prices, and protection reason are all one-line, `word-break:keep-all`, `white-space:nowrap`, and not clipped.
+
+The AI support launcher no longer overlays product content. It occupies a real shell-owned dock outside the work canvas: Desktop canvas/dock boundaries are `828/828` at `1440` and `728/728` at `1180`; APP boundaries are `714/714` at `390` and `802/802` at `430`. The four baselines plus stale, degraded, long-content, and large-list evidence record start/end `dockCanvasOverlap:0`, zero intersections with visible interactive and essential evidence regions, and a hit-testable support control. In the 180-row APP case, `ASSET7` remains fully inside the canvas, its object is hit-testable, and its watch target remains an exact hit-testable `44x44` control.
 
 ### Task 5 review-finding closure
 
@@ -91,21 +94,22 @@ The Desktop price labels no longer collide: at `1440x900` entry bottom is `504.5
 | I1 | Four-view real Root interaction ledger: all nine object types on Desktop, real Account objects on both APP widths, Root/Context/Proof identity, close/focus return, and two fail-closed adverse cases. |
 | I2 | Exact bounded-list disclosure in unit contracts and complete `180 / 180` real-browser Market evidence. |
 | I3 | Own-data-descriptor primitive reads and item isolation cover null, getter, revoked proxy, object, and symbol attacks without losing valid siblings. |
-| I4 | Separate product `857e078` and capture-test `41db7e2` provenance; commit/tree validation and tracked/staged/untracked scoped-source rejection. |
+| I4 | Separate product `312a3c5` and capture-test `e3eb0b3` provenance; commit/tree validation and tracked/staged/untracked scoped-source rejection. |
 | I5 | Account comparator top-level `1 / 1 / 0`; `scopeCounts 15 / 1 / 1 / 0 / 14`; historic AI evidence remains unchanged. |
 | I6 | Real `1440/1180` price rectangles have `overlaps:false`. |
-| I7 | Detector total `2`: first pass retained but invalidated by a later UI edit; one final-after-all-edits pass, exit `0`, full JSON `[]`, five target hashes. |
+| I7 | Detector total `3`: two prior passes retained but invalidated by later UI edits; one post-support-review final-after-all-edits pass, exit `0`, full JSON `[]`, seven target hashes. |
 | M1 | `390px` mobile detail is single-column and its financial/source/ownership labels are readable and unclipped. |
+| Post-review Important | Shell-owned Desktop/APP support docks produce zero canvas overlap and zero intersections at start/end across all required viewports and adverse state surfaces while preserving `ASSET7` and its `44x44` watch target. |
 
 ### Fresh Plan 03 Task 5 gates
 
 - Review-fix TDD REDs were retained: state/list safety `17 pass / 2 fail`, comparator `4 pass / 4 fail`, provenance integration `1 pass / 1 fail`, overlapping Desktop price rectangles, clipped/wrapped `390px` labels, `64` instead of the required `180` browser rows, and missing APP Context/Proof triggers. Their GREEN contracts are represented in the final focused and browser gates below.
-- Fresh focused Account/Task1-4/comparison/performance tests: `193 / 193`, exit `0`.
-- Canonical Account master-browser evidence: exit `0`; product source `857e0787adde4b8529a26a1ec3775fee3b49a4e0`; capture-test source `41db7e2feca86e71ef1d874d3c94372ea56a393a`; captures `4`; states `13`; accepted interactions `11`; adverse fail-closed interactions `2`; fixture-authority writes `4`; download `1`; Account CSS `true`; legacy authenticated CSS `false`.
+- Fresh focused Account/Task1-4/comparison/performance tests: `203 / 203`, exit `0`.
+- Canonical Account master-browser evidence: exit `0`; product source `312a3c590c8759940cfbf82fc9eb1342c7bbcc79`; capture-test source `e3eb0b3c216eafe9a63ed6b40ec998f693ba50a2`; captures `4`; states `13`; accepted interactions `11`; adverse fail-closed interactions `2`; fixture-authority writes `4`; download `1`; support isolation pass; Account CSS `true`; legacy authenticated CSS `false`.
 - Account comparator: exit `0`; top-level counts `1 / 1 / 0 / 2 / 9` for concepts/completed/pending/comparisons/artifacts, plus `scopeCounts 15 / 1 / 1 / 0 / 14`; verdict `human region review required`.
-- Isolated performance build: exit `0`; public CSS/JS `15,304 / 381,073`; AI shell CSS `55,519`; Account domain CSS `114,278 / 120,000`; `loadsLegacyProductStyles:false`; `forbiddenLegacyCss:[]`; shared shell CSS is reported explicitly as Vite-owned shared dependency.
+- Isolated performance build: exit `0`; public CSS/JS `15,304 / 381,073`; AI shell CSS `55,847`; Account domain CSS `114,606 / 120,000`; `loadsLegacyProductStyles:false`; `forbiddenLegacyCss:[]`; shared shell CSS is reported explicitly as Vite-owned shared dependency.
 - AI actions compatibility after the scoped `ConfirmHost` style fix: exit `0`; approvals, partial/failure, poster, translation, dialog, disabled-state gates all pass.
-- Impeccable detector: two session invocations total. `.impeccable/review/kordyn-v2/account-detector-evidence.pre-final-invalidated.json` preserves the first exit-`0` / `[]` pass invalidated by a later mobile UI edit. `.impeccable/review/kordyn-v2/account-detector-evidence.json` preserves the single final-after-all-edits exit-`0` / `[]` pass and five final target hashes. No detector replay occurred during documentation closeout.
+- Impeccable detector: three session invocations total. `.impeccable/review/kordyn-v2/account-detector-evidence.pre-final-invalidated.json` preserves the first exit-`0` / `[]` pass invalidated by the mobile readability edit; `.impeccable/review/kordyn-v2/account-detector-evidence.pre-support-review-invalidated.json` preserves the second exit-`0` / `[]` pass invalidated by the support-dock edit. `.impeccable/review/kordyn-v2/account-detector-evidence.json` preserves the one post-support-review final-after-all-edits exit-`0` / `[]` pass and seven final target hashes. No detector replay occurred during evidence capture or documentation closeout.
 - Full repository test suite: `2054 / 2054`, exit `0`.
 - ESLint: exit `0`.
 - Production build: exit `0`, `1720` modules transformed.
