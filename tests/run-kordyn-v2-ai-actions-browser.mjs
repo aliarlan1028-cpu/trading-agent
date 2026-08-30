@@ -11,6 +11,7 @@ import WebSocket from "ws";
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const chromeBinary = process.env.CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const outputDir = path.resolve(process.env.KORDYN_V2_TASK4_SCREENSHOT_DIR || "/private/tmp/kordyn-v2-task4");
+const pngOnly = process.env.KORDYN_V2_FINAL_FIX_PNG_ONLY === "1";
 const pagePath = "/tests/kordyn-v2-ai-actions-browser.html";
 const viewports = [
   { width: 1440, height: 900, device: "desktop", outcome: "success", translationFails: false },
@@ -260,6 +261,39 @@ async function verifyMalformedPng(cdp) {
   assert.equal(await evaluate(cdp, "window.__task4Calls.downloads.length"), downloads, "malformed PNG cannot reach download adapter");
 }
 
+async function verifyPngFailureRecovery(cdp, baseUrl) {
+  const diagnostic = "canvas failed: sk_live_secret_final_fix_123";
+  await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, screenWidth: 1440, screenHeight: 900, deviceScaleFactor: 1, mobile: false });
+  await cdp.send("Page.navigate", { url: `${baseUrl}${pagePath}?viewport=1440` });
+  await waitForExpression(cdp, "window.__task4Ready && document.querySelector('[data-kordyn-v2-destination=\"ai/missions\"]')", "PNG failure Mission ready");
+  await click(cdp, '[data-kordyn-v2-open-output="run-sol-approval"]');
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-ai-output-sheet]')?.contains(document.activeElement)", "PNG failure output owns focus");
+  const beforeDownloads = await evaluate(cdp, "window.__task4Calls.downloads.length");
+  await evaluate(cdp, `(() => {
+    window.__task4OriginalCanvasToDataURL=HTMLCanvasElement.prototype.toDataURL;
+    HTMLCanvasElement.prototype.toDataURL=()=>{ throw new Error(${JSON.stringify(diagnostic)}); };
+  })()`);
+  await click(cdp, "[data-kordyn-v2-output-png]");
+  await waitForExpression(cdp, "document.querySelector('.kordynV2AiOutputState[data-output-state=\"failed\"]')", "PNG generation failure is rendered");
+  const failed = await evaluate(cdp, `(() => {
+    const sheet=document.querySelector('[data-kordyn-v2-ai-output-sheet]');
+    const state=sheet.querySelector('.kordynV2AiOutputState');
+    const retry=sheet.querySelector('[data-kordyn-v2-output-png]');
+    return { state:state?.textContent?.trim(), sheet:sheet.textContent, body:document.body.textContent, retryDisabled:retry?.disabled, focused:sheet.contains(document.activeElement), downloads:window.__task4Calls.downloads.length };
+  })()`);
+  assert.equal(failed.state, "PNG 生成暂时失败，未开始下载。请重试。", "rejected PNG generation renders stable product-language recovery");
+  assert.doesNotMatch(failed.sheet, /sk_live_secret|canvas failed/i, "raw PNG diagnostic is absent from the output sheet DOM");
+  assert.doesNotMatch(failed.body, /sk_live_secret|canvas failed/i, "raw PNG diagnostic is absent from the page DOM");
+  assert.equal(failed.downloads, beforeDownloads, "rejected PNG generation remains download fail-closed");
+  assert.equal(failed.retryDisabled, false, "PNG retry remains usable after failure");
+  assert.equal(failed.focused, true, "PNG failure keeps focus in the output dialog");
+
+  await evaluate(cdp, "HTMLCanvasElement.prototype.toDataURL=window.__task4OriginalCanvasToDataURL");
+  await click(cdp, "[data-kordyn-v2-output-png]");
+  await waitForExpression(cdp, `window.__task4Calls.downloads.length>${beforeDownloads}`, "PNG retry downloads only after successful generation", 30_000);
+  assert.equal(await evaluate(cdp, "document.querySelector('.kordynV2AiOutputState')?.dataset.outputState"), "succeeded", "retry reports success only after a real download");
+}
+
 async function stopProcess(child) {
   if (!child || child.exitCode !== null) return;
   child.kill("SIGTERM");
@@ -282,10 +316,12 @@ async function main() {
     cdp = connectCdp(pages.find((row) => row.type === "page").webSocketDebuggerUrl);
     await cdp.send("Page.enable");
     await cdp.send("Runtime.enable");
+    const baseUrl = `http://127.0.0.1:${vitePort}`;
     const results = [];
-    for (const viewport of viewports) results.push(await verifyViewport(cdp, `http://127.0.0.1:${vitePort}`, viewport));
-    const disabledStates = await verifyActionsDisabledStates(cdp, `http://127.0.0.1:${vitePort}`);
-    await verifyMalformedPng(cdp);
+    if (!pngOnly) for (const viewport of viewports) results.push(await verifyViewport(cdp, baseUrl, viewport));
+    const disabledStates = pngOnly ? [] : await verifyActionsDisabledStates(cdp, baseUrl);
+    if (!pngOnly) await verifyMalformedPng(cdp);
+    await verifyPngFailureRecovery(cdp, baseUrl);
     process.stdout.write(`KORDYN V2 Task 4 browser PASS ${results.map((row) => `${row.width}x${row.height}:${row.outcome}/${row.translation}`).join(" ")} disabled=${disabledStates.join("+")} screenshots=${outputDir}\n`);
   } finally {
     cdp?.close();

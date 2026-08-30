@@ -6,6 +6,15 @@ const invalidArrayShape = Symbol("kordynV2.invalidArrayShape");
 const failedClone = Symbol("kordynV2.failedClone");
 const hasOwn = (value, key) => Boolean(value && Object.hasOwn(value, key));
 const nonEmptyText = (value) => typeof value === "string" && value.trim().length > 0;
+const boundedPrimitiveText = (value, limit = 240) => {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return normalized ? normalized.slice(0, limit) : null;
+  }
+  if (typeof value === "number") return Number.isFinite(value) ? `${value}`.slice(0, limit) : null;
+  if (typeof value === "boolean") return value ? "true" : "false";
+  return null;
+};
 const canonicalIdentifier = (value) => nonEmptyText(value)
   && value === value.trim()
   && !/[\p{White_Space}\p{Cc}]/u.test(value);
@@ -409,8 +418,8 @@ export function projectApprovalTruth(plan, data = {}) {
       id: riskId,
       passed: riskCheck?.passed === true,
       summary: riskSummary,
-      blockers: Object.freeze(list(riskCheck?.blockers).slice(0, 6).map((value) => String(value))),
-      warnings: Object.freeze(list(riskCheck?.warnings).slice(0, 6).map((value) => String(value)))
+      blockers: Object.freeze(list(riskCheck?.blockers).slice(0, 6).map((value) => boundedPrimitiveText(value)).filter(Boolean)),
+      warnings: Object.freeze(list(riskCheck?.warnings).slice(0, 6).map((value) => boundedPrimitiveText(value)).filter(Boolean))
     }),
     accountImpact,
     valid: missingFacts.length === 0,
@@ -419,15 +428,19 @@ export function projectApprovalTruth(plan, data = {}) {
 }
 
 function outputMessageFor(run, plan, messages) {
-  const matches = messages.filter((message) => plainRecord(message)
-    && String(message.role || "").toLowerCase() !== "user"
+  const matches = messages.filter((message) => {
+    const role = plainRecord(message) && typeof message.role === "string"
+      ? boundedPrimitiveText(message.role, 40)?.toLowerCase()
+      : null;
+    return role && role !== "user"
     && nonEmptyText(message.content)
     && (
       ownCanonicalIdentifier(message, "agentRunId") === run.id
       || ownCanonicalIdentifier(message, "runId") === run.id
       || (plan && ownCanonicalIdentifier(message, "planId") === plan.id)
       || (plan && plainRecord(message.presentation?.linked) && ownCanonicalIdentifier(message.presentation.linked, "planId") === plan.id)
-    ));
+    );
+  });
   const message = matches[matches.length - 1];
   if (!message) return null;
   return Object.freeze({

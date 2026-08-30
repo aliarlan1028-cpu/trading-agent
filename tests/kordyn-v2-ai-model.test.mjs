@@ -996,3 +996,65 @@ test("projected collections are detached and frozen at presenter boundaries", ()
   assert.throws(() => model.intelligence[0].symbols.push("ETH/USDT"), TypeError);
   assert.deepEqual(input, original);
 });
+
+test("malformed approval and chat scalars fail closed without hiding independent AI facts", () => {
+  let getterCalls = 0;
+  let coercionCalls = 0;
+  const malformedScalar = Object.create(null);
+  Object.defineProperty(malformedScalar, "toString", {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return () => {
+        coercionCalls += 1;
+        return "forged";
+      };
+    }
+  });
+  const malformedSibling = Object.create(null);
+
+  let model;
+  assert.doesNotThrow(() => {
+    model = buildAiDomainModel({
+      agentRuns: [{
+        id: "run-malformed-scalars",
+        goal: "有效 Mission",
+        status: "awaiting_approval",
+        tradePlanId: "plan-malformed-scalars"
+      }],
+      tradePlans: [{
+        id: "plan-malformed-scalars",
+        agentRunId: "run-malformed-scalars",
+        status: "awaiting_approval",
+        lastRiskCheck: {
+          id: "risk-malformed-scalars",
+          passed: true,
+          summary: "有效风险结论",
+          blockers: [malformedScalar, "有效阻断事实", 7, false],
+          warnings: [malformedSibling, "有效警告事实"]
+        }
+      }],
+      chatMessages: [
+        { id: "message-malformed-role", agentRunId: "run-malformed-scalars", role: malformedScalar, content: "不得成为输出" },
+        { id: "message-malformed-content", agentRunId: "run-malformed-scalars", role: "agent", content: malformedSibling },
+        { id: "message-valid-output", agentRunId: "run-malformed-scalars", role: "assistant", content: "有效输出事实" },
+        { id: "message-boolean-role", agentRunId: "run-malformed-scalars", role: true, content: "布尔 role 不得成为输出" }
+      ],
+      newsFeed: [{ id: "signal-survives", title: "有效 Signal" }],
+      watchTriggers: [{ id: "watch-survives", title: "有效 Watch", status: "active" }],
+      marketCalendarEvents: [{ id: "event-survives", title: "有效 Event", startAt: "2026-09-17" }]
+    });
+  });
+
+  assert.equal(getterCalls, 0);
+  assert.equal(coercionCalls, 0);
+  assert.equal(model.missions[0].title, "有效 Mission");
+  assert.equal(model.missions[0].output.content, "有效输出事实");
+  assert.deepEqual(model.missions[0].approval.risk.blockers, ["有效阻断事实", "7", "false"]);
+  assert.deepEqual(model.missions[0].approval.risk.warnings, ["有效警告事实"]);
+  assert.equal(model.dialog.messages.find((message) => message.id === "message-malformed-role").role, "Unavailable");
+  assert.equal(model.dialog.messages.find((message) => message.id === "message-malformed-content").content, "Unavailable");
+  assert.deepEqual(model.intelligence.map((row) => row.id).sort(), ["event-survives", "signal-survives"]);
+  assert.deepEqual(model.watches.map((row) => row.id), ["watch-survives"]);
+  assert.deepEqual(model.events.map((row) => row.id), ["event-survives"]);
+});

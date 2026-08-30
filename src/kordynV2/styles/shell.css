@@ -419,6 +419,10 @@ body:has(.kordynV2Root) {
   color: var(--kordyn-v2-muted);
 }
 
+.kordynV2DesktopShell .kordynV2RetainedNotice {
+  right: 210px;
+}
+
 .kordynV2StatePanel {
   width: min(460px, calc(100% - 40px));
   min-height: 112px;

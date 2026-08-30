@@ -8,10 +8,17 @@ const CONTRACTS = Object.freeze({
 });
 const blockedSourceStates = new Set(["stale", "degraded", "forbidden", "error", "failed", "loading", "not_loaded"]);
 
-const text = (value, fallback = unavailable) => (
-  ["string", "number", "boolean"].includes(typeof value) && value !== "" ? String(value) : fallback
-);
-const first = (...values) => values.find((value) => ["string", "number", "boolean"].includes(typeof value) && value !== "");
+const primitiveText = (value, limit = 240) => {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return normalized ? normalized.slice(0, limit) : null;
+  }
+  if (typeof value === "number") return Number.isFinite(value) ? `${value}`.slice(0, limit) : null;
+  if (typeof value === "boolean") return value ? "true" : "false";
+  return null;
+};
+const text = (value, fallback = unavailable) => primitiveText(value) ?? fallback;
+const first = (...values) => values.find((value) => primitiveText(value) !== null);
 
 function sourceStateFor(data, sourceSection) {
   try {
@@ -63,11 +70,11 @@ export function resolveAiContextObject(data = {}, candidate = null) {
   const row = canonicalAiContextRow(data, type, id);
   if (!row || rowUnavailable(row)) return null;
   const title = first(row.title, row.shortTitle, row.name, row.analysisTitle, row.displayThesis, row.thesis, row.symbol, row.identity);
-  const status = first(row.status, row.state, type === "Event" ? row.impactLabel : "available");
+  const status = first(row.status, row.state, type === "Event" ? row.impactLabel : type === "Signal" ? "available" : undefined);
   const evidence = first(row.evidenceId, row.updatedAt, row.observedAt, row.publishedAt, row.createdAt, row.id);
   const nextAction = type === "Signal"
     ? "加入 AI 上下文"
-    : type === "Watch" && String(row.status || "").toLowerCase() === "active"
+    : type === "Watch" && text(first(row.status, row.state), "").toLowerCase() === "active"
       ? "撤销观察哨"
       : type === "Event" ? "查看事件影响" : "只读观察";
   return Object.freeze({

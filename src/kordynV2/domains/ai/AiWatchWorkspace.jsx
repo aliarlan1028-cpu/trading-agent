@@ -41,7 +41,6 @@ export function AiWatchWorkspace({ model, actions = {}, actionsDisabled = false,
               type="button"
               className={selected?.id === row.id ? "is-selected" : ""}
               {...contextPresentationAttributes(row, "Watch")}
-              aria-disabled={row.selectable !== true}
               key={`watch-presentation-${index}`}
               onClick={() => runAiContextRowInteraction({ row, type: "Watch", onInspect: setInspected, onSelect, candidateFor })}
             >

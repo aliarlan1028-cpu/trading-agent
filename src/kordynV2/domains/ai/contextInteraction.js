@@ -14,7 +14,10 @@ export function contextPresentationAttributes(row, type) {
   const canonical = canonicalContextAttributes(row, type);
   return Object.keys(canonical).length
     ? canonical
-    : { "data-kordyn-v2-readonly-fact": "true" };
+    : {
+      "data-kordyn-v2-readonly-fact": "true",
+      "aria-description": "只读事实，可查看详情，不会改变当前对象"
+    };
 }
 
 export function runAiContextRowInteraction({ row, type, onInspect, onSelect, candidateFor }) {

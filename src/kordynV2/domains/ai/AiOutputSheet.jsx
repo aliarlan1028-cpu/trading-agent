@@ -80,7 +80,8 @@ export function AiOutputSheet({ message, actions = {}, actionsDisabled = false, 
       });
       setState({ kind: "succeeded", detail: "PNG 已交给下载适配器" });
     } catch (error) {
-      setState({ kind: "failed", detail: error.message || String(error) });
+      void error;
+      setState({ kind: "failed", detail: "PNG 生成暂时失败，未开始下载。请重试。" });
     }
   };
 

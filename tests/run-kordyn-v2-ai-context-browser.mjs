@@ -11,6 +11,8 @@ import WebSocket from "ws";
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const chromeBinary = process.env.CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const outputDir = path.resolve(process.env.KORDYN_V2_TASK3_SCREENSHOT_DIR || "/private/tmp/kordyn-v2-task3");
+const geometryOnly = process.env.KORDYN_V2_FINAL_FIX_GEOMETRY_ONLY === "1";
+const geometryViewport = Number(process.env.KORDYN_V2_FINAL_FIX_GEOMETRY_VIEWPORT || 0);
 const pagePath = "/tests/kordyn-v2-shell-browser.html";
 const viewports = [
   { width: 1440, height: 900, device: "desktop" },
@@ -205,6 +207,12 @@ async function selectCanonical(cdp, { device, type, id }) {
     `document.querySelector('[data-kordyn-v2-shell="${device}"]')?.dataset.kordynV2SelectedId === ${JSON.stringify(id)}`,
     `${device} selects ${type}/${id}`
   );
+  const identity = await evaluate(cdp, `(() => {
+    const root=document.querySelector('[data-kordyn-v2-shell="${device}"]');
+    const local=document.querySelector('[data-kordyn-v2-selected-context="${id}"]');
+    return { rootId:root?.dataset.kordynV2SelectedId, rootType:root?.dataset.kordynV2SelectedType, localId:local?.dataset.kordynV2SelectedContext };
+  })()`);
+  assert.deepEqual(identity, { rootId: id, rootType: type, localId: id }, `${device}: selectable ${type} synchronizes Root and local Inspector`);
 }
 
 async function closeOverlay(cdp, selector) {
@@ -237,8 +245,26 @@ async function verifyProof(cdp, { device, type, id, evidence }) {
   }
 }
 
-async function verifyReadonly(cdp, { device, expectedTitle, canonicalId }) {
-  await click(cdp, "button[data-kordyn-v2-readonly-fact=\"true\"]");
+async function verifyReadonly(cdp, { device, expectedTitle, canonicalId, selector }) {
+  const before = await evaluate(cdp, `(() => {
+    const row=document.querySelector(${JSON.stringify(selector)});
+    const root=document.querySelector('[data-kordyn-v2-shell="${device}"]');
+    return {
+      ariaDisabled:row?.getAttribute('aria-disabled'),
+      ariaDescription:row?.getAttribute('aria-description'),
+      disabled:row?.hasAttribute('disabled'),
+      readonly:row?.dataset.kordynV2ReadonlyFact,
+      rowId:row?.getAttribute('data-kordyn-v2-object-id'),
+      rowType:row?.getAttribute('data-kordyn-v2-object-type'),
+      rootId:root?.dataset.kordynV2SelectedId,
+      rootType:root?.dataset.kordynV2SelectedType
+    };
+  })()`);
+  assert.deepEqual({ ariaDisabled:before.ariaDisabled, disabled:before.disabled, readonly:before.readonly }, { ariaDisabled:null, disabled:false, readonly:"true" }, `${device}: readonly row truthfully remains inspectable`);
+  assert.equal(before.ariaDescription, "只读事实，可查看详情，不会改变当前对象", `${device}: readonly row explains local inspection semantics`);
+  assert.deepEqual({ rowId:before.rowId, rowType:before.rowType }, { rowId:null, rowType:null }, `${device}: readonly row omits the complete canonical identity`);
+
+  await click(cdp, selector);
   await waitForExpression(
     cdp,
     `[...document.querySelectorAll('[data-kordyn-v2-selected-context]')].some((node) => node.textContent.includes(${JSON.stringify(expectedTitle)}))`,
@@ -249,12 +275,15 @@ async function verifyReadonly(cdp, { device, expectedTitle, canonicalId }) {
     const local = [...document.querySelectorAll('[data-kordyn-v2-selected-context]')].find((node) => node.textContent.includes(${JSON.stringify(expectedTitle)}));
     return {
       globalId:root.dataset.kordynV2SelectedId,
+      globalType:root.dataset.kordynV2SelectedType,
       localIdentity:local?.dataset.kordynV2SelectedContext,
       hasCanonicalAttrs:Boolean(local?.querySelector('[data-kordyn-v2-object-id], [data-kordyn-v2-object-type]')),
       proofEnabled:Boolean(local?.querySelector('[data-kordyn-v2-context-proof]:not([disabled])'))
     };
   })()`);
   assert.equal(state.globalId, canonicalId, `${device}: readonly inspection does not mutate global selection`);
+  assert.equal(state.globalType, before.rootType, `${device}: readonly inspection does not mutate global type`);
+  assert.equal(state.globalId, before.rootId, `${device}: readonly inspection preserves the exact Root ID`);
   assert.equal(state.localIdentity, "Unavailable", `${device}: readonly detail does not invent an identity`);
   assert.equal(state.hasCanonicalAttrs, false, `${device}: readonly detail exposes no canonical attributes`);
   assert.equal(state.proofEnabled, false, `${device}: readonly detail cannot open Proof`);
@@ -331,7 +360,14 @@ async function verifyViewport(cdp, baseUrl, viewport) {
   await assertNoOverflow(cdp, device, width, `${width} Signals`);
   await selectCanonical(cdp, { device, type: "Signal", id: "signal-cpi-flow" });
   await verifyProof(cdp, { device, type: "Signal", id: "signal-cpi-flow", evidence: "Authoritative intelligence fact loaded" });
-  await verifyReadonly(cdp, { device, expectedTitle: "未识别来源事实", canonicalId: "signal-cpi-flow" });
+  await verifyReadonly(cdp, {
+    device,
+    expectedTitle: "未识别来源事实",
+    canonicalId: "signal-cpi-flow",
+    selector: device === "desktop"
+      ? '[data-kordyn-v2-signal-operation="intelligence"] button[data-kordyn-v2-readonly-fact="true"]'
+      : '.kordynV2AiMobileContextList button[data-kordyn-v2-readonly-fact="true"]'
+  });
   await selectCanonical(cdp, { device, type: "Signal", id: "signal-cpi-flow" });
   let signalTopShot = null;
   if (device === "mobile") {
@@ -345,7 +381,14 @@ async function verifyViewport(cdp, baseUrl, viewport) {
   await assertNoOverflow(cdp, device, width, `${width} Watch`);
   await selectCanonical(cdp, { device, type: "Watch", id: "watch-eth-retest" });
   await verifyProof(cdp, { device, type: "Watch", id: "watch-eth-retest", evidence: "Waiting for retest" });
-  await verifyReadonly(cdp, { device, expectedTitle: "未识别观察哨事实", canonicalId: "watch-eth-retest" });
+  await verifyReadonly(cdp, {
+    device,
+    expectedTitle: "未识别观察哨事实",
+    canonicalId: "watch-eth-retest",
+    selector: device === "desktop"
+      ? '.kordynV2AiWatchWorkspace .kordynV2AiContextRegistry button[data-kordyn-v2-readonly-fact="true"]'
+      : '.kordynV2AiMobileContextList button[data-kordyn-v2-readonly-fact="true"]'
+  });
   await selectCanonical(cdp, { device, type: "Watch", id: "watch-eth-retest" });
   let watchTopShot = null;
   if (device === "mobile") {
@@ -361,7 +404,14 @@ async function verifyViewport(cdp, baseUrl, viewport) {
   await assertNoOverflow(cdp, device, width, `${width} Events`);
   await selectCanonical(cdp, { device, type: "Event", id: "event-fomc-date" });
   await verifyProof(cdp, { device, type: "Event", id: "event-fomc-date", evidence: "Official calendar fact loaded" });
-  await verifyReadonly(cdp, { device, expectedTitle: "未识别日历事实", canonicalId: "event-fomc-date" });
+  await verifyReadonly(cdp, {
+    device,
+    expectedTitle: "未识别日历事实",
+    canonicalId: "event-fomc-date",
+    selector: device === "desktop"
+      ? '.kordynV2AiEventsWorkspace .kordynV2AiContextRegistry button[data-kordyn-v2-readonly-fact="true"]'
+      : '.kordynV2AiMobileContextList button[data-kordyn-v2-readonly-fact="true"]'
+  });
   await selectCanonical(cdp, { device, type: "Event", id: "event-fomc-date" });
   let eventTopShot = null;
   if (device === "mobile") {
@@ -408,7 +458,8 @@ async function verifyViewport(cdp, baseUrl, viewport) {
 
 async function verifyState(cdp, baseUrl, viewport, scenario, kind, workspaceId, layout) {
   await navigatePage(cdp, baseUrl, viewport, scenario);
-  await click(cdp, `[data-kordyn-v2-workspace-target="${workspaceId}"]`);
+  if (kind === "forbidden") await click(cdp, `[data-kordyn-v2-workspace-target="${workspaceId}"]`);
+  else await navigateWorkspace(cdp, viewport.device, workspaceId, layout);
   await waitForExpression(cdp, `document.querySelector('[data-kordyn-v2-state="${kind}"]')`, `${viewport.width} ${kind} state`);
   await assertNoOverflow(cdp, viewport.device, viewport.width, `${viewport.width} ${kind}`);
   const state = await evaluate(cdp, `(() => {
@@ -435,6 +486,39 @@ async function verifyState(cdp, baseUrl, viewport, scenario, kind, workspaceId, 
     await new Promise((resolve) => setTimeout(resolve, 120));
     const callsAfter = await evaluate(cdp, "window.__kordynV2BrowserCalls.actions");
     assert.equal(callsAfter, callsBefore, `${kind}: disabled action cannot produce a production request`);
+
+    if (viewport.device === "desktop") {
+      const retained = await evaluate(cdp, `(() => {
+        const notice=document.querySelector('.kordynV2RetainedNotice');
+        const source=notice?.querySelector('small');
+        const dock=document.querySelector('.kordynV2EvidenceDock');
+        const buttons=[...(dock?.querySelectorAll('button') || [])];
+        const box=(node)=>{ if(!node)return null; const rect=node.getBoundingClientRect(); const style=getComputedStyle(node); return {left:rect.left,top:rect.top,right:rect.right,bottom:rect.bottom,width:rect.width,height:rect.height,display:style.display,visibility:style.visibility,opacity:style.opacity}; };
+        const noticeRect=box(notice);
+        const dockRect=box(dock);
+        const overlap=(a,b)=>!a||!b?null:Math.max(0,Math.min(a.right,b.right)-Math.max(a.left,b.left))*Math.max(0,Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top));
+        return {
+          notice:noticeRect,
+          dock:dockRect,
+          overlap:overlap(noticeRect,dockRect),
+          sourceText:source?.textContent?.trim(),
+          noticeText:notice?.textContent?.trim(),
+          buttons:buttons.map((button)=>({disabled:button.disabled,tabIndex:button.tabIndex,rect:box(button)}))
+        };
+      })()`);
+      assert.equal(retained.overlap, 0, `${viewport.width} ${kind}: retained source notice clears higher-z Context/Proof dock ${JSON.stringify(retained)}`);
+      assert.equal(retained.sourceText, "Read-only AI context last-valid projection · 2026-08-27T06:32:11Z", `${viewport.width} ${kind}: full source and exact ISO remain in visible DOM`);
+      assert.ok(retained.notice && retained.notice.width > 0 && retained.notice.height > 0 && retained.notice.display !== "none" && retained.notice.visibility === "visible" && retained.notice.opacity !== "0", `${viewport.width} ${kind}: retained notice is visible`);
+      assert.ok(retained.notice.left >= 0 && retained.notice.right <= viewport.width && retained.notice.top >= 0 && retained.notice.bottom <= viewport.height, `${viewport.width} ${kind}: full retained notice remains inside viewport`);
+      assert.equal(retained.buttons.length, 2, `${viewport.width} ${kind}: Context and Proof dock actions remain present`);
+      assert.ok(retained.buttons.every((button) => !button.disabled && button.tabIndex >= 0 && button.rect?.width > 0 && button.rect?.height > 0), `${viewport.width} ${kind}: dock actions remain reachable and focusable`);
+      if (geometryOnly) process.stdout.write(`KORDYN V2 retained geometry ${viewport.width} ${kind} notice=${retained.notice.left},${retained.notice.top}-${retained.notice.right},${retained.notice.bottom} dock=${retained.dock.left},${retained.dock.top}-${retained.dock.right},${retained.dock.bottom} overlap=${retained.overlap} source=${retained.sourceText}\n`);
+      for (const panel of ["context", "proof"]) {
+        await click(cdp, `[data-kordyn-v2-${panel}-trigger]`);
+        await waitForExpression(cdp, `document.querySelector('[data-kordyn-v2-overlay="${panel}"]')?.contains(document.activeElement)`, `${viewport.width} ${kind}: ${panel} dock opens with focus`);
+        await closeOverlay(cdp, `[data-kordyn-v2-overlay="${panel}"]`);
+      }
+    }
   }
   return await capture(cdp, `${viewport.device}-${viewport.width}x${viewport.height}-${kind}.png`, viewport.width, viewport.height);
 }
@@ -470,14 +554,16 @@ try {
   cdp = connectCdp(targets.find((row) => row.type === "page").webSocketDebuggerUrl);
   await Promise.all([cdp.send("Runtime.enable"), cdp.send("Page.enable")]);
   const results = [];
-  for (const viewport of viewports) results.push(await verifyViewport(cdp, baseUrl, viewport));
-  const stateShots = [
-    await verifyState(cdp, baseUrl, viewports[0], "ai-context-stale", "stale", "intelligence", "signals-registry-inspector"),
-    await verifyState(cdp, baseUrl, viewports[1], "ai-context-degraded", "degraded", "watch", "watch-registry-inspector"),
-    await verifyState(cdp, baseUrl, viewports[2], "ai-context-forbidden", "forbidden", "events", "events-task-flow")
-  ];
+  if (!geometryOnly) for (const viewport of viewports) results.push(await verifyViewport(cdp, baseUrl, viewport));
+  const retainedStateCases = [
+    [viewports[0], "ai-context-stale", "stale", "intelligence", "signals-registry-inspector"],
+    [viewports[1], "ai-context-degraded", "degraded", "watch", "watch-registry-inspector"]
+  ].filter(([viewport]) => !geometryOnly || !geometryViewport || viewport.width === geometryViewport);
+  const stateShots = [];
+  for (const args of retainedStateCases) stateShots.push(await verifyState(cdp, baseUrl, ...args));
+  if (!geometryOnly) stateShots.push(await verifyState(cdp, baseUrl, viewports[2], "ai-context-forbidden", "forbidden", "events", "events-task-flow"));
   const screenshotCount = results.reduce((sum, row) => sum + 3 + [row.signalTopShot, row.watchTopShot, row.eventTopShot].filter(Boolean).length, 0) + stateShots.length;
-  process.stdout.write(`KORDYN V2 AI Context browser PASS ${results.map((row) => `${row.width}x${row.height}:${row.device},overflow=0,Signal+Watch+Event+actions+Proof`).join(" ")} states=stale+degraded+forbidden screenshots=${screenshotCount}:${outputDir}\n`);
+  process.stdout.write(`KORDYN V2 AI Context browser PASS ${results.map((row) => `${row.width}x${row.height}:${row.device},overflow=0,Signal+Watch+Event+actions+Proof`).join(" ")} states=${geometryOnly ? "stale+degraded" : "stale+degraded+forbidden"} screenshots=${screenshotCount}:${outputDir}\n`);
 } finally {
   cdp?.close();
   await Promise.all([stopProcess(chrome), stopProcess(vite)]);

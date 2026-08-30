@@ -39,7 +39,7 @@ export function AiEventsWorkspace({ model, actions = {}, actionsDisabled = false
       </div>
       <div className="kordynV2AiEventsWorkbench">
         <section className="kordynV2AiContextRegistry kordynV2AiEventsRegistry" aria-label="事件日历列表"><header><h2>时间序列</h2><span>日期精度保持原样</span></header><div>{rows.map((row, index) => (
-          <button type="button" className={selected === row ? "is-selected" : ""} {...contextPresentationAttributes(row, "Event")} aria-disabled={row.selectable !== true} key={`event-presentation-${index}`} onClick={() => runAiContextRowInteraction({ row, type: "Event", onInspect: setInspected, onSelect, candidateFor })}>
+          <button type="button" className={selected === row ? "is-selected" : ""} {...contextPresentationAttributes(row, "Event")} key={`event-presentation-${index}`} onClick={() => runAiContextRowInteraction({ row, type: "Event", onInspect: setInspected, onSelect, candidateFor })}>
             <time><Clock3 size={14} aria-hidden="true" />{momentFor(row)}</time><span><strong>{titleFor(row)}</strong><small>{safe(row.provider || row.sourceName || row.source)}</small></span><em>{row.timePrecision === "date" ? "仅日期" : safe(row.impactLabel)}</em>
           </button>
         ))}{!rows.length && <p className="kordynV2AiContextEmpty">当前没有已形成事件。不会用计划任务或风险窗口伪造日历行。</p>}</div></section>

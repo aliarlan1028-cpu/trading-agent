@@ -137,3 +137,43 @@ test("V2 selection projects matching object Context and Trace identity for Signa
     assert.equal(selection.trace.stages.some((stage) => stage.evidence === `evidence-${candidate.type.toLowerCase()}`), true);
   }
 });
+
+test("malformed Watch status and source facts stay unavailable without hiding selectable siblings", () => {
+  let getterCalls = 0;
+  let coercionCalls = 0;
+  const malformedStatus = Object.create(null);
+  Object.defineProperty(malformedStatus, "toString", {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return () => {
+        coercionCalls += 1;
+        return "active";
+      };
+    }
+  });
+  const malformedSource = Object.create(null);
+  const data = {
+    resourceState: { operationsCenter: "loaded", chat: "loaded" },
+    newsFeed: [{ id: "signal-valid-sibling", title: "有效 Signal", sourceName: "Trusted feed" }],
+    watchTriggers: [{
+      id: "watch-malformed-status",
+      title: "可查看 Watch",
+      status: malformedStatus,
+      sourceName: malformedSource
+    }],
+    marketCalendarEvents: [{ id: "event-valid-sibling", title: "有效 Event", startAt: "2026-09-17", sourceName: "Official calendar" }]
+  };
+  const watchCandidate = { id: "watch-malformed-status", type: "Watch", workspaceId: "ai", route: "watch", sourceSection: "chat" };
+
+  let watch;
+  assert.doesNotThrow(() => { watch = resolveAiContextObject(data, watchCandidate); });
+  assert.equal(getterCalls, 0);
+  assert.equal(coercionCalls, 0);
+  assert.equal(watch.id, "watch-malformed-status");
+  assert.equal(watch.status, "Unavailable");
+  assert.equal(watch.source, "Unavailable");
+  assert.equal(watch.nextAction, "只读观察");
+  assert.equal(resolveAiContextObject(data, { id: "signal-valid-sibling", type: "Signal", workspaceId: "ai", route: "intelligence", sourceSection: "operationsCenter" })?.id, "signal-valid-sibling");
+  assert.equal(resolveAiContextObject(data, eventCandidate("event-valid-sibling"))?.id, "event-valid-sibling");
+});
