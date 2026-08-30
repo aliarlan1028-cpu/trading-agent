@@ -1,0 +1,419 @@
+{
+  "schemaVersion": 1,
+  "runner": "tests/run-kordyn-v2-account-browser.mjs",
+  "fixture": "tests/kordyn-v2-account-browser.jsx",
+  "productionSourceCommit": "bfbdce394dc21617b5b0ab070e62f475a5e77bd4",
+  "captures": [
+    {
+      "file": "desktop-account-position--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "account",
+      "workspaceId": "positions",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440,
+        "clientHeight": 900,
+        "scrollHeight": 900
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "right": 1440,
+        "bottom": 900,
+        "width": 1440,
+        "height": 900,
+        "domainId": "account",
+        "workspaceId": "positions",
+        "selectedId": "position-eth",
+        "selectedType": "Position"
+      },
+      "noProductionWrites": true,
+      "actionRequestsAtCapture": 0,
+      "legacyProductStyles": false,
+      "accountCss": true,
+      "sha256": "363f53f1ef460cafaf151300c94465c2d1e09512d14be186b5f8c3ccdb6e2e32"
+    },
+    {
+      "file": "desktop-account-position--1180x800.png",
+      "viewport": "1180x800",
+      "device": "desktop",
+      "domainId": "account",
+      "workspaceId": "positions",
+      "viewportGeometry": {
+        "width": 1180,
+        "height": 800
+      },
+      "document": {
+        "clientWidth": 1180,
+        "scrollWidth": 1180,
+        "clientHeight": 800,
+        "scrollHeight": 800
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "right": 1180,
+        "bottom": 800,
+        "width": 1180,
+        "height": 800,
+        "domainId": "account",
+        "workspaceId": "positions",
+        "selectedId": "position-eth",
+        "selectedType": "Position"
+      },
+      "noProductionWrites": true,
+      "actionRequestsAtCapture": 0,
+      "legacyProductStyles": false,
+      "accountCss": true,
+      "sha256": "8d03e49c6fab2cbbbc863b7ebcdad14f79288298dc7555305812ad8f1827f680"
+    },
+    {
+      "file": "mobile-account-position--390x844.png",
+      "viewport": "390x844",
+      "device": "mobile",
+      "domainId": "account",
+      "workspaceId": "positions",
+      "viewportGeometry": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "clientHeight": 844,
+        "scrollHeight": 844
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "right": 390,
+        "bottom": 844,
+        "width": 390,
+        "height": 844,
+        "domainId": "account",
+        "workspaceId": "positions",
+        "selectedId": "position-eth",
+        "selectedType": "Position"
+      },
+      "noProductionWrites": true,
+      "actionRequestsAtCapture": 0,
+      "legacyProductStyles": false,
+      "accountCss": true,
+      "sha256": "5bc1575de58246173f8df37f9e09d91e668b11f165b82d7f7fae4dde15ab69c5",
+      "structuralOnly": true
+    },
+    {
+      "file": "mobile-account-detail--430x932.png",
+      "viewport": "430x932",
+      "device": "mobile",
+      "domainId": "account",
+      "workspaceId": "account",
+      "viewportGeometry": {
+        "width": 430,
+        "height": 932
+      },
+      "document": {
+        "clientWidth": 430,
+        "scrollWidth": 430,
+        "clientHeight": 932,
+        "scrollHeight": 932
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "right": 430,
+        "bottom": 932,
+        "width": 430,
+        "height": 932,
+        "domainId": "account",
+        "workspaceId": "account",
+        "selectedId": "ex-okx-main",
+        "selectedType": "Account"
+      },
+      "noProductionWrites": true,
+      "actionRequestsAtCapture": 0,
+      "legacyProductStyles": false,
+      "accountCss": true,
+      "sha256": "368fb8fbbef87d3797db4e67c43303ad3833a95897fcd15a45539ca9e359099c",
+      "structuralOnly": true
+    }
+  ],
+  "interactions": [
+    {
+      "label": "Market",
+      "id": "BTC/USDT",
+      "type": "Market",
+      "workspace": "market"
+    },
+    {
+      "label": "Account",
+      "id": "ex-okx-main",
+      "type": "Account",
+      "workspace": "account"
+    },
+    {
+      "label": "Position",
+      "id": "position-eth",
+      "type": "Position",
+      "workspace": "positions"
+    },
+    {
+      "label": "Trade plan",
+      "id": "plan-btc-task5",
+      "type": "Trade plan",
+      "workspace": "plans"
+    },
+    {
+      "label": "Execution",
+      "id": "execution-btc",
+      "type": "Execution",
+      "workspace": "orders"
+    },
+    {
+      "label": "Order",
+      "id": "order-btc-task5",
+      "type": "Order",
+      "workspace": "orders"
+    },
+    {
+      "label": "Fill",
+      "id": "fill-btc-task5",
+      "type": "Fill",
+      "workspace": "fills"
+    },
+    {
+      "label": "Closed trade",
+      "id": "closed:execution-btc",
+      "type": "Closed trade",
+      "workspace": "fills"
+    },
+    {
+      "label": "Review",
+      "id": "review-btc-task5",
+      "type": "Review",
+      "workspace": "fills"
+    },
+    {
+      "label": "Mobile Trade plan",
+      "id": "plan-btc-task5",
+      "type": "Trade plan",
+      "workspace": "plans"
+    }
+  ],
+  "actionLedgers": [
+    {
+      "phase": "desktop",
+      "ledger": {
+        "actionRequests": [
+          {
+            "endpoint": "/api/reconciler/run",
+            "payload": {
+              "mode": "manual_ui"
+            },
+            "method": "POST"
+          },
+          {
+            "endpoint": "/api/execution-orders/execution-eth/close",
+            "payload": {
+              "reason": "manual_ui",
+              "intent": "close_position",
+              "expectedStatus": "protecting"
+            },
+            "method": "POST"
+          },
+          {
+            "endpoint": "/api/execution-orders/poll",
+            "payload": {},
+            "method": "POST"
+          },
+          {
+            "endpoint": "/api/trade-plans/plan-btc-task5/approve",
+            "payload": {},
+            "method": "POST"
+          }
+        ],
+        "actionResults": [
+          {
+            "endpoint": "/api/reconciler/run",
+            "result": {
+              "ok": false,
+              "status": "partial",
+              "completed": [
+                "orders"
+              ],
+              "failed": [
+                "funding"
+              ],
+              "message": "partial reconciliation"
+            }
+          },
+          {
+            "endpoint": "/api/execution-orders/execution-eth/close",
+            "result": {
+              "ok": false,
+              "error": "position_refresh_required",
+              "httpStatus": 409
+            }
+          },
+          {
+            "endpoint": "/api/execution-orders/poll",
+            "result": {
+              "ok": false,
+              "polled": true
+            }
+          },
+          {
+            "endpoint": "/api/trade-plans/plan-btc-task5/approve",
+            "result": {
+              "ok": false,
+              "error": "execution_not_submitted",
+              "plan": {
+                "id": "plan-btc-task5",
+                "status": "approved"
+              },
+              "approvalGranted": true,
+              "executionSubmitted": false,
+              "execution": {
+                "status": "risk_recheck_failed",
+                "reason": "capacity_changed"
+              },
+              "message": "approval consumed, order not submitted"
+            }
+          }
+        ],
+        "authorityWrites": 4,
+        "downloads": [
+          {
+            "endpoint": "/api/posters/trades/execution-btc",
+            "filename": "closed-trade-execution-btc.png"
+          }
+        ]
+      }
+    },
+    {
+      "phase": "mobile",
+      "ledger": {
+        "actionRequests": [],
+        "actionResults": [],
+        "authorityWrites": 0,
+        "downloads": []
+      }
+    }
+  ],
+  "actionLedger": {
+    "actionRequests": [
+      {
+        "endpoint": "/api/reconciler/run",
+        "payload": {
+          "mode": "manual_ui"
+        },
+        "method": "POST",
+        "phase": "desktop"
+      },
+      {
+        "endpoint": "/api/execution-orders/execution-eth/close",
+        "payload": {
+          "reason": "manual_ui",
+          "intent": "close_position",
+          "expectedStatus": "protecting"
+        },
+        "method": "POST",
+        "phase": "desktop"
+      },
+      {
+        "endpoint": "/api/execution-orders/poll",
+        "payload": {},
+        "method": "POST",
+        "phase": "desktop"
+      },
+      {
+        "endpoint": "/api/trade-plans/plan-btc-task5/approve",
+        "payload": {},
+        "method": "POST",
+        "phase": "desktop"
+      }
+    ],
+    "actionResults": [
+      {
+        "endpoint": "/api/reconciler/run",
+        "result": {
+          "ok": false,
+          "status": "partial",
+          "completed": [
+            "orders"
+          ],
+          "failed": [
+            "funding"
+          ],
+          "message": "partial reconciliation"
+        },
+        "phase": "desktop"
+      },
+      {
+        "endpoint": "/api/execution-orders/execution-eth/close",
+        "result": {
+          "ok": false,
+          "error": "position_refresh_required",
+          "httpStatus": 409
+        },
+        "phase": "desktop"
+      },
+      {
+        "endpoint": "/api/execution-orders/poll",
+        "result": {
+          "ok": false,
+          "polled": true
+        },
+        "phase": "desktop"
+      },
+      {
+        "endpoint": "/api/trade-plans/plan-btc-task5/approve",
+        "result": {
+          "ok": false,
+          "error": "execution_not_submitted",
+          "plan": {
+            "id": "plan-btc-task5",
+            "status": "approved"
+          },
+          "approvalGranted": true,
+          "executionSubmitted": false,
+          "execution": {
+            "status": "risk_recheck_failed",
+            "reason": "capacity_changed"
+          },
+          "message": "approval consumed, order not submitted"
+        },
+        "phase": "desktop"
+      }
+    ],
+    "authorityWrites": 4,
+    "downloads": [
+      {
+        "endpoint": "/api/posters/trades/execution-btc",
+        "filename": "closed-trade-execution-btc.png",
+        "phase": "desktop"
+      }
+    ]
+  },
+  "styleOwnership": {
+    "accountCss": true,
+    "legacyProductStyles": false,
+    "owners": [
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/domains/account/account.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/domains/account/account.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/domains/ai/ai.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/domains/ai/ai.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/styles/mobile-shell.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/styles/mobile-shell.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/styles/shell.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/styles/shell.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/styles/tokens.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/styles/tokens.css"
+    ]
+  }
+}

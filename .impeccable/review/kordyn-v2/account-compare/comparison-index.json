@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "scope": "account",
+  "sourceManifest": "docs/kordyn-v2-approved-concept-manifest.md",
+  "captureEvidence": ".impeccable/review/kordyn-v2/account/capture-evidence.json",
+  "productionSourceCommit": "bfbdce394dc21617b5b0ab070e62f475a5e77bd4",
+  "outputRoot": ".impeccable/review/kordyn-v2/account-compare",
+  "counts": {
+    "concepts": 15,
+    "completedConcepts": 1,
+    "pendingConcepts": 0,
+    "comparisons": 2,
+    "artifacts": 9
+  },
+  "scopeCounts": {
+    "manifestConcepts": 15,
+    "scopedConcepts": 1,
+    "completedScopedConcepts": 1,
+    "pendingScopedConcepts": 0,
+    "outOfScopeConcepts": 14
+  },
+  "completed": [
+    "desktop-account-position"
+  ],
+  "pending": [],
+  "scopedPending": [],
+  "outOfScope": [
+    {
+      "id": "desktop-ai-mission-control",
+      "status": "implemented foundation shell"
+    },
+    {
+      "id": "desktop-ai-signals",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "desktop-assets-relationship",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "desktop-strategy-registry",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "desktop-knowledge-incubator",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "desktop-capability-registry",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "desktop-review-owner-release",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "desktop-governance-boundary",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "desktop-governance-operations",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "desktop-governance-configuration",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "mobile-ai-mission-home",
+      "status": "implemented foundation shell"
+    },
+    {
+      "id": "mobile-ai-task-approval",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "mobile-intelligent-assets",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "mobile-system-governance",
+      "status": "pending domain implementation"
+    }
+  ],
+  "comparisons": [
+    {
+      "identity": "desktop-account-position--1440x900",
+      "conceptId": "desktop-account-position",
+      "viewport": "1440x900",
+      "actual": "desktop-account-position--1440x900.png",
+      "artifacts": {
+        "normalizedReference": {
+          "file": "desktop-account-position--1440x900--reference.png",
+          "sha256": "faa8da1bf43fd85e54f58c0ba304d41b97cf8f26cf279ac38373a50ee3e41e32"
+        },
+        "overlay50": {
+          "file": "desktop-account-position--1440x900--overlay.png",
+          "sha256": "e9c6a978ac7fbb6335216d2acf7ae1abe1719c24381ae8575415cb613962efec"
+        },
+        "absoluteDifference": {
+          "file": "desktop-account-position--1440x900--difference.png",
+          "sha256": "ab60471f4d64a014fa3f84383985592321238331a2bf608ca719db41f2978d1b"
+        },
+        "geometry": {
+          "file": "desktop-account-position--1440x900--geometry.json",
+          "sha256": "4cb16147f6f807f3e0893a926c6f74286886bae1c4d727caf6d8c3b21f3e421f"
+        }
+      },
+      "pixelDifference": 0.05473232268215929,
+      "releaseVerdict": "human region review required"
+    },
+    {
+      "identity": "desktop-account-position--1180x800",
+      "conceptId": "desktop-account-position",
+      "viewport": "1180x800",
+      "actual": "desktop-account-position--1180x800.png",
+      "artifacts": {
+        "normalizedReference": {
+          "file": "desktop-account-position--1180x800--reference.png",
+          "sha256": "29793712d0e1e75d4affcae1ccc1752a75e0256f3fe3f964be93e641932b6b31"
+        },
+        "overlay50": {
+          "file": "desktop-account-position--1180x800--overlay.png",
+          "sha256": "80cd504c0c0f836ba8b0527de9a1c628050d50a30bc3ba378f4edc1b91bdf5ea"
+        },
+        "absoluteDifference": {
+          "file": "desktop-account-position--1180x800--difference.png",
+          "sha256": "75f6c77778a55e54ee183cf15868fed91421a85b3d397dcc382ede6cd0344b49"
+        },
+        "geometry": {
+          "file": "desktop-account-position--1180x800--geometry.json",
+          "sha256": "683f4c18935761baf715c440c84afba89f9f47fe7b0db7b1d5577cd223ca2c8f"
+        }
+      },
+      "pixelDifference": 0.05490139165835826,
+      "releaseVerdict": "human region review required"
+    }
+  ],
+  "releaseVerdict": "human region review required"
+}

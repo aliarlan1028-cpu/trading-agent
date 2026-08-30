@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "identity": "desktop-account-position--1440x900",
+  "concept": {
+    "id": "desktop-account-position",
+    "file": ".impeccable/mocks/kordyn-v2-approved/desktop-account-position.png",
+    "sha256": "38d6a875aa1cd26af0ef19510fe993255c572d97468ad9a940d734c92acfd148",
+    "storedPixels": {
+      "width": 1586,
+      "height": 992
+    },
+    "normalizedViewport": "1440x900"
+  },
+  "actual": {
+    "file": "desktop-account-position--1440x900.png",
+    "sha256": "363f53f1ef460cafaf151300c94465c2d1e09512d14be186b5f8c3ccdb6e2e32",
+    "runner": "tests/run-kordyn-v2-account-browser.mjs",
+    "fixture": "tests/kordyn-v2-account-browser.jsx",
+    "productionSourceCommit": "bfbdce394dc21617b5b0ab070e62f475a5e77bd4",
+    "device": "desktop",
+    "domainId": "account",
+    "workspaceId": "positions"
+  },
+  "viewport": {
+    "name": "1440x900",
+    "width": 1440,
+    "height": 900
+  },
+  "document": {
+    "clientWidth": 1440,
+    "scrollWidth": 1440,
+    "clientHeight": 900,
+    "scrollHeight": 900
+  },
+  "documentOverflow": 0,
+  "shellGeometry": {
+    "left": 0,
+    "top": 0,
+    "right": 1440,
+    "bottom": 900,
+    "width": 1440,
+    "height": 900,
+    "domainId": "account",
+    "workspaceId": "positions",
+    "selectedId": "position-eth",
+    "selectedType": "Position"
+  },
+  "diagnostics": {
+    "screenshotStructure": {
+      "variance": 0.009802828110396586,
+      "edgeDensity": 0.023119446015653973,
+      "nearFlat": false
+    },
+    "pixelDifference": {
+      "metric": 0.05473232268215929,
+      "role": "diagnostic only"
+    },
+    "contentAwareComparator": {
+      "applied": false,
+      "reason": "no fixed mobile shell threshold in Foundation Plan 01"
+    }
+  },
+  "artifacts": {
+    "normalizedReference": {
+      "file": "desktop-account-position--1440x900--reference.png",
+      "sha256": "faa8da1bf43fd85e54f58c0ba304d41b97cf8f26cf279ac38373a50ee3e41e32"
+    },
+    "overlay50": {
+      "file": "desktop-account-position--1440x900--overlay.png",
+      "sha256": "e9c6a978ac7fbb6335216d2acf7ae1abe1719c24381ae8575415cb613962efec"
+    },
+    "absoluteDifference": {
+      "file": "desktop-account-position--1440x900--difference.png",
+      "sha256": "ab60471f4d64a014fa3f84383985592321238331a2bf608ca719db41f2978d1b"
+    }
+  },
+  "releaseVerdict": "human region review required"
+}
