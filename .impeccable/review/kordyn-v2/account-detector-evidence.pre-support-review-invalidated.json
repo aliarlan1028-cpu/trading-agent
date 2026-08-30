@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "status": "invalidated-by-post-review-support-edit",
+  "invalidationReason": "The independent review found the floating AI support trigger overlapping Account work-canvas truth and controls. DesktopShell, MobileShell, shell.css, and mobile-shell.css changed afterward to reserve non-overlapping shell docks, so this former final pass is retained only as history.",
+  "runAt": "2026-08-30T21:36:12Z",
+  "cwd": "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild",
+  "command": "node /Users/ely/.codex/skills/impeccable/scripts/detect.mjs --json src/kordynV2/domains/account/PositionWorkspace.jsx src/kordynV2/domains/account/account.css src/kordynV2/domains/account/stateSurfaces.js src/kordynV2/shell/MobileShell.jsx src/kordynV2/styles/mobile-shell.css",
+  "sessionInvocationCount": 2,
+  "finalAfterAllEditsInvocationCount": 1,
+  "priorInvalidatedRecord": ".impeccable/review/kordyn-v2/account-detector-evidence.pre-final-invalidated.json",
+  "exitCode": 0,
+  "stdout": "[]\n",
+  "result": [],
+  "targets": [
+    {
+      "path": "src/kordynV2/domains/account/PositionWorkspace.jsx",
+      "sha256": "b6a63941bfaccff390102396ecc087d1742950dd442ecff21056ded8ff91b4b6"
+    },
+    {
+      "path": "src/kordynV2/domains/account/account.css",
+      "sha256": "d638904ef4bbb066d91258533bd35140f35d90f20214ccdc8c1cffeec37768e7"
+    },
+    {
+      "path": "src/kordynV2/domains/account/stateSurfaces.js",
+      "sha256": "fecd3924d4cc22b6f6ddcb7a0fa1be5d63adec99f2f25d2e5488c6bf6e964"
+    },
+    {
+      "path": "src/kordynV2/shell/MobileShell.jsx",
+      "sha256": "d34868b4b4417fb7d4453a80a57349c3d1cc15fb8ba10d57f6d16527049f450e"
+    },
+    {
+      "path": "src/kordynV2/styles/mobile-shell.css",
+      "sha256": "a9e41ee7b22ce887eecd56b27b7b83d84c4b9f18116bcb7f914c2950b9fcea98"
+    }
+  ]
+}

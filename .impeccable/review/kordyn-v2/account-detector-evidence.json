@@ -1,12 +1,15 @@
 {
   "schemaVersion": 1,
   "status": "final-after-all-ui-edits",
-  "runAt": "2026-08-30T21:36:12Z",
+  "runAt": "2026-08-30T22:48:32Z",
   "cwd": "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild",
-  "command": "node /Users/ely/.codex/skills/impeccable/scripts/detect.mjs --json src/kordynV2/domains/account/PositionWorkspace.jsx src/kordynV2/domains/account/account.css src/kordynV2/domains/account/stateSurfaces.js src/kordynV2/shell/MobileShell.jsx src/kordynV2/styles/mobile-shell.css",
-  "sessionInvocationCount": 2,
+  "command": "node /Users/ely/.codex/skills/impeccable/scripts/detect.mjs --json src/kordynV2/domains/account/PositionWorkspace.jsx src/kordynV2/domains/account/account.css src/kordynV2/domains/account/stateSurfaces.js src/kordynV2/shell/DesktopShell.jsx src/kordynV2/shell/MobileShell.jsx src/kordynV2/styles/shell.css src/kordynV2/styles/mobile-shell.css",
+  "sessionInvocationCount": 3,
   "finalAfterAllEditsInvocationCount": 1,
-  "priorInvalidatedRecord": ".impeccable/review/kordyn-v2/account-detector-evidence.pre-final-invalidated.json",
+  "priorInvalidatedRecords": [
+    ".impeccable/review/kordyn-v2/account-detector-evidence.pre-final-invalidated.json",
+    ".impeccable/review/kordyn-v2/account-detector-evidence.pre-support-review-invalidated.json"
+  ],
   "exitCode": 0,
   "stdout": "[]\n",
   "result": [],
@@ -21,15 +24,23 @@
     },
     {
       "path": "src/kordynV2/domains/account/stateSurfaces.js",
-      "sha256": "fecd3924d4cc22b6f6ddcb7a0fa1be5d63adec99f2f25d2e5488c6bf6e964"
+      "sha256": "fecd3924d4cc22b6f6ddcb7a0fa1be5d45d63adec99f2f25d2e5488c6bf6e964"
+    },
+    {
+      "path": "src/kordynV2/shell/DesktopShell.jsx",
+      "sha256": "e885d988224dbe12bcf53c6be9755d415a66c4965d4347bb9ce071fddf2e9c7e"
     },
     {
       "path": "src/kordynV2/shell/MobileShell.jsx",
-      "sha256": "d34868b4b4417fb7d4453a80a57349c3d1cc15fb8ba10d57f6d16527049f450e"
+      "sha256": "628e147243c975f593904077dc7d3a3ccd56af6abbeada7f62bd1511a910e93d"
+    },
+    {
+      "path": "src/kordynV2/styles/shell.css",
+      "sha256": "981cb99186ba41cc6194d01bcbc9d5cdcf0fcd92a5a1a813ea6be172e1c51d9f"
     },
     {
       "path": "src/kordynV2/styles/mobile-shell.css",
-      "sha256": "a9e41ee7b22ce887eecd56b27b7b83d84c4b9f18116bcb7f914c2950b9fcea98"
+      "sha256": "2223792aee746cc0a49d1c54c0e40eb9047088f531e691049b90bce84442c256"
     }
   ]
 }
