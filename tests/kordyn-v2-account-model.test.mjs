@@ -439,6 +439,70 @@ test("production-compatible numeric strings remain selectable while authoritativ
   );
 });
 
+test("whitespace position finance remains unavailable while exact numeric strings retain zero and nonzero facts", () => {
+  const model = buildAccountDomainModel({
+    positions: [
+      {
+        positionId: "whitespace-finance",
+        symbol: "BTC/USDT",
+        quantity: "1",
+        entry: " ",
+        mark: "\t",
+        unrealizedPnl: "\n",
+        margin: "  ",
+        notional: "\r\n",
+        takeProfits: [" ", "\t"]
+      },
+      {
+        positionId: "numeric-finance",
+        symbol: "ETH/USDT",
+        quantity: "1",
+        entry: "0",
+        mark: "50",
+        unrealizedPnl: "0",
+        margin: "0",
+        notional: "50",
+        takeProfits: ["0", "50"]
+      }
+    ]
+  });
+
+  const whitespace = model.positions.find((row) => row.id === "whitespace-finance");
+  assert.ok(whitespace, "a position with missing finance remains inspectable by canonical identity");
+  assert.deepEqual({
+    entry: whitespace.entry,
+    mark: whitespace.mark,
+    unrealizedPnl: whitespace.unrealizedPnl,
+    margin: whitespace.margin,
+    notional: whitespace.notional,
+    takeProfits: whitespace.takeProfits
+  }, {
+    entry: null,
+    mark: null,
+    unrealizedPnl: null,
+    margin: null,
+    notional: null,
+    takeProfits: []
+  });
+
+  const numeric = model.positions.find((row) => row.id === "numeric-finance");
+  assert.deepEqual({
+    entry: numeric.entry,
+    mark: numeric.mark,
+    unrealizedPnl: numeric.unrealizedPnl,
+    margin: numeric.margin,
+    notional: numeric.notional,
+    takeProfits: numeric.takeProfits
+  }, {
+    entry: 0,
+    mark: 50,
+    unrealizedPnl: 0,
+    margin: 0,
+    notional: 50,
+    takeProfits: [0, 50]
+  });
+});
+
 test("derived products and aggregate sums cannot overflow into financial truth", () => {
   const derivedOverflow = buildAccountDomainModel({
     positions: [{ positionId: "derived-overflow", quantity: Number.MAX_VALUE, markPrice: 2, unrealizedPnl: 1, margin: 1 }]

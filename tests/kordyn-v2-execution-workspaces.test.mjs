@@ -20,7 +20,7 @@ process.on("exit", () => {
 require("esbuild").buildSync({
   stdin: {
     contents: `
-      export { PlanWorkspace, planSelectionCandidate, runPlanDecision } from "./src/kordynV2/domains/account/PlanWorkspace.jsx";
+      export { PlanWorkspace, PlanEvidence, planSelectionCandidate, runPlanDecision } from "./src/kordynV2/domains/account/PlanWorkspace.jsx";
       export { OrderWorkspace, orderSelectionCandidate, executionWorkspaceSelectionCandidate } from "./src/kordynV2/domains/account/OrderWorkspace.jsx";
       export { FillWorkspace, fillSelectionCandidate, closedTradeSelectionCandidate, reviewSelectionCandidate } from "./src/kordynV2/domains/account/FillWorkspace.jsx";
       export { ClosedTradeOutputSheet, closedTradePosterEligibility, runClosedTradePosterDownload } from "./src/kordynV2/domains/account/ClosedTradeOutputSheet.jsx";
@@ -42,6 +42,7 @@ require("esbuild").buildSync({
 
 const {
   PlanWorkspace,
+  PlanEvidence,
   OrderWorkspace,
   FillWorkspace,
   ClosedTradeOutputSheet,
@@ -238,6 +239,116 @@ test("Trade plan authorization derives bounded account impact from authoritative
   });
   assert.equal(model.plans[0].approval.valid, true);
   assert.deepEqual(model.plans[0].approval.missingFacts, []);
+});
+
+test("exact zero and nonzero numeric strings remain authoritative plan facts", () => {
+  const model = modelFixture({
+    tradePlans: [plan({
+      entry_range: ["0", "50"],
+      stopLoss: "0",
+      takeProfit: ["50"],
+      leverage: "50",
+      riskPercent: "0",
+      accountImpact: {
+        equityUsdt: "50",
+        availableMarginUsdt: "0",
+        openPositionCount: "0",
+        projectedOpenPositionCount: "0",
+        estimatedMaxLossUsdt: "0"
+      }
+    })]
+  });
+
+  assert.deepEqual({
+    entry: model.plans[0].entry,
+    stopLoss: model.plans[0].stopLoss,
+    takeProfits: model.plans[0].takeProfits,
+    leverage: model.plans[0].leverage,
+    riskPercent: model.plans[0].riskPercent,
+    accountImpact: model.plans[0].accountImpact
+  }, {
+    entry: "0–50",
+    stopLoss: 0,
+    takeProfits: [50],
+    leverage: 50,
+    riskPercent: 0,
+    accountImpact: {
+      equityUsdt: 50,
+      availableMarginUsdt: 0,
+      openPositionCount: 0,
+      projectedOpenPositionCount: 0,
+      estimatedMaxLossUsdt: 0
+    }
+  });
+  assert.equal(model.plans[0].approval.valid, true);
+});
+
+test("whitespace plan facts cannot create a valid approval or invoke the real authorization action", async () => {
+  const model = modelFixture({
+    tradePlans: [plan({
+      entry_range: [" ", "\t"],
+      stopLoss: " ",
+      takeProfit: ["\n"],
+      leverage: "\t",
+      riskPercent: "  ",
+      lastRiskCheck: { id: "risk-whitespace", passed: true, summary: " ", warnings: [], blockers: [] },
+      accountImpact: {
+        equityUsdt: " ",
+        availableMarginUsdt: "\t",
+        openPositionCount: "\n",
+        projectedOpenPositionCount: "  ",
+        estimatedMaxLossUsdt: "\r\n"
+      }
+    })]
+  });
+  const projected = model.plans[0];
+
+  assert.deepEqual({
+    entry: projected.entry,
+    stopLoss: projected.stopLoss,
+    takeProfits: projected.takeProfits,
+    leverage: projected.leverage,
+    riskPercent: projected.riskPercent,
+    riskSummary: projected.risk.summary,
+    accountImpact: projected.accountImpact
+  }, {
+    entry: null,
+    stopLoss: null,
+    takeProfits: [],
+    leverage: null,
+    riskPercent: null,
+    riskSummary: null,
+    accountImpact: {
+      equityUsdt: null,
+      availableMarginUsdt: null,
+      openPositionCount: null,
+      projectedOpenPositionCount: null,
+      estimatedMaxLossUsdt: null
+    }
+  });
+  assert.equal(projected.approval.valid, false);
+  assert.deepEqual(projected.approval.missingFacts, [
+    "entry", "stopLoss", "takeProfit", "leverage", "riskPercent", "riskResult", "accountImpact"
+  ]);
+
+  let approvals = 0;
+  const decision = await runPlanDecision({
+    kind: "approve",
+    plan: projected,
+    actions: { approvePlan: async () => { approvals += 1; return { ok: true }; } }
+  });
+  assert.deepEqual(decision, { ok: false, error: "actions_disabled" });
+  assert.equal(approvals, 0);
+
+  const evidence = renderToStaticMarkup(React.createElement(PlanEvidence, {
+    plan: projected,
+    actions: { approvePlan: async () => ({ ok: true }), rejectPlan: async () => ({ ok: true }) },
+    actionsDisabled: false,
+    actionState: null,
+    onDecision() {},
+    onSelect() {}
+  }));
+  assert.match(evidence, /<button type="button" disabled="">[\s\S]*?仅授权本笔<\/button>/u);
 });
 
 test("execution projections retain authoritative zero while missing finance remains null", () => {

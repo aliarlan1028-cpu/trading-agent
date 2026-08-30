@@ -6,8 +6,8 @@ const MAX_COLLECTION_LENGTH = 10_000;
 const missingRead = Object.freeze({ kind: "missing" });
 const invalidRead = Object.freeze({ kind: "invalid" });
 const finiteFinancial = (value) => typeof value === "number" && Number.isFinite(value) ? value : null;
-const finitePositionFinancial = (value) => typeof value === "string" && value !== ""
-  ? finiteFinancial(Number(value))
+const finitePositionFinancial = (value) => typeof value === "string"
+  ? value !== "" && value === value.trim() ? finiteFinancial(Number(value)) : null
   : finiteFinancial(value);
 const finiteCount = (value) => Number.isSafeInteger(value) && value >= 0 ? value : null;
 const firstKnown = (...values) => values.find((value) => value !== null && value !== undefined);
@@ -75,7 +75,9 @@ function recordSnapshot(value) {
 function safePositionScalar(value) {
   if (value === null || value === undefined || value === "") return true;
   if (typeof value === "number") return Number.isFinite(value);
-  return typeof value === "string" && Number.isFinite(Number(value));
+  if (typeof value !== "string") return false;
+  if (value.trim() === "") return true;
+  return value === value.trim() && finitePositionFinancial(value) !== null;
 }
 
 function safePositionRecord(position) {
@@ -145,7 +147,7 @@ function installWatchlist(source, root) {
 }
 
 function boundedText(value, maxLength = 2_000) {
-  return typeof value === "string" && value.length > 0 && value.length <= maxLength ? value : null;
+  return typeof value === "string" && value.trim().length > 0 && value.length <= maxLength ? value : null;
 }
 
 function reconciliationDifference(value) {
