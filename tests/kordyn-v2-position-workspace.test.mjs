@@ -349,6 +349,77 @@ test("a hostile Position sibling cannot hide a correct account-bound verified pr
   assert.equal(model.positions[0].protection.state, "verified");
 });
 
+test("the real normalized Position and protection model remain serializable without forwarding hostile base metadata", () => {
+  const at = "2026-08-30T06:00:00Z";
+  const nested = {};
+  Object.defineProperty(nested, "secret", {
+    enumerable: true,
+    get() { throw new Error("nested response getter must not run"); }
+  });
+  const rawEngine = rawEnginePosition({
+    status: "open",
+    stopLossPrice: 3365,
+    takeProfits: [3515, "3590"],
+    takeProfit: 3650,
+    tradePlanId: "plan-legacy",
+    agentRunId: "run-1",
+    strategyId: "strategy-1",
+    strategy: "Breakout Retest",
+    rationale: "结构确认",
+    entryRationale: "回踩后继续做多",
+    hostileMetadata: nested,
+    toJSON() { throw new Error("normalized row toJSON must not run"); }
+  });
+  const positions = normalizePositionsForUi([
+    rawEngine,
+    rawExchangeMirror("account-okx", "OKX", at)
+  ], { executionOrders: [validExecution()] });
+  const model = buildAccountDomainModel({
+    resourceState,
+    positions,
+    executionOrders: [validExecution()],
+    accountSnapshots: [validSnapshot({ createdAt: at })],
+    riskIncidents: []
+  }, { now: Date.parse(at) + 60_000 });
+
+  let encoded;
+  assert.doesNotThrow(() => { encoded = JSON.stringify({ positions, model }); });
+  const parsed = JSON.parse(encoded);
+  assert.equal(parsed.model.positions[0].protection.state, "verified");
+  assert.deepEqual({
+    positionId: parsed.positions[0].positionId,
+    executionOrderId: parsed.positions[0].executionOrderId,
+    planId: parsed.positions[0].planId,
+    tradePlanId: parsed.positions[0].tradePlanId,
+    agentRunId: parsed.positions[0].agentRunId,
+    strategyId: parsed.positions[0].strategyId,
+    strategy: parsed.positions[0].strategy,
+    rationale: parsed.positions[0].rationale,
+    entryRationale: parsed.positions[0].entryRationale,
+    status: parsed.positions[0].status,
+    openedAt: parsed.positions[0].openedAt,
+    stopLossPrice: parsed.positions[0].stopLossPrice,
+    takeProfit: parsed.positions[0].takeProfit
+  }, {
+    positionId: "position-1",
+    executionOrderId: "execution-1",
+    planId: "plan-1",
+    tradePlanId: "plan-legacy",
+    agentRunId: "run-1",
+    strategyId: "strategy-1",
+    strategy: "Breakout Retest",
+    rationale: "结构确认",
+    entryRationale: "回踩后继续做多",
+    status: "open",
+    openedAt: "2026-08-30T05:00:00Z",
+    stopLossPrice: 3365,
+    takeProfit: 3650
+  });
+  assert.deepEqual(parsed.positions[0].takeProfits, [3515, 3590]);
+  assert.equal(Object.hasOwn(parsed.positions[0], "hostileMetadata"), false);
+  assert.equal(Object.hasOwn(parsed.positions[0], "toJSON"), false);
+});
+
 test("frontend protection independently rejects conflicting or invalid normalized account aliases", () => {
   const at = "2026-08-30T06:00:00Z";
   const snapshot = validSnapshot({ accountId: "account-a", exchange: "OKX", createdAt: at });

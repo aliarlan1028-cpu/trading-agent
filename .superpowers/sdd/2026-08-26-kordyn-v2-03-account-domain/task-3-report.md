@@ -462,3 +462,57 @@ Result: exit 0; 178/178 passed, 0 failed; duration 968.846667 ms.
 - `npm run lint`: exit 0, no findings.
 - `npm run build`: exit 0; 1,715 modules transformed in 1.61s; Account lazy CSS remained `index-DdtT6d4G.css`, 42.83 kB / 6.69 kB gzip.
 - Final syntax, diff, scope, commit, and clean-worktree evidence is recorded after this report update.
+
+## JSON-safe Position response contract after `29046f1`
+
+### Remaining end-to-end serialization gap
+
+`29046f1` prevented hostile Position and Execution records from throwing during normalization, but `normalizedPositionGroup()` still spread every own data value from its selected base row into the read-only section-v2 response. A top-level data descriptor can itself contain a nested accessor object, revoked proxy, function, BigInt, or throwing `toJSON`. Normalization could therefore return successfully while `JSON.stringify()` / the Express response serializer later threw, hiding all otherwise valid siblings in the shared `common` payload.
+
+This correction is limited to the already authorized read-only Position UI projection. It changes no database, schema, API action, route, permission, trading, execution, or risk behavior. The Impeccable detector was not rerun.
+
+### RED
+
+The executable response boundary now covers a valid account-bound Position/protection chain beside each of:
+
+- an unknown nested object with an enumerable throwing getter;
+- an unknown revoked proxy;
+- an own data `toJSON` function that throws;
+- a revoked `takeProfits` collection, which must remove only the malformed structured fact rather than the Position.
+
+The integration gate passes real raw engine + exchange mirror rows through `normalizePositionsForUi()`, then through `buildAccountDomainModel()`, and finally serializes the actual normalized Positions and protection model together.
+
+Command:
+
+```text
+node scripts/run-tests-isolated.mjs tests/position-view.test.mjs tests/kordyn-v2-position-workspace.test.mjs
+```
+
+Initial serialization RED: exit 1; 45 tests, 41 passed / 4 failed; duration 220.383166 ms. After adding the malformed target-list contract, the complete RED was exit 1; 46 tests, 41 passed / 5 failed; duration 187.268125 ms. Failures came directly from the nested getter, revoked proxies, and both throwing `toJSON` functions during `JSON.stringify()`.
+
+### Explicit response allowlist GREEN
+
+- The former whole-record `dataProjection(base)` was removed. The response now has one explicit bounded Position field contract.
+- Canonical identity and linkage, source/status/direction, account/exchange provenance, plan/execution/Agent/strategy/rationale, and source timestamps are projected only as bounded strings.
+- Deployed financial Position facts—including quantity, entry, mark, liquidation, leverage, PnL, notional, margin, stopLoss, stopLossPrice, and scalar takeProfit—are projected only as finite numbers or bounded numeric strings normalized to numbers. No object coercion is used.
+- `takeProfits` and the deployed `take_profit` compatibility form use a dedicated maximum-32 dense numeric-array projection. A malformed list is omitted without invalidating the Position; there is no recursive generic clone.
+- Only the deployed `protectionVerified` flag may pass as a boolean. Unknown keys, functions, BigInt, symbols, Date/custom objects, arbitrary nested objects, proxies, and `toJSON` are never returned.
+- The allowlist was traced against the source-created engine facts in `server/executionEngine.mjs`, the V2 consumer contract in `src/kordynV2/domains/account/accountModel.js`, Desktop/APP Position presenters, and the still-deployed legacy Position surfaces in `src/conceptPages.jsx`, `src/mobile.jsx`, and `src/chat.jsx`. Tests assert the required plan, Execution, Agent, strategy, rationale, opened/status, stop, and target facts remain present.
+
+Focused RED suite after the correction: exit 0; 46/46 passed; duration 218.679 ms.
+
+Fresh Task 3 + Position/protection + Task 1/2 account/state/selection/lazy regression:
+
+```text
+node scripts/run-tests-isolated.mjs tests/kordyn-v2-position-workspace.test.mjs tests/position-view.test.mjs tests/position-protection-evidence.test.mjs tests/exchange-protection-accounting.test.mjs tests/position-manager-move-stop.test.mjs tests/kordyn-v2-account-model.test.mjs tests/kordyn-v2-account-actions.test.mjs tests/kordyn-v2-account-cockpit.test.mjs tests/kordyn-v2-account-interactions.test.mjs tests/kordyn-v2-ai-workspace.test.mjs tests/kordyn-v2-state-boundary.test.mjs tests/kordyn-v2-state.test.mjs tests/kordyn-v2-ai-context-selection.test.mjs
+```
+
+Result: exit 0; 183/183 passed, 0 failed; duration 632.326542 ms.
+
+### Fresh final gates for this correction
+
+- Real production Account browser runner: exit 0 in 5.14s with `Kordyn V2 account production interaction browser checks passed`.
+- Full `npm test`: exit 0; 1,991/1,991 passed, 0 failed/cancelled/skipped/todo; duration 13,914.093208 ms; isolated test root cleaned.
+- `npm run lint`: exit 0, no findings.
+- `npm run build`: exit 0; 1,715 modules transformed in 1.53s; Account lazy CSS remained `index-DdtT6d4G.css`, 42.83 kB / 6.69 kB gzip.
+- Final syntax, diff, scope, commit, and clean-worktree evidence is recorded after this report update.

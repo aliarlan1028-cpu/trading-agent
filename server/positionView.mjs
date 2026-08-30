@@ -36,6 +36,23 @@ const NORMALIZE_NUMERIC_FIELDS = Object.freeze([
   "mark", "markPx", "coinSize", "quantity", "size", "pos", "positionAmt", "signedSize",
   "leverage", "liqPx", "liquidationPrice", "pnl", "unrealizedPnl", "roiPct", "entry", "avgPx"
 ]);
+const POSITION_OUTPUT_TEXT_FIELDS = Object.freeze([
+  "id", "positionId", "instId", "symbol", "source", "status", "direction", "posSide", "positionSide", "side",
+  "accountId", "exchangeAccountId", "connectionAccountId", "exchange", "exchangePositionKey",
+  "executionOrderId", "planId", "tradePlanId", "agentRunId", "runId", "strategyId", "strategy", "strategyName",
+  "evidenceBundleId", "rationale", "entryRationale", "openedAt", "createdAt", "updatedAt", "exchangeObservedAt",
+  "rawSyncedAt", "monitoredAt", "protectionStatus"
+]);
+const POSITION_OUTPUT_NUMERIC_FIELDS = Object.freeze([
+  "quantity", "coinSize", "size", "pos", "positionAmt", "signedSize", "entry", "entryPrice", "avgPx", "avgPrice",
+  "mark", "markPrice", "markPx", "price", "liqPx", "liquidationPrice", "leverage", "pnl", "upl", "unrealizedPnl",
+  "roiPct", "notional", "notionalUsdt", "marketValue", "margin", "marginUsdt", "initialMargin", "liqDistancePct",
+  "stopLoss", "stopLossPrice", "stop_loss", "takeProfit"
+]);
+const POSITION_OUTPUT_BOOLEAN_FIELDS = Object.freeze(["protectionVerified"]);
+const POSITION_OUTPUT_NUMERIC_LIST_FIELDS = Object.freeze(["takeProfits", "take_profit"]);
+const MAX_POSITION_OUTPUT_TEXT = 2_000;
+const MAX_POSITION_TARGETS = 32;
 
 function boundedArrayValues(value) {
   try {
@@ -150,20 +167,36 @@ const bindingFor = (row = {}) => {
 };
 const emptyPositionGroup = () => ({ engines: [], rests: [], websockets: [], others: [] });
 
-function dataProjection(record = {}) {
-  try {
-    const descriptors = Object.getOwnPropertyDescriptors(record);
-    const keys = Reflect.ownKeys(descriptors);
-    if (keys.length > 256 || keys.some((key) => typeof key !== "string")) return {};
-    const projected = {};
-    for (const key of keys) {
-      const descriptor = descriptors[key];
-      if (descriptor && Object.hasOwn(descriptor, "value")) projected[key] = descriptor.value;
-    }
-    return projected;
-  } catch {
-    return {};
+function boundedNumericList(value) {
+  const values = boundedArrayValues(value);
+  if (!values || values.length > MAX_POSITION_TARGETS) return null;
+  const projected = [];
+  for (const scalar of values) {
+    const number = num(scalar);
+    if (number === null) return null;
+    projected.push(number);
   }
+  return projected;
+}
+
+function positionOutputProjection(record = {}) {
+  const projected = {};
+  for (const field of POSITION_OUTPUT_TEXT_FIELDS) {
+    const value = record[field];
+    if (typeof value === "string" && value.length <= MAX_POSITION_OUTPUT_TEXT) projected[field] = value;
+  }
+  for (const field of POSITION_OUTPUT_NUMERIC_FIELDS) {
+    const value = num(record[field]);
+    if (value !== null) projected[field] = value;
+  }
+  for (const field of POSITION_OUTPUT_BOOLEAN_FIELDS) {
+    if (typeof record[field] === "boolean") projected[field] = record[field];
+  }
+  for (const field of POSITION_OUTPUT_NUMERIC_LIST_FIELDS) {
+    const value = boundedNumericList(record[field]);
+    if (value) projected[field] = value;
+  }
+  return projected;
 }
 
 // 方向归一化:多/long/buy → "多";空/short/sell → "空"(UI 为中文,统一成中文,含 tone 可判)。
@@ -306,7 +339,7 @@ function normalizedPositionGroup(g) {
   const margin = notional !== null && leverage ? notional / leverage : null;
   const liqDistancePct = liqPx !== null && mark ? Math.abs((mark - liqPx) / mark) * 100 : null;
   return {
-    ...dataProjection(base),
+    ...positionOutputProjection(base),
     source: hasEngine ? "execution_engine" : (rest.source || ws.source || base.source),
     symbol: base.symbol || rest.symbol || ws.symbol,
     direction: canonDirection(base),

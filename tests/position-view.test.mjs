@@ -179,3 +179,86 @@ test("hostile Execution siblings cannot abort or rewrite an unrelated valid acco
     );
   }
 });
+
+for (const hostile of [
+  {
+    label: "an unknown nested getter",
+    field: "hostileMetadata",
+    value() {
+      const nested = {};
+      Object.defineProperty(nested, "secret", {
+        enumerable: true,
+        get() { throw new Error("nested getter must not run during response serialization"); }
+      });
+      return nested;
+    }
+  },
+  {
+    label: "an unknown revoked proxy",
+    field: "hostileMetadata",
+    value() {
+      const revoked = Proxy.revocable({ secret: "must not serialize" }, {});
+      revoked.revoke();
+      return revoked.proxy;
+    }
+  },
+  {
+    label: "an own throwing toJSON function",
+    field: "toJSON",
+    value() {
+      return function toJSON() { throw new Error("row toJSON must not run during response serialization"); };
+    }
+  }
+]) {
+  test(`normalized Position output is JSON-safe with ${hostile.label}`, () => {
+    const engine = {
+      ...ADA_ENGINE,
+      positionId: "position-json-safe",
+      executionOrderId: "execution-json-safe",
+      planId: "plan-json-safe",
+      stopLoss: 0.18,
+      takeProfits: [0.2, "0.21"],
+      openedAt: "2026-08-31T00:00:00.000Z",
+      [hostile.field]: hostile.value()
+    };
+    const mirror = {
+      ...ADA_EXCHANGE,
+      accountId: "account-json-safe",
+      exchange: "OKX",
+      rawSyncedAt: "2026-08-31T00:01:00.000Z"
+    };
+    const rows = normalizePositionsForUi([engine, mirror], {
+      executionOrders: [{
+        id: "execution-json-safe", symbol: "ADA/USDT", direction: "long",
+        accountId: "account-json-safe", exchange: "OKX"
+      }]
+    });
+
+    let encoded;
+    assert.doesNotThrow(() => { encoded = JSON.stringify(rows); });
+    const [row] = JSON.parse(encoded);
+    assert.equal(row.positionId, "position-json-safe");
+    assert.equal(row.executionOrderId, "execution-json-safe");
+    assert.equal(row.stopLoss, 0.18);
+    assert.deepEqual(row.takeProfits, [0.2, 0.21]);
+    assert.equal(Object.hasOwn(row, hostile.field), false);
+  });
+}
+
+test("malformed target collections are omitted without invalidating an otherwise truthful Position", () => {
+  const revokedTargets = Proxy.revocable([0.2, 0.21], {});
+  revokedTargets.revoke();
+  const [row] = normalizePositionsForUi([{
+    ...ADA_ENGINE,
+    positionId: "position-malformed-targets",
+    stopLoss: 0.18,
+    takeProfits: revokedTargets.proxy
+  }, ADA_EXCHANGE]);
+
+  let encoded;
+  assert.doesNotThrow(() => { encoded = JSON.stringify(row); });
+  const parsed = JSON.parse(encoded);
+  assert.equal(parsed.positionId, "position-malformed-targets");
+  assert.equal(parsed.stopLoss, 0.18);
+  assert.equal(Object.hasOwn(parsed, "takeProfits"), false);
+});
