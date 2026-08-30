@@ -2325,12 +2325,16 @@
 .kordynV2PositionMobileDetail {
   min-width: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
 }
 
 .kordynV2PositionTruth.is-mobile {
+  width: 100%;
   padding: 14px;
   display: grid;
+  grid-column: 1;
+  grid-row: auto;
   grid-template-rows: auto auto auto auto auto;
   gap: 12px;
   overflow: visible;
@@ -2348,11 +2352,12 @@
 }
 
 .kordynV2PositionTruth.is-mobile > header h2 {
+  flex: 0 1 auto;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
   overflow-wrap: normal;
   font-size: 17px;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   white-space: nowrap;
   word-break: keep-all;
 }
@@ -2366,6 +2371,17 @@
 
 .kordynV2PositionTruth.is-mobile .kordynV2PositionPrimaryFacts {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.kordynV2PositionTruth.is-mobile .kordynV2PositionPrimaryFacts dd,
+.kordynV2PositionTruth.is-mobile .kordynV2PositionSecondaryFacts dd,
+.kordynV2PositionInspector.is-mobile dd,
+.kordynV2PositionInspector.is-mobile .kordynV2PositionProtectionEvidence > header > span {
+  overflow: hidden;
+  overflow-wrap: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: keep-all;
 }
 
 .kordynV2PositionTruth.is-mobile .kordynV2PositionPrimaryFacts > div {
@@ -2385,7 +2401,10 @@
 }
 
 .kordynV2PositionInspector.is-mobile {
+  width: 100%;
   padding: 0;
+  grid-column: 1;
+  grid-row: auto;
   overflow: visible;
   border: 0;
   background: transparent;
