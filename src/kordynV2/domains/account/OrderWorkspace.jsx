@@ -43,6 +43,28 @@ function selectedOrderFor(model, selection) {
   return matches.length === 1 ? { row: matches[0], type: selection.object.type } : null;
 }
 
+function relatedFillMatchesOrder(selected, fill) {
+  const row = selected?.row;
+  if (!row || !fill) return false;
+  let matched = false;
+  const requireMatch = (value, accepted) => {
+    if (!validIdentity(value)) return true;
+    if (!accepted.length) return false;
+    if (!accepted.includes(value)) return false;
+    matched = true;
+    return true;
+  };
+  if (selected.type === "Execution") {
+    if (!requireMatch(fill.executionOrderId, [row.id].filter(validIdentity))) return false;
+    return matched;
+  }
+  const executionIds = [row.executionOrderId].filter(validIdentity);
+  const orderIds = [row.id, row.orderId, row.exchangeOrderId].filter(validIdentity);
+  if (!requireMatch(fill.executionOrderId, executionIds)) return false;
+  if (!requireMatch(fill.orderId, orderIds)) return false;
+  return matched;
+}
+
 function Lane({ kind, rows, availability, selection, onSelect }) {
   const executionLane = kind === "Execution";
   const candidateFor = executionLane ? executionWorkspaceSelectionCandidate : orderSelectionCandidate;
@@ -67,7 +89,7 @@ function Lane({ kind, rows, availability, selection, onSelect }) {
 function OrderTruth({ selected, model, headingRef = null, mobile = false, onSelect = () => {} }) {
   if (!selected) return <section className="kordynV2ExecutionTruth is-empty"><CircleAlert aria-hidden="true" /><span><h2 ref={headingRef} tabIndex={mobile ? -1 : undefined}>选择执行或订单</h2><p>分别查看执行意图与交易所接受事实。</p></span></section>;
   const { row, type } = selected;
-  const linkedFills = (Array.isArray(model?.fills) ? model.fills : []).filter((fill) => fill.executionOrderId === row.executionOrderId || fill.executionOrderId === row.id || fill.orderId === row.id);
+  const linkedFills = (Array.isArray(model?.fills) ? model.fills : []).filter((fill) => relatedFillMatchesOrder(selected, fill));
   return (
     <section className={`kordynV2ExecutionTruth${mobile ? " is-mobile" : ""}`} data-kordyn-v2-object-id={row.id} data-kordyn-v2-object-type={type}>
       <header><span><GitCommitHorizontal aria-hidden="true" /><h2 ref={headingRef} tabIndex={mobile ? -1 : undefined}>{text(row.symbol)} · {type}</h2></span><em>{text(row.status)}</em></header>

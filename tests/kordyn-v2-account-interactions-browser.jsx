@@ -7,6 +7,12 @@ import { createV2Selection } from "../src/kordynV2/viewModels/selection.js";
 
 const asOf = new Date().toISOString();
 const openedAt = new Date(Date.parse(asOf) - 60_000).toISOString();
+const longFinancialBasis = [
+  "exchange_fills_and_okx_funding_bills_reconciled",
+  "fees: entry and close separated",
+  "funding bills checked",
+  "poster output remains a bounded server-download action"
+].join(" · ").repeat(6);
 const rawPositionMirrors = Object.freeze([
   Object.freeze({
     positionId: "position-1", symbol: "ETH/USDT", instId: "ETH-USDT-SWAP", direction: "long",
@@ -57,6 +63,24 @@ const data = Object.freeze({
     riskPercent: 0.7,
     evidenceIds: Object.freeze(["evidence-2"]),
     lastRiskCheck: Object.freeze({ id: "risk-2", passed: true, summary: "账户保证金、最大亏损与事件窗口均已核对。", warnings: Object.freeze([]), blockers: Object.freeze([]) })
+  }), Object.freeze({
+    id: "plan-orphan",
+    status: "awaiting_approval",
+    symbol: "DOGE/USDT",
+    direction: "long",
+    strategy: "orphan_execution_guard",
+    agentRunId: "mission-orphan",
+    executionOrderId: "execution-missing",
+    createdAt: openedAt,
+    expiresAt: asOf,
+    entry_range: Object.freeze([0.188, 0.19]),
+    stopLoss: 0.181,
+    takeProfit: Object.freeze([0.198, 0.206]),
+    quantity: 1200,
+    leverage: 2,
+    riskPercent: 0.4,
+    evidenceIds: Object.freeze(["evidence-orphan"]),
+    lastRiskCheck: Object.freeze({ id: "risk-orphan", passed: true, summary: "计划自身有效，但关联 Execution 未在权威对象表中唯一解析。", warnings: Object.freeze([]), blockers: Object.freeze([]) })
   }), Object.freeze({
     id: "plan-3",
     status: "awaiting_approval",
@@ -155,7 +179,7 @@ const data = Object.freeze({
     netRealizedPnl: 402.96,
     closeCount: 1,
     financialBasisComplete: true,
-    financialBasis: "exchange_fills_and_okx_funding_bills_reconciled",
+    financialBasis: longFinancialBasis,
     createdAt: asOf
   })]),
   reconciliationReports: Object.freeze([]),

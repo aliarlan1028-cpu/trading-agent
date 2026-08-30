@@ -50,10 +50,10 @@ function MobileRow({ candidate, selection, returnFocusRef, onSelect, icon: Icon,
 
 function PlanList({ model, selection, returnFocusRef, onSelect }) {
   const rows = Array.isArray(model?.plans) ? model.plans : [];
-  const state = model?.availability?.plans?.state || "absent";
+  const state = availabilityState(model?.availability?.plans);
   return (
     <section className="kordynV2ExecutionMobileList" aria-label="移动交易计划">
-      <header><span><FileText size={18} aria-hidden="true" /><h2>计划</h2></span><em>{state === "loaded" ? rows.length : unavailable}</em></header>
+      <header><span><FileText size={18} aria-hidden="true" /><h2>计划</h2></span><em>{availabilityCount(rows, state)}</em></header>
       {rows.map((row) => (
         <MobileRow
           key={row.id}
@@ -68,7 +68,7 @@ function PlanList({ model, selection, returnFocusRef, onSelect }) {
           tone={row.approval?.valid ? "warning" : "neutral"}
         />
       ))}
-      {!rows.length && <p role="status">{state === "loaded" ? "当前没有交易计划。" : "交易计划明确未加载。"}</p>}
+      {!rows.length && <p role="status">{availabilityCopy("交易计划", state, "当前没有交易计划。")}</p>}
     </section>
   );
 }

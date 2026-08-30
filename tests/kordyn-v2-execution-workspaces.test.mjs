@@ -396,6 +396,53 @@ test("execution workspaces preserve absent and invalid resource states instead o
   assert.doesNotMatch(invalidFills, /当前没有成交|暂无真实交易复盘对象/u);
 });
 
+test("Plan and closed-trade presentation truth distinguishes invalid, absent, and loaded-empty states", () => {
+  const props = { truth, state: readyState, actions: {}, actionsDisabled: false, selection: null, onSelect() {} };
+  const absent = modelFixture({ tradePlans: undefined, fills: undefined, closedTradeLifecycles: undefined });
+  const invalid = modelFixture({ tradePlans: [{}], fills: [{}], closedTradeLifecycles: [{}] });
+  const loadedEmpty = modelFixture({ tradePlans: [], fills: [], closedTradeLifecycles: [] });
+
+  const absentPlanDesktop = renderToStaticMarkup(React.createElement(PlanWorkspace, { ...props, model: absent }));
+  const invalidPlanDesktop = renderToStaticMarkup(React.createElement(PlanWorkspace, { ...props, model: invalid }));
+  const loadedEmptyPlanDesktop = renderToStaticMarkup(React.createElement(PlanWorkspace, { ...props, model: loadedEmpty }));
+  const invalidPlanMobile = renderToStaticMarkup(React.createElement(MobileExecutionScreen, { ...props, model: invalid, workspaceId: "plans", view: "list" }));
+
+  assert.match(absentPlanDesktop, /交易计划明确未加载/u);
+  assert.match(invalidPlanDesktop, /交易计划事实不可用/u);
+  assert.match(invalidPlanMobile, /交易计划事实不可用/u);
+  assert.match(loadedEmptyPlanDesktop, /当前没有交易计划/u);
+  assert.doesNotMatch(invalidPlanDesktop, /当前没有交易计划|交易计划明确未加载/u);
+
+  const absentFillDesktop = renderToStaticMarkup(React.createElement(FillWorkspace, { ...props, model: absent }));
+  const invalidFillDesktop = renderToStaticMarkup(React.createElement(FillWorkspace, { ...props, model: invalid }));
+  const loadedEmptyFillDesktop = renderToStaticMarkup(React.createElement(FillWorkspace, { ...props, model: loadedEmpty }));
+
+  assert.match(absentFillDesktop, /成交流水明确未加载|完整生命周期明确未加载/u);
+  assert.match(invalidFillDesktop, /成交流水事实不可用/u);
+  assert.match(invalidFillDesktop, /完整生命周期事实不可用/u);
+  assert.match(loadedEmptyFillDesktop, /当前没有成交|暂无完整平仓生命周期/u);
+  assert.doesNotMatch(invalidFillDesktop, /当前没有成交|完整生命周期明确未加载/u);
+});
+
+test("Order to Fill related rows reject contradictory explicit order or execution identifiers while preserving valid siblings", () => {
+  const model = modelFixture({
+    fills: [
+      fill({ id: "fill-valid", executionOrderId: "execution-1", orderId: "order-1" }),
+      fill({ id: "fill-order-conflict", executionOrderId: "execution-1", orderId: "different-order" }),
+      fill({ id: "fill-execution-conflict", executionOrderId: "different-execution", orderId: "order-1" })
+    ]
+  });
+  const html = renderToStaticMarkup(React.createElement(OrderWorkspace, {
+    model,
+    truth,
+    state: readyState,
+    selection: selection("order-1", "Order"),
+    onSelect() {}
+  }));
+  assert.match(html, /Fill fill-valid/u);
+  assert.doesNotMatch(html, /fill-order-conflict|fill-execution-conflict/u);
+});
+
 test("plan decisions reuse the authoritative settlement classifier without optimistic success", async () => {
   const projectedPlan = modelFixture().plans[0];
   const states = [];

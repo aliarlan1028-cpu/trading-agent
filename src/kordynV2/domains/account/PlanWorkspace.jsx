@@ -13,6 +13,18 @@ const finite = (value) => typeof value === "number" && Number.isFinite(value);
 const number = (value, suffix = "") => finite(value)
   ? `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 8 }).format(value)}${suffix}`
   : unavailable;
+const availabilityState = (availability) => typeof availability?.state === "string" && availability.state ? availability.state : "absent";
+const availabilityCount = (rows, state) => state === "loaded" ? rows.length : unavailable;
+const availabilityCopy = (label, state, loadedEmpty) => {
+  if (state === "loaded") return loadedEmpty;
+  if (state === "invalid") return `${label}事实不可用。`;
+  if (state === "loading" || state === "processing") return `${label}正在加载。`;
+  if (state === "failed") return `${label}加载失败。`;
+  if (state === "forbidden") return `${label}无权限读取。`;
+  if (state === "disabled") return `${label}当前已禁用。`;
+  if (state === "stale" || state === "degraded") return `${label}状态非最新，请刷新。`;
+  return `${label}明确未加载。`;
+};
 
 export function planSelectionCandidate(plan) {
   return validIdentity(plan?.id)
@@ -50,10 +62,10 @@ function statusLabel(value) {
 
 function PlanRegistry({ model, selection, onSelect }) {
   const rows = Array.isArray(model?.plans) ? model.plans : [];
-  const state = model?.availability?.plans?.state || "absent";
+  const state = availabilityState(model?.availability?.plans);
   return (
     <section className="kordynV2ExecutionRegistry" aria-label="交易计划列表">
-      <header><h2>交易计划</h2><span>{state === "loaded" ? rows.length : unavailable}</span></header>
+      <header><h2>交易计划</h2><span>{availabilityCount(rows, state)}</span></header>
       <div>
         {rows.map((plan) => {
           const candidate = planSelectionCandidate(plan);
@@ -68,7 +80,7 @@ function PlanRegistry({ model, selection, onSelect }) {
             </button>
           );
         })}
-        {!rows.length && <p role="status">{state === "loaded" ? "当前没有交易计划。" : "交易计划明确未加载。"}</p>}
+        {!rows.length && <p role="status">{availabilityCopy("交易计划", state, "当前没有交易计划。")}</p>}
       </div>
     </section>
   );

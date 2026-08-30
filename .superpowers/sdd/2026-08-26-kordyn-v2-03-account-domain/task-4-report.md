@@ -83,6 +83,32 @@ Result: exit 1 during iterative RED runs.
 Failures covered desktop Account overflow at 1440, related Execution selection not landing in a renderable Account workspace, and APP Trade plan action state never entering processing.
 ```
 
+## Second post-review remediation
+
+Second read-only Task 4 review returned Critical 0, Important 4, Minor 1. I verified all five findings against the code and kept the fix inside Task 4.
+
+Addressed findings:
+
+- I1: Desktop `Plan`, Desktop `Fill`/`Closed trade`, and APP `Plan` presentation now distinguish invalid, absent, adverse, and authoritative loaded-empty availability instead of collapsing invalid into "not loaded".
+- I2: `KordynV2Root` now resolves the canonical selection before routing. Invalid, missing, duplicate, stale/forbidden, or ambiguous candidates do not move workspace and do not change Object/Context/Trace. Related controls therefore cannot route unless the target object is uniquely resolvable.
+- I3: `Order` → `Fill` related rows now fail closed when any present `executionOrderId` or `orderId` contradicts the selected order/execution while preserving valid sibling fills.
+- I4: APP closed-trade output uses an Account-owned mobile bottom sheet under the existing mobile execution surface while desktop keeps the centered modal sheet. The sheet preserves 44px controls, no horizontal overflow, the same bounded poster action, and the existing focus trap.
+- M1: the browser gate now verifies mobile sheet initial focus, Shift+Tab trap, Escape close, trigger focus restoration, horizontal geometry, bottom docking, and long-content body scrolling before continuing with later APP actions.
+
+Second review-fix RED evidence:
+
+```text
+node scripts/run-tests-isolated.mjs tests/kordyn-v2-execution-workspaces.test.mjs
+Result: exit 1; 21 tests; 19 passed; 2 failed.
+Failures covered invalid-vs-absent/loaded-empty presentation truth and contradictory Order→Fill related rows.
+```
+
+```text
+node tests/run-kordyn-v2-account-interactions-browser.mjs
+Result: exit 1.
+Failure: invalid related Execution candidate moved the production root from plans to orders and changed selection from plan-orphan to position-1.
+```
+
 ## Authority and safety decisions
 
 - `Trade plan` remains the deployed shell type; no new `Plan` object type was introduced.
@@ -109,21 +135,21 @@ Fresh focused Task 4:
 
 ```text
 node scripts/run-tests-isolated.mjs tests/kordyn-v2-execution-workspaces.test.mjs
-Result: exit 0; 19/19 passed.
+Result: exit 0; 21/21 passed.
 ```
 
 Task 4 plus legacy execution/poster compatibility:
 
 ```text
 node scripts/run-tests-isolated.mjs tests/kordyn-v2-execution-workspaces.test.mjs tests/trade-lifecycle-boundary.test.mjs tests/okx-net-fill-classification.test.mjs tests/manual-exit-attribution.test.mjs tests/closed-trade-poster.test.mjs
-Result: exit 0; 109/109 passed.
+Result: exit 0; 111/111 passed.
 ```
 
 Task 1–4 account/state/selection/lazy/protection/normalizer/execution regression batch:
 
 ```text
 node scripts/run-tests-isolated.mjs tests/kordyn-v2-position-workspace.test.mjs tests/position-view.test.mjs tests/position-protection-evidence.test.mjs tests/exchange-protection-accounting.test.mjs tests/position-manager-move-stop.test.mjs tests/kordyn-v2-account-model.test.mjs tests/kordyn-v2-account-actions.test.mjs tests/kordyn-v2-account-cockpit.test.mjs tests/kordyn-v2-account-interactions.test.mjs tests/kordyn-v2-ai-workspace.test.mjs tests/kordyn-v2-state-boundary.test.mjs tests/kordyn-v2-state.test.mjs tests/kordyn-v2-ai-context-selection.test.mjs tests/kordyn-v2-execution-workspaces.test.mjs tests/trade-lifecycle-boundary.test.mjs tests/okx-net-fill-classification.test.mjs tests/manual-exit-attribution.test.mjs tests/closed-trade-poster.test.mjs
-Result: exit 0; 313/313 passed.
+Result: exit 0; 315/315 passed.
 ```
 
 Prototype visual contract regression after shell projection correction:
@@ -147,13 +173,15 @@ The Chrome gate mounts real Account production components, plus the production `
 - Desktop closed-trade output sheet and `downloadClosedTradePoster("execution-2")`;
 - APP `Trade plan`, `Execution`, `Order`, `Fill`, `Closed trade`, and `Review` list/detail rows;
 - APP approve processing/partial, repeat-tap disable, reject succeeded, closed-trade poster tap/download state, detail focus, Back focus restoration;
+- invalid related-object rejection without workspace/selection movement;
+- APP closed-trade bottom-sheet focus trap, Escape close, trigger focus restoration, long-content body scroll, bottom docking, and no-overflow geometry;
 - desktop 1440/1180 and APP 390/430 no-overflow geometry.
 
 Full suite:
 
 ```text
 npm test
-Result: exit 0; 2031/2031 passed.
+Result: exit 0; 2033/2033 passed.
 ```
 
 Lint:

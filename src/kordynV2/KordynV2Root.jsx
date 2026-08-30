@@ -151,13 +151,20 @@ export function KordynV2Root({ api, lang }) {
   }, [data, defaultCandidate, selectedCandidate]);
 
   const select = useCallback((candidate) => {
-    const targetLocation = accountLocationForSelection(candidate, viewport);
+    const nextSelection = createV2Selection({ data, candidate });
+    if (!nextSelection) return;
+    const selectedObject = nextSelection.object;
+    const targetLocation = accountLocationForSelection({
+      ...candidate,
+      id: selectedObject.id,
+      type: selectedObject.type
+    }, viewport);
     if (targetLocation) {
       returnPromptFocusRef.current = false;
       setLocation(targetLocation);
     }
-    setSelectedCandidate(candidate && typeof candidate === "object" ? { id: candidate.id, type: candidate.type } : null);
-  }, [viewport]);
+    setSelectedCandidate({ id: selectedObject.id, type: selectedObject.type });
+  }, [data, viewport]);
 
   const truth = useMemo(() => buildAccountTruth(data, domain.truthMode), [data, domain.truthMode]);
   const resourceState = data?.resourceState?.[location.resourceSection] || (api?.data ? "loaded" : "loading");

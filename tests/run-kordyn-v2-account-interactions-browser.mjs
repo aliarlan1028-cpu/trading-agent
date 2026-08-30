@@ -77,6 +77,10 @@ async function click(cdp, selector) {
   assert.equal(clicked, true, `click target exists: ${selector}`);
 }
 
+async function pause(cdp, ms = 80) {
+  await evaluate(cdp, `new Promise((resolve) => setTimeout(resolve, ${Number(ms)}))`);
+}
+
 async function viewport(cdp, width, height, mobile = false) {
   await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile });
 }
@@ -230,6 +234,12 @@ try {
   await click(cdp, `${rootShell} [data-kordyn-v2-workspace-target="plans"]`);
   await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${rootShell} [data-kordyn-v2-shell="desktop"]`)})?.dataset.kordynV2Workspace === "plans"`, "root plans workspace");
   await assertNoOverflow(cdp, rootShell, "desktop root account plans 1440");
+  await click(cdp, `${rootShell} [data-kordyn-v2-object-id="plan-orphan"][data-kordyn-v2-object-type="Trade plan"]`);
+  await waitForExpression(cdp, `(() => { const root = document.querySelector(${JSON.stringify(`${rootShell} [data-kordyn-v2-shell="desktop"]`)}); return root?.dataset.kordynV2Workspace === "plans" && root?.dataset.kordynV2SelectedId === "plan-orphan" && root?.dataset.kordynV2SelectedType === "Trade plan"; })()`, "root orphan Trade plan selection");
+  const rootBeforeRejectedSelection = await evaluate(cdp, `(() => { const root = document.querySelector(${JSON.stringify(`${rootShell} [data-kordyn-v2-shell="desktop"]`)}); return { workspace: root?.dataset.kordynV2Workspace, id: root?.dataset.kordynV2SelectedId, type: root?.dataset.kordynV2SelectedType }; })()`);
+  await click(cdp, `${rootShell} .kordynV2ExecutionRelatedLink[data-kordyn-v2-object-id="execution-missing"][data-kordyn-v2-object-type="Execution"]`);
+  await pause(cdp);
+  assert.deepEqual(await evaluate(cdp, `(() => { const root = document.querySelector(${JSON.stringify(`${rootShell} [data-kordyn-v2-shell="desktop"]`)}); return { workspace: root?.dataset.kordynV2Workspace, id: root?.dataset.kordynV2SelectedId, type: root?.dataset.kordynV2SelectedType }; })()`), rootBeforeRejectedSelection);
   await click(cdp, `${rootShell} [data-kordyn-v2-object-id="plan-2"][data-kordyn-v2-object-type="Trade plan"]`);
   await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${rootShell} [data-kordyn-v2-shell="desktop"]`)})?.dataset.kordynV2SelectedId === "plan-2"`, "root Trade plan selection");
   await click(cdp, `${rootShell} .kordynV2ExecutionRelatedLink[data-kordyn-v2-object-type="Execution"]`);
@@ -287,9 +297,53 @@ try {
   const posterBefore = await evaluate(cdp, "window.__kordynV2AccountInteractionCalls.poster?.length || 0");
   await click(cdp, `${fillMobileRoot} .kordynV2ExecutionPrimaryAction`);
   await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${fillMobileRoot} [data-kordyn-v2-closed-trade-output-scrim]`)})`, "APP Closed trade output sheet");
+  await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${fillMobileRoot} [data-kordyn-v2-closed-output-close]`)}) === document.activeElement`, "APP Closed trade output initial focus");
+  const mobileSheetGeometry = await evaluate(cdp, `(() => {
+    const sheet = document.querySelector(${JSON.stringify(`${fillMobileRoot} .kordynV2ClosedTradeOutputSheet`)});
+    const body = document.querySelector(${JSON.stringify(`${fillMobileRoot} .kordynV2ClosedTradeOutputBody`)});
+    if (!sheet || !body) return null;
+    const rect = sheet.getBoundingClientRect();
+    const style = getComputedStyle(body);
+    return {
+      innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight,
+      left: Math.round(rect.left),
+      right: Math.round(rect.right),
+      bottom: Math.round(rect.bottom),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+      bodyClientHeight: body.clientHeight,
+      bodyScrollHeight: body.scrollHeight,
+      bodyOverflowY: style.overflowY
+    };
+  })()`);
+  assert.ok(mobileSheetGeometry, "APP closed-trade sheet geometry exists");
+  assert.ok(mobileSheetGeometry.left >= -1 && mobileSheetGeometry.right <= mobileSheetGeometry.innerWidth + 1, `APP closed-trade sheet horizontal geometry: ${JSON.stringify(mobileSheetGeometry)}`);
+  assert.ok(Math.abs(mobileSheetGeometry.bottom - mobileSheetGeometry.innerHeight) <= 2, `APP closed-trade sheet docks to bottom: ${JSON.stringify(mobileSheetGeometry)}`);
+  assert.ok(mobileSheetGeometry.bodyScrollHeight > mobileSheetGeometry.bodyClientHeight, `APP closed-trade body scrolls long content: ${JSON.stringify(mobileSheetGeometry)}`);
+  assert.match(mobileSheetGeometry.bodyOverflowY, /auto|scroll/u);
+  const trapResult = await evaluate(cdp, `(() => {
+    const sheet = document.querySelector(${JSON.stringify(`${fillMobileRoot} .kordynV2ClosedTradeOutputSheet`)});
+    const close = document.querySelector(${JSON.stringify(`${fillMobileRoot} [data-kordyn-v2-closed-output-close]`)});
+    const action = document.querySelector(${JSON.stringify(`${fillMobileRoot} .kordynV2ClosedTradeOutputSheet footer button`)});
+    close.focus();
+    const event = new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true });
+    sheet.dispatchEvent(event);
+    return { prevented: event.defaultPrevented, activeIsAction: document.activeElement === action };
+  })()`);
+  assert.deepEqual(trapResult, { prevented: true, activeIsAction: true });
   await click(cdp, `${fillMobileRoot} .kordynV2ClosedTradeOutputSheet footer button`);
   await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${fillMobileRoot} [data-output-state="returned"]`)})`, "APP Closed trade poster returned");
   assert.equal(await evaluate(cdp, "window.__kordynV2AccountInteractionCalls.poster?.length || 0"), posterBefore + 1);
+  const escapeResult = await evaluate(cdp, `(() => {
+    const sheet = document.querySelector(${JSON.stringify(`${fillMobileRoot} .kordynV2ClosedTradeOutputSheet`)});
+    const event = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    sheet.dispatchEvent(event);
+    return event.defaultPrevented;
+  })()`);
+  assert.equal(escapeResult, true);
+  await waitForExpression(cdp, `!document.querySelector(${JSON.stringify(`${fillMobileRoot} [data-kordyn-v2-closed-trade-output-scrim]`)})`, "APP Closed trade sheet keyboard close");
+  await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${fillMobileRoot} .kordynV2ExecutionPrimaryAction`)}) === document.activeElement`, "APP Closed trade output returns trigger focus");
   await click(cdp, `${fillMobileRoot} [data-kordyn-v2-execution-back="fills"]`);
   await click(cdp, `${fillMobileRoot} [data-kordyn-v2-object-id="review-2"][data-kordyn-v2-object-type="Review"]`);
   await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${fillMobileRoot} [data-kordyn-v2-execution-mobile-view="detail"] h2`)}) === document.activeElement`, "APP Review detail focus");

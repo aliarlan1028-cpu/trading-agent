@@ -3172,6 +3172,26 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+@media (max-width: 767px) {
+  .kordynV2ExecutionMobile .kordynV2ClosedTradeScrim {
+    padding: 0;
+    place-items: end stretch;
+  }
+
+  .kordynV2ExecutionMobile .kordynV2ClosedTradeOutputSheet {
+    width: 100%;
+    max-height: min(72vh, calc(100dvh - 20px));
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 22px 22px 0 0;
+  }
+
+  .kordynV2ExecutionMobile .kordynV2ClosedTradeOutputBody {
+    overscroll-behavior: contain;
+  }
+}
+
 @media (max-width: 1180px) and (min-width: 768px) {
   .kordynV2ExecutionWorkbench,
   .kordynV2OrderWorkbench,

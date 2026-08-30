@@ -11,6 +11,18 @@ const validIdentity = (value) => typeof value === "string"
 const text = (value) => typeof value === "string" && value ? value : unavailable;
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
 const number = (value) => finite(value) ? new Intl.NumberFormat("en-US", { maximumFractionDigits: 8 }).format(value) : unavailable;
+const availabilityState = (availability) => typeof availability?.state === "string" && availability.state ? availability.state : "absent";
+const availabilityCount = (rows, state) => state === "loaded" ? rows.length : unavailable;
+const availabilityCopy = (label, state, loadedEmpty) => {
+  if (state === "loaded") return loadedEmpty;
+  if (state === "invalid") return `${label}事实不可用。`;
+  if (state === "loading" || state === "processing") return `${label}正在加载。`;
+  if (state === "failed") return `${label}加载失败。`;
+  if (state === "forbidden") return `${label}无权限读取。`;
+  if (state === "disabled") return `${label}当前已禁用。`;
+  if (state === "stale" || state === "degraded") return `${label}状态非最新，请刷新。`;
+  return `${label}明确未加载。`;
+};
 
 function candidate(row, type, route) {
   return validIdentity(row?.id) ? { id: row.id, type, workspaceId: "account", route, sourceSection: "cockpit" } : null;
@@ -34,32 +46,32 @@ function selectedFillObject(model, selection) {
 
 function FillRegistry({ model, selection, onSelect }) {
   const rows = Array.isArray(model?.fills) ? model.fills : [];
-  const state = model?.availability?.fills?.state || "absent";
+  const state = availabilityState(model?.availability?.fills);
   return (
     <section className="kordynV2ExecutionRegistry" aria-label="成交流水">
-      <header><h2>不可变 Fill 流水</h2><span>{state === "loaded" ? rows.length : unavailable}</span></header>
+      <header><h2>不可变 Fill 流水</h2><span>{availabilityCount(rows, state)}</span></header>
       <div>{rows.map((row) => {
         const item = fillSelectionCandidate(row);
         if (!item) return null;
         const selected = selection?.object?.type === item.type && selection.object.id === item.id;
         return <button key={item.id} type="button" data-kordyn-v2-object-id={item.id} data-kordyn-v2-object-type="Fill" aria-pressed={selected} data-selected={selected} onClick={(event) => onSelect(item, event)}><span><strong>{text(row.symbol)}</strong><em>{text(row.kind)}</em></span><b>{number(row.quantity)} @ {number(row.price)}</b><small>{row.id} · {text(row.createdAt)}</small><small>{text(row.source)} · fee {number(row.feeUsdt)}</small></button>;
-      })}{!rows.length && <p role="status">{state === "loaded" ? "当前没有成交。" : "成交流水明确未加载。"}</p>}</div>
+      })}{!rows.length && <p role="status">{availabilityCopy("成交流水", state, "当前没有成交。")}</p>}</div>
     </section>
   );
 }
 
 function ClosedTradeRegistry({ model, selection, onSelect }) {
   const rows = Array.isArray(model?.closedTrades) ? model.closedTrades : [];
-  const state = model?.availability?.closedTrades?.state || "absent";
+  const state = availabilityState(model?.availability?.closedTrades);
   return (
     <section className="kordynV2ClosedTradeRegistry" aria-label="已平仓生命周期">
-      <header><span><Scale aria-hidden="true" /><h2>已平仓生命周期</h2></span><em>{state === "loaded" ? rows.length : unavailable}</em></header>
+      <header><span><Scale aria-hidden="true" /><h2>已平仓生命周期</h2></span><em>{availabilityCount(rows, state)}</em></header>
       <div>{rows.map((row) => {
         const item = closedTradeSelectionCandidate(row);
         if (!item) return null;
         const selected = selection?.object?.type === item.type && selection.object.id === item.id;
         return <button key={item.id} type="button" data-kordyn-v2-object-id={item.id} data-kordyn-v2-object-type="Closed trade" aria-pressed={selected} data-selected={selected} onClick={(event) => onSelect(item, event)}><span><strong>{text(row.symbol)}</strong><em>{row.finality === "finance_reconciled" ? "财务已对账" : "财务未完成"}</em></span><b data-pnl-tone={finite(row.netRealizedPnl) && row.netRealizedPnl < 0 ? "negative" : finite(row.netRealizedPnl) ? "positive" : "unavailable"}>{number(row.netRealizedPnl)}</b><small>{text(row.financialBasis)}</small></button>;
-      })}{!rows.length && <p>{state === "loaded" ? "暂无完整平仓生命周期。" : "完整生命周期明确未加载。"}</p>}</div>
+      })}{!rows.length && <p role="status">{availabilityCopy("完整生命周期", state, "暂无完整平仓生命周期。")}</p>}</div>
     </section>
   );
 }
