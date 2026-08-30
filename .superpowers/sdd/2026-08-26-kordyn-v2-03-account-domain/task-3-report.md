@@ -516,3 +516,50 @@ Result: exit 0; 183/183 passed, 0 failed; duration 632.326542 ms.
 - `npm run lint`: exit 0, no findings.
 - `npm run build`: exit 0; 1,715 modules transformed in 1.53s; Account lazy CSS remained `index-DdtT6d4G.css`, 42.83 kB / 6.69 kB gzip.
 - Final syntax, diff, scope, commit, and clean-worktree evidence is recorded after this report update.
+
+## Canonical Position identity laundering correction after `091ce71`
+
+### Remaining semantic gap
+
+`091ce71` introduced an explicit JSON-safe Position response allowlist, but the normalizer did not validate every raw canonical identity alias before applying that allowlist. A present invalid higher-precedence alias such as `id: 17` could be omitted from the response while a valid lower alias such as `positionId: "position-1"` survived. The Account model then saw a different, apparently valid record and could expose it as a selectable, verified Position. This was semantic identity laundering rather than harmless field sanitization.
+
+The correction is limited to the existing read-only Position UI projection. It changes no database, schema, API action, route, permission, trading, execution, or risk behavior. The Impeccable detector was not rerun.
+
+### RED
+
+The end-to-end raw Position + mirror + Execution chain now covers all four deployed canonical aliases in exact precedence order (`id → positionId → instId → symbol`). For every alias it exercises a non-string, object, control-character string, whitespace-bearing string, and reserved placeholder (`Unavailable`, `unknown`, `n/a`, or `—`). Every present invalid alias must reject that whole raw row before grouping, JSON serialization, or `buildAccountDomainModel()`, while a valid sibling remains serializable, selectable, and protection-verified. The rejected engine must not lend its Execution, stop, or other provenance to the surviving mirror row, and no Registry `data-kordyn-v2-object-id` may be derived from any of its aliases. A separate compatibility test proves that valid aliases are preserved exactly and a truly absent/empty higher alias may still fall through.
+
+Command:
+
+```text
+node scripts/run-tests-isolated.mjs tests/position-view.test.mjs tests/kordyn-v2-position-workspace.test.mjs
+```
+
+Result before production edits: exit 1; 67 tests, 50 passed / 17 failed; duration 230.947167 ms. The failures exposed number/object/control/whitespace/placeholder laundering for `id` and `positionId`, control/whitespace/placeholder laundering for `instId` and `symbol`, and the empty higher alias being incorrectly retained in the output. Non-string `instId` and `symbol` cases were already rejected by the earlier scalar boundary and remained as positive hostile-input coverage.
+
+### GREEN boundary
+
+- Position inputs now pass a descriptor-safe tri-state canonical-identity check before any open filter, grouping, output projection, or mirror/Execution attachment.
+- Null, undefined, and the deployed empty-string absence form remain absent. Any other present alias must be a bounded exact-trim string without Unicode whitespace or control characters and must not be a reserved unavailable placeholder.
+- One invalid alias rejects the entire row even when another alias would otherwise satisfy the canonical precedence. Missing higher aliases continue to fall through exactly as the deployed `canonicalPositionIdentity()` contract allows.
+- Because rejected rows never enter `baseGroups`, their engine provenance cannot be attached to a valid mirror or sibling. The explicit response allowlist remains JSON-safe and now omits empty text values rather than manufacturing a partial identity field.
+- Execution normalization keeps its existing bounded identity semantics; the stricter four-alias requirement is applied only to Position inputs.
+
+Focused GREEN: exit 0; 67/67 passed; duration 279.547291 ms.
+
+Fresh Task 3 + Position/protection + Task 1/2 account/state/selection/lazy regression:
+
+```text
+node scripts/run-tests-isolated.mjs tests/kordyn-v2-position-workspace.test.mjs tests/position-view.test.mjs tests/position-protection-evidence.test.mjs tests/exchange-protection-accounting.test.mjs tests/position-manager-move-stop.test.mjs tests/kordyn-v2-account-model.test.mjs tests/kordyn-v2-account-actions.test.mjs tests/kordyn-v2-account-cockpit.test.mjs tests/kordyn-v2-account-interactions.test.mjs tests/kordyn-v2-ai-workspace.test.mjs tests/kordyn-v2-state-boundary.test.mjs tests/kordyn-v2-state.test.mjs tests/kordyn-v2-ai-context-selection.test.mjs
+```
+
+Result: exit 0; 204/204 passed, 0 failed; duration 902.337875 ms in the final current-worktree run.
+
+### Fresh final gates for this correction
+
+- The two focused Position suites were rerun after the final report/test-name edit: exit 0; 67/67 passed, duration 872.937917 ms.
+- Real production Account browser runner: exit 0 in 6.99s with `Kordyn V2 account production interaction browser checks passed`.
+- Full `npm test`: exit 0; 2,012/2,012 passed, 0 failed/cancelled/skipped/todo; duration 15,910.083375 ms; isolated test root cleaned.
+- `npm run lint`: exit 0, no ESLint findings.
+- `npm run build`: exit 0; 1,715 modules transformed in 1.66s; Account lazy CSS remained `index-DdtT6d4G.css`, 42.83 kB / 6.69 kB gzip.
+- Final syntax, diff, scope, commit, and clean-worktree evidence is recorded after this report update.

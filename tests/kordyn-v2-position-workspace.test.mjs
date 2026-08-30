@@ -420,6 +420,93 @@ test("the real normalized Position and protection model remain serializable with
   assert.equal(Object.hasOwn(parsed.positions[0], "toJSON"), false);
 });
 
+const invalidCanonicalAliasCases = [
+  ["id", "number", 17],
+  ["id", "object", { value: "forged-id" }],
+  ["id", "control", "forged\u0000id"],
+  ["id", "whitespace", " forged-id"],
+  ["id", "placeholder", "Unavailable"],
+  ["positionId", "number", 17],
+  ["positionId", "object", { value: "forged-position-id" }],
+  ["positionId", "control", "forged\u0000position"],
+  ["positionId", "whitespace", "forged position"],
+  ["positionId", "placeholder", "unknown"],
+  ["instId", "number", 17],
+  ["instId", "object", { value: "SOL-USDT-SWAP" }],
+  ["instId", "control", "SOL\u0000-USDT-SWAP"],
+  ["instId", "whitespace", " SOL-USDT-SWAP"],
+  ["instId", "placeholder", "n/a"],
+  ["symbol", "number", 17],
+  ["symbol", "object", { value: "SOL/USDT" }],
+  ["symbol", "control", "SOL\u0000/USDT"],
+  ["symbol", "whitespace", "SOL /USDT"],
+  ["symbol", "placeholder", "—"]
+];
+
+for (const [field, kind, invalidValue] of invalidCanonicalAliasCases) {
+  test(`raw ${field} ${kind} cannot launder a canonical Position identity through another alias`, () => {
+    const at = "2026-08-30T06:00:00Z";
+    const rejectedEngine = rawEnginePosition({
+      id: "position-launder-id",
+      positionId: "position-launder-native",
+      instId: "SOL-USDT-SWAP",
+      symbol: "SOL/USDT",
+      executionOrderId: "execution-launder",
+      planId: "plan-launder",
+      stopLoss: 132,
+      [field]: invalidValue
+    });
+    const rejectedMirror = rawExchangeMirror("account-sol", "OKX", at, {
+      id: "mirror-sol",
+      positionId: "mirror-sol",
+      instId: "SOL-USDT-SWAP",
+      symbol: "SOL/USDT",
+      coinSize: 4,
+      entry: 140,
+      mark: 142,
+      liqPx: 100,
+      pnl: 8
+    });
+    const rejectedExecution = validExecution({
+      id: "execution-launder",
+      positionId: "position-launder-native",
+      planId: "plan-launder",
+      symbol: "SOL/USDT",
+      accountId: "account-sol"
+    });
+    const positions = normalizePositionsForUi([
+      rawEnginePosition(),
+      rawExchangeMirror("account-okx", "OKX", at),
+      rejectedEngine,
+      rejectedMirror
+    ], { executionOrders: [validExecution(), rejectedExecution] });
+
+    let encoded;
+    assert.doesNotThrow(() => { encoded = JSON.stringify(positions); });
+    const serializedPositions = JSON.parse(encoded);
+    assert.equal(serializedPositions.some((position) => position.executionOrderId === "execution-launder"), false);
+    const solMirror = serializedPositions.find((position) => position.id === "mirror-sol");
+    assert.deepEqual(
+      { source: solMirror?.source, executionOrderId: solMirror?.executionOrderId, stopLoss: solMirror?.stopLoss },
+      { source: "exchange_rest", executionOrderId: undefined, stopLoss: undefined }
+    );
+
+    const model = buildAccountDomainModel({
+      resourceState,
+      positions,
+      executionOrders: [validExecution(), rejectedExecution],
+      accountSnapshots: [validSnapshot({ createdAt: at })],
+      riskIncidents: []
+    }, { now: Date.parse(at) + 60_000 });
+    const valid = model.positions.find((position) => position.id === "position-1");
+    assert.equal(valid?.protection.state, "verified");
+    assert.equal(model.positions.some((position) => position.relatedExecution?.id === "execution-launder"), false);
+    assert.equal(positionSelectionCandidate(model.positions.find((position) => position.relatedExecution?.id === "execution-launder")), null);
+    const registry = renderToStaticMarkup(React.createElement(PositionRegistry, { model, selection: null }));
+    assert.doesNotMatch(registry, /data-kordyn-v2-object-id="(?:position-launder-id|position-launder-native|SOL-USDT-SWAP|SOL\/USDT)"/u);
+  });
+}
+
 test("frontend protection independently rejects conflicting or invalid normalized account aliases", () => {
   const at = "2026-08-30T06:00:00Z";
   const snapshot = validSnapshot({ accountId: "account-a", exchange: "OKX", createdAt: at });

@@ -36,6 +36,8 @@ const NORMALIZE_NUMERIC_FIELDS = Object.freeze([
   "mark", "markPx", "coinSize", "quantity", "size", "pos", "positionAmt", "signedSize",
   "leverage", "liqPx", "liquidationPrice", "pnl", "unrealizedPnl", "roiPct", "entry", "avgPx"
 ]);
+const POSITION_IDENTITY_FIELDS = Object.freeze(["id", "positionId", "instId", "symbol"]);
+const INVALID_POSITION_IDENTITIES = Object.freeze(new Set(["unavailable", "unknown", "n/a", "—"]));
 const POSITION_OUTPUT_TEXT_FIELDS = Object.freeze([
   "id", "positionId", "instId", "symbol", "source", "status", "direction", "posSide", "positionSide", "side",
   "accountId", "exchangeAccountId", "connectionAccountId", "exchange", "exchangePositionKey",
@@ -103,9 +105,27 @@ function plainDataSnapshot(value) {
   }
 }
 
-function normalizeInputSnapshot(value) {
+function positionIdentityState(record) {
+  let canonical = null;
+  for (const field of POSITION_IDENTITY_FIELDS) {
+    const value = record[field];
+    if (value === null || value === undefined || value === "") continue;
+    if (typeof value !== "string"
+      || value.length > 240
+      || value !== value.trim()
+      || /[\p{White_Space}\p{Cc}]/u.test(value)
+      || INVALID_POSITION_IDENTITIES.has(value.toLowerCase())) {
+      return { state: "invalid", value: null };
+    }
+    canonical ||= value;
+  }
+  return canonical ? { state: "valid", value: canonical } : { state: "unbound", value: null };
+}
+
+function normalizeInputSnapshot(value, { requirePositionIdentity = false } = {}) {
   const snapshot = plainDataSnapshot(value);
   if (!snapshot) return null;
+  if (requirePositionIdentity && positionIdentityState(snapshot).state !== "valid") return null;
   for (const field of NORMALIZE_TEXT_FIELDS) {
     const scalar = snapshot[field];
     if (scalar === null || scalar === undefined || scalar === "") continue;
@@ -183,7 +203,7 @@ function positionOutputProjection(record = {}) {
   const projected = {};
   for (const field of POSITION_OUTPUT_TEXT_FIELDS) {
     const value = record[field];
-    if (typeof value === "string" && value.length <= MAX_POSITION_OUTPUT_TEXT) projected[field] = value;
+    if (typeof value === "string" && value.length > 0 && value.length <= MAX_POSITION_OUTPUT_TEXT) projected[field] = value;
   }
   for (const field of POSITION_OUTPUT_NUMERIC_FIELDS) {
     const value = num(record[field]);
@@ -367,7 +387,7 @@ function normalizedPositionGroup(g) {
 export function normalizePositionsForUi(positions = [], options = {}) {
   const inputRows = boundedArrayValues(positions);
   if (!inputRows) return [];
-  const safePositions = inputRows.map(normalizeInputSnapshot).filter(Boolean);
+  const safePositions = inputRows.map((value) => normalizeInputSnapshot(value, { requirePositionIdentity: true })).filter(Boolean);
   const baseGroups = new Map();
   for (const p of safePositions.filter(isOpen)) {
     const key = `${canonicalSymbol(p.symbol || p.instId)}::${canonDirection(p) || "unknown"}`;

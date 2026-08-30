@@ -262,3 +262,34 @@ test("malformed target collections are omitted without invalidating an otherwise
   assert.equal(parsed.stopLoss, 0.18);
   assert.equal(Object.hasOwn(parsed, "takeProfits"), false);
 });
+
+test("valid canonical Position aliases are preserved exactly while a missing higher alias falls through", () => {
+  const [exact] = normalizePositionsForUi([{
+    ...ADA_ENGINE,
+    id: "position-id-exact",
+    positionId: "position-native-exact",
+    instId: "ADA-USDT-SWAP",
+    symbol: "ADA/USDT"
+  }]);
+  assert.deepEqual({
+    id: exact.id,
+    positionId: exact.positionId,
+    instId: exact.instId,
+    symbol: exact.symbol
+  }, {
+    id: "position-id-exact",
+    positionId: "position-native-exact",
+    instId: "ADA-USDT-SWAP",
+    symbol: "ADA/USDT"
+  });
+
+  const [fallback] = normalizePositionsForUi([{
+    ...ADA_ENGINE,
+    id: "",
+    positionId: "position-fallback-exact",
+    instId: "ADA-USDT-SWAP",
+    symbol: "ADA/USDT"
+  }]);
+  assert.equal(Object.hasOwn(fallback, "id"), false);
+  assert.equal(fallback.positionId, "position-fallback-exact");
+});
