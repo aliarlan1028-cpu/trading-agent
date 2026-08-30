@@ -325,12 +325,15 @@ async function supportIsolationAtCurrentScroll(cdp, viewport, label, phase) {
     const selector = '[data-kordyn-v2-object-id], button, a[href], input, select, textarea, [role="button"], td, dd, [role="status"], footer';
     const candidates = [...(canvas?.querySelectorAll(selector) || [])].flatMap((node, index) => {
       const rect = box(node);
-      const visible = rect && rect.width > 0 && rect.height > 0 && rect.right > 0 && rect.left < innerWidth && rect.bottom > 0 && rect.top < innerHeight;
+      const visible = rect && canvasRect && rect.width > 0 && rect.height > 0
+        && rect.right > Math.max(0, canvasRect.left) && rect.left < Math.min(innerWidth, canvasRect.right)
+        && rect.bottom > Math.max(0, canvasRect.top) && rect.top < Math.min(innerHeight, canvasRect.bottom);
       if (!visible) return [];
-      const left = Math.max(0, rect.left);
-      const right = Math.min(innerWidth, rect.right);
-      const top = Math.max(0, rect.top);
-      const bottom = Math.min(innerHeight, rect.bottom);
+      const left = Math.max(0, canvasRect.left, rect.left);
+      const right = Math.min(innerWidth, canvasRect.right, rect.right);
+      const top = Math.max(0, canvasRect.top, rect.top);
+      const bottom = Math.min(innerHeight, canvasRect.bottom, rect.bottom);
+      const visibleRect = { left, right, top, bottom, width: right - left, height: bottom - top };
       const x = left + Math.max(0, right - left) / 2;
       const y = top + Math.max(0, bottom - top) / 2;
       const hit = document.elementFromPoint(x, y);
@@ -341,7 +344,7 @@ async function supportIsolationAtCurrentScroll(cdp, viewport, label, phase) {
         className: String(node.className || ''),
         text: node.textContent?.trim().slice(0, 64) || '',
         rect,
-        supportOverlap: overlap(supportRect, rect),
+        supportOverlap: overlap(supportRect, visibleRect),
         hitTestable: Boolean(hit && (hit === node || node.contains(hit)))
       }];
     });
