@@ -1,47 +1,91 @@
-import { uiConfirm } from "../../../confirm.jsx";
 import { requestExecutionExit } from "../../../executionExit.js";
 
 const cancelled = Object.freeze({ ok: false, cancelled: true });
-const unavailableAction = async () => ({ ok: false, error: "action_unavailable" });
-const noOp = () => undefined;
+const unavailable = Object.freeze({ ok: false, error: "action_unavailable" });
+const invalidInput = Object.freeze({ ok: false, error: "invalid_account_action_input" });
+const unavailableAction = async () => unavailable;
+const denyConfirmation = async () => false;
+const unavailableCall = () => unavailable;
+
+const validIdentifier = (value) => typeof value === "string"
+  && value.length > 0
+  && value.length <= 240
+  && value === value.trim()
+  && !/[\p{White_Space}\p{Cc}]/u.test(value);
 
 const manualExitReason = (surface) => surface === "mobile" || surface === "manual_mobile"
   ? "manual_mobile"
   : "manual_ui";
 
-const posterFilename = (executionId) => `closed-trade-${String(executionId).replace(/[^a-zA-Z0-9._-]+/g, "-")}.png`;
+const posterFilename = (executionId) => `closed-trade-${executionId.replace(/[^a-zA-Z0-9._-]+/g, "-")}.png`;
 
-export function createAccountActions({
-  action = unavailableAction,
-  confirm = uiConfirm,
-  navigate = noOp,
-  download = noOp,
-  ai = {}
-} = {}) {
-  const runAction = typeof action === "function" ? action : unavailableAction;
-  const runConfirm = typeof confirm === "function" ? confirm : uiConfirm;
-  const runNavigate = typeof navigate === "function" ? navigate : noOp;
-  const runDownload = typeof download === "function" ? download : noOp;
-  const approvePlan = typeof ai.approvePlan === "function" ? ai.approvePlan : unavailableAction;
-  const rejectPlan = typeof ai.rejectPlan === "function" ? ai.rejectPlan : unavailableAction;
+function ownFunction(record, field) {
+  if (!record || (typeof record !== "object" && typeof record !== "function")) return null;
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(record, field);
+    return descriptor && Object.hasOwn(descriptor, "value") && typeof descriptor.value === "function"
+      ? descriptor.value
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function ownValue(record, field) {
+  if (!record || (typeof record !== "object" && typeof record !== "function")) return undefined;
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(record, field);
+    return descriptor && Object.hasOwn(descriptor, "value") ? descriptor.value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function invoke(run, fallback, ...args) {
+  try { return run(...args); } catch { return fallback(); }
+}
+
+export function createAccountActions(deps) {
+  const action = ownFunction(deps, "action") || unavailableAction;
+  const confirm = ownFunction(deps, "confirm") || denyConfirmation;
+  const navigate = ownFunction(deps, "navigate") || unavailableCall;
+  const download = ownFunction(deps, "download") || unavailableCall;
+  const ai = ownValue(deps, "ai");
+  const approvePlan = ownFunction(ai, "approvePlan") || unavailableAction;
+  const rejectPlan = ownFunction(ai, "rejectPlan") || unavailableAction;
+  const runAction = (...args) => invoke(action, unavailableAction, ...args);
 
   const reconcile = async () => {
-    if (!await runConfirm(
-      "Run account, order, protection, and ledger reconciliation now? The result is written to audit.",
-      { title: "Run reconciliation" }
-    )) return cancelled;
+    let confirmed = false;
+    try {
+      confirmed = await confirm(
+        "Run account, order, protection, and ledger reconciliation now? The result is written to audit.",
+        { title: "Run reconciliation" }
+      );
+    } catch {
+      return cancelled;
+    }
+    if (confirmed !== true) return cancelled;
     return runAction("/api/reconciler/run", { mode: "manual_ui" });
   };
-  const addWatchlist = (symbol) => runAction("/api/watchlist", { symbol });
-  const removeWatchlist = (symbol) => runAction(`/api/watchlist/${encodeURIComponent(symbol)}`, {}, "DELETE");
+  const addWatchlist = (symbol) => validIdentifier(symbol)
+    ? runAction("/api/watchlist", { symbol })
+    : invalidInput;
+  const removeWatchlist = (symbol) => validIdentifier(symbol)
+    ? runAction(`/api/watchlist/${encodeURIComponent(symbol)}`, {}, "DELETE")
+    : invalidInput;
   const exitExecutionOrder = (order, surface = "desktop") => (
     requestExecutionExit(runAction, order, manualExitReason(surface))
   );
-  const openReviews = () => runNavigate("assets", "reviews");
-  const downloadClosedTradePoster = (executionId) => runDownload(
-    `/api/posters/trades/${encodeURIComponent(executionId)}`,
-    posterFilename(executionId)
-  );
+  const openReviews = () => invoke(navigate, unavailableCall, "assets", "reviews");
+  const downloadClosedTradePoster = (executionId) => validIdentifier(executionId)
+    ? invoke(
+      download,
+      unavailableCall,
+      `/api/posters/trades/${encodeURIComponent(executionId)}`,
+      posterFilename(executionId)
+    )
+    : invalidInput;
 
   return Object.freeze({
     addWatchlist,

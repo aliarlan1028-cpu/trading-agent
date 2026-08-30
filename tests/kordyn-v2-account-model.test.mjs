@@ -104,3 +104,141 @@ test("authoritative empty and zero financial facts remain zero", () => {
     margin: 0
   });
 });
+
+test("symbol is the final canonical position identity fallback and frozen sources are not mutated", () => {
+  const position = Object.freeze({
+    symbol: "SOL/USDT",
+    quantity: 2,
+    markPrice: 50,
+    unrealizedPnl: 3,
+    margin: 20
+  });
+  const positions = Object.freeze([position]);
+  const data = Object.freeze({ positions });
+
+  const model = buildAccountDomainModel(data);
+
+  assert.deepEqual(model.positions.map((row) => row.id), ["SOL/USDT"]);
+  assert.deepEqual(model.truth, {
+    equity: null,
+    available: null,
+    exposure: 100,
+    unrealizedPnl: 3,
+    margin: 20
+  });
+  assert.equal(Object.isFrozen(data), true);
+  assert.equal(Object.isFrozen(positions), true);
+  assert.equal(Object.hasOwn(position, "id"), false);
+});
+
+test("malformed, id-less, and hostile-ID siblings are isolated from a valid position", () => {
+  const hostileId = {
+    positionId: "must-not-fall-through",
+    symbol: "XRP/USDT",
+    quantity: 100,
+    markPrice: 1,
+    unrealizedPnl: 99,
+    margin: 99
+  };
+  Object.defineProperty(hostileId, "id", {
+    enumerable: true,
+    get() { throw new Error("hostile id getter"); }
+  });
+  const data = {
+    positions: [
+      null,
+      [],
+      "not-a-position",
+      { quantity: 5, markPrice: 10, unrealizedPnl: 8, margin: 4 },
+      hostileId,
+      { positionId: "position-valid", quantity: 0.5, markPrice: 200, unrealizedPnl: 7, margin: 25 }
+    ]
+  };
+
+  let model;
+  assert.doesNotThrow(() => { model = buildAccountDomainModel(data); });
+  assert.deepEqual(model.positions.map((row) => row.id), ["position-valid"]);
+  assert.deepEqual(model.truth, {
+    equity: null,
+    available: null,
+    exposure: 100,
+    unrealizedPnl: 7,
+    margin: 25
+  });
+  assert.equal(Object.getOwnPropertyDescriptor(hostileId, "id").get instanceof Function, true);
+});
+
+test("duplicate canonical identities are ambiguous without hiding a unique valid sibling", () => {
+  const model = buildAccountDomainModel({
+    positions: [
+      { id: "duplicate", positionId: "lower-a", quantity: 1, markPrice: 100, unrealizedPnl: 10, margin: 10 },
+      { id: "duplicate", positionId: "lower-b", quantity: 2, markPrice: 100, unrealizedPnl: 20, margin: 20 },
+      { instId: "UNIQUE-SWAP", quantity: 3, markPrice: 100, unrealizedPnl: 30, margin: 30 }
+    ]
+  });
+
+  assert.deepEqual(model.positions.map((row) => row.id), ["UNIQUE-SWAP"]);
+  assert.deepEqual(
+    { exposure: model.truth.exposure, unrealizedPnl: model.truth.unrealizedPnl, margin: model.truth.margin },
+    { exposure: 300, unrealizedPnl: 30, margin: 30 }
+  );
+});
+
+test("hostile position containers and accessors fail closed without throwing", () => {
+  const revocable = Proxy.revocable([], {});
+  revocable.revoke();
+  let revokedModel;
+  assert.doesNotThrow(() => { revokedModel = buildAccountDomainModel({ positions: revocable.proxy }); });
+  assert.deepEqual(revokedModel.positions, []);
+  assert.deepEqual(
+    { exposure: revokedModel.truth.exposure, unrealizedPnl: revokedModel.truth.unrealizedPnl, margin: revokedModel.truth.margin },
+    { exposure: null, unrealizedPnl: null, margin: null }
+  );
+
+  const accessorRoot = {};
+  Object.defineProperty(accessorRoot, "positions", {
+    enumerable: true,
+    get() { throw new Error("hostile positions getter"); }
+  });
+  assert.doesNotThrow(() => buildAccountDomainModel(accessorRoot));
+  assert.deepEqual(buildAccountDomainModel(accessorRoot).positions, []);
+});
+
+test("derived products and aggregate sums cannot overflow into financial truth", () => {
+  const derivedOverflow = buildAccountDomainModel({
+    positions: [{ positionId: "derived-overflow", quantity: Number.MAX_VALUE, markPrice: 2, unrealizedPnl: 1, margin: 1 }]
+  });
+  assert.equal(derivedOverflow.truth.exposure, null);
+
+  const sumOverflow = buildAccountDomainModel({
+    positions: [
+      { positionId: "sum-a", notionalUsdt: Number.MAX_VALUE, unrealizedPnl: Number.MAX_VALUE, margin: Number.MAX_VALUE },
+      { positionId: "sum-b", notionalUsdt: Number.MAX_VALUE, unrealizedPnl: Number.MAX_VALUE, margin: Number.MAX_VALUE }
+    ]
+  });
+  assert.deepEqual(
+    { exposure: sumOverflow.truth.exposure, unrealizedPnl: sumOverflow.truth.unrealizedPnl, margin: sumOverflow.truth.margin },
+    { exposure: null, unrealizedPnl: null, margin: null }
+  );
+});
+
+test("execution totals require authoritative non-negative safe integers", () => {
+  const missing = buildAccountDomainModel({
+    executionOrders: [{ id: "visible-order" }],
+    fills: [{ id: "visible-fill" }],
+    reviews: [{ id: "visible-review", type: "trade" }]
+  });
+  assert.deepEqual(missing.execution.totals, { orders: null, fills: null, reviews: null });
+
+  const invalid = buildAccountDomainModel({
+    executionOrderStatus: { total: -1 },
+    tradeDataStatus: { fillTotal: 1.5, tradeReviewTotal: Number.MAX_SAFE_INTEGER + 1 }
+  });
+  assert.deepEqual(invalid.execution.totals, { orders: null, fills: null, reviews: null });
+
+  const zeros = buildAccountDomainModel({
+    executionOrderStatus: { total: 0 },
+    tradeDataStatus: { fillTotal: 0, tradeReviewTotal: 0 }
+  });
+  assert.deepEqual(zeros.execution.totals, { orders: 0, fills: 0, reviews: 0 });
+});

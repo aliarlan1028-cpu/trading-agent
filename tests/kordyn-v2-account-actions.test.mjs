@@ -109,3 +109,81 @@ test("account plan decisions are the established AI action functions", async () 
   assert.equal(actions.account.rejectPlan, actions.ai.rejectPlan);
   assert.equal(Object.isFrozen(actions.account), true);
 });
+
+test("null, hostile, and invalid dependency containers produce bounded unavailable actions", async () => {
+  const revoked = Proxy.revocable({}, {});
+  revoked.revoke();
+  const throwing = {};
+  Object.defineProperty(throwing, "action", {
+    enumerable: true,
+    get() { throw new Error("hostile dependency getter"); }
+  });
+  const dependencyInputs = [null, 42, "invalid", revoked.proxy, throwing, {
+    action: {}, confirm: {}, navigate: {}, download: {}, ai: null
+  }];
+
+  for (const deps of dependencyInputs) {
+    let account;
+    assert.doesNotThrow(() => { account = createAccountActions(deps); });
+    assert.deepEqual(await account.addWatchlist("BTC/USDT"), { ok: false, error: "action_unavailable" });
+    assert.deepEqual(await account.reconcile(), { ok: false, cancelled: true });
+    assert.deepEqual(await account.approvePlan("plan-1"), { ok: false, error: "action_unavailable" });
+    assert.deepEqual(account.openReviews(), { ok: false, error: "action_unavailable" });
+    assert.deepEqual(account.downloadClosedTradePoster("eo-1"), { ok: false, error: "action_unavailable" });
+  }
+});
+
+test("malformed and hostile watchlist symbols and poster IDs never invoke deployed boundaries", async () => {
+  const calls = [];
+  const throwing = new Proxy({}, { get() { throw new Error("must not coerce hostile input"); } });
+  const revoked = Proxy.revocable({}, {});
+  revoked.revoke();
+  const invalidInputs = [undefined, null, "", " BTC/USDT", "BTC USDT", "BTC/USDT\n", 7, 7n, Symbol("id"), [], {}, throwing, revoked.proxy];
+  const account = createAccountActions({
+    action: async (...args) => { calls.push(["action", ...args]); return { ok: true }; },
+    download: (...args) => { calls.push(["download", ...args]); return "downloaded"; }
+  });
+
+  for (const value of invalidInputs) {
+    assert.doesNotThrow(() => account.addWatchlist(value));
+    assert.doesNotThrow(() => account.removeWatchlist(value));
+    assert.doesNotThrow(() => account.downloadClosedTradePoster(value));
+    assert.deepEqual(await account.addWatchlist(value), { ok: false, error: "invalid_account_action_input" });
+    assert.deepEqual(await account.removeWatchlist(value), { ok: false, error: "invalid_account_action_input" });
+    assert.deepEqual(account.downloadClosedTradePoster(value), { ok: false, error: "invalid_account_action_input" });
+  }
+  assert.deepEqual(calls, []);
+});
+
+test("rejected reconciliation confirmation cannot write", async () => {
+  let confirmations = 0;
+  let writes = 0;
+  const account = createAccountActions({
+    action: async () => { writes += 1; return { ok: true }; },
+    confirm: async () => { confirmations += 1; return false; }
+  });
+
+  const result = await account.reconcile();
+
+  assert.deepEqual(result, { ok: false, cancelled: true });
+  assert.equal(confirmations, 1);
+  assert.equal(writes, 0);
+});
+
+test("reconcile and watchlist writes preserve exact raw server success and error results", async () => {
+  const reconcileResult = { ok: true, reportId: "report-raw" };
+  const addError = { ok: false, httpStatus: 409, error: "watchlist_conflict" };
+  const removeResult = { ok: true, removed: "BTC/USDT" };
+  const account = createAccountActions({
+    action: async (endpoint) => {
+      if (endpoint === "/api/reconciler/run") return reconcileResult;
+      if (endpoint === "/api/watchlist") return addError;
+      return removeResult;
+    },
+    confirm: async () => true
+  });
+
+  assert.equal(await account.reconcile(), reconcileResult);
+  assert.equal(await account.addWatchlist("BTC/USDT"), addError);
+  assert.equal(await account.removeWatchlist("BTC/USDT"), removeResult);
+});
