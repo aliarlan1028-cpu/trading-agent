@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "runner": "tests/run-kordyn-v2-account-browser.mjs",
   "fixture": "tests/kordyn-v2-account-browser.jsx",
-  "productSourceCommit": "857e0787adde4b8529a26a1ec3775fee3b49a4e0",
-  "captureTestSourceCommit": "41db7e2feca86e71ef1d874d3c94372ea56a393a",
+  "productSourceCommit": "312a3c590c8759940cfbf82fc9eb1342c7bbcc79",
+  "captureTestSourceCommit": "e3eb0b3c216eafe9a63ed6b40ec998f693ba50a2",
   "states": [
     {
       "file": "state-loading--1440x900.png",
@@ -37,7 +37,7 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": false,
-      "sha256": "4ded69f2409d6788d9103f2574f6b6273031d7ab751b53b31043e5b8905fd8f4",
+      "sha256": "04bcf4c87c6d4caf24af72855d7373e7af4cccfb838ce95a25e40899830c831f",
       "state": "loading",
       "retainsFacts": false,
       "geometry": {
@@ -90,7 +90,7 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": false,
-      "sha256": "d77976edc2d86c34993c7ad63941ce730b0aeb9e96e361f38a7ba1932f8d87ee",
+      "sha256": "8a44e37ed5637d99c206b522c2f6740702d35088cd4f34e38324e19fbff1219b",
       "state": "empty",
       "retainsFacts": false,
       "geometry": {
@@ -143,7 +143,7 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": true,
-      "sha256": "7605da83a64ef1e2734d054566ce55db4431e86376c5ae2c5b1b0d83021b0710",
+      "sha256": "251c8d9c68872aa1d73f17c201d2d8f73baf38758bc04cb125eec5e94b82d4e0",
       "state": "processing",
       "processingEvidence": {
         "actionState": "processing",
@@ -206,9 +206,93 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": true,
-      "sha256": "ec15c2b4c6f99469ad388840cd4d81b3bc3052a71a6ce05baea70c1d33134a88",
+      "sha256": "5c57a5ae0a59cb0206e39a9f9e132d605fa7b0d16a60fc4231ce6f58bab24b24",
       "state": "stale",
       "retainsFacts": true,
+      "supportIsolation": {
+        "start": {
+          "phase": "start",
+          "viewport": [
+            390,
+            844
+          ],
+          "support": {
+            "left": 324,
+            "top": 720.5,
+            "right": 380,
+            "bottom": 776.5,
+            "width": 56,
+            "height": 56
+          },
+          "dock": {
+            "left": 0,
+            "top": 714,
+            "right": 390,
+            "bottom": 782,
+            "width": 390,
+            "height": 68
+          },
+          "canvas": {
+            "left": 0,
+            "top": 377,
+            "right": 390,
+            "bottom": 714,
+            "width": 390,
+            "height": 337
+          },
+          "dockCanvasOverlap": 0,
+          "candidateCount": 2,
+          "intersections": [],
+          "hitFailures": [],
+          "supportHitTestable": true,
+          "scroll": {
+            "top": 0,
+            "height": 541,
+            "clientHeight": 439
+          }
+        },
+        "end": {
+          "phase": "end",
+          "viewport": [
+            390,
+            844
+          ],
+          "support": {
+            "left": 324,
+            "top": 720.5,
+            "right": 380,
+            "bottom": 776.5,
+            "width": 56,
+            "height": 56
+          },
+          "dock": {
+            "left": 0,
+            "top": 714,
+            "right": 390,
+            "bottom": 782,
+            "width": 390,
+            "height": 68
+          },
+          "canvas": {
+            "left": 0,
+            "top": 275,
+            "right": 390,
+            "bottom": 714,
+            "width": 390,
+            "height": 439
+          },
+          "dockCanvasOverlap": 0,
+          "candidateCount": 2,
+          "intersections": [],
+          "hitFailures": [],
+          "supportHitTestable": true,
+          "scroll": {
+            "top": 102,
+            "height": 541,
+            "clientHeight": 439
+          }
+        }
+      },
       "geometry": {
         "innerWidth": 390,
         "document": {
@@ -262,9 +346,93 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": true,
-      "sha256": "86e3341af9f79a1c9c1b8ad7c3f5451ffdc0876e67fd94ab1c332fb23f088f8c",
+      "sha256": "df444526309229906528fd4ee2b9b6f07e03c029bc0474ca60bfbcf86f8e1eb6",
       "state": "degraded",
       "retainsFacts": true,
+      "supportIsolation": {
+        "start": {
+          "phase": "start",
+          "viewport": [
+            430,
+            932
+          ],
+          "support": {
+            "left": 364,
+            "top": 808.5,
+            "right": 420,
+            "bottom": 864.5,
+            "width": 56,
+            "height": 56
+          },
+          "dock": {
+            "left": 0,
+            "top": 802,
+            "right": 430,
+            "bottom": 870,
+            "width": 430,
+            "height": 68
+          },
+          "canvas": {
+            "left": 0,
+            "top": 377,
+            "right": 430,
+            "bottom": 802,
+            "width": 430,
+            "height": 425
+          },
+          "dockCanvasOverlap": 0,
+          "candidateCount": 6,
+          "intersections": [],
+          "hitFailures": [],
+          "supportHitTestable": true,
+          "scroll": {
+            "top": 0,
+            "height": 713,
+            "clientHeight": 527
+          }
+        },
+        "end": {
+          "phase": "end",
+          "viewport": [
+            430,
+            932
+          ],
+          "support": {
+            "left": 364,
+            "top": 808.5,
+            "right": 420,
+            "bottom": 864.5,
+            "width": 56,
+            "height": 56
+          },
+          "dock": {
+            "left": 0,
+            "top": 802,
+            "right": 430,
+            "bottom": 870,
+            "width": 430,
+            "height": 68
+          },
+          "canvas": {
+            "left": 0,
+            "top": 275,
+            "right": 430,
+            "bottom": 802,
+            "width": 430,
+            "height": 527
+          },
+          "dockCanvasOverlap": 0,
+          "candidateCount": 7,
+          "intersections": [],
+          "hitFailures": [],
+          "supportHitTestable": true,
+          "scroll": {
+            "top": 186,
+            "height": 713,
+            "clientHeight": 527
+          }
+        }
+      },
       "geometry": {
         "innerWidth": 430,
         "document": {
@@ -318,7 +486,7 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": false,
-      "sha256": "61d5750541e53a0ff4013a5d2ac61de45e79a9477bee9a169783b273e93f4201",
+      "sha256": "5579b1d19dcfc45a6c3a6dbacf340bb19fb35547356e26dc9a363718ac4a21c2",
       "state": "failed",
       "retainsFacts": false,
       "geometry": {
@@ -371,7 +539,7 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": false,
-      "sha256": "0f5f45f890e61a37d82c19253e3f7959ebae6dd391390555c44f37343e88150c",
+      "sha256": "b901228a24c184597b77336bda6aec9ab97357be8c7c1572c9d6e418444ac63d",
       "state": "forbidden",
       "retainsFacts": false,
       "geometry": {
@@ -424,7 +592,7 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": false,
-      "sha256": "1932fa5eb3198e808b48d53c3c275a4e806ff0f42c25c96fa7d8048f4a302b78",
+      "sha256": "6906e2f6be8ea19b047cb58d03d60eb54736ba2e55e47cbba73701291635cf09",
       "state": "disabled",
       "retainsFacts": false,
       "geometry": {
@@ -477,7 +645,7 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": false,
-      "sha256": "d7b26fb831bdafad9a8a702df2c7553dd3c11b3126be9245343d0ba53950b0c6",
+      "sha256": "58f3f4c837c0246fbac908a87cd650f597eefce1acd5463ac4c80b59f825a483",
       "state": "approval",
       "retainsFacts": false,
       "geometry": {
@@ -530,7 +698,7 @@
       "actionRequestsAtCapture": 1,
       "legacyProductStyles": false,
       "accountCss": true,
-      "sha256": "d0e6589100cc9b23021c191f7393d7dd5e55f1163135ce7cda9b9e1b41f10a38",
+      "sha256": "68e25f63184c3906a73fe5f8fb6b8b1c83159fa098cc9adb3bd7306a59ff4924",
       "state": "partial",
       "partialEvidence": {
         "actionState": "partial",
@@ -619,7 +787,7 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": false,
-      "sha256": "107d8f79c0c8a66209faf7ced9b0be8e5260c5a70b9e6c92500b1b2ecf9b7453",
+      "sha256": "d9bd49effb586eefb264014dcd7b54449c1a7979e8e1d1012b1de054c3a79b0f",
       "state": "no-result",
       "retainsFacts": false,
       "geometry": {
@@ -672,9 +840,93 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": true,
-      "sha256": "a931f112db0b4df53f336816111ecd929b9a9f00e665f59b975b28b5becf4dd8",
+      "sha256": "5c2e83371a2089dec2f126bdf585e200f1423cb10c1cb2f1716fe708421d86f7",
       "state": "long-content",
       "retainsFacts": false,
+      "supportIsolation": {
+        "start": {
+          "phase": "start",
+          "viewport": [
+            390,
+            844
+          ],
+          "support": {
+            "left": 324,
+            "top": 720.5,
+            "right": 380,
+            "bottom": 776.5,
+            "width": 56,
+            "height": 56
+          },
+          "dock": {
+            "left": 0,
+            "top": 714,
+            "right": 390,
+            "bottom": 782,
+            "width": 390,
+            "height": 68
+          },
+          "canvas": {
+            "left": 0,
+            "top": 275,
+            "right": 390,
+            "bottom": 714,
+            "width": 390,
+            "height": 439
+          },
+          "dockCanvasOverlap": 0,
+          "candidateCount": 6,
+          "intersections": [],
+          "hitFailures": [],
+          "supportHitTestable": true,
+          "scroll": {
+            "top": 0,
+            "height": 2079,
+            "clientHeight": 439
+          }
+        },
+        "end": {
+          "phase": "end",
+          "viewport": [
+            390,
+            844
+          ],
+          "support": {
+            "left": 324,
+            "top": 720.5,
+            "right": 380,
+            "bottom": 776.5,
+            "width": 56,
+            "height": 56
+          },
+          "dock": {
+            "left": 0,
+            "top": 714,
+            "right": 390,
+            "bottom": 782,
+            "width": 390,
+            "height": 68
+          },
+          "canvas": {
+            "left": 0,
+            "top": 275,
+            "right": 390,
+            "bottom": 713.84375,
+            "width": 390,
+            "height": 438.84375
+          },
+          "dockCanvasOverlap": 0,
+          "candidateCount": 7,
+          "intersections": [],
+          "hitFailures": [],
+          "supportHitTestable": true,
+          "scroll": {
+            "top": 1640,
+            "height": 2079,
+            "clientHeight": 439
+          }
+        }
+      },
       "geometry": {
         "innerWidth": 390,
         "document": {
@@ -728,7 +980,7 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": true,
-      "sha256": "2a95e39445d948a0daf9bb11756baf0d647a40f4814635c27415283945484fec",
+      "sha256": "b7fc4999272cb8395de3437b5ba4f2393827d1ce9aeb83e055826f68147484d4",
       "state": "large-list",
       "retainsFacts": false,
       "largeListEvidence": {
@@ -737,6 +989,127 @@
         "firstId": "ASSET1/USDT",
         "lastId": "ASSET180/USDT",
         "complete": true
+      },
+      "supportIsolation": {
+        "start": {
+          "phase": "start",
+          "viewport": [
+            430,
+            932
+          ],
+          "support": {
+            "left": 364,
+            "top": 808.5,
+            "right": 420,
+            "bottom": 864.5,
+            "width": 56,
+            "height": 56
+          },
+          "dock": {
+            "left": 0,
+            "top": 802,
+            "right": 430,
+            "bottom": 870,
+            "width": 430,
+            "height": 68
+          },
+          "canvas": {
+            "left": 0,
+            "top": 275,
+            "right": 430,
+            "bottom": 802,
+            "width": 430,
+            "height": 527
+          },
+          "dockCanvasOverlap": 0,
+          "candidateCount": 12,
+          "intersections": [],
+          "hitFailures": [],
+          "supportHitTestable": true,
+          "scroll": {
+            "top": 0,
+            "height": 12836,
+            "clientHeight": 527
+          }
+        },
+        "end": {
+          "phase": "end",
+          "viewport": [
+            430,
+            932
+          ],
+          "support": {
+            "left": 364,
+            "top": 808.5,
+            "right": 420,
+            "bottom": 864.5,
+            "width": 56,
+            "height": 56
+          },
+          "dock": {
+            "left": 0,
+            "top": 802,
+            "right": 430,
+            "bottom": 870,
+            "width": 430,
+            "height": 68
+          },
+          "canvas": {
+            "left": 0,
+            "top": 275,
+            "right": 430,
+            "bottom": 802,
+            "width": 430,
+            "height": 527
+          },
+          "dockCanvasOverlap": 0,
+          "candidateCount": 13,
+          "intersections": [],
+          "hitFailures": [],
+          "supportHitTestable": true,
+          "scroll": {
+            "top": 12309,
+            "height": 12836,
+            "clientHeight": 527
+          }
+        },
+        "asset7": {
+          "row": {
+            "left": 20,
+            "top": 503,
+            "right": 410,
+            "bottom": 573,
+            "width": 390,
+            "height": 70
+          },
+          "object": {
+            "left": 20,
+            "top": 503,
+            "right": 366,
+            "bottom": 572,
+            "width": 346,
+            "height": 69
+          },
+          "watch": {
+            "left": 366,
+            "top": 515.5,
+            "right": 410,
+            "bottom": 559.5,
+            "width": 44,
+            "height": 44
+          },
+          "canvas": {
+            "left": 0,
+            "top": 275,
+            "right": 430,
+            "bottom": 802,
+            "width": 430,
+            "height": 527
+          },
+          "objectHitTestable": true,
+          "watchHitTestable": true,
+          "fullyInsideCanvas": true
+        }
       },
       "geometry": {
         "innerWidth": 430,

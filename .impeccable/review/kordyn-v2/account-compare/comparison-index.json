@@ -3,8 +3,8 @@
   "scope": "account",
   "sourceManifest": "docs/kordyn-v2-approved-concept-manifest.md",
   "captureEvidence": ".impeccable/review/kordyn-v2/account/capture-evidence.json",
-  "productSourceCommit": "857e0787adde4b8529a26a1ec3775fee3b49a4e0",
-  "captureTestSourceCommit": "41db7e2feca86e71ef1d874d3c94372ea56a393a",
+  "productSourceCommit": "312a3c590c8759940cfbf82fc9eb1342c7bbcc79",
+  "captureTestSourceCommit": "e3eb0b3c216eafe9a63ed6b40ec998f693ba50a2",
   "outputRoot": ".impeccable/review/kordyn-v2/account-compare",
   "counts": {
     "concepts": 1,
@@ -96,18 +96,18 @@
         },
         "overlay50": {
           "file": "desktop-account-position--1440x900--overlay.png",
-          "sha256": "9dce18afa81fcb217abfc62012b2bbe4b1529cc95650860dc40df13579f476ec"
+          "sha256": "51a9bc2e3a5f0e9e418c759a11e218b705e7a3a16b4c2b1e54a477381ec523b1"
         },
         "absoluteDifference": {
           "file": "desktop-account-position--1440x900--difference.png",
-          "sha256": "e4e91b4c54c07d4078255a4dac8c7e1af914e621066fe06a2497096eba74a741"
+          "sha256": "4806defc251c2035084756fb959eacacb2e0d3368baf2e72c722e79bf06d76c0"
         },
         "geometry": {
           "file": "desktop-account-position--1440x900--geometry.json",
-          "sha256": "bac32c1b523c0645590090e94c32e2a276057c89245c08b5902ab554abd757f1"
+          "sha256": "cc52c3f31988850db75b55d900c876d2cea4fa32fe170c57e9fa056a11a9dc89"
         }
       },
-      "pixelDifference": 0.05475395687081417,
+      "pixelDifference": 0.054344026870007264,
       "releaseVerdict": "human region review required"
     },
     {
@@ -122,18 +122,18 @@
         },
         "overlay50": {
           "file": "desktop-account-position--1180x800--overlay.png",
-          "sha256": "7e842f5ed37e4f1c26beb0538345564fac8b7d87b974ba9a84676217df3abfcb"
+          "sha256": "8e567db614d1b04efbba02cece5f755c1a70995170223d928cef7192631c645c"
         },
         "absoluteDifference": {
           "file": "desktop-account-position--1180x800--difference.png",
-          "sha256": "8c413fcb2d6067b88dabb4a296f0e22b9eccba09a6af51eba35fabf0ec1086f9"
+          "sha256": "dbc3d800eb8f9124b75e8aac11e145ed6866cbc7a279d88b96749f5ac7d2128e"
         },
         "geometry": {
           "file": "desktop-account-position--1180x800--geometry.json",
-          "sha256": "1c9536ff014e4e3c01f6559a898b7dbb35e8adad4718a456d0cca4af40e96eea"
+          "sha256": "e5a276958cfdcb9c73c6515048c2a84d50b0b16dbfa206cbfb1ea2581f6927d2"
         }
       },
-      "pixelDifference": 0.05489542068239726,
+      "pixelDifference": 0.054280473856209155,
       "releaseVerdict": "human region review required"
     }
   ],
