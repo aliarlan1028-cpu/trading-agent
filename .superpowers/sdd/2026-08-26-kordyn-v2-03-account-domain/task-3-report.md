@@ -251,7 +251,7 @@ Additional fresh gates:
 
 ### Decision / scope ruling
 
-After `9334373`, a read-only review proved that the cockpit endpoint normalizer discarded the selected exchange mirror timestamp needed by the already approved protection UI. The user explicitly authorized one narrow exception to the original frontend-only Task 3 boundary: preserve already source-backed mirror provenance in the existing cockpit UI projection and enforce the deployed two-minute proof freshness rule in the frontend model.
+After `9334373`, a read-only review proved that the section-v2 common projection normalizer discarded the selected exchange mirror timestamp needed by the already approved protection UI. The user explicitly authorized one narrow exception to the original frontend-only Task 3 boundary: preserve already source-backed mirror provenance in the existing shared section-v2 read-only Position projection and enforce the deployed two-minute proof freshness rule in the frontend model.
 
 Exact files in this exception:
 
@@ -315,7 +315,7 @@ The focused RED added five executable contracts to the real normalizer → Accou
 - with A and B mirrors, account A is selected for A's Execution even when B is newer or shares its timestamp;
 - another exchange with the same symbol/direction cannot cross-bind;
 - missing or duplicate/conflicting Execution linkage remains unbound when mirror ownership is ambiguous;
-- the section-v2 cockpit must pass its scoped `executionOrders` to the real normalizer, and frontend protection independently rejects missing/mismatched account or exchange provenance.
+- the section-v2 shared common projection must pass its scoped `executionOrders` to the real normalizer, and frontend protection independently rejects missing/mismatched account or exchange provenance.
 
 Command:
 
@@ -331,7 +331,7 @@ Result before production edits: exit 1; 26 tests, 21 passed / 5 failed. The five
 - Engine rows with a unique explicit Execution bind only to exchange mirrors with the same canonical account and exchange. Mirror groups remain symbol + direction + account + exchange; newer data from another owner cannot displace the correct owner's mirror.
 - A missing link may use one sole unambiguous owner candidate, but multiple owner candidates remain unbound. Legacy mirrors without account/exchange may still supply display facts for existing callers, while provenance stays null and therefore cannot prove protection.
 - Manual/external rows retain their own mirror truth. No engine timestamp/account/exchange is promoted into mirror provenance.
-- The production section-v2 cockpit is the only runtime call changed and passes only its already scoped `executionOrders`.
+- One production read-only call in `buildOverviewSectionSource()` changed: normalized Positions live in its shared `common` payload, so every section-v2 response built from that common payload passes only its already scoped `executionOrders`. No route or write behavior changed.
 - `protectionProjection()` independently requires the normalized Position's bounded account and canonical exchange to equal its related Execution before either verified or explicit-missing proof is possible. Missing or mismatched ownership degrades to `exchange_stop_snapshot_unverified`.
 - The real Chrome fixture now supplies raw engine + Execution + mirror inputs to the real normalizer with `{ executionOrders }`; it does not manually inject normalized provenance.
 
@@ -359,3 +359,52 @@ Result: exit 0; 170/170 passed, 0 failed; duration 742.131125 ms.
 - `npm run build`: exit 0; 1,715 modules transformed in 2.80s; Account lazy CSS remained `index-DdtT6d4G.css`, 42.83 kB / 6.69 kB gzip.
 - The Impeccable detector was not rerun, preserving its exactly-once Task 3 contract.
 - Final syntax, scope, `git diff --check`, and clean-worktree evidence are recorded after the report update and commit.
+
+## Descriptor-safe account-alias correction after `3f66574`
+
+### Remaining review finding
+
+`3f66574` bound Position mirrors by account and exchange, but both server and frontend still resolved `accountId`, `exchangeAccountId`, and `connectionAccountId` by taking the first usable value. An Execution or mirror containing `accountId: "account-a"` plus a conflicting later alias could therefore still be treated as account A and reach false `verified` or explicit `exchange_stop_missing` protection.
+
+The correction remains inside the user-authorized read-only account/exchange-linkage projection exception. It changes no database, schema, write API, route, permission, trading, execution, or risk behavior.
+
+### RED
+
+The real raw engine + Execution + exchange-mirror → `normalizePositionsForUi(..., { executionOrders })` → `buildAccountDomainModel()` chain now covers:
+
+- conflicting Execution account aliases with both matching-stop and explicit-absence snapshots;
+- conflicting mirror account aliases with both snapshot outcomes;
+- invalid-present, accessor, and proxy-backed aliases on mirrors and Executions, with no getter/trap escape;
+- identical aliases across all three supported account fields remaining valid;
+- direct frontend projection of conflicting or invalid normalized aliases independently failing closed.
+
+Command:
+
+```text
+node scripts/run-tests-isolated.mjs tests/kordyn-v2-position-workspace.test.mjs
+```
+
+Result before production edits: exit 1; 30 tests, 26 passed / 4 failed; duration 206.987 ms. The failures showed conflicting Execution provenance attachment, conflicting mirror provenance publication, invalid/accessor aliases verifying, and frontend first-wins verification.
+
+### GREEN
+
+- Server account aliases use descriptor-safe `unbound / valid / invalid` resolution. Zero data values are unbound; every present non-empty value must be a bounded identity; all valid aliases must collapse to one value. Accessors, throwing descriptors, invalid-present values, or multiple distinct identities are invalid.
+- An invalid explicit Execution binding is never downgraded to missing and cannot use single-owner fallback.
+- Invalid mirrors are isolated from valid and legacy-unbound groups. They can retain safe non-protection display facts, but normalized `rawSyncedAt`, account aliases, and exchange provenance are null.
+- Identical aliases normalize to one canonical `accountId`; no conflicting alias is forwarded.
+- Frontend protection independently applies the same tri-state semantics to both Position and related Execution before snapshot selection. Invalid, conflicting, or missing provenance can be only degraded/unavailable, never verified or explicit missing.
+
+Focused Task 3 result after the final hostile Execution assertions: exit 0; 30/30 passed; duration 226.709917 ms.
+
+Fresh Position-view / protection compatibility batch: exit 0; 29/29 passed; duration 229.295042 ms.
+
+Fresh Task 3 + Position/protection + Task 1/2 account/state/selection/lazy batch after the final hostile Execution assertions: exit 0; 174/174 passed; duration 942.7275 ms.
+
+Real production Account browser runner: exit 0 with `Kordyn V2 account production interaction browser checks passed`.
+
+The Impeccable detector was not rerun, preserving its exactly-once Task 3 contract.
+
+- Full `npm test`: exit 0; 1,982/1,982 passed, 0 failed/cancelled/skipped/todo; duration 14,440.073041 ms; isolated test root cleaned.
+- `npm run lint`: exit 0, no findings.
+- `npm run build`: exit 0; 1,715 modules transformed in 2.34s; Account lazy CSS remained `index-DdtT6d4G.css`, 42.83 kB / 6.69 kB gzip.
+- Final syntax, diff, scope, commit, and clean-worktree evidence is recorded after this report update.

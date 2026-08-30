@@ -362,9 +362,20 @@ function textField(record, fields, limit = 240) {
   return null;
 }
 
-function canonicalBindingIdentity(value, { uppercase = false } = {}) {
-  if (!validPositionIdentity(value)) return null;
-  return uppercase ? value.toUpperCase() : value;
+function bindingIdentity(record, fields, { uppercase = false } = {}) {
+  const values = new Set();
+  for (const field of fields) {
+    const read = ownDataRead(record, field);
+    if (read.kind === "missing") continue;
+    if (read.kind !== "value") return { state: "invalid", value: null };
+    const raw = read.value;
+    if (raw === null || raw === undefined || raw === "") continue;
+    if (!validPositionIdentity(raw)) return { state: "invalid", value: null };
+    values.add(uppercase ? raw.toUpperCase() : raw);
+  }
+  if (values.size === 0) return { state: "unbound", value: null };
+  if (values.size !== 1) return { state: "invalid", value: null };
+  return { state: "valid", value: values.values().next().value };
 }
 
 function numericList(value) {
@@ -379,13 +390,17 @@ function numericList(value) {
 function projectedExecutionOrder(order) {
   const id = textField(order, ["id", "orderId"]);
   if (!validPositionIdentity(id)) return null;
+  const accountBinding = bindingIdentity(order, ["accountId", "exchangeAccountId", "connectionAccountId"]);
+  const exchangeBinding = bindingIdentity(order, ["exchange"], { uppercase: true });
   return {
     id,
     symbol: textField(order, ["symbol", "instId"]),
     direction: textField(order, ["direction", "side"]),
     status: textField(order, ["status", "state"]),
-    exchange: textField(order, ["exchange"]),
-    accountId: textField(order, ["accountId", "exchangeAccountId"]),
+    exchange: exchangeBinding.state === "valid" ? exchangeBinding.value : null,
+    accountId: accountBinding.state === "valid" ? accountBinding.value : null,
+    accountBindingState: accountBinding.state,
+    exchangeBindingState: exchangeBinding.state,
     positionId: textField(order, ["positionId"]),
     planId: textField(order, ["planId", "tradePlanId"]),
     agentRunId: textField(order, ["agentRunId", "runId"]),
@@ -456,8 +471,10 @@ function latestProtectionSnapshot(source, position, execution) {
     (source.accountSnapshots || []).map(projectedSnapshot).filter(Boolean),
     (snapshot) => snapshot.id
   ).map(({ row }) => row);
-  const accountId = execution?.accountId || textField(position, ["accountId", "exchangeAccountId"]);
-  const exchange = execution?.exchange || textField(position, ["exchange"]);
+  const positionAccount = bindingIdentity(position, ["accountId", "exchangeAccountId", "connectionAccountId"]);
+  const positionExchange = bindingIdentity(position, ["exchange"], { uppercase: true });
+  const accountId = execution?.accountBindingState === "valid" ? execution.accountId : positionAccount.value;
+  const exchange = execution?.exchangeBindingState === "valid" ? execution.exchange : positionExchange.value;
   const eligible = snapshots.filter((snapshot) => (
     (!accountId || snapshot.accountId === accountId)
     && (!exchange || snapshot.exchange === exchange)
@@ -490,12 +507,12 @@ function protectionProjection(source, position, execution, ownership, now) {
   if (stopLoss === null) return { state: "failed", reason: "local_stop_missing", stopPrice: null, snapshotId: null, asOf: null, source: textField(position, ["source"]) };
   if (!execution) return { state: "unavailable", reason: "execution_link_unavailable", stopPrice: stopLoss, snapshotId: null, asOf: null, source: textField(position, ["source"]) };
   if (!execution.stopClientOrderId) return { state: "failed", reason: "stop_identity_missing", stopPrice: stopLoss, snapshotId: null, asOf: null, source: execution.exchange };
-  const mirrorAccountId = canonicalBindingIdentity(textField(position, ["accountId", "exchangeAccountId"]));
-  const executionAccountId = canonicalBindingIdentity(execution.accountId);
-  const mirrorExchange = canonicalBindingIdentity(textField(position, ["exchange"]), { uppercase: true });
-  const executionExchange = canonicalBindingIdentity(execution.exchange, { uppercase: true });
-  const bindingMatches = mirrorAccountId && executionAccountId && mirrorAccountId === executionAccountId
-    && mirrorExchange && executionExchange && mirrorExchange === executionExchange;
+  const mirrorAccount = bindingIdentity(position, ["accountId", "exchangeAccountId", "connectionAccountId"]);
+  const mirrorExchange = bindingIdentity(position, ["exchange"], { uppercase: true });
+  const bindingMatches = mirrorAccount.state === "valid" && execution.accountBindingState === "valid"
+    && mirrorAccount.value === execution.accountId
+    && mirrorExchange.state === "valid" && execution.exchangeBindingState === "valid"
+    && mirrorExchange.value === execution.exchange;
   if (!bindingMatches) return { state: "degraded", reason: "exchange_stop_snapshot_unverified", stopPrice: stopLoss, snapshotId: null, asOf: null, source: execution.exchange };
   const snapshot = latestProtectionSnapshot(source, position, execution);
   if (!snapshot) return { state: "unavailable", reason: "account_snapshot_unavailable", stopPrice: stopLoss, snapshotId: null, asOf: null, source: execution.exchange };
@@ -542,6 +559,8 @@ function positionProjection(source, position, executionRows, incidents, now) {
   const id = canonicalPositionIdentity(position);
   const relatedExecution = relatedExecutionFor(position, executionRows);
   const ownership = positionOwnership(position);
+  const accountBinding = bindingIdentity(position, ["accountId", "exchangeAccountId", "connectionAccountId"]);
+  const exchangeBinding = bindingIdentity(position, ["exchange"], { uppercase: true });
   const linkedIncidents = incidents.filter((incident) => (
     incident.positionId === id || (relatedExecution && incident.executionOrderId === relatedExecution.id)
   ));
@@ -553,8 +572,8 @@ function positionProjection(source, position, executionRows, incidents, now) {
     symbol: textField(position, ["symbol", "instId"]),
     direction: textField(position, ["direction", "posSide", "side"]),
     source: textField(position, ["source"]),
-    accountId: textField(position, ["accountId", "exchangeAccountId"]),
-    exchange: textField(position, ["exchange"]),
+    accountId: accountBinding.state === "valid" ? accountBinding.value : null,
+    exchange: exchangeBinding.state === "valid" ? exchangeBinding.value : null,
     ownership,
     quantity: numericField(position, "quantity", "size", "pos", "qty"),
     entry: numericField(position, "entry", "entryPrice"),

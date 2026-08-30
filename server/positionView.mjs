@@ -20,21 +20,63 @@ const boundedIdentity = (value) => typeof value === "string"
   && !/[\p{White_Space}\p{Cc}]/u.test(value)
   ? value
   : null;
-const accountIdFor = (row = {}) => boundedIdentity(row.accountId)
-  || boundedIdentity(row.exchangeAccountId)
-  || boundedIdentity(row.connectionAccountId);
-const exchangeFor = (row = {}) => {
-  const exchange = boundedIdentity(row.exchange);
-  return exchange ? exchange.toUpperCase() : null;
-};
+const ACCOUNT_ID_FIELDS = Object.freeze(["accountId", "exchangeAccountId", "connectionAccountId"]);
+const missingIdentity = Object.freeze({ state: "unbound", value: null });
+
+function identityFor(row, fields, { uppercase = false } = {}) {
+  if (!row || typeof row !== "object") return { state: "invalid", value: null };
+  const values = new Set();
+  for (const field of fields) {
+    let descriptor;
+    try { descriptor = Object.getOwnPropertyDescriptor(row, field); } catch { return { state: "invalid", value: null }; }
+    if (!descriptor) continue;
+    if (!Object.hasOwn(descriptor, "value")) return { state: "invalid", value: null };
+    const raw = descriptor.value;
+    if (raw === null || raw === undefined || raw === "") continue;
+    const identity = boundedIdentity(raw);
+    if (!identity) return { state: "invalid", value: null };
+    values.add(uppercase ? identity.toUpperCase() : identity);
+  }
+  if (values.size === 0) return missingIdentity;
+  if (values.size !== 1) return { state: "invalid", value: null };
+  return { state: "valid", value: values.values().next().value };
+}
+
+const accountIdentityFor = (row = {}) => identityFor(row, ACCOUNT_ID_FIELDS);
+const exchangeIdentityFor = (row = {}) => identityFor(row, ["exchange"], { uppercase: true });
 const bindingFor = (row = {}) => {
-  const accountId = accountIdFor(row);
-  const exchange = exchangeFor(row);
-  return accountId && exchange
-    ? { accountId, exchange, key: JSON.stringify([accountId, exchange]) }
-    : null;
+  const account = accountIdentityFor(row);
+  const exchange = exchangeIdentityFor(row);
+  if (account.state === "invalid" || exchange.state === "invalid") {
+    return { state: "invalid", accountId: null, exchange: null, key: null };
+  }
+  if (account.state !== "valid" || exchange.state !== "valid") {
+    return { state: "unbound", accountId: null, exchange: exchange.value, key: null };
+  }
+  return {
+    state: "valid",
+    accountId: account.value,
+    exchange: exchange.value,
+    key: JSON.stringify([account.value, exchange.value])
+  };
 };
 const emptyPositionGroup = () => ({ engines: [], rests: [], websockets: [], others: [] });
+
+function dataProjection(record = {}) {
+  try {
+    const descriptors = Object.getOwnPropertyDescriptors(record);
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.length > 256 || keys.some((key) => typeof key !== "string")) return {};
+    const projected = {};
+    for (const key of keys) {
+      const descriptor = descriptors[key];
+      if (descriptor && Object.hasOwn(descriptor, "value")) projected[key] = descriptor.value;
+    }
+    return projected;
+  } catch {
+    return {};
+  }
+}
 
 // 方向归一化:多/long/buy → "多";空/short/sell → "空"(UI 为中文,统一成中文,含 tone 可判)。
 export function canonDirection(d) {
@@ -107,8 +149,9 @@ function executionIndex(options = {}) {
     : [];
   const indexed = new Map();
   for (const order of orders) {
-    const id = boundedIdentity(order?.id);
-    if (!id) continue;
+    const identity = identityFor(order, ["id"]);
+    if (identity.state !== "valid") continue;
+    const id = identity.value;
     const current = indexed.get(id) || { count: 0, order: null };
     current.count += 1;
     current.order = order;
@@ -129,7 +172,7 @@ function engineExecutionBinding(engine, executionLookup, symbol, direction) {
     return { state: "invalid", binding: null };
   }
   const binding = bindingFor(match.order);
-  return binding ? { state: "valid", binding } : { state: "invalid", binding: null };
+  return binding.state === "valid" ? { state: "valid", binding } : { state: "invalid", binding: null };
 }
 
 function normalizedPositionGroup(g) {
@@ -139,9 +182,9 @@ function normalizedPositionGroup(g) {
   const other = newest(g.others) || {};
   const hasEngine = Boolean(eng.id || g.engines.length);
   const exchangeMirror = g.rests.length ? rest : g.websockets.length ? ws : null;
-  const mirrorAccountId = exchangeMirror
-    ? accountIdFor(exchangeMirror)
-    : null;
+  const mirrorBinding = exchangeMirror ? bindingFor(exchangeMirror) : { state: "unbound", accountId: null, exchange: null };
+  const mirrorProvenanceValid = mirrorBinding.state === "valid";
+  const mirrorProvenanceInvalid = mirrorBinding.state === "invalid";
   const base = hasEngine ? eng : (rest.id ? rest : ws.id ? ws : other); // 引擎行只提供托管身份与解释字段
   const mark = num(rest.mark ?? rest.markPx) ?? num(ws.mark ?? ws.markPx) ?? num(eng.mark) ?? num(other.mark);
   // 交易所 size 是合约张数，只有 coinSize 才是币量；缺 coinSize 时只能回退到同仓的引擎币量。
@@ -154,16 +197,16 @@ function normalizedPositionGroup(g) {
   const margin = notional !== null && leverage ? notional / leverage : null;
   const liqDistancePct = liqPx !== null && mark ? Math.abs((mark - liqPx) / mark) * 100 : null;
   return {
-    ...base,
+    ...dataProjection(base),
     source: hasEngine ? "execution_engine" : (rest.source || ws.source || base.source),
     symbol: base.symbol || rest.symbol || ws.symbol,
     direction: canonDirection(base),
     // 这些字段只说明当前 UI 财务事实实际选中的交易所镜像；不得从引擎行推断镜像所有权。
-    rawSyncedAt: exchangeMirror?.rawSyncedAt ?? null,
-    accountId: mirrorAccountId,
-    exchangeAccountId: exchangeMirror?.exchangeAccountId ?? null,
-    connectionAccountId: exchangeMirror?.connectionAccountId ?? null,
-    exchange: exchangeMirror ? exchangeFor(exchangeMirror) : null,
+    rawSyncedAt: mirrorProvenanceInvalid ? null : exchangeMirror?.rawSyncedAt ?? null,
+    accountId: mirrorProvenanceValid ? mirrorBinding.accountId : null,
+    exchangeAccountId: null,
+    connectionAccountId: null,
+    exchange: mirrorProvenanceInvalid ? null : mirrorBinding.exchange,
     entry: num(rest.entry ?? rest.avgPx) ?? num(ws.entry ?? ws.avgPx) ?? num(eng.entry) ?? num(other.entry),
     mark,
     quantity: coinQty,            // 统一为币量(不再混合约张数/币量)
@@ -197,10 +240,15 @@ export function normalizePositionsForUi(positions = [], options = {}) {
     const direction = canonicalPositionDirection(sourceGroup.engines[0] || sourceGroup.rests[0] || sourceGroup.websockets[0] || {});
     const mirrorGroups = new Map();
     const unboundMirrors = emptyPositionGroup();
+    const invalidMirrorGroups = [];
     for (const [field, mirrors] of [["rests", sourceGroup.rests], ["websockets", sourceGroup.websockets]]) {
       for (const mirror of mirrors) {
         const binding = bindingFor(mirror);
-        if (!binding) unboundMirrors[field].push(mirror);
+        if (binding.state === "invalid") {
+          const invalidGroup = emptyPositionGroup();
+          invalidGroup[field].push(mirror);
+          invalidMirrorGroups.push(invalidGroup);
+        } else if (binding.state === "unbound") unboundMirrors[field].push(mirror);
         else {
           const group = mirrorGroups.get(binding.key) || emptyPositionGroup();
           group[field].push(mirror);
@@ -229,6 +277,7 @@ export function normalizePositionsForUi(positions = [], options = {}) {
 
     for (const group of mirrorGroups.values()) rows.push(normalizedPositionGroup(group));
     if (unboundMirrors.rests.length || unboundMirrors.websockets.length) rows.push(normalizedPositionGroup(unboundMirrors));
+    for (const group of invalidMirrorGroups) rows.push(normalizedPositionGroup(group));
     if (unbound.engines.length || unbound.others.length) rows.push(normalizedPositionGroup(unbound));
   }
   return rows;

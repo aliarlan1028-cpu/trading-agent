@@ -194,6 +194,163 @@ test("raw engine and selected exchange mirror reach verified protection through 
   );
 });
 
+test("conflicting Execution account aliases fail closed through normalize and the Account model", () => {
+  const at = "2026-08-30T06:00:00Z";
+  const conflictingExecution = validExecution({ accountId: "account-a", exchangeAccountId: "account-b", exchange: "OKX" });
+  for (const snapshot of [
+    validSnapshot({ accountId: "account-a", exchange: "OKX", createdAt: at }),
+    validSnapshot({ accountId: "account-a", exchange: "OKX", createdAt: at, algoOrders: [] })
+  ]) {
+    const positions = normalizePositionsForUi([
+      rawEnginePosition(), rawExchangeMirror("account-a", "OKX", at)
+    ], { executionOrders: [conflictingExecution] });
+    const managed = positions.find((position) => position.source === "execution_engine");
+    const model = buildAccountDomainModel({
+      resourceState, positions, executionOrders: [conflictingExecution], accountSnapshots: [snapshot], riskIncidents: []
+    }, { now: Date.parse(at) + 60_000 });
+    const protection = model.positions.find((position) => position.id === managed?.positionId)?.protection;
+    assert.equal(managed?.rawSyncedAt, null);
+    assert.notEqual(protection?.state, "verified");
+    assert.notEqual(protection?.reason, "exchange_stop_missing");
+  }
+});
+
+test("conflicting mirror account aliases cannot contribute protected provenance", () => {
+  const at = "2026-08-30T06:00:00Z";
+  const execution = validExecution({ accountId: "account-a", exchange: "OKX" });
+  for (const snapshot of [
+    validSnapshot({ accountId: "account-a", exchange: "OKX", createdAt: at }),
+    validSnapshot({ accountId: "account-a", exchange: "OKX", createdAt: at, algoOrders: [] })
+  ]) {
+    const positions = normalizePositionsForUi([
+      rawEnginePosition(),
+      rawExchangeMirror("account-a", "OKX", at, { exchangeAccountId: "account-b" })
+    ], { executionOrders: [execution] });
+    const managed = positions.find((position) => position.source === "execution_engine");
+    const model = buildAccountDomainModel({
+      resourceState, positions, executionOrders: [execution], accountSnapshots: [snapshot], riskIncidents: []
+    }, { now: Date.parse(at) + 60_000 });
+    const protection = model.positions.find((position) => position.id === managed?.positionId)?.protection;
+    assert.deepEqual(
+      { rawSyncedAt: managed?.rawSyncedAt, accountId: managed?.accountId, exchange: managed?.exchange },
+      { rawSyncedAt: null, accountId: null, exchange: null }
+    );
+    assert.notEqual(protection?.state, "verified");
+    assert.notEqual(protection?.reason, "exchange_stop_missing");
+  }
+});
+
+test("identical account aliases remain valid while invalid-present and accessor aliases fail closed without throws", () => {
+  const at = "2026-08-30T06:00:00Z";
+  const execution = validExecution({ accountId: "account-a", exchangeAccountId: "account-a", connectionAccountId: "account-a", exchange: "OKX" });
+  const identical = normalizePositionsForUi([
+    rawEnginePosition(),
+    rawExchangeMirror("account-a", "OKX", at, { exchangeAccountId: "account-a", connectionAccountId: "account-a" })
+  ], { executionOrders: [execution] });
+  const identicalModel = buildAccountDomainModel({
+    resourceState, positions: identical, executionOrders: [execution],
+    accountSnapshots: [validSnapshot({ accountId: "account-a", exchange: "OKX", createdAt: at })], riskIncidents: []
+  }, { now: Date.parse(at) + 60_000 });
+  assert.equal(identicalModel.positions.find((position) => position.id === "position-1")?.protection.state, "verified");
+
+  const accessorMirror = rawExchangeMirror("account-a", "OKX", at);
+  Object.defineProperty(accessorMirror, "exchangeAccountId", {
+    enumerable: true,
+    get() { throw new Error("account alias accessor must not run"); }
+  });
+  const proxyMirror = new Proxy(rawExchangeMirror("account-a", "OKX", at), {
+    getOwnPropertyDescriptor(target, field) {
+      if (field === "exchangeAccountId") throw new Error("account alias descriptor must not escape");
+      return Reflect.getOwnPropertyDescriptor(target, field);
+    }
+  });
+  for (const mirror of [
+    rawExchangeMirror("account-a", "OKX", at, { exchangeAccountId: 17 }),
+    accessorMirror,
+    proxyMirror
+  ]) {
+    let model;
+    let normalized;
+    assert.doesNotThrow(() => {
+      normalized = normalizePositionsForUi([rawEnginePosition(), mirror], { executionOrders: [execution] });
+      model = buildAccountDomainModel({
+        resourceState, positions: normalized, executionOrders: [execution],
+        accountSnapshots: [validSnapshot({ accountId: "account-a", exchange: "OKX", createdAt: at })], riskIncidents: []
+      }, { now: Date.parse(at) + 60_000 });
+    });
+    const mirrorRow = normalized.find((position) => position.source === "exchange_rest");
+    assert.deepEqual(
+      { rawSyncedAt: mirrorRow?.rawSyncedAt, accountId: mirrorRow?.accountId, exchange: mirrorRow?.exchange },
+      { rawSyncedAt: null, accountId: null, exchange: null }
+    );
+    assert.notEqual(model.positions.find((position) => position.id === "position-1")?.protection.state, "verified");
+  }
+
+  const accessorExecution = validExecution({ accountId: "account-a", exchange: "OKX" });
+  Object.defineProperty(accessorExecution, "exchangeAccountId", {
+    enumerable: true,
+    get() { throw new Error("execution account alias accessor must not run"); }
+  });
+  const proxyExecution = new Proxy(validExecution({ accountId: "account-a", exchange: "OKX" }), {
+    getOwnPropertyDescriptor(target, field) {
+      if (field === "exchangeAccountId") throw new Error("execution account alias descriptor must not escape");
+      return Reflect.getOwnPropertyDescriptor(target, field);
+    }
+  });
+  for (const hostileExecution of [
+    validExecution({ accountId: "account-a", exchangeAccountId: 17, exchange: "OKX" }),
+    accessorExecution,
+    proxyExecution
+  ]) {
+    let model;
+    let normalized;
+    assert.doesNotThrow(() => {
+      normalized = normalizePositionsForUi([
+        rawEnginePosition(), rawExchangeMirror("account-a", "OKX", at)
+      ], { executionOrders: [hostileExecution] });
+      model = buildAccountDomainModel({
+        resourceState, positions: normalized, executionOrders: [hostileExecution],
+        accountSnapshots: [validSnapshot({ accountId: "account-a", exchange: "OKX", createdAt: at })], riskIncidents: []
+      }, { now: Date.parse(at) + 60_000 });
+    });
+    const managed = normalized.find((position) => position.source === "execution_engine");
+    assert.deepEqual(
+      { rawSyncedAt: managed?.rawSyncedAt, accountId: managed?.accountId, exchange: managed?.exchange },
+      { rawSyncedAt: null, accountId: null, exchange: null }
+    );
+    const protection = model.positions.find((position) => position.id === "position-1")?.protection;
+    assert.notEqual(protection?.state, "verified");
+    assert.notEqual(protection?.reason, "exchange_stop_missing");
+  }
+});
+
+test("frontend protection independently rejects conflicting or invalid normalized account aliases", () => {
+  const at = "2026-08-30T06:00:00Z";
+  const snapshot = validSnapshot({ accountId: "account-a", exchange: "OKX", createdAt: at });
+  const cases = [
+    {
+      position: validPosition({ accountId: "account-a", exchangeAccountId: "account-b", exchange: "OKX", rawSyncedAt: at }),
+      execution: validExecution({ accountId: "account-a", exchange: "OKX" })
+    },
+    {
+      position: validPosition({ accountId: "account-a", exchangeAccountId: 17, exchange: "OKX", rawSyncedAt: at }),
+      execution: validExecution({ accountId: "account-a", exchange: "OKX" })
+    },
+    {
+      position: validPosition({ accountId: "account-a", exchange: "OKX", rawSyncedAt: at }),
+      execution: validExecution({ accountId: "account-a", exchangeAccountId: "account-b", exchange: "OKX" })
+    }
+  ];
+  for (const { position, execution: row } of cases) {
+    const model = buildAccountDomainModel({
+      resourceState, positions: [position], executionOrders: [row], accountSnapshots: [snapshot], riskIncidents: []
+    }, { now: Date.parse(at) + 60_000 });
+    const protection = model.positions[0]?.protection;
+    assert.notEqual(protection?.state, "verified");
+    assert.notEqual(protection?.reason, "exchange_stop_missing");
+  }
+});
+
 test("normalizer never cross-binds an A execution to a B account or exchange mirror", () => {
   const at = "2026-08-30T06:00:00Z";
   const executionA = validExecution({ accountId: "account-a", exchange: "OKX" });
@@ -278,7 +435,7 @@ test("frontend protection requires normalized mirror binding to equal its relate
   }
 });
 
-test("section-v2 cockpit passes scoped execution linkage into the real position normalizer", () => {
+test("section-v2 shared common projection passes scoped execution linkage into the real position normalizer", () => {
   const source = fs.readFileSync(path.join(rootDir, "server/index.mjs"), "utf8");
   const sectionBuilder = source.match(/function buildOverviewSectionSource[\s\S]*?if \(section === "chat"\)/)?.[0] || "";
   assert.match(sectionBuilder, /positions:\s*normalizePositionsForUi\(scopedDb\.positions,\s*\{\s*executionOrders:\s*scopedDb\.executionOrders\s*\}\)/);
