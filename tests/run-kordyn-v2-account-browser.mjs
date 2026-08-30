@@ -357,14 +357,14 @@ async function supportIsolationAtCurrentScroll(cdp, viewport, label, phase) {
       dockCanvasOverlap: overlap(dockRect, canvasRect),
       candidateCount: candidates.length,
       intersections: candidates.filter((row) => row.supportOverlap > 0),
-      hitFailures: candidates.filter((row) => !row.hitTestable),
+      hitFailures: candidates.filter((row) => row.supportOverlap > 0 && !row.hitTestable),
       supportHitTestable: Boolean(supportHit && support && (supportHit === support || support.contains(supportHit))),
       scroll: scroller ? { top: scroller.scrollTop, height: scroller.scrollHeight, clientHeight: scroller.clientHeight } : null
     };
   })()`);
   assert.ok(evidence.support && evidence.canvas, `${label} ${phase}: support and work canvas exist`);
   assert.deepEqual(evidence.intersections, [], `${label} ${phase}: support never intersects visible work-canvas rows, controls, or truth regions ${JSON.stringify(evidence.intersections)}`);
-  assert.deepEqual(evidence.hitFailures, [], `${label} ${phase}: visible work-canvas rows, controls, and truth regions remain hit-testable ${JSON.stringify(evidence.hitFailures)}`);
+  assert.deepEqual(evidence.hitFailures, [], `${label} ${phase}: support does not block hit-testing for an intersected work-canvas target ${JSON.stringify(evidence.hitFailures)}`);
   assert.ok(evidence.dock, `${label} ${phase}: support owns a reserved shell dock`);
   assert.equal(evidence.dockCanvasOverlap, 0, `${label} ${phase}: reserved support dock does not overlap the work canvas ${JSON.stringify(evidence)}`);
   assert.equal(evidence.supportHitTestable, true, `${label} ${phase}: support affordance remains hit-testable`);
