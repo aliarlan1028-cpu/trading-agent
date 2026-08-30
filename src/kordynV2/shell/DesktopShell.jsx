@@ -46,7 +46,9 @@ export function DesktopShell({
         </main>
       </StateBoundary>
       <ContextProof selection={selection} onSelect={onSelect} request={evidenceRequest} />
-      <AiSupport context={supportContext} onNavigate={onNavigate} />
+      <div className="kordynV2DesktopSupportDock" data-kordyn-v2-support-dock>
+        <AiSupport context={supportContext} onNavigate={onNavigate} />
+      </div>
     </div>
   );
 }

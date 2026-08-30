@@ -150,10 +150,11 @@ body:has(.kordynV2Root) .cfmBtn:focus-visible {
   height: 100%;
   display: grid;
   grid-template-columns: var(--kordyn-v2-nav-width) minmax(0, 1fr);
-  grid-template-rows: var(--kordyn-v2-header-height) minmax(0, 1fr);
+  grid-template-rows: var(--kordyn-v2-header-height) minmax(0, 1fr) 72px;
   grid-template-areas:
     "primary header"
-    "primary canvas";
+    "primary canvas"
+    "primary support";
   overflow: hidden;
   background:
     radial-gradient(circle at 55% 44%, rgba(32, 74, 134, 0.11), transparent 42%),
@@ -570,11 +571,21 @@ body:has(.kordynV2Root) .cfmBtn:focus-visible {
   animation: kordynV2Spin 900ms linear infinite;
 }
 
+.kordynV2DesktopSupportDock {
+  grid-area: support;
+  min-width: 0;
+  min-height: 0;
+  padding: 8px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  border-top: 1px solid var(--kordyn-v2-border);
+  background: rgba(3, 10, 20, 0.97);
+}
+
 .kordynV2AiSupport {
-  position: absolute;
+  position: relative;
   z-index: 7;
-  right: 18px;
-  bottom: 25px;
 }
 
 .kordynV2AiSupportTrigger {
@@ -1391,9 +1402,8 @@ body:has(.kordynV2Root) .cfmBtn:focus-visible {
     font-size: 12px;
   }
 
-  .kordynV2AiSupport {
-    right: 14px;
-    bottom: 19px;
+  .kordynV2DesktopSupportDock {
+    padding-inline: 14px;
   }
 
   .kordynV2AiSupportTrigger {
