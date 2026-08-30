@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "runner": "tests/run-kordyn-v2-account-browser.mjs",
   "fixture": "tests/kordyn-v2-account-browser.jsx",
-  "productSourceCommit": "312a3c590c8759940cfbf82fc9eb1342c7bbcc79",
+  "productSourceCommit": "3057bcd90496af2992afebe6eb7858f7cf3c9b97",
   "captureTestSourceCommit": "e3eb0b3c216eafe9a63ed6b40ec998f693ba50a2",
   "states": [
     {
@@ -37,7 +37,7 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": false,
-      "sha256": "04bcf4c87c6d4caf24af72855d7373e7af4cccfb838ce95a25e40899830c831f",
+      "sha256": "4a44ce466f0416db404cf47d6574c22217df97eb5b91d777a29ca8ca8ccf0203",
       "state": "loading",
       "retainsFacts": false,
       "geometry": {
@@ -206,7 +206,7 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": true,
-      "sha256": "5c57a5ae0a59cb0206e39a9f9e132d605fa7b0d16a60fc4231ce6f58bab24b24",
+      "sha256": "36793da363c263716c170f07ebfb42cfcfa84adf45bebc4d7c743b763588fc5c",
       "state": "stale",
       "retainsFacts": true,
       "supportIsolation": {
@@ -346,7 +346,7 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": true,
-      "sha256": "df444526309229906528fd4ee2b9b6f07e03c029bc0474ca60bfbcf86f8e1eb6",
+      "sha256": "e7c6de80c076950e608b9c73d6bfee5c48e48d28ea8432bb418fe76701c40dcc",
       "state": "degraded",
       "retainsFacts": true,
       "supportIsolation": {

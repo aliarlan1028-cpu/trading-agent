@@ -16,7 +16,7 @@
     "sha256": "0656942a67e22a6301c58a4b3cda27d355d4708065d087a01f3762e14d0d3cf2",
     "runner": "tests/run-kordyn-v2-account-browser.mjs",
     "fixture": "tests/kordyn-v2-account-browser.jsx",
-    "productSourceCommit": "312a3c590c8759940cfbf82fc9eb1342c7bbcc79",
+    "productSourceCommit": "3057bcd90496af2992afebe6eb7858f7cf3c9b97",
     "captureTestSourceCommit": "e3eb0b3c216eafe9a63ed6b40ec998f693ba50a2",
     "device": "desktop",
     "domainId": "account",

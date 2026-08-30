@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "runner": "tests/run-kordyn-v2-account-browser.mjs",
   "fixture": "tests/kordyn-v2-account-browser.jsx",
-  "productSourceCommit": "312a3c590c8759940cfbf82fc9eb1342c7bbcc79",
+  "productSourceCommit": "3057bcd90496af2992afebe6eb7858f7cf3c9b97",
   "captureTestSourceCommit": "e3eb0b3c216eafe9a63ed6b40ec998f693ba50a2",
   "captures": [
     {
@@ -554,7 +554,7 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": true,
-      "sha256": "d4a46110a54cb61df047d76248bd8bd8536e71b406fbe8ad7f402cc390d0cf8d",
+      "sha256": "ff06d5a9b947730f36aad590b2a512356014283e36a38162053d31cd5535b64c",
       "structuralOnly": true,
       "supportIsolation": {
         "start": {

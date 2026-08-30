@@ -3,7 +3,7 @@
   "scope": "account",
   "sourceManifest": "docs/kordyn-v2-approved-concept-manifest.md",
   "captureEvidence": ".impeccable/review/kordyn-v2/account/capture-evidence.json",
-  "productSourceCommit": "312a3c590c8759940cfbf82fc9eb1342c7bbcc79",
+  "productSourceCommit": "3057bcd90496af2992afebe6eb7858f7cf3c9b97",
   "captureTestSourceCommit": "e3eb0b3c216eafe9a63ed6b40ec998f693ba50a2",
   "outputRoot": ".impeccable/review/kordyn-v2/account-compare",
   "counts": {
@@ -104,7 +104,7 @@
         },
         "geometry": {
           "file": "desktop-account-position--1440x900--geometry.json",
-          "sha256": "cc52c3f31988850db75b55d900c876d2cea4fa32fe170c57e9fa056a11a9dc89"
+          "sha256": "34674a29898549535801e2d03709cde732d7f749e3ed8a919d98c045fa9cfe35"
         }
       },
       "pixelDifference": 0.054344026870007264,
@@ -130,7 +130,7 @@
         },
         "geometry": {
           "file": "desktop-account-position--1180x800--geometry.json",
-          "sha256": "e5a276958cfdcb9c73c6515048c2a84d50b0b16dbfa206cbfb1ea2581f6927d2"
+          "sha256": "63ec666f3c647d8eef3a349f6b9f3840353801260647ab28e51cb742971b639e"
         }
       },
       "pixelDifference": 0.054280473856209155,
