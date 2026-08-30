@@ -308,7 +308,7 @@ function accountData() {
     data.closedTradeLifecycles = data.closedTradeLifecycles.map((row) => ({ ...row, financialBasis: longText("完整财务证据链", 72) }));
   }
   if (scenario === "large-list") {
-    data.markets = Array.from({ length: 64 }, (_, index) => ({
+    data.markets = Array.from({ length: 180 }, (_, index) => ({
       id: `market-large-${index + 1}`,
       symbol: `ASSET${index + 1}/USDT`,
       price: 100 + index,
