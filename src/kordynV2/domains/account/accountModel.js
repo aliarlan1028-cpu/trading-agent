@@ -8,6 +8,14 @@ const invalidRead = Object.freeze({ kind: "invalid" });
 const finiteFinancial = (value) => typeof value === "number" && Number.isFinite(value) ? value : null;
 const finiteCount = (value) => Number.isSafeInteger(value) && value >= 0 ? value : null;
 const firstKnown = (...values) => values.find((value) => value !== null && value !== undefined);
+const POSITION_IDENTITY_FIELDS = Object.freeze(["id", "positionId", "instId", "symbol"]);
+const POSITION_NUMERIC_FIELDS = Object.freeze([
+  "quantity", "size", "pos", "qty",
+  "notional", "notionalUsdt", "marketValue",
+  "markPrice", "mark", "price", "entryPrice", "entry",
+  "unrealizedPnl", "pnl", "upl",
+  "margin", "initialMargin"
+]);
 const validPositionIdentity = (value) => typeof value === "string"
   && value.length > 0
   && value.length <= 240
@@ -56,6 +64,20 @@ function recordSnapshot(value) {
     });
   }
   return snapshot;
+}
+
+function safePositionScalar(value) {
+  if (value === null || value === undefined || value === "") return true;
+  if (typeof value === "number") return Number.isFinite(value);
+  return typeof value === "string" && Number.isFinite(Number(value));
+}
+
+function safePositionRecord(position) {
+  for (const field of POSITION_IDENTITY_FIELDS) {
+    const value = position[field];
+    if (value !== null && value !== undefined && value !== "" && !validPositionIdentity(value)) return false;
+  }
+  return POSITION_NUMERIC_FIELDS.every((field) => safePositionScalar(position[field]));
 }
 
 function arrayValues(value) {
@@ -114,7 +136,7 @@ function positionSource(root) {
   const candidates = [];
   for (const value of values) {
     const position = recordSnapshot(value);
-    if (!position) continue;
+    if (!position || !safePositionRecord(position)) continue;
     const id = canonicalPositionIdentity(position);
     if (!validPositionIdentity(id)) continue;
     candidates.push({ id, position });

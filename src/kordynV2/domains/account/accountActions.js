@@ -7,11 +7,17 @@ const unavailableAction = async () => unavailable;
 const denyConfirmation = async () => false;
 const unavailableCall = () => unavailable;
 
-const validIdentifier = (value) => typeof value === "string"
+const validOpaqueIdentifier = (value) => typeof value === "string"
   && value.length > 0
   && value.length <= 240
   && value === value.trim()
   && !/[\p{White_Space}\p{Cc}]/u.test(value);
+
+function normalizeWatchlistSymbol(value) {
+  if (typeof value !== "string" || value.length === 0 || value.length > 240 || /\p{Cc}/u.test(value)) return null;
+  const symbol = value.trim().toUpperCase().replace(/-SWAP$/u, "").replace(/-/gu, "/");
+  return /^[A-Z0-9]+\/[A-Z0-9]+$/u.test(symbol) ? symbol : null;
+}
 
 const manualExitReason = (surface) => surface === "mobile" || surface === "manual_mobile"
   ? "manual_mobile"
@@ -68,17 +74,19 @@ export function createAccountActions(deps) {
     if (confirmed !== true) return cancelled;
     return runAction("/api/reconciler/run", { mode: "manual_ui" });
   };
-  const addWatchlist = (symbol) => validIdentifier(symbol)
-    ? runAction("/api/watchlist", { symbol })
-    : invalidInput;
-  const removeWatchlist = (symbol) => validIdentifier(symbol)
-    ? runAction(`/api/watchlist/${encodeURIComponent(symbol)}`, {}, "DELETE")
-    : invalidInput;
+  const addWatchlist = (input) => {
+    const symbol = normalizeWatchlistSymbol(input);
+    return symbol ? runAction("/api/watchlist", { symbol }) : invalidInput;
+  };
+  const removeWatchlist = (input) => {
+    const symbol = normalizeWatchlistSymbol(input);
+    return symbol ? runAction(`/api/watchlist/${encodeURIComponent(symbol)}`, {}, "DELETE") : invalidInput;
+  };
   const exitExecutionOrder = (order, surface = "desktop") => (
     requestExecutionExit(runAction, order, manualExitReason(surface))
   );
   const openReviews = () => invoke(navigate, unavailableCall, "assets", "reviews");
-  const downloadClosedTradePoster = (executionId) => validIdentifier(executionId)
+  const downloadClosedTradePoster = (executionId) => validOpaqueIdentifier(executionId)
     ? invoke(
       download,
       unavailableCall,

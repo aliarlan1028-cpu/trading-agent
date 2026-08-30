@@ -87,16 +87,34 @@ test("watchlist, review navigation, and closed-trade output use deployed boundar
   });
 
   await account.addWatchlist("BTC/USDT");
-  await account.removeWatchlist("BTC/USDT:SWAP");
+  await account.removeWatchlist(" btc-usdt-swap ");
   assert.equal(account.openReviews(), "navigated");
   assert.equal(account.downloadClosedTradePoster("eo/closed"), "downloaded");
 
   assert.deepEqual(calls, [
     ["action", "/api/watchlist", { symbol: "BTC/USDT" }],
-    ["action", "/api/watchlist/BTC%2FUSDT%3ASWAP", {}, "DELETE"],
+    ["action", "/api/watchlist/BTC%2FUSDT", {}, "DELETE"],
     ["navigate", "assets", "reviews"],
     ["download", "/api/posters/trades/eo%2Fclosed", "closed-trade-eo-closed.png"]
   ]);
+});
+
+test("watchlist aliases normalize to the deployed canonical symbol before writes", async () => {
+  const calls = [];
+  const account = createAccountActions({
+    action: async (...args) => { calls.push(args); return { ok: true }; }
+  });
+  const aliases = [" BTC/USDT ", "btc-usdt", "BtC-UsDt-SwAp"];
+
+  for (const alias of aliases) {
+    await account.addWatchlist(alias);
+    await account.removeWatchlist(alias);
+  }
+
+  assert.deepEqual(calls, aliases.flatMap(() => [
+    ["/api/watchlist", { symbol: "BTC/USDT" }],
+    ["/api/watchlist/BTC%2FUSDT", {}, "DELETE"]
+  ]));
 });
 
 test("account plan decisions are the established AI action functions", async () => {
@@ -138,18 +156,21 @@ test("malformed and hostile watchlist symbols and poster IDs never invoke deploy
   const throwing = new Proxy({}, { get() { throw new Error("must not coerce hostile input"); } });
   const revoked = Proxy.revocable({}, {});
   revoked.revoke();
-  const invalidInputs = [undefined, null, "", " BTC/USDT", "BTC USDT", "BTC/USDT\n", 7, 7n, Symbol("id"), [], {}, throwing, revoked.proxy];
+  const invalidWatchlistInputs = [undefined, null, "", "BTC USDT", "BTC/USDT:SWAP", "BTC/USDT\n", 7, 7n, Symbol("id"), [], {}, throwing, revoked.proxy];
+  const invalidPosterIds = [undefined, null, "", " eo-1", "eo-1\n", 7, 7n, Symbol("id"), [], {}, throwing, revoked.proxy];
   const account = createAccountActions({
     action: async (...args) => { calls.push(["action", ...args]); return { ok: true }; },
     download: (...args) => { calls.push(["download", ...args]); return "downloaded"; }
   });
 
-  for (const value of invalidInputs) {
+  for (const value of invalidWatchlistInputs) {
     assert.doesNotThrow(() => account.addWatchlist(value));
     assert.doesNotThrow(() => account.removeWatchlist(value));
-    assert.doesNotThrow(() => account.downloadClosedTradePoster(value));
     assert.deepEqual(await account.addWatchlist(value), { ok: false, error: "invalid_account_action_input" });
     assert.deepEqual(await account.removeWatchlist(value), { ok: false, error: "invalid_account_action_input" });
+  }
+  for (const value of invalidPosterIds) {
+    assert.doesNotThrow(() => account.downloadClosedTradePoster(value));
     assert.deepEqual(account.downloadClosedTradePoster(value), { ok: false, error: "invalid_account_action_input" });
   }
   assert.deepEqual(calls, []);
@@ -168,6 +189,26 @@ test("rejected reconciliation confirmation cannot write", async () => {
   assert.deepEqual(result, { ok: false, cancelled: true });
   assert.equal(confirmations, 1);
   assert.equal(writes, 0);
+});
+
+test("throwing and asynchronously rejected reconciliation confirmations cancel without writing", async (t) => {
+  const confirmations = [
+    ["synchronous throw", () => { throw new Error("confirm unavailable"); }],
+    ["asynchronous rejection", async () => { throw new Error("confirm rejected"); }]
+  ];
+
+  for (const [label, confirm] of confirmations) {
+    await t.test(label, async () => {
+      let writes = 0;
+      const account = createAccountActions({
+        action: async () => { writes += 1; return { ok: true }; },
+        confirm
+      });
+
+      assert.deepEqual(await account.reconcile(), { ok: false, cancelled: true });
+      assert.equal(writes, 0);
+    });
+  }
 });
 
 test("reconcile and watchlist writes preserve exact raw server success and error results", async () => {

@@ -204,6 +204,118 @@ test("hostile position containers and accessors fail closed without throwing", (
   assert.deepEqual(buildAccountDomainModel(accessorRoot).positions, []);
 });
 
+const validPositionSibling = () => ({
+  positionId: "position-valid",
+  quantity: 0.5,
+  markPrice: 200,
+  unrealizedPnl: 7,
+  margin: 25
+});
+
+function positionWithScalar(field, value) {
+  const position = { positionId: `hostile-${field}` };
+  if (["quantity", "size", "pos", "qty"].includes(field)) {
+    position[field] = value;
+    position.markPrice = 100;
+  } else if (["notional", "notionalUsdt", "marketValue"].includes(field)) {
+    position.quantity = 1;
+    position.markPrice = 100;
+    position[field] = value;
+  } else if (["markPrice", "mark", "price", "entryPrice", "entry"].includes(field)) {
+    position.quantity = 1;
+    position[field] = value;
+  } else {
+    position.quantity = 1;
+    position.markPrice = 100;
+    position[field] = value;
+  }
+  if (!["unrealizedPnl", "pnl", "upl"].includes(field)) position.unrealizedPnl = 1;
+  if (!["margin", "initialMargin"].includes(field)) position.margin = 1;
+  return position;
+}
+
+test("hostile quantity values are isolated before shared selector coercion", async (t) => {
+  const revoked = Proxy.revocable({}, {});
+  revoked.revoke();
+  const throwingCoercion = {
+    valueOf() { throw new Error("must not coerce position quantity"); },
+    toString() { throw new Error("must not stringify position quantity"); }
+  };
+  const cases = [
+    ["symbol", Symbol("quantity")],
+    ["revoked proxy", revoked.proxy],
+    ["throwing coercion", throwingCoercion]
+  ];
+
+  for (const [label, value] of cases) {
+    await t.test(label, () => {
+      let model;
+      assert.doesNotThrow(() => {
+        model = buildAccountDomainModel({
+          positions: [positionWithScalar("quantity", value), validPositionSibling()]
+        });
+      });
+      assert.deepEqual(model.positions.map((row) => row.id), ["position-valid"]);
+      assert.deepEqual(
+        { exposure: model.truth.exposure, unrealizedPnl: model.truth.unrealizedPnl, margin: model.truth.margin },
+        { exposure: 100, unrealizedPnl: 7, margin: 25 }
+      );
+    });
+  }
+});
+
+test("every selector-consumed position scalar rejects hostile data without hiding a valid sibling", async (t) => {
+  const numericFields = [
+    "quantity", "size", "pos", "qty",
+    "notional", "notionalUsdt", "marketValue",
+    "markPrice", "mark", "price", "entryPrice", "entry",
+    "unrealizedPnl", "pnl", "upl",
+    "margin", "initialMargin"
+  ];
+  const identityFields = ["id", "positionId", "instId", "symbol"];
+
+  for (const field of numericFields) {
+    await t.test(field, () => {
+      let model;
+      assert.doesNotThrow(() => {
+        model = buildAccountDomainModel({
+          positions: [positionWithScalar(field, Symbol(field)), validPositionSibling()]
+        });
+      });
+      assert.deepEqual(model.positions.map((row) => row.id), ["position-valid"]);
+    });
+  }
+  for (const field of identityFields) {
+    await t.test(`identity ${field}`, () => {
+      const hostile = positionWithScalar("quantity", 1);
+      hostile.id = "higher-priority-valid-id";
+      hostile[field] = Symbol(field);
+      let model;
+      assert.doesNotThrow(() => {
+        model = buildAccountDomainModel({ positions: [hostile, validPositionSibling()] });
+      });
+      assert.deepEqual(model.positions.map((row) => row.id), ["position-valid"]);
+    });
+  }
+});
+
+test("production-compatible numeric strings remain selectable while authoritative zero is filtered", () => {
+  const model = buildAccountDomainModel({
+    positions: [
+      {
+        positionId: "numeric-strings",
+        size: "2",
+        mark: "50",
+        upl: "3",
+        initialMargin: "10"
+      },
+      { positionId: "zero-string", qty: "0", price: "50", pnl: "0", margin: "0" }
+    ]
+  });
+
+  assert.deepEqual(model.positions.map((row) => row.id), ["numeric-strings"]);
+});
+
 test("derived products and aggregate sums cannot overflow into financial truth", () => {
   const derivedOverflow = buildAccountDomainModel({
     positions: [{ positionId: "derived-overflow", quantity: Number.MAX_VALUE, markPrice: 2, unrealizedPnl: 1, margin: 1 }]
