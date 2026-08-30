@@ -17,7 +17,8 @@ const POSITION_NUMERIC_FIELDS = Object.freeze([
   "notional", "notionalUsdt", "marketValue",
   "markPrice", "mark", "price", "entryPrice", "entry",
   "unrealizedPnl", "pnl", "upl",
-  "margin", "initialMargin"
+  "margin", "initialMargin", "leverage", "liqPx", "liquidationPrice",
+  "liqDistancePct", "stopLoss", "takeProfit"
 ]);
 const validPositionIdentity = (value) => typeof value === "string"
   && value.length > 0
@@ -225,9 +226,10 @@ function accountProjection(source) {
 
 function positionSource(root) {
   const read = ownDataRead(root, "positions");
-  if (read.kind !== "value") return { available: false, loaded: false, positions: [] };
+  if (read.kind === "missing") return { available: false, loaded: false, state: "absent", positions: [] };
+  if (read.kind !== "value") return { available: false, loaded: false, state: "invalid", positions: [] };
   const values = arrayValues(read.value);
-  if (!values) return { available: false, loaded: false, positions: [] };
+  if (!values) return { available: false, loaded: false, state: "invalid", positions: [] };
 
   const candidates = [];
   for (const value of values) {
@@ -245,6 +247,7 @@ function positionSource(root) {
   return {
     available: values.length === 0 || positions.length > 0,
     loaded: true,
+    state: values.length > 0 && positions.length === 0 ? "invalid" : "loaded",
     positions
   };
 }
@@ -257,7 +260,8 @@ function selectorSource(data) {
     positionFactsAvailable: false,
     availability: {
       markets: availability("invalid"), watchlist: availability("invalid"), accounts: availability("invalid"),
-      accountSnapshots: availability("invalid"), reconciliation: availability("invalid")
+      accountSnapshots: availability("invalid"), reconciliation: availability("invalid"),
+      positions: availability("invalid"), riskIncidents: availability("invalid")
     }
   };
 
@@ -265,7 +269,7 @@ function selectorSource(data) {
     installRecord(source, root, field);
   }
   const collectionAvailability = Object.create(null);
-  for (const field of ["markets", "orders", "executionOrders", "fills", "reviews", "tradePlans", "reconciliationReports", "exchangeAccounts", "accountSnapshots"]) {
+  for (const field of ["markets", "orders", "executionOrders", "fills", "reviews", "tradePlans", "reconciliationReports", "exchangeAccounts", "accountSnapshots", "riskIncidents"]) {
     collectionAvailability[field] = installRecordCollection(source, root, field);
   }
   installRecordCollection(source, root, "closedTradeLifecycles", { requireEveryRecord: true });
@@ -281,7 +285,9 @@ function selectorSource(data) {
       watchlist: collectionAvailability.watchlist,
       accounts: collectionAvailability.exchangeAccounts,
       accountSnapshots: collectionAvailability.accountSnapshots,
-      reconciliation: collectionAvailability.reconciliationReports
+      reconciliation: collectionAvailability.reconciliationReports,
+      positions: availability(positions.state, positions.state === "loaded" ? positions.positions.length : null),
+      riskIncidents: collectionAvailability.riskIncidents
     }
   };
 }
@@ -335,14 +341,221 @@ function executionTotals(data) {
   };
 }
 
+function boundedTimestamp(value) {
+  const text = boundedText(value, 240);
+  return text && Number.isFinite(Date.parse(text)) ? text : null;
+}
+
+function numericField(record, ...fields) {
+  for (const field of fields) {
+    if (!Object.hasOwn(record, field) || record[field] === null || record[field] === undefined || record[field] === "") continue;
+    return finitePositionFinancial(record[field]);
+  }
+  return null;
+}
+
+function textField(record, fields, limit = 240) {
+  for (const field of fields) {
+    const value = boundedText(record?.[field], limit);
+    if (value) return value;
+  }
+  return null;
+}
+
+function numericList(value) {
+  const values = arrayValues(value);
+  if (!values) return [];
+  return values.flatMap((item) => {
+    const number = finitePositionFinancial(item);
+    return number === null ? [] : [number];
+  }).slice(0, 12);
+}
+
+function projectedExecutionOrder(order) {
+  const id = textField(order, ["id", "orderId"]);
+  if (!validPositionIdentity(id)) return null;
+  return {
+    id,
+    symbol: textField(order, ["symbol", "instId"]),
+    direction: textField(order, ["direction", "side"]),
+    status: textField(order, ["status", "state"]),
+    exchange: textField(order, ["exchange"]),
+    accountId: textField(order, ["accountId", "exchangeAccountId"]),
+    positionId: textField(order, ["positionId"]),
+    planId: textField(order, ["planId", "tradePlanId"]),
+    agentRunId: textField(order, ["agentRunId", "runId"]),
+    stopClientOrderId: textField(order, ["stopClientOrderId"]),
+    quantity: numericField(order, "quantity", "size"),
+    filledQuantity: numericField(order, "filledQuantity"),
+    createdAt: boundedTimestamp(order.createdAt),
+    updatedAt: boundedTimestamp(order.updatedAt),
+    exitAction: order.exitAction && typeof order.exitAction === "object"
+      ? {
+        intent: textField(order.exitAction, ["intent"]),
+        expectedStatus: textField(order.exitAction, ["expectedStatus"]),
+        label: textField(order.exitAction, ["label"], 500),
+        confirm: order.exitAction.confirm === true
+      }
+      : null
+  };
+}
+
+function safeExecutionRows(orders) {
+  return uniqueIdentityRows(orders.map(projectedExecutionOrder).filter(Boolean), (order) => order.id).map(({ row }) => row);
+}
+
+function relatedExecutionFor(position, executionRows) {
+  const explicitExecutionId = textField(position, ["executionOrderId"]);
+  if (explicitExecutionId) {
+    const matches = executionRows.filter((order) => order.id === explicitExecutionId);
+    return matches.length === 1 ? matches[0] : null;
+  }
+  const positionId = canonicalPositionIdentity(position);
+  const matches = executionRows.filter((order) => order.positionId === positionId);
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function projectedSnapshot(snapshot) {
+  const id = textField(snapshot, ["id"]);
+  const createdAt = boundedTimestamp(snapshot.createdAt);
+  if (!validPositionIdentity(id) || !createdAt) return null;
+  const rawAlgoOrders = arrayValues(snapshot.algoOrders);
+  const algoOrders = rawAlgoOrders
+    ? rawAlgoOrders.flatMap((value) => {
+      const row = recordSnapshot(value);
+      if (!row) return [];
+      const algoClOrdId = textField(row, ["algoClOrdId"]);
+      const instId = textField(row, ["instId"]);
+      const stopPrice = numericField(row, "slTriggerPx");
+      return algoClOrdId && instId && stopPrice !== null && stopPrice > 0
+        ? [{ algoClOrdId, instId, stopPrice }]
+        : [];
+    })
+    : [];
+  return {
+    id,
+    accountId: textField(snapshot, ["accountId"]),
+    exchange: textField(snapshot, ["exchange"]),
+    status: textField(snapshot, ["status"]),
+    createdAt,
+    algoOrdersComplete: snapshot.algoOrdersComplete === true,
+    algoOrdersValid: rawAlgoOrders !== null,
+    algoOrders
+  };
+}
+
+function latestProtectionSnapshot(source, position, execution) {
+  const snapshots = uniqueIdentityRows(
+    (source.accountSnapshots || []).map(projectedSnapshot).filter(Boolean),
+    (snapshot) => snapshot.id
+  ).map(({ row }) => row);
+  const accountId = execution?.accountId || textField(position, ["accountId", "exchangeAccountId"]);
+  const exchange = execution?.exchange || textField(position, ["exchange"]);
+  const eligible = snapshots.filter((snapshot) => (
+    (!accountId || snapshot.accountId === accountId)
+    && (!exchange || snapshot.exchange === exchange)
+    && (accountId || exchange)
+  ));
+  if (!accountId) {
+    const accountIds = new Set(eligible.map((snapshot) => snapshot.accountId).filter(Boolean));
+    if (accountIds.size !== 1) return null;
+  }
+  return eligible.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0] || null;
+}
+
+function expectedInstrument(position) {
+  const raw = textField(position, ["instId", "symbol"]);
+  if (!raw) return null;
+  const normalized = raw.replace("/", "-").toUpperCase();
+  return normalized.endsWith("-SWAP") ? normalized : `${normalized}-SWAP`;
+}
+
+function positionOwnership(position) {
+  const source = String(textField(position, ["source"]) || "").toLowerCase();
+  if (source === "execution_engine") return "ai_managed";
+  if (["exchange_rest", "exchange_ws", "manual", "external"].includes(source)) return "manual_external";
+  return "unavailable";
+}
+
+function protectionProjection(source, position, execution, ownership) {
+  const stopLoss = numericField(position, "stopLoss");
+  if (ownership !== "ai_managed") return { state: "unavailable", reason: "ownership_not_managed", stopPrice: stopLoss, snapshotId: null, asOf: null, source: null };
+  if (stopLoss === null) return { state: "failed", reason: "local_stop_missing", stopPrice: null, snapshotId: null, asOf: null, source: textField(position, ["source"]) };
+  if (!execution) return { state: "unavailable", reason: "execution_link_unavailable", stopPrice: stopLoss, snapshotId: null, asOf: null, source: textField(position, ["source"]) };
+  if (!execution.stopClientOrderId) return { state: "failed", reason: "stop_identity_missing", stopPrice: stopLoss, snapshotId: null, asOf: null, source: execution.exchange };
+  const snapshot = latestProtectionSnapshot(source, position, execution);
+  if (!snapshot) return { state: "unavailable", reason: "account_snapshot_unavailable", stopPrice: stopLoss, snapshotId: null, asOf: null, source: execution.exchange };
+  if (!/^(?:ok|healthy|success)$/iu.test(snapshot.status || "")) return { state: "degraded", reason: "account_snapshot_degraded", stopPrice: stopLoss, snapshotId: snapshot.id, asOf: snapshot.createdAt, source: snapshot.exchange };
+  if (!snapshot.algoOrdersComplete || !snapshot.algoOrdersValid) return { state: "degraded", reason: "protection_snapshot_incomplete", stopPrice: stopLoss, snapshotId: snapshot.id, asOf: snapshot.createdAt, source: snapshot.exchange };
+  const instId = expectedInstrument(position);
+  const remote = snapshot.algoOrders.filter((order) => order.algoClOrdId === execution.stopClientOrderId && order.instId.toUpperCase() === instId);
+  return remote.length === 1
+    ? { state: "verified", reason: null, stopPrice: remote[0].stopPrice, snapshotId: snapshot.id, asOf: snapshot.createdAt, source: snapshot.exchange }
+    : { state: "failed", reason: "exchange_stop_missing", stopPrice: stopLoss, snapshotId: snapshot.id, asOf: snapshot.createdAt, source: snapshot.exchange };
+}
+
+function projectedRiskIncident(incident) {
+  const id = textField(incident, ["id"]);
+  const createdAt = boundedTimestamp(incident.createdAt);
+  if (!validPositionIdentity(id) || !createdAt) return null;
+  return {
+    id,
+    positionId: textField(incident, ["positionId"]),
+    executionOrderId: textField(incident, ["executionOrderId"]),
+    status: textField(incident, ["status"]),
+    severity: textField(incident, ["severity"]),
+    title: textField(incident, ["title"], 2_000),
+    source: textField(incident, ["source"], 500),
+    createdAt
+  };
+}
+
+function riskIncidentProjection(source) {
+  return uniqueIdentityRows((source.riskIncidents || []).map(projectedRiskIncident).filter(Boolean), (incident) => incident.id).map(({ row }) => row);
+}
+
+function positionProjection(source, position, executionRows, incidents) {
+  const id = canonicalPositionIdentity(position);
+  const relatedExecution = relatedExecutionFor(position, executionRows);
+  const ownership = positionOwnership(position);
+  const linkedIncidents = incidents.filter((incident) => (
+    incident.positionId === id || (relatedExecution && incident.executionOrderId === relatedExecution.id)
+  ));
+  const takeProfits = numericList(position.takeProfits);
+  return {
+    id,
+    positionId: textField(position, ["positionId"]),
+    instId: textField(position, ["instId"]),
+    symbol: textField(position, ["symbol", "instId"]),
+    direction: textField(position, ["direction", "posSide", "side"]),
+    source: textField(position, ["source"]),
+    ownership,
+    quantity: numericField(position, "quantity", "size", "pos", "qty"),
+    entry: numericField(position, "entry", "entryPrice"),
+    mark: numericField(position, "mark", "markPrice", "price"),
+    liquidationPrice: numericField(position, "liquidationPrice", "liqPx"),
+    unrealizedPnl: numericField(position, "unrealizedPnl", "pnl", "upl"),
+    notional: positionNotional(position),
+    margin: numericField(position, "margin", "initialMargin"),
+    leverage: numericField(position, "leverage"),
+    liqDistancePct: numericField(position, "liqDistancePct"),
+    stopLoss: numericField(position, "stopLoss"),
+    takeProfits: takeProfits.length ? takeProfits : numericList(position.takeProfit === undefined ? undefined : [position.takeProfit]),
+    planId: textField(position, ["planId", "tradePlanId"]),
+    agentRunId: textField(position, ["agentRunId", "runId"]),
+    strategy: textField(position, ["strategy", "strategyName"], 500),
+    openedAt: boundedTimestamp(position.openedAt),
+    observedAt: boundedTimestamp(position.rawSyncedAt) || boundedTimestamp(position.updatedAt) || boundedTimestamp(position.createdAt),
+    relatedExecution,
+    riskIncidents: linkedIncidents,
+    protection: protectionProjection(source, position, relatedExecution, ownership)
+  };
+}
+
 export function buildAccountDomainModel(data = {}) {
   const { source, positionFactsAvailable, availability: sourceAvailability } = selectorSource(data);
   const portfolio = source.portfolio || Object.create(null);
   const positionView = buildPositionView(source);
-  const positions = positionView.positions.map((position) => ({
-    ...position,
-    id: canonicalPositionIdentity(position)
-  }));
   const baseExecution = buildExecutionView(source);
   const execution = {
     ...baseExecution,
@@ -350,12 +563,17 @@ export function buildAccountDomainModel(data = {}) {
     performance: executionPerformance(source, baseExecution),
     totals: executionTotals(source)
   };
+  const executionRows = safeExecutionRows(execution.orders);
+  const riskIncidents = riskIncidentProjection(source);
+  const positions = positionView.positions.map((position) => positionProjection(source, position, executionRows, riskIncidents));
   const markets = uniqueIdentityRows(buildMarketRows(source), (row) => validPositionIdentity(row.symbol) ? row.symbol : null).map(({ row }) => row);
   const accounts = accountProjection(source);
   const modelAvailability = {
     markets: projectedAvailability(sourceAvailability.markets, markets.length),
     watchlist: sourceAvailability.watchlist,
-    accounts: projectedAvailability(sourceAvailability.accounts, accounts.length)
+    accounts: projectedAvailability(sourceAvailability.accounts, accounts.length),
+    positions: projectedAvailability(sourceAvailability.positions, positions.length),
+    riskIncidents: projectedAvailability(sourceAvailability.riskIncidents, riskIncidents.length)
   };
 
   return {
@@ -376,6 +594,7 @@ export function buildAccountDomainModel(data = {}) {
     watchlist: (source.watchlist || []).slice(),
     reconciliation: reconciliationProjection(source, sourceAvailability.reconciliation),
     positions,
+    riskIncidents,
     openOrders: positionView.openOrders.slice(),
     plans: (source.tradePlans || []).slice(),
     execution,

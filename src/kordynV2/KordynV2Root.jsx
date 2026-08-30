@@ -183,7 +183,7 @@ export function KordynV2Root({ api, lang }) {
         />
       </Suspense>
     )
-    : location.domainId === "account" && ["market", "account"].includes(location.workspaceId)
+    : location.domainId === "account" && ["market", "account", "positions"].includes(location.workspaceId)
       ? (
         <Suspense fallback={<div className="kordynV2AccountDomainLoading" role="status">正在加载账户交易工作区…</div>}>
           <LazyAccountDomain
