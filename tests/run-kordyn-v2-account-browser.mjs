@@ -321,7 +321,16 @@ async function supportIsolationAtCurrentScroll(cdp, viewport, label, phase) {
     const overlap = (a, b) => !a || !b ? 0 : Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
     const supportRect = box(support);
     const dockRect = box(dock);
-    const canvasRect = box(canvas);
+    const rawCanvasRect = box(canvas);
+    const boundaryRect = box(canvas?.closest('.kordynV2StateBoundary'));
+    const canvasRect = rawCanvasRect && boundaryRect ? {
+      left: Math.max(rawCanvasRect.left, boundaryRect.left),
+      top: Math.max(rawCanvasRect.top, boundaryRect.top),
+      right: Math.min(rawCanvasRect.right, boundaryRect.right),
+      bottom: Math.min(rawCanvasRect.bottom, boundaryRect.bottom),
+      width: Math.max(0, Math.min(rawCanvasRect.right, boundaryRect.right) - Math.max(rawCanvasRect.left, boundaryRect.left)),
+      height: Math.max(0, Math.min(rawCanvasRect.bottom, boundaryRect.bottom) - Math.max(rawCanvasRect.top, boundaryRect.top))
+    } : rawCanvasRect;
     const selector = '[data-kordyn-v2-object-id], button, a[href], input, select, textarea, [role="button"], td, dd, [role="status"], footer';
     const candidates = [...(canvas?.querySelectorAll(selector) || [])].flatMap((node, index) => {
       const rect = box(node);
@@ -381,6 +390,7 @@ async function assertAsset7HitTestable(cdp, viewport, label) {
     const watch = row?.querySelector('[data-kordyn-v2-watchlist-action]');
     row?.scrollIntoView({ block: 'center', inline: 'nearest' });
     const canvas = document.querySelector('[data-kordyn-v2-shell="${viewport.device}"] [data-kordyn-v2-work-canvas]');
+    const boundary = canvas?.closest('.kordynV2StateBoundary');
     const box = (node) => {
       if (!node) return null;
       const rect = node.getBoundingClientRect();
@@ -392,7 +402,16 @@ async function assertAsset7HitTestable(cdp, viewport, label) {
       const target = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
       return Boolean(target && (target === node || node.contains(target)));
     };
-    const canvasRect = box(canvas);
+    const rawCanvasRect = box(canvas);
+    const boundaryRect = box(boundary);
+    const canvasRect = rawCanvasRect && boundaryRect ? {
+      left: Math.max(rawCanvasRect.left, boundaryRect.left),
+      top: Math.max(rawCanvasRect.top, boundaryRect.top),
+      right: Math.min(rawCanvasRect.right, boundaryRect.right),
+      bottom: Math.min(rawCanvasRect.bottom, boundaryRect.bottom),
+      width: Math.max(0, Math.min(rawCanvasRect.right, boundaryRect.right) - Math.max(rawCanvasRect.left, boundaryRect.left)),
+      height: Math.max(0, Math.min(rawCanvasRect.bottom, boundaryRect.bottom) - Math.max(rawCanvasRect.top, boundaryRect.top))
+    } : rawCanvasRect;
     const rowRect = box(row);
     const objectRect = box(object);
     const watchRect = box(watch);
