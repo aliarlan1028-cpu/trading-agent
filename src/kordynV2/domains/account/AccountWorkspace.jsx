@@ -108,8 +108,8 @@ export function AccountWorkspace({ model, truth, state, selection, actionsDisabl
         <em data-resource-tone={tone} role="status">{selectedAccount ? `Account · ${selectedAccount.id}` : "选择账户"}</em>
       </header>
       <div className="kordynV2AccountWorkbench" data-kordyn-v2-layout="account-truth-reconciliation">
-        <main className="kordynV2AccountLedger">
-          <header><span><ShieldCheck size={18} aria-hidden="true" /><h2>账户健康</h2></span><em data-resource-tone={tone}>{safe(state?.kind)}</em></header>
+        <section className="kordynV2AccountLedger" aria-labelledby="kordyn-v2-account-ledger-heading">
+          <header><span><ShieldCheck size={18} aria-hidden="true" /><h2 id="kordyn-v2-account-ledger-heading">账户健康</h2></span><em data-resource-tone={tone}>{safe(state?.kind)}</em></header>
           <AccountRegistry model={model} selection={selection} onSelect={onSelect} />
           <dl className="kordynV2AccountMetrics">
             <AccountMetric label="总权益" value={truth?.equity} icon={WalletCards} />
@@ -123,7 +123,7 @@ export function AccountWorkspace({ model, truth, state, selection, actionsDisabl
             <span><Clock3 size={15} aria-hidden="true" /><small>数据截至 / As of</small><time dateTime={state?.lastValidAt === unavailable ? undefined : state?.lastValidAt}>{safe(state?.lastValidAt)}</time></span>
           </section>
           <p>此处只展示已加载事实。空值保持 Unavailable，不替代为 0。</p>
-        </main>
+        </section>
         <ReconciliationInspector reconciliation={reconciliation} state={state} actionsDisabled={actionsDisabled} actionOutcome={actionOutcome} onReconcile={onReconcile} />
       </div>
     </div>

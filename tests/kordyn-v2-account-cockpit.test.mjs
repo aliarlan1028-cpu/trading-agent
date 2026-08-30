@@ -21,7 +21,9 @@ require("esbuild").buildSync({
   stdin: {
     contents: `
       export { AccountWorkspace } from "./src/kordynV2/domains/account/AccountWorkspace.jsx";
+      export { default as AccountDomain } from "./src/kordynV2/domains/account/index.jsx";
       export { MarketWorkspace } from "./src/kordynV2/domains/account/MarketWorkspace.jsx";
+      export { DesktopShell } from "./src/kordynV2/shell/DesktopShell.jsx";
       export { MobileAccountScreen } from "./src/kordynV2/domains/account/MobileAccountScreen.jsx";
       export { MobileMarketScreen } from "./src/kordynV2/domains/account/MobileMarketScreen.jsx";
       export { MarketInstrumentPicker } from "./src/kordynV2/domains/account/MarketInstrumentPicker.jsx";
@@ -44,7 +46,9 @@ const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
 const {
   AccountWorkspace,
+  AccountDomain,
   MarketWorkspace,
+  DesktopShell,
   MobileAccountScreen,
   MobileMarketScreen,
   MarketInstrumentPicker,
@@ -156,6 +160,46 @@ test("Desktop account and market surfaces expose full authoritative truth, recon
   assert.match(market, /OKX public ticker/);
   assert.match(market, /2026-08-30T06:32:11.000Z/);
   assert.match(market, /数据截至|As of/);
+});
+
+test("Desktop Account routes retain one page main landmark", () => {
+  const shellProps = {
+    truth,
+    state: readyState,
+    identity: {},
+    supportContext: {},
+    onNavigate() {},
+    onSelect() {},
+    onRetry() {}
+  };
+  for (const workspaceId of ["account", "positions"]) {
+    const selection = workspaceId === "account"
+      ? { object: { id: "ex_okx_main", type: "Account" } }
+      : null;
+    const domain = React.createElement(AccountDomain, {
+      device: "desktop",
+      workspaceId,
+      data,
+      actions: {},
+      truth,
+      state: readyState,
+      selection,
+      onSelect() {}
+    });
+    const html = renderToStaticMarkup(React.createElement(DesktopShell, {
+      ...shellProps,
+      location: { domainId: "account", workspaceId },
+      selection
+    }, domain));
+
+    assert.match(html, new RegExp(`data-kordyn-v2-destination="account/${workspaceId}"`));
+    assert.equal((html.match(/<main\b/g) || []).length, 1, `${workspaceId} route must expose exactly one page main`);
+    if (workspaceId === "account") {
+      const ledgerLabel = html.match(/<section class="kordynV2AccountLedger" aria-labelledby="([^"]+)"[\s\S]*?<h2 id="([^"]+)">账户健康<\/h2>/);
+      assert.ok(ledgerLabel, "Account ledger must be a labelled section inside the shell main");
+      assert.equal(ledgerLabel[1], ledgerLabel[2]);
+    }
+  }
 });
 
 test("Market and Account controls emit only canonical Root selection payloads", () => {
