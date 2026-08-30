@@ -459,7 +459,9 @@ test("source-backed Account selection resolves through Root Context and Trace wh
   const selection = createV2Selection({ data, candidate });
 
   assert.ok(selection, "a unique current source-backed Account must resolve");
-  assert.equal(selection.object.raw, account);
+  assert.notEqual(selection.object.raw, account);
+  assert.deepEqual(selection.object.raw, account);
+  assert.equal(Object.isFrozen(selection.object.raw), true);
   assert.equal(selection.object.id, account.id);
   assert.equal(selection.object.type, "Account");
   assert.equal(selection.object.workspaceId, "live");
@@ -476,4 +478,70 @@ test("source-backed Account selection resolves through Root Context and Trace wh
   assert.equal(createV2Selection({ data: { ...data, markets: [{ symbol: account.id }], exchangeAccounts: [account] }, candidate: { id: account.id } }), null, "untyped Account/Market collision fails closed");
   assert.equal(createV2Selection({ data: { ...data, resourceState: { cockpit: "stale" } }, candidate }), null, "stale Account facts fail closed");
   assert.equal(createV2Selection({ data: { ...data, exchangeAccounts: [{ ...account, permission: "forbidden" }] }, candidate }), null, "forbidden Account facts fail closed");
+  assert.equal(createV2Selection({ data: { ...data, exchangeAccounts: [{ ...account, sourceForbidden: true }] }, candidate }), null, "explicit forbidden Account metadata fails closed");
+});
+
+test("Account selection fails closed without evaluating hostile registry fields or hiding a valid sibling", () => {
+  const candidateFor = (id) => ({ id, type: "Account", workspaceId: "account", sourceSection: "cockpit" });
+  const select = (rows, id) => createV2Selection({
+    data: { resourceState: { cockpit: "loaded" }, exchangeAccounts: rows },
+    candidate: candidateFor(id)
+  });
+
+  for (const field of ["label", "exchange", "status", "source", "version", "permission"]) {
+    let getterCalls = 0;
+    const id = `ex-hostile-${field}`;
+    const row = { id, label: "Safe account", exchange: "OKX", status: "configured" };
+    Object.defineProperty(row, field, {
+      enumerable: true,
+      get() { getterCalls += 1; throw new Error(`HOSTILE_${field.toUpperCase()}_GETTER`); }
+    });
+    let selection = "not-run";
+    assert.doesNotThrow(() => { selection = select([row], id); }, `${field} accessor must not escape`);
+    assert.equal(selection, null, `${field} accessor row fails closed`);
+    assert.equal(getterCalls, 0, `${field} accessor is never evaluated`);
+  }
+
+  for (const field of ["label", "exchange", "status", "source", "version", "permission"]) {
+    let coercionCalls = 0;
+    const id = `ex-malformed-${field}`;
+    const poison = { toString() { coercionCalls += 1; throw new Error(`HOSTILE_${field.toUpperCase()}_COERCION`); } };
+    const row = { id, label: "Safe account", exchange: "OKX", status: "configured", [field]: poison };
+    let selection = "not-run";
+    assert.doesNotThrow(() => { selection = select([row], id); }, `${field} non-primitive must not escape`);
+    assert.equal(selection, null, `${field} non-primitive row fails closed`);
+    assert.equal(coercionCalls, 0, `${field} non-primitive is never coerced`);
+  }
+
+  let proxyGetCalls = 0;
+  const proxy = new Proxy(
+    { id: "ex-proxy", label: "Proxy account", exchange: "OKX", status: "configured" },
+    { get() { proxyGetCalls += 1; throw new Error("HOSTILE_ACCOUNT_PROXY_GET"); } }
+  );
+  let proxySelection = "not-run";
+  assert.doesNotThrow(() => { proxySelection = select([proxy], "ex-proxy"); }, "Proxy traps must not escape");
+  assert.equal(proxySelection, null, "Proxy Account row fails closed");
+  assert.equal(proxyGetCalls, 0, "Proxy get trap is never evaluated");
+
+  const revoked = Proxy.revocable({ id: "ex-revoked", label: "Revoked account" }, {});
+  revoked.revoke();
+  let revokedSelection = "not-run";
+  assert.doesNotThrow(() => { revokedSelection = select([revoked.proxy], "ex-revoked"); }, "revoked Proxy must not escape");
+  assert.equal(revokedSelection, null, "revoked Proxy Account row fails closed");
+
+  let hostileSiblingCalls = 0;
+  const hostileSibling = { id: "ex-hostile-sibling", exchange: "OKX" };
+  Object.defineProperty(hostileSibling, "label", {
+    enumerable: true,
+    get() { hostileSiblingCalls += 1; throw new Error("HOSTILE_SIBLING_LABEL"); }
+  });
+  const valid = { id: "ex-valid-sibling", label: "Valid account", exchange: "OKX", status: "configured" };
+  let validSelection = null;
+  assert.doesNotThrow(() => {
+    validSelection = select([null, 7, hostileSibling, revoked.proxy, valid], valid.id);
+  }, "invalid siblings must be isolated");
+  assert.equal(validSelection?.object?.id, valid.id);
+  assert.equal(validSelection?.context?.objectId, valid.id);
+  assert.equal(validSelection?.trace?.objectId, valid.id);
+  assert.equal(hostileSiblingCalls, 0, "hostile sibling getter is never evaluated");
 });

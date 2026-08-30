@@ -31,9 +31,72 @@ export function canonicalAccountIdentity(row) {
   }
 }
 
+const accountSearchTextFields = Object.freeze([
+  "id", "label", "exchange", "status", "state", "source", "origin", "version", "revision",
+  "permission", "permissions", "requiredPermission", "risk", "riskLevel", "severity", "evidenceId",
+  "updatedAt", "createdAt", "nextAction", "allowedAction", "sourceState", "resourceState"
+]);
+const accountSearchBooleanFields = Object.freeze([
+  "enabled", "sourceStale", "stale", "isStale", "sourceDegraded", "degraded", "sourceForbidden", "forbidden", "permissionDenied"
+]);
+
+function validAccountSearchText(value) {
+  return typeof value === "string"
+    && value.length > 0
+    && value.length <= 2_000
+    && value.trim().length > 0
+    && !/\p{Cc}/u.test(value);
+}
+
+function accountSearchSnapshot(row) {
+  if (!row || typeof row !== "object") return null;
+  try {
+    if (Array.isArray(row)) return null;
+    const prototype = Object.getPrototypeOf(row);
+    if (prototype !== Object.prototype && prototype !== null) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(row);
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.length > 128) return null;
+    for (const key of keys) {
+      const descriptor = descriptors[key];
+      if (!descriptor?.enumerable) continue;
+      if (typeof key !== "string" || !Object.hasOwn(descriptor, "value")) return null;
+      const value = descriptor.value;
+      if (value === null || value === undefined) continue;
+      if (!["string", "number", "boolean"].includes(typeof value)) return null;
+      if (typeof value === "number" && !Number.isFinite(value)) return null;
+      if (typeof value === "string" && (value.length > 2_000 || /\p{Cc}/u.test(value))) return null;
+    }
+    if (typeof globalThis.structuredClone !== "function") return null;
+    globalThis.structuredClone(row);
+
+    const snapshot = {};
+    for (const field of accountSearchTextFields) {
+      const descriptor = descriptors[field];
+      if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, "value")) continue;
+      const value = descriptor.value;
+      if (value === null || value === undefined || value === "") continue;
+      if (!validAccountSearchText(value)) return null;
+      snapshot[field] = value;
+    }
+    for (const field of accountSearchBooleanFields) {
+      const descriptor = descriptors[field];
+      if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, "value")) continue;
+      const value = descriptor.value;
+      if (value === null || value === undefined) continue;
+      if (typeof value !== "boolean") return null;
+      snapshot[field] = value;
+    }
+    if (!validAccountIdentity(snapshot.id)) return null;
+    return Object.freeze(snapshot);
+  } catch {
+    return null;
+  }
+}
+
 const searchCollections = Object.freeze([
   { key: "markets", type: "Market", route: "market", workspaceId: "live", sourceSection: "cockpit", id: (row) => row.symbol || row.id, title: (row) => row.symbol || row.name },
-  { key: "exchangeAccounts", type: "Account", route: "marketAccount", workspaceId: "live", sourceSection: "cockpit", id: canonicalAccountIdentity, title: (row) => row.label || row.exchange || canonicalAccountIdentity(row) },
+  { key: "exchangeAccounts", type: "Account", route: "marketAccount", workspaceId: "live", sourceSection: "cockpit", project: accountSearchSnapshot, id: canonicalAccountIdentity, title: (row) => row.label || row.exchange || canonicalAccountIdentity(row) },
   { key: "positions", type: "Position", route: "positions", workspaceId: "live", sourceSection: "cockpit", id: canonicalPositionIdentity, title: (row) => row.symbol || row.instId || row.name },
   { key: "tradePlans", type: "Trade plan", route: "signalHub", workspaceId: "live", sourceSection: "cockpit", id: (row) => row.id, title: (row) => row.title || row.symbol || row.name },
   { key: "orders", type: "Order", route: "tradeLedger", workspaceId: "live", sourceSection: "cockpit", id: (row) => row.id || row.orderId, title: (row) => row.title || row.symbol || row.id },
@@ -105,7 +168,9 @@ export function buildShellSearchIndex(data = {}) {
   const rows = [];
   for (const collection of searchCollections) {
     for (const item of asList(data[collection.key])) {
-      const row = searchRow(data, collection.type, collection.route, collection.id(item), collection.title(item), item, collection.workspaceId, collection.sourceSection);
+      const source = collection.project ? collection.project(item) : item;
+      if (!source) continue;
+      const row = searchRow(data, collection.type, collection.route, collection.id(source), collection.title(source), source, collection.workspaceId, collection.sourceSection);
       if (row) rows.push(row);
     }
   }
@@ -222,7 +287,9 @@ function workspaceSelectionFailsClosed(data, workspaceId) {
 export function resolveShellObjectSelection(data = {}, candidate = null, workspaceId = candidate?.workspaceId) {
   if (!candidate?.id || candidate.type === "Feature") return null;
   const candidateId = String(candidate.id);
-  const accountIdentityMatches = asList(data.exchangeAccounts).filter((row) => canonicalAccountIdentity(row) === candidateId);
+  const accountIdentityMatches = asList(data.exchangeAccounts)
+    .map(accountSearchSnapshot)
+    .filter((row) => canonicalAccountIdentity(row) === candidateId);
   if ((candidate.type === "Account" || accountIdentityMatches.length > 0) && (!validAccountIdentity(candidate.id) || accountIdentityMatches.length !== 1)) return null;
   const matches = buildShellSearchIndex(data).filter((row) => (
     row.id === candidateId
