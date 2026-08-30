@@ -26,15 +26,25 @@ function PriceRail({ position }) {
   const min = values.length ? Math.min(...values) : null;
   const max = values.length ? Math.max(...values) : null;
   const offset = (value) => finite(value) && finite(min) && finite(max) && max > min
-    ? `${Math.max(4, Math.min(96, (value - min) / (max - min) * 92 + 4))}%`
+    ? Math.max(4, Math.min(96, (value - min) / (max - min) * 92 + 4))
     : null;
+  const facts = [
+    { label: "强平", value: liquidation, tone: "critical" },
+    { label: "开仓", value: entry, tone: "entry" },
+    { label: "标记", value: mark, tone: "mark" }
+  ].filter((fact) => finite(fact.value)).map((fact) => ({ ...fact, offset: offset(fact.value) }));
+  const entryOffset = facts.find((fact) => fact.tone === "entry")?.offset;
+  const markOffset = facts.find((fact) => fact.tone === "mark")?.offset;
+  const entryMarkCollision = finite(entryOffset) && finite(markOffset) && Math.abs(entryOffset - markOffset) < 14;
   return (
     <section className="kordynV2PositionPriceRail" aria-label="入场、标记与强平价格">
       <header><h3>价格边界</h3><span>只显示当前权威事实</span></header>
       <div data-price-rail-available={values.length >= 2 ? "true" : "false"}>
-        {[{ label: "强平", value: liquidation, tone: "critical" }, { label: "开仓", value: entry, tone: "entry" }, { label: "标记", value: mark, tone: "mark" }].map((fact) => (
-          finite(fact.value) ? <i key={fact.label} data-price-tone={fact.tone} style={{ "--position-price-offset": offset(fact.value) }}><span>{fact.label}</span><b>{number(fact.value)}</b></i> : null
-        ))}
+        {facts.map((fact) => {
+          const lane = entryMarkCollision && fact.tone === "entry" ? "upper" : entryMarkCollision && fact.tone === "mark" ? "lower" : "center";
+          const laneOffset = lane === "upper" ? "-24px" : lane === "lower" ? "24px" : "0px";
+          return <i key={fact.label} data-price-tone={fact.tone} data-price-lane={lane} style={{ "--position-price-offset": `${fact.offset}%`, "--position-price-lane-offset": laneOffset }}><span>{fact.label}</span><b>{number(fact.value)}</b></i>;
+        })}
       </div>
       {values.length < 2 && <p>{unavailable}</p>}
     </section>

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { execFileSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { lstat, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import os from "node:os";
@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import WebSocket from "ws";
+import { resolveAccountSourceProvenance } from "./helpers/kordyn-v2-account-source-provenance.mjs";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const chromeBinary = process.env.CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -16,7 +17,7 @@ const reviewRoot = path.join(rootDir, ".impeccable/review/kordyn-v2");
 const outputDir = path.resolve(rootDir, process.env.KORDYN_V2_SCREENSHOT_DIR || ".impeccable/review/kordyn-v2/account");
 const runner = "tests/run-kordyn-v2-account-browser.mjs";
 const fixture = "tests/kordyn-v2-account-browser.jsx";
-const productionSourceCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: rootDir, encoding: "utf8" }).trim();
+const { productSourceCommit, captureTestSourceCommit } = resolveAccountSourceProvenance(rootDir);
 
 const viewports = Object.freeze({
   desktop1440: Object.freeze({ width: 1440, height: 900, device: "desktop" }),
@@ -306,6 +307,59 @@ async function assertTouchTargets(cdp, label) {
   assert.deepEqual(small, [], `${label}: mobile controls stay >=44px`);
 }
 
+async function assertPriceBoundaryGeometry(cdp, label) {
+  const geometry = await evaluate(cdp, `(() => {
+    const rectFor = (tone) => {
+      const node = document.querySelector('.kordynV2PositionPriceRail [data-price-tone="' + tone + '"]');
+      if (!node) return null;
+      const rect = node.getBoundingClientRect();
+      return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height };
+    };
+    const entry = rectFor("entry");
+    const mark = rectFor("mark");
+    const overlaps = Boolean(entry && mark && entry.left < mark.right && entry.right > mark.left && entry.top < mark.bottom && entry.bottom > mark.top);
+    return { entry, mark, overlaps };
+  })()`);
+  assert.ok(geometry.entry && geometry.mark, `${label}: open and mark price facts exist`);
+  assert.equal(geometry.overlaps, false, `${label}: open and mark labels must not overlap ${JSON.stringify(geometry)}`);
+  return geometry;
+}
+
+async function assertMobilePositionLabels(cdp, label) {
+  const geometry = await evaluate(cdp, `(() => {
+    const measure = (selector) => {
+      const node = document.querySelector(selector);
+      if (!node) return null;
+      const rect = node.getBoundingClientRect();
+      const style = getComputedStyle(node);
+      const lineHeight = Number.parseFloat(style.lineHeight) || Number.parseFloat(style.fontSize) * 1.2;
+      return {
+        text: node.textContent.trim(),
+        width: rect.width,
+        height: rect.height,
+        lineHeight,
+        lines: Math.round(rect.height / lineHeight),
+        overflowWrap: style.overflowWrap,
+        wordBreak: style.wordBreak,
+        whiteSpace: style.whiteSpace
+      };
+    };
+    return {
+      symbol: measure('.kordynV2PositionTruth.is-mobile > header h2'),
+      ownership: measure('.kordynV2PositionTruth.is-mobile .kordynV2PositionOwnership'),
+      source: measure('.kordynV2PositionTruth.is-mobile > footer > span:nth-child(2) strong')
+    };
+  })()`);
+  for (const [name, fact] of Object.entries(geometry)) {
+    assert.ok(fact, `${label}: ${name} exists`);
+    assert.ok(fact.lines <= 1, `${label}: ${name} stays on one readable line ${JSON.stringify(fact)}`);
+    assert.notEqual(fact.wordBreak, "break-all", `${label}: ${name} does not break every character`);
+    assert.notEqual(fact.overflowWrap, "anywhere", `${label}: ${name} does not wrap at arbitrary characters`);
+  }
+  assert.equal(geometry.symbol.text, "ETH/USDT", `${label}: selected symbol remains intact`);
+  return geometry;
+}
+
 async function styleOwnership(cdp) {
   return await evaluate(cdp, `(() => {
     const owners = [];
@@ -405,6 +459,45 @@ async function capturePng(cdp, file, viewport, extra = {}) {
   };
 }
 
+async function assertEvidencePanel(cdp, viewport, id, type, panel, label) {
+  const triggerSelector = `[data-kordyn-v2-${panel}-trigger]`;
+  await click(cdp, triggerSelector);
+  const identityText = `${type} / ${id}`;
+  const isMobile = viewport.device === "mobile";
+  const overlaySelector = isMobile
+    ? '[data-kordyn-v2-mobile-sheet="evidence"]'
+    : `[data-kordyn-v2-overlay="${panel}"]`;
+  const identitySelector = isMobile
+    ? `${overlaySelector} .kordynV2MobileSheetIdentity`
+    : `${overlaySelector} .kordynV2OverlayIdentity`;
+  const closeSelector = isMobile
+    ? `${overlaySelector} [data-kordyn-v2-mobile-sheet-close]`
+    : `${overlaySelector} [data-kordyn-v2-overlay-close]`;
+  await waitForExpression(cdp, `document.querySelector(${JSON.stringify(identitySelector)})?.textContent.includes(${JSON.stringify(identityText)})`, `${label}: ${panel} identity`);
+  if (isMobile) {
+    await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${overlaySelector} [data-kordyn-v2-evidence-tab="${panel}"]`)})?.getAttribute("aria-selected") === "true"`, `${label}: mobile ${panel} tab`);
+  }
+  await waitForExpression(cdp, `document.querySelector(${JSON.stringify(closeSelector)}) === document.activeElement`, `${label}: ${panel} close focus`);
+  const visible = await evaluate(cdp, `(() => {
+    const root = document.querySelector('[data-kordyn-v2-shell="${viewport.device}"]');
+    const identity = document.querySelector(${JSON.stringify(identitySelector)});
+    return {
+      viewport: ${JSON.stringify(viewportName(viewport))},
+      root: { id: root?.dataset.kordynV2SelectedId, type: root?.dataset.kordynV2SelectedType },
+      visibleIdentity: identity?.textContent?.trim() || "",
+      tab: ${JSON.stringify(panel)}
+    };
+  })()`);
+  assert.deepEqual(visible.root, { id, type }, `${label}: ${panel} Root identity remains canonical`);
+  assert.ok(visible.visibleIdentity.includes(identityText), `${label}: ${panel} visible identity`);
+  const closeMethod = panel === "context" ? "Escape" : "close-button";
+  if (closeMethod === "Escape") await press(cdp, "Escape");
+  else await click(cdp, closeSelector);
+  await waitForExpression(cdp, `!document.querySelector(${JSON.stringify(overlaySelector)})`, `${label}: ${panel} close`);
+  await waitForExpression(cdp, `document.querySelector(${JSON.stringify(triggerSelector)}) === document.activeElement`, `${label}: ${panel} return focus`);
+  return { ...visible, closeMethod, focusReturned: true };
+}
+
 async function assertSelection(cdp, viewport, id, type, label, { proof = false } = {}) {
   await waitForExpression(
     cdp,
@@ -413,15 +506,21 @@ async function assertSelection(cdp, viewport, id, type, label, { proof = false }
   );
   const current = await evaluate(cdp, `(() => { const root = document.querySelector('[data-kordyn-v2-shell="${viewport.device}"]'); return { id: root?.dataset.kordynV2SelectedId, type: root?.dataset.kordynV2SelectedType, workspace: root?.dataset.kordynV2Workspace }; })()`);
   assert.deepEqual({ id: current.id, type: current.type }, { id, type }, label);
-  if (!proof || viewport.device !== "desktop") return current;
-  for (const panel of ["context", "proof"]) {
-    await click(cdp, `[data-kordyn-v2-${panel}-trigger]`);
-    await waitForExpression(cdp, `document.querySelector('[data-kordyn-v2-overlay="${panel}"] .kordynV2OverlayIdentity')?.textContent.includes(${JSON.stringify(`${type} / ${id}`)})`, `${label}: ${panel} identity`);
-    await waitForExpression(cdp, `document.querySelector('[data-kordyn-v2-overlay="${panel}"] [data-kordyn-v2-overlay-close]') === document.activeElement`, `${label}: ${panel} close focus`);
-    await press(cdp, "Escape");
-    await waitForExpression(cdp, `!document.querySelector('[data-kordyn-v2-overlay="${panel}"]')`, `${label}: ${panel} close`);
-  }
-  return current;
+  const evidence = proof
+    ? {
+        context: await assertEvidencePanel(cdp, viewport, id, type, "context", label),
+        proof: await assertEvidencePanel(cdp, viewport, id, type, "proof", label)
+      }
+    : { context: null, proof: null };
+  return {
+    viewport: viewportName(viewport),
+    device: viewport.device,
+    id: current.id,
+    type: current.type,
+    workspace: current.workspace,
+    root: current,
+    ...evidence
+  };
 }
 
 async function acceptConfirm(cdp, label) {
@@ -433,6 +532,7 @@ async function acceptConfirm(cdp, label) {
 
 async function exerciseInteractions(cdp, baseUrl) {
   const interactions = [];
+  const adverseInteractions = [];
   await navigatePage(cdp, baseUrl, viewports.desktop1440, "ready");
   await navigateAccount(cdp, "market", viewports.desktop1440);
   await click(cdp, '[data-kordyn-v2-object-id="BTC/USDT"][data-kordyn-v2-object-type="Market"]');
@@ -471,20 +571,27 @@ async function exerciseInteractions(cdp, baseUrl) {
   const beforeRejected = await assertSelection(cdp, viewports.desktop1440, "plan-orphan-task5", "Trade plan", "desktop orphan plan selection");
   await click(cdp, '[data-kordyn-v2-object-id="execution-missing"][data-kordyn-v2-object-type="Execution"]');
   await new Promise((resolve) => setTimeout(resolve, 120));
-  assert.deepEqual(await evaluate(cdp, `(() => { const root = document.querySelector('[data-kordyn-v2-shell="desktop"]'); return { id: root?.dataset.kordynV2SelectedId, type: root?.dataset.kordynV2SelectedType, workspace: root?.dataset.kordynV2Workspace }; })()`), beforeRejected);
+  const desktopRejectedAfter = await evaluate(cdp, `(() => { const root = document.querySelector('[data-kordyn-v2-shell="desktop"]'); return { id: root?.dataset.kordynV2SelectedId, type: root?.dataset.kordynV2SelectedType, workspace: root?.dataset.kordynV2Workspace }; })()`);
+  assert.deepEqual(desktopRejectedAfter, beforeRejected.root);
+  adverseInteractions.push({ label: "Desktop missing Execution", viewport: viewportName(viewports.desktop1440), device: "desktop", candidate: { id: "execution-missing", type: "Execution" }, before: beforeRejected.root, after: desktopRejectedAfter, failClosed: true });
+
+  const desktop1440Ledger = await readActionLedger(cdp);
+
+  await navigatePage(cdp, baseUrl, viewports.desktop1180, "ready");
+  await navigateAccount(cdp, "plans", viewports.desktop1180);
 
   await click(cdp, '[data-kordyn-v2-object-id="plan-btc-task5"][data-kordyn-v2-object-type="Trade plan"]');
   await click(cdp, '[data-kordyn-v2-object-id="execution-btc"][data-kordyn-v2-object-type="Execution"]');
-  interactions.push({ label: "Execution", ...(await assertSelection(cdp, viewports.desktop1440, "execution-btc", "Execution", "desktop Execution related selection", { proof: true })) });
+  interactions.push({ label: "Execution", ...(await assertSelection(cdp, viewports.desktop1180, "execution-btc", "Execution", "desktop 1180 Execution related selection", { proof: true })) });
 
   await click(cdp, '[data-kordyn-v2-object-id="order-btc-task5"][data-kordyn-v2-object-type="Order"]');
-  interactions.push({ label: "Order", ...(await assertSelection(cdp, viewports.desktop1440, "order-btc-task5", "Order", "desktop Order selection", { proof: true })) });
+  interactions.push({ label: "Order", ...(await assertSelection(cdp, viewports.desktop1180, "order-btc-task5", "Order", "desktop 1180 Order selection", { proof: true })) });
 
   await click(cdp, '[data-kordyn-v2-workspace-target="fills"]');
   await click(cdp, '[data-kordyn-v2-object-id="fill-btc-task5"][data-kordyn-v2-object-type="Fill"]');
-  interactions.push({ label: "Fill", ...(await assertSelection(cdp, viewports.desktop1440, "fill-btc-task5", "Fill", "desktop Fill selection", { proof: true })) });
+  interactions.push({ label: "Fill", ...(await assertSelection(cdp, viewports.desktop1180, "fill-btc-task5", "Fill", "desktop 1180 Fill selection", { proof: true })) });
   await click(cdp, '[data-kordyn-v2-object-id="closed:execution-btc"][data-kordyn-v2-object-type="Closed trade"]');
-  interactions.push({ label: "Closed trade", ...(await assertSelection(cdp, viewports.desktop1440, "closed:execution-btc", "Closed trade", "desktop Closed trade selection", { proof: true })) });
+  interactions.push({ label: "Closed trade", ...(await assertSelection(cdp, viewports.desktop1180, "closed:execution-btc", "Closed trade", "desktop 1180 Closed trade selection", { proof: true })) });
   const downloadsBefore = await evaluate(cdp, "window.__task5AccountCalls.downloads.length");
   await click(cdp, ".kordynV2ExecutionPrimaryAction");
   await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-closed-trade-output-scrim]')", "closed trade output sheet");
@@ -496,24 +603,45 @@ async function exerciseInteractions(cdp, baseUrl) {
   await waitForExpression(cdp, "!document.querySelector('[data-kordyn-v2-closed-trade-output-scrim]')", "closed trade output Escape close");
 
   await click(cdp, '[data-kordyn-v2-object-id="review-btc-task5"][data-kordyn-v2-object-type="Review"]');
-  interactions.push({ label: "Review", ...(await assertSelection(cdp, viewports.desktop1440, "review-btc-task5", "Review", "desktop Review selection", { proof: true })) });
-  const desktopLedger = await readActionLedger(cdp);
+  interactions.push({ label: "Review", ...(await assertSelection(cdp, viewports.desktop1180, "review-btc-task5", "Review", "desktop 1180 Review selection", { proof: true })) });
+  const desktop1180Ledger = await readActionLedger(cdp);
 
   await navigatePage(cdp, baseUrl, viewports.mobile390, "ready");
-  await navigateAccount(cdp, "plans", viewports.mobile390);
-  await assertNoOverflow(cdp, viewports.mobile390, "mobile plans ready");
-  await assertTouchTargets(cdp, "mobile plans ready");
+  await navigateAccount(cdp, "positions", viewports.mobile390);
+  await assertNoOverflow(cdp, viewports.mobile390, "mobile positions ready");
+  await assertTouchTargets(cdp, "mobile positions ready");
+  await click(cdp, '[data-kordyn-v2-object-id="position-eth"][data-kordyn-v2-object-type="Position"]');
+  interactions.push({ label: "Mobile Position", ...(await assertSelection(cdp, viewports.mobile390, "position-eth", "Position", "mobile 390 Position selection", { proof: true })) });
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-position-mobile-view=\"detail\"] h2')", "mobile 390 position detail remains visible after evidence review");
+  await click(cdp, '[data-kordyn-v2-position-back]');
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-object-id=\"position-eth\"][data-kordyn-v2-object-type=\"Position\"]') === document.activeElement", "mobile 390 position back focus");
+  const mobile390Ledger = await readActionLedger(cdp);
+
+  await navigatePage(cdp, baseUrl, viewports.mobile430, "ready");
+  await navigateAccount(cdp, "plans", viewports.mobile430);
+  await assertNoOverflow(cdp, viewports.mobile430, "mobile 430 plans ready");
+  await assertTouchTargets(cdp, "mobile 430 plans ready");
   await click(cdp, '[data-kordyn-v2-object-id="plan-btc-task5"][data-kordyn-v2-object-type="Trade plan"]');
-  interactions.push({ label: "Mobile Trade plan", ...(await assertSelection(cdp, viewports.mobile390, "plan-btc-task5", "Trade plan", "mobile Trade plan selection")) });
-  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-execution-mobile-view=\"detail\"] h2') === document.activeElement", "mobile execution detail focus");
+  interactions.push({ label: "Mobile Trade plan", ...(await assertSelection(cdp, viewports.mobile430, "plan-btc-task5", "Trade plan", "mobile 430 Trade plan selection", { proof: true })) });
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-execution-mobile-view=\"detail\"] h2')", "mobile execution detail remains visible after evidence review");
   await click(cdp, '[data-kordyn-v2-execution-back="plans"]');
   await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-object-id=\"plan-btc-task5\"][data-kordyn-v2-object-type=\"Trade plan\"]') === document.activeElement", "mobile execution back focus");
-  const mobileLedger = await readActionLedger(cdp);
+  await click(cdp, '[data-kordyn-v2-object-id="plan-orphan-task5"][data-kordyn-v2-object-type="Trade plan"]');
+  const mobileBeforeRejected = await assertSelection(cdp, viewports.mobile430, "plan-orphan-task5", "Trade plan", "mobile 430 orphan plan selection");
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-execution-mobile-view=\"detail\"]')", "mobile 430 orphan plan detail");
+  await click(cdp, '[data-kordyn-v2-object-id="execution-missing"][data-kordyn-v2-object-type="Execution"]');
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  const mobileRejectedAfter = await evaluate(cdp, `(() => { const root = document.querySelector('[data-kordyn-v2-shell="mobile"]'); return { id: root?.dataset.kordynV2SelectedId, type: root?.dataset.kordynV2SelectedType, workspace: root?.dataset.kordynV2Workspace }; })()`);
+  assert.deepEqual(mobileRejectedAfter, mobileBeforeRejected.root);
+  adverseInteractions.push({ label: "Mobile missing Execution", viewport: viewportName(viewports.mobile430), device: "mobile", candidate: { id: "execution-missing", type: "Execution" }, before: mobileBeforeRejected.root, after: mobileRejectedAfter, failClosed: true });
+  const mobile430Ledger = await readActionLedger(cdp);
   const ledgers = [
-    { phase: "desktop", ledger: desktopLedger },
-    { phase: "mobile", ledger: mobileLedger }
+    { phase: "desktop-1440", ledger: desktop1440Ledger },
+    { phase: "desktop-1180", ledger: desktop1180Ledger },
+    { phase: "mobile-390", ledger: mobile390Ledger },
+    { phase: "mobile-430", ledger: mobile430Ledger }
   ];
-  return { interactions, ledgers, actionLedger: mergeLedgers(ledgers) };
+  return { interactions, adverseInteractions, ledgers, actionLedger: mergeLedgers(ledgers) };
 }
 
 async function captureProductionSurfaces(cdp, baseUrl) {
@@ -523,22 +651,26 @@ async function captureProductionSurfaces(cdp, baseUrl) {
   await click(cdp, '[data-kordyn-v2-object-id="position-eth"][data-kordyn-v2-object-type="Position"]');
   await assertSelection(cdp, viewports.desktop1440, "position-eth", "Position", "desktop 1440 position capture");
   await assertNoOverflow(cdp, viewports.desktop1440, "desktop 1440 position capture");
-  captures.push(await capturePng(cdp, "desktop-account-position--1440x900.png", viewports.desktop1440));
+  const desktop1440PriceBoundary = await assertPriceBoundaryGeometry(cdp, "desktop 1440 position capture");
+  captures.push(await capturePng(cdp, "desktop-account-position--1440x900.png", viewports.desktop1440, { priceBoundaryGeometry: desktop1440PriceBoundary }));
 
   await navigatePage(cdp, baseUrl, viewports.desktop1180, "ready");
   await navigateAccount(cdp, "positions", viewports.desktop1180);
   await click(cdp, '[data-kordyn-v2-object-id="position-eth"][data-kordyn-v2-object-type="Position"]');
   await assertSelection(cdp, viewports.desktop1180, "position-eth", "Position", "desktop 1180 position capture");
   await assertNoOverflow(cdp, viewports.desktop1180, "desktop 1180 position capture");
-  captures.push(await capturePng(cdp, "desktop-account-position--1180x800.png", viewports.desktop1180));
+  const desktop1180PriceBoundary = await assertPriceBoundaryGeometry(cdp, "desktop 1180 position capture");
+  captures.push(await capturePng(cdp, "desktop-account-position--1180x800.png", viewports.desktop1180, { priceBoundaryGeometry: desktop1180PriceBoundary }));
 
   await navigatePage(cdp, baseUrl, viewports.mobile390, "ready");
   await navigateAccount(cdp, "positions", viewports.mobile390);
   await click(cdp, '[data-kordyn-v2-object-id="position-eth"][data-kordyn-v2-object-type="Position"]');
   await assertSelection(cdp, viewports.mobile390, "position-eth", "Position", "mobile 390 position capture");
+  await waitForExpression(cdp, "document.querySelector('.kordynV2PositionTruth.is-mobile > header h2')?.textContent.trim() === 'ETH/USDT'", "mobile 390 position detail");
   await assertTouchTargets(cdp, "mobile 390 position capture");
   await assertNoOverflow(cdp, viewports.mobile390, "mobile 390 position capture");
-  captures.push(await capturePng(cdp, "mobile-account-position--390x844.png", viewports.mobile390, { structuralOnly: true }));
+  const mobile390LabelGeometry = await assertMobilePositionLabels(cdp, "mobile 390 position capture");
+  captures.push(await capturePng(cdp, "mobile-account-position--390x844.png", viewports.mobile390, { structuralOnly: true, labelGeometry: mobile390LabelGeometry }));
 
   await navigatePage(cdp, baseUrl, viewports.mobile430, "ready");
   await navigateAccount(cdp, "account", viewports.mobile430);
@@ -735,9 +867,11 @@ try {
     schemaVersion: 1,
     runner,
     fixture,
-    productionSourceCommit,
+    productSourceCommit,
+    captureTestSourceCommit,
     captures,
     interactions: interactionEvidence.interactions,
+    adverseInteractions: interactionEvidence.adverseInteractions,
     actionLedgers: interactionEvidence.ledgers,
     actionLedger: calls,
     styleOwnership: styles
@@ -746,13 +880,15 @@ try {
     schemaVersion: 1,
     runner,
     fixture,
-    productionSourceCommit,
+    productSourceCommit,
+    captureTestSourceCommit,
     states
   };
   await writeFile(path.join(outputDir, "capture-evidence.json"), `${JSON.stringify(captureEvidence, null, 2)}\n`);
   await writeFile(path.join(outputDir, "state-evidence.json"), `${JSON.stringify(stateEvidence, null, 2)}\n`);
   const summary = {
-    productionSourceCommit,
+    productSourceCommit,
+    captureTestSourceCommit,
     captures: captures.length,
     states: states.length,
     interactions: interactionEvidence.interactions.length,

@@ -7,6 +7,7 @@ import {
   KORDYN_V2_CONCEPTS,
   KORDYN_V2_TARGET_VIEWPORTS
 } from "../tests/helpers/kordyn-v2-concept-manifest.mjs";
+import { verifyAccountSourceProvenance } from "../tests/helpers/kordyn-v2-account-source-provenance.mjs";
 import { evaluateKordynV2VisualContract } from "../tests/helpers/kordyn-v2-visual-contract.mjs";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -29,7 +30,8 @@ const SCOPE_CONFIG = Object.freeze({
     runner: "tests/run-kordyn-v2-account-browser.mjs",
     fixture: "tests/kordyn-v2-account-browser.jsx",
     captureKey: "accountCaptures",
-    productionCommit: true
+    productSourceCommit: true,
+    captureTestCommit: true
   })
 });
 
@@ -122,6 +124,12 @@ function captureMap(evidence, scopeConfig) {
   if (scopeConfig.productionCommit && !/^[0-9a-f]{40}$/.test(evidence.productionSourceCommit || "")) {
     throw new Error("invalid_capture_provenance");
   }
+  if (scopeConfig.productSourceCommit && !/^[0-9a-f]{40}$/.test(evidence.productSourceCommit || "")) {
+    throw new Error("invalid_capture_provenance");
+  }
+  if (scopeConfig.captureTestCommit && !/^[0-9a-f]{40}$/.test(evidence.captureTestSourceCommit || "")) {
+    throw new Error("invalid_capture_provenance");
+  }
   const mapped = new Map();
   for (const capture of evidence.captures) {
     if (!capture || typeof capture !== "object" || typeof capture.file !== "string") {
@@ -131,6 +139,11 @@ function captureMap(evidence, scopeConfig) {
     mapped.set(capture.file, capture);
   }
   return mapped;
+}
+
+export function verifyComparisonCaptureProvenance({ scope, evidence, sourceRoot = rootDir } = {}) {
+  if (scope !== "account") return null;
+  return verifyAccountSourceProvenance(sourceRoot, evidence);
 }
 
 function viewportSize(viewport) {
@@ -192,6 +205,38 @@ function buildComparisonPlan(scope, scopeConfig) {
   return plan;
 }
 
+export function comparisonScopeLedger(scope) {
+  const scopeConfig = SCOPE_CONFIG[scope];
+  if (!scopeConfig) throw new Error(`invalid_comparison_scope:${scope ?? "missing"}`);
+  const scopedConcepts = KORDYN_V2_CONCEPTS.filter((row) => row.comparisonScopes.includes(scope));
+  const completed = scopedConcepts
+    .filter((row) => Array.isArray(row[scopeConfig.captureKey]) && row[scopeConfig.captureKey].length > 0)
+    .map((row) => row.id);
+  const scopedPending = scopedConcepts
+    .filter((row) => !completed.includes(row.id))
+    .map((row) => ({ id: row.id, status: row.status }));
+  const outOfScope = KORDYN_V2_CONCEPTS
+    .filter((row) => !row.comparisonScopes.includes(scope))
+    .map((row) => ({ id: row.id, status: row.status }));
+  return {
+    counts: {
+      concepts: scopedConcepts.length,
+      completedConcepts: completed.length,
+      pendingConcepts: scopedPending.length
+    },
+    scopeCounts: {
+      manifestConcepts: KORDYN_V2_CONCEPTS.length,
+      scopedConcepts: scopedConcepts.length,
+      completedScopedConcepts: completed.length,
+      pendingScopedConcepts: scopedPending.length,
+      outOfScopeConcepts: outOfScope.length
+    },
+    completed,
+    scopedPending,
+    outOfScope
+  };
+}
+
 async function removeValidatedOutput(outputDir) {
   let identity;
   try {
@@ -226,6 +271,7 @@ export async function compareKordynV2Concepts({ screenshotsDir: screenshotsInput
   const evidencePath = await regularContainedFile(screenshotsDir, captureEvidenceFile, "capture_evidence");
   const evidence = JSON.parse(await readFile(evidencePath, "utf8"));
   const captures = captureMap(evidence, scopeConfig);
+  verifyComparisonCaptureProvenance({ scope, evidence });
   const plan = buildComparisonPlan(scope, scopeConfig);
   const artifactBuffers = new Map();
   const comparisons = [];
@@ -309,6 +355,8 @@ export async function compareKordynV2Concepts({ screenshotsDir: screenshotsInput
         runner: evidence.runner,
         fixture: evidence.fixture,
         ...(scopeConfig.productionCommit ? { productionSourceCommit: evidence.productionSourceCommit } : {}),
+        ...(scopeConfig.productSourceCommit ? { productSourceCommit: evidence.productSourceCommit } : {}),
+        ...(scopeConfig.captureTestCommit ? { captureTestSourceCommit: evidence.captureTestSourceCommit } : {}),
         device: captured.device,
         domainId: captured.domainId,
         workspaceId: captured.workspaceId
@@ -347,21 +395,9 @@ export async function compareKordynV2Concepts({ screenshotsDir: screenshotsInput
     });
   }
 
-  const scopedConcepts = KORDYN_V2_CONCEPTS
-    .filter((row) => row.comparisonScopes.includes(scope))
-  const completed = scopedConcepts
-    .map((row) => row.id);
-  const scopedPending = scopedConcepts
-    .filter((row) => !plan.some((item) => item.concept.id === row.id))
-    .map((row) => ({ id: row.id, status: row.status }));
-  const outOfScope = KORDYN_V2_CONCEPTS
-    .filter((row) => !row.comparisonScopes.includes(scope))
-    .map((row) => ({ id: row.id, status: row.status }));
-  const legacyPending = scope === "account" ? scopedPending : outOfScope;
+  const scopeLedger = comparisonScopeLedger(scope);
   const counts = {
-    concepts: KORDYN_V2_CONCEPTS.length,
-    completedConcepts: completed.length,
-    pendingConcepts: legacyPending.length,
+    ...scopeLedger.counts,
     comparisons: comparisons.length,
     artifacts: artifactBuffers.size + 1
   };
@@ -371,19 +407,15 @@ export async function compareKordynV2Concepts({ screenshotsDir: screenshotsInput
     sourceManifest: "docs/kordyn-v2-approved-concept-manifest.md",
     captureEvidence: `${path.relative(rootDir, screenshotsDir).split(path.sep).join("/")}/${captureEvidenceFile}`,
     ...(scopeConfig.productionCommit ? { productionSourceCommit: evidence.productionSourceCommit } : {}),
+    ...(scopeConfig.productSourceCommit ? { productSourceCommit: evidence.productSourceCommit } : {}),
+    ...(scopeConfig.captureTestCommit ? { captureTestSourceCommit: evidence.captureTestSourceCommit } : {}),
     outputRoot: path.relative(rootDir, outputDir).split(path.sep).join("/"),
     counts,
-    scopeCounts: {
-      manifestConcepts: KORDYN_V2_CONCEPTS.length,
-      scopedConcepts: scopedConcepts.length,
-      completedScopedConcepts: completed.length,
-      pendingScopedConcepts: scopedPending.length,
-      outOfScopeConcepts: outOfScope.length
-    },
-    completed,
-    pending: legacyPending,
-    scopedPending,
-    outOfScope,
+    scopeCounts: scopeLedger.scopeCounts,
+    completed: scopeLedger.completed,
+    pending: scopeLedger.scopedPending,
+    scopedPending: scopeLedger.scopedPending,
+    outOfScope: scopeLedger.outOfScope,
     comparisons,
     releaseVerdict: "human region review required"
   };

@@ -1737,10 +1737,10 @@
 
 .kordynV2PositionPriceRail {
   min-width: 0;
-  min-height: 142px;
+  min-height: 160px;
   padding: 13px 14px 14px;
   display: grid;
-  grid-template-rows: auto minmax(78px, 1fr);
+  grid-template-rows: auto minmax(96px, 1fr);
   gap: 11px;
   border: 1px solid var(--kordyn-v2-border);
   border-radius: 10px;
@@ -1765,7 +1765,7 @@
 
 .kordynV2PositionPriceRail > div {
   min-width: 0;
-  min-height: 78px;
+  min-height: 96px;
   position: relative;
   border-top: 1px dashed rgba(126, 151, 190, 0.24);
   border-bottom: 1px dashed rgba(126, 151, 190, 0.24);
@@ -1789,7 +1789,7 @@
   left: var(--position-price-offset);
   display: grid;
   gap: 4px;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, calc(-50% + var(--position-price-lane-offset, 0px)));
   color: var(--kordyn-v2-text-soft);
   font-style: normal;
   text-align: center;
@@ -2343,11 +2343,25 @@
 }
 
 .kordynV2PositionTruth.is-mobile > header > span:first-child {
-  flex-wrap: wrap;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
 }
 
 .kordynV2PositionTruth.is-mobile > header h2 {
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: normal;
   font-size: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: keep-all;
+}
+
+.kordynV2PositionTruth.is-mobile .kordynV2PositionOwnership,
+.kordynV2PositionTruth.is-mobile > footer strong {
+  overflow-wrap: normal;
+  white-space: nowrap;
+  word-break: keep-all;
 }
 
 .kordynV2PositionTruth.is-mobile .kordynV2PositionPrimaryFacts {

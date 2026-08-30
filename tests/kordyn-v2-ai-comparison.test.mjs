@@ -61,9 +61,9 @@ test("AI comparison emits exactly four approved concepts and eight immutable-vie
     const outputDir = path.join(testRoot, "output");
     const result = await compareKordynV2Concepts({ screenshotsDir, outputDir, scope: "ai" });
     assert.deepEqual(result.counts, {
-      concepts: 15,
+      concepts: 4,
       completedConcepts: 4,
-      pendingConcepts: 11,
+      pendingConcepts: 0,
       comparisons: 8,
       artifacts: 33
     });

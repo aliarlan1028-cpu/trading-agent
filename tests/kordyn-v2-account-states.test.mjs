@@ -166,6 +166,7 @@ test("account state surfaces sanitize hostile fields and keep bounded accepted l
   assert.match(hostileMarkup, /safe-13/);
   const $ = load(hostileMarkup);
   assert.equal($("[data-kordyn-v2-large-list-count]").attr("data-kordyn-v2-large-list-count"), "64");
+  assert.equal($("[data-kordyn-v2-large-list-count]").attr("data-kordyn-v2-large-list-complete"), "true");
   assert.equal($("[data-kordyn-v2-large-list-count] li").length, 64);
 
   const contentMarkup = renderToStaticMarkup(ACCOUNT_STATE_SURFACES["long-content"]({ longContent }));
@@ -178,7 +179,64 @@ test("account state surfaces sanitize hostile fields and keep bounded accepted l
   const list$ = load(oversizedMarkup);
   assert.equal(list$("[data-kordyn-v2-large-list-count]").attr("data-kordyn-v2-large-list-count"), "96");
   assert.equal(list$("[data-kordyn-v2-large-list-count]").attr("data-kordyn-v2-large-list-source-count"), "180");
+  assert.equal(list$("[data-kordyn-v2-large-list-count]").attr("data-kordyn-v2-large-list-complete"), "false");
+  assert.equal(list$("[data-kordyn-v2-large-list-disclosure]").attr("data-kordyn-v2-large-list-shown-count"), "96");
+  assert.equal(list$("[data-kordyn-v2-large-list-disclosure]").attr("data-kordyn-v2-large-list-source-count"), "180");
+  assert.match(list$("[data-kordyn-v2-large-list-disclosure]").text(), /96\s*\/\s*180/);
+  assert.match(list$("[data-kordyn-v2-large-list-disclosure]").text(), /不完整|边界/);
   assert.equal(list$("[data-kordyn-v2-large-list-count] li").length, 96);
+});
+
+test("account state surfaces read only own data descriptors and isolate hostile collection items", () => {
+  const topLevel = Object.create(null);
+  Object.defineProperties(topLevel, {
+    source: { enumerable: true, get() { throw new Error("TOP_LEVEL_SOURCE_SECRET"); } },
+    lastValidAt: { enumerable: true, value: "2026-08-30T00:12:00.000Z" },
+    authoritativeZero: { enumerable: true, get() { throw new Error("TOP_LEVEL_ZERO_SECRET"); } },
+    missingFinanceLabel: { enumerable: true, value: "Unavailable" }
+  });
+  assert.doesNotThrow(() => renderToStaticMarkup(ACCOUNT_STATE_SURFACES.stale(topLevel)));
+  const topMarkup = renderToStaticMarkup(ACCOUNT_STATE_SURFACES.stale(topLevel));
+  assert.doesNotMatch(topMarkup, /TOP_LEVEL_(?:SOURCE|ZERO)_SECRET/);
+  assert.match(topMarkup, /Task 5 account bounded production-shaped authority/);
+  assert.match(topMarkup, /data-kordyn-v2-finance-zero="Unavailable"/);
+
+  const validCompleted = Object.freeze({ id: "effect-valid", label: "valid completed sibling" });
+  const validFailed = Object.freeze({ id: "effect-failed", label: "valid failed sibling" });
+  const throwingItem = Object.create(null);
+  Object.defineProperties(throwingItem, {
+    id: { enumerable: true, get() { throw new Error("ITEM_ID_SECRET"); } },
+    label: { enumerable: true, get() { throw new Error("ITEM_LABEL_SECRET"); } }
+  });
+  const revoked = Proxy.revocable({ id: "revoked", label: "REVOKED_SECRET" }, {});
+  revoked.revoke();
+  const partialFacts = {
+    completedEffects: [null, throwingItem, revoked.proxy, Symbol("SYMBOL_SECRET"), validCompleted],
+    failedEffects: [throwingItem, validFailed]
+  };
+  assert.doesNotThrow(() => renderToStaticMarkup(ACCOUNT_STATE_SURFACES.partial(partialFacts)));
+  const partialMarkup = renderToStaticMarkup(ACCOUNT_STATE_SURFACES.partial(partialFacts));
+  assert.match(partialMarkup, /valid completed sibling/);
+  assert.match(partialMarkup, /valid failed sibling/);
+  assert.doesNotMatch(partialMarkup, /ITEM_(?:ID|LABEL)_SECRET|REVOKED_SECRET|SYMBOL_SECRET/);
+
+  const largeRows = [
+    Object.freeze({ id: "safe-before", label: "safe before" }),
+    throwingItem,
+    revoked.proxy,
+    Symbol("ROW_SYMBOL_SECRET"),
+    Object.freeze({ id: "safe-after", label: "safe after" })
+  ];
+  assert.doesNotThrow(() => renderToStaticMarkup(ACCOUNT_STATE_SURFACES["large-list"]({ largeList: largeRows })));
+  const listMarkup = renderToStaticMarkup(ACCOUNT_STATE_SURFACES["large-list"]({ largeList: largeRows }));
+  assert.match(listMarkup, /safe before/);
+  assert.match(listMarkup, /safe after/);
+  assert.doesNotMatch(listMarkup, /ITEM_(?:ID|LABEL)_SECRET|REVOKED_SECRET|ROW_SYMBOL_SECRET/);
+
+  const revokedTop = Proxy.revocable({ source: "REVOKED_TOP_SECRET" }, {});
+  revokedTop.revoke();
+  assert.doesNotThrow(() => renderToStaticMarkup(ACCOUNT_STATE_SURFACES.degraded(revokedTop.proxy)));
+  assert.doesNotMatch(renderToStaticMarkup(ACCOUNT_STATE_SURFACES.degraded(revokedTop.proxy)), /REVOKED_TOP_SECRET/);
 });
 
 for (const state of EXPECTED_STATES) {

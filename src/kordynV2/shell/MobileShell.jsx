@@ -1,4 +1,4 @@
-import { Bell, Bot } from "lucide-react";
+import { Bell, Bot, Braces, FileCheck2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { KORDYN_V2_DOMAINS } from "../architecture/domains.js";
 import { AccountTruth } from "./AccountTruth.jsx";
@@ -21,6 +21,8 @@ export function MobileShell({
 }) {
   const [panel, setPanel] = useState(null);
   const [evidenceTab, setEvidenceTab] = useState("context");
+  const [evidenceSelection, setEvidenceSelection] = useState(null);
+  const [evidenceDetails, setEvidenceDetails] = useState(undefined);
   const returnFocusRef = useRef(null);
   const supportTriggerRef = useRef(null);
   const selectedId = selection?.object?.id || "none";
@@ -47,12 +49,22 @@ export function MobileShell({
     if (!evidenceRequest?.token || !["details", "context", "proof"].includes(evidenceRequest.panel)) return;
     returnFocusRef.current = evidenceRequest.trigger;
     setEvidenceTab(evidenceRequest.panel);
+    setEvidenceSelection(evidenceRequest.selection);
+    setEvidenceDetails(evidenceRequest.details);
     setPanel("evidence");
-  }, [evidenceRequest?.panel, evidenceRequest?.token, evidenceRequest?.trigger]);
+  }, [evidenceRequest?.details, evidenceRequest?.panel, evidenceRequest?.selection, evidenceRequest?.token, evidenceRequest?.trigger]);
 
   const openSheet = (nextPanel, trigger) => {
     returnFocusRef.current = trigger;
     setPanel(nextPanel);
+  };
+
+  const openEvidence = (nextTab, trigger) => {
+    returnFocusRef.current = trigger;
+    setEvidenceTab(nextTab);
+    setEvidenceSelection(selection);
+    setEvidenceDetails(undefined);
+    setPanel("evidence");
   };
 
   const closeSheet = () => {
@@ -106,6 +118,24 @@ export function MobileShell({
           </div>
           <div className="kordynV2MobileTitleRow">
             <h1 className="kordynV2MobileDomainTitle" data-kordyn-v2-mobile-title data-kordyn-v2-destination-title>{domain.label}</h1>
+            {location.domainId === "account" && selectedId !== "none" && <div className="kordynV2MobileEvidenceDock" aria-label="当前对象证据工具">
+              <button
+                type="button"
+                data-kordyn-v2-context-trigger
+                aria-label={`查看 ${selectedType} ${selectedId} 的 Context`}
+                aria-haspopup="dialog"
+                aria-expanded={panel === "evidence" && evidenceTab === "context"}
+                onClick={(event) => openEvidence("context", event.currentTarget)}
+              ><Braces size={17} aria-hidden="true" /></button>
+              <button
+                type="button"
+                data-kordyn-v2-proof-trigger
+                aria-label={`查看 ${selectedType} ${selectedId} 的 Proof`}
+                aria-haspopup="dialog"
+                aria-expanded={panel === "evidence" && evidenceTab === "proof"}
+                onClick={(event) => openEvidence("proof", event.currentTarget)}
+              ><FileCheck2 size={17} aria-hidden="true" /></button>
+            </div>}
           </div>
           <WorkspaceNavigation
             domainId={location.domainId}
@@ -136,10 +166,10 @@ export function MobileShell({
       </div>
       <MobileSheet
         panel={panel}
-        selection={panel === "evidence" ? evidenceRequest?.selection : selection}
+        selection={panel === "evidence" ? evidenceSelection : selection}
         supportContext={supportContext}
         initialEvidenceTab={evidenceTab}
-        evidenceDetails={evidenceRequest?.details}
+        evidenceDetails={evidenceDetails}
         onSupportNavigate={navigateFromSupport}
         onClose={closeSheet}
       />

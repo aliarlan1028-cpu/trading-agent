@@ -64,6 +64,26 @@ test("foundation comparison mappings use only actual AI Mission shell captures",
 test("the comparison harness exposes one import-safe deterministic API", () => {
   assert.ifError(comparisonImportError);
   assert.equal(typeof comparison.compareKordynV2Concepts, "function");
+  assert.equal(typeof comparison.comparisonScopeLedger, "function");
+});
+
+test("account comparison scope reports a summing 1 / 1 / 0 ledger and explicit global manifest context", () => {
+  assert.ifError(comparisonImportError);
+  const ledger = comparison.comparisonScopeLedger("account");
+  assert.deepEqual(ledger.counts, {
+    concepts: 1,
+    completedConcepts: 1,
+    pendingConcepts: 0
+  });
+  assert.equal(ledger.counts.completedConcepts + ledger.counts.pendingConcepts, ledger.counts.concepts);
+  assert.deepEqual(ledger.scopeCounts, {
+    manifestConcepts: 15,
+    scopedConcepts: 1,
+    completedScopedConcepts: 1,
+    pendingScopedConcepts: 0,
+    outOfScopeConcepts: 14
+  });
+  assert.equal(ledger.outOfScope.length, 14);
 });
 
 const implementedCaptures = [
@@ -126,7 +146,7 @@ test("foundation comparison emits deterministic provenance for exactly four impl
     const { screenshotsDir } = await prepareCaptureRoot(testRoot);
     const outputDir = path.join(testRoot, "output");
     const first = await comparison.compareKordynV2Concepts({ screenshotsDir, outputDir, scope: "shell" });
-    assert.deepEqual(first.counts, { concepts: 15, completedConcepts: 2, pendingConcepts: 13, comparisons: 4, artifacts: 17 });
+    assert.deepEqual(first.counts, { concepts: 2, completedConcepts: 2, pendingConcepts: 0, comparisons: 4, artifacts: 17 });
     assert.equal(first.releaseVerdict, "human region review required");
     const firstSnapshot = await snapshotOutput(outputDir);
     assert.equal(Object.keys(firstSnapshot).length, 17);
