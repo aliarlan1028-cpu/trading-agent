@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "status": "invalidated-by-post-evidence-semantic-ui-edit",
+  "invalidationReason": "Whole-plan review found that AccountWorkspace rendered a nested page main. Commit 5ef0784 changed that production UI file afterward, so this former final pass is retained only as history.",
+  "runAt": "2026-08-30T22:48:32Z",
+  "cwd": "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild",
+  "command": "node /Users/ely/.codex/skills/impeccable/scripts/detect.mjs --json src/kordynV2/domains/account/PositionWorkspace.jsx src/kordynV2/domains/account/account.css src/kordynV2/domains/account/stateSurfaces.js src/kordynV2/shell/DesktopShell.jsx src/kordynV2/shell/MobileShell.jsx src/kordynV2/styles/shell.css src/kordynV2/styles/mobile-shell.css",
+  "sessionInvocationCountAtRun": 3,
+  "exitCode": 0,
+  "stdout": "[]\n",
+  "result": [],
+  "targets": [
+    { "path": "src/kordynV2/domains/account/PositionWorkspace.jsx", "sha256": "b6a63941bfaccff390102396ecc087d1742950dd442ecff21056ded8ff91b4b6" },
+    { "path": "src/kordynV2/domains/account/account.css", "sha256": "d638904ef4bbb066d91258533bd35140f35d90f20214ccdc8c1cffeec37768e7" },
+    { "path": "src/kordynV2/domains/account/stateSurfaces.js", "sha256": "fecd3924d4cc22b6f6ddcb7a0fa1be5d45d63adec99f2f25d2e5488c6bf6e964" },
+    { "path": "src/kordynV2/shell/DesktopShell.jsx", "sha256": "e885d988224dbe12bcf53c6be9755d415a66c4965d4347bb9ce071fddf2e9c7e" },
+    { "path": "src/kordynV2/shell/MobileShell.jsx", "sha256": "628e147243c975f593904077dc7d3a3ccd56af6abbeada7f62bd1511a910e93d" },
+    { "path": "src/kordynV2/styles/shell.css", "sha256": "981cb99186ba41cc6194d01bcbc9d5cdcf0fcd92a5a1a813ea6be172e1c51d9f" },
+    { "path": "src/kordynV2/styles/mobile-shell.css", "sha256": "2223792aee746cc0a49d1c54c0e40eb9047088f531e691049b90bce84442c256" }
+  ]
+}
