@@ -1,4 +1,5 @@
 import { Activity, Clock3, Database, Gauge, Star, StarOff, TrendingDown, TrendingUp } from "lucide-react";
+import { resourceTone, validatedTruthMode } from "./AccountWorkspace.jsx";
 import { MarketInstrumentPicker } from "./MarketInstrumentPicker.jsx";
 
 const unavailable = "Unavailable";
@@ -11,8 +12,9 @@ const change = (value) => finite(value) ? `${value > 0 ? "+" : ""}${value.toFixe
 
 export function selectedMarketFor(model, selection) {
   const markets = Array.isArray(model?.markets) ? model.markets : [];
-  const selectedId = selection?.object?.type === "Market" ? selection.object.id : null;
-  return markets.find((market) => market.symbol === selectedId) || markets[0] || null;
+  if (selection?.object?.type !== "Market" || typeof selection.object.id !== "string") return null;
+  const matches = markets.filter((market) => market.symbol === selection.object.id);
+  return matches.length === 1 ? matches[0] : null;
 }
 
 function marketProvenance(market, state) {
@@ -47,10 +49,20 @@ function MarketFact({ label, value }) {
   return <div><dt>{label}</dt><dd>{value}</dd></div>;
 }
 
-export function MarketAnalyticField({ market, state, watched = false, actionsDisabled = false, onWatchlistChange = () => {}, mobile = false }) {
+export function MarketAnalyticField({ market, state, watched = false, actionsDisabled = false, actionOutcome = null, onWatchlistChange = () => {}, mobile = false, headingRef = null }) {
   const provenance = marketProvenance(market, state);
   const trend = finite(market?.changePct) && market.changePct < 0 ? "negative" : finite(market?.changePct) ? "positive" : "unavailable";
-  const TrendIcon = trend === "negative" ? TrendingDown : TrendingUp;
+  const TrendIcon = trend === "negative" ? TrendingDown : trend === "positive" ? TrendingUp : null;
+  if (!market?.symbol) return (
+    <section className={`kordynV2MarketAnalytic is-empty${mobile ? " is-mobile" : ""}`} data-kordyn-v2-market-empty="true">
+      <div className="kordynV2MarketEmptyAnalytic"><Activity size={24} aria-hidden="true" /><span><h2>选择市场</h2><p>从市场列表选择一个当前可用的 Market 对象。</p></span></div>
+      <footer className="kordynV2MarketProvenance">
+        <span><Database size={14} aria-hidden="true" /><small>来源</small><strong>{safe(state?.source)}</strong></span>
+        <span><Clock3 size={14} aria-hidden="true" /><small>数据截至 / As of</small><time dateTime={state?.lastValidAt === unavailable ? undefined : state?.lastValidAt}>{safe(state?.lastValidAt)}</time></span>
+        <span><Gauge size={14} aria-hidden="true" /><small>资源状态</small><strong data-resource-tone={resourceTone(state?.kind)}>{safe(state?.kind)}</strong></span>
+      </footer>
+    </section>
+  );
   return (
     <section
       className={`kordynV2MarketAnalytic${mobile ? " is-mobile" : ""}`}
@@ -59,7 +71,7 @@ export function MarketAnalyticField({ market, state, watched = false, actionsDis
       data-kordyn-v2-object-type="Market"
     >
       <header>
-        <span><Activity size={19} aria-hidden="true" /><strong>{safe(market?.symbol)}</strong></span>
+        <span><Activity size={19} aria-hidden="true" /><h2 ref={headingRef} tabIndex={mobile ? -1 : undefined}>{safe(market?.symbol)}</h2></span>
         <button
           type="button"
           data-kordyn-v2-watchlist-action={watched ? "remove" : "add"}
@@ -72,8 +84,9 @@ export function MarketAnalyticField({ market, state, watched = false, actionsDis
       </header>
       <div className="kordynV2MarketPrice">
         <strong>{number(market?.price)}</strong>
-        <em data-market-trend={trend}><TrendIcon size={16} aria-hidden="true" />{change(market?.changePct)}</em>
+        <em data-market-trend={trend}>{TrendIcon && <TrendIcon size={16} aria-hidden="true" />}{change(market?.changePct)}</em>
       </div>
+      {actionOutcome?.action === "watchlist" && <p className="kordynV2MarketActionStatus" role="status" aria-live="polite">{actionOutcome.presentation?.message || ""}</p>}
       <dl className="kordynV2MarketFacts">
         <MarketFact label="24h 高点" value={number(market?.high24h)} />
         <MarketFact label="24h 低点" value={number(market?.low24h)} />
@@ -83,32 +96,34 @@ export function MarketAnalyticField({ market, state, watched = false, actionsDis
       <footer className="kordynV2MarketProvenance">
         <span><Database size={14} aria-hidden="true" /><small>来源</small><strong>{provenance.source}</strong></span>
         <span><Clock3 size={14} aria-hidden="true" /><small>数据截至 / As of</small><time dateTime={provenance.asOf === unavailable ? undefined : provenance.asOf}>{provenance.asOf}</time></span>
-        <span><Gauge size={14} aria-hidden="true" /><small>资源状态</small><strong>{safe(state?.kind)}</strong></span>
+        <span><Gauge size={14} aria-hidden="true" /><small>资源状态</small><strong data-resource-tone={resourceTone(state?.kind)}>{safe(state?.kind)}</strong></span>
       </footer>
     </section>
   );
 }
 
-export function MarketWorkspace({ model, truth, state, selection, actionsDisabled = false, onSelect = () => {}, onWatchlistChange = () => {} }) {
+export function MarketWorkspace({ model, truth, state, selection, actionsDisabled = false, actionOutcome = null, onSelect = () => {}, onWatchlistChange = () => {} }) {
   const markets = Array.isArray(model?.markets) ? model.markets : [];
   const watchlist = Array.isArray(model?.watchlist) ? model.watchlist : [];
   const selected = selectedMarketFor(model, selection);
   const canonicalId = selection?.object?.type === "Market" ? selection.object.id : null;
   const watched = selected?.symbol ? watchlist.includes(selected.symbol) : false;
+  const tone = resourceTone(state?.kind);
+  const watchlistCount = model?.availability?.watchlist?.state === "loaded" ? String(watchlist.length) : unavailable;
   return (
-    <div className="kordynV2MarketWorkspace" data-kordyn-v2-destination="account/market" data-kordyn-v2-truth-mode={truth?.mode === "full" ? "full" : "full"}>
+    <div className="kordynV2MarketWorkspace" data-kordyn-v2-destination="account/market" data-kordyn-v2-truth-mode={validatedTruthMode(truth?.mode)}>
       <header className="kordynV2AccountWorkspaceTitle">
         <span><h1 data-kordyn-v2-destination-title>市场</h1><small>实时市场事实与来源</small></span>
-        <em role="status">{safe(state?.kind)}</em>
+        <em role="status" data-resource-tone={tone}>{safe(state?.kind)}</em>
       </header>
       <div className="kordynV2MarketWorkbench" data-kordyn-v2-layout="market-picker-analytic-context">
-        <MarketInstrumentPicker markets={markets} watchlist={watchlist} selectedId={canonicalId} actionsDisabled={actionsDisabled} onSelect={onSelect} onWatchlistChange={onWatchlistChange} />
-        <MarketAnalyticField market={selected} state={state} watched={watched} actionsDisabled={actionsDisabled} onWatchlistChange={onWatchlistChange} />
+        <MarketInstrumentPicker markets={markets} availability={model?.availability?.markets} watchlist={watchlist} selectedId={canonicalId} actionsDisabled={actionsDisabled} actionOutcome={actionOutcome} onSelect={onSelect} onWatchlistChange={onWatchlistChange} />
+        <MarketAnalyticField market={selected} state={state} watched={watched} actionsDisabled={actionsDisabled} actionOutcome={actionOutcome} onWatchlistChange={onWatchlistChange} />
         <aside className="kordynV2MarketContext" aria-label="市场上下文">
           <header><h2>市场上下文</h2><Activity size={16} aria-hidden="true" /></header>
           <dl>
             <MarketFact label="当前对象" value={canonicalId || unavailable} />
-            <MarketFact label="观察列表" value={String(watchlist.length)} />
+            <MarketFact label="观察列表" value={watchlistCount} />
             <MarketFact label="账户权益" value={number(truth?.equity)} />
             <MarketFact label="可用" value={number(truth?.available)} />
             <MarketFact label="敞口" value={number(truth?.exposure)} />

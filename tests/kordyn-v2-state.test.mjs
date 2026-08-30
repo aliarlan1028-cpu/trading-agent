@@ -446,3 +446,34 @@ test("selection remains canonical across the V2 shell", () => {
   assert.equal(selection.trace.objectId, "p-1");
   assert.ok(selection.trace.stages.every((stage) => stage.objectId === "p-1" && stage.workspaceId === "live"));
 });
+
+test("source-backed Account selection resolves through Root Context and Trace while ambiguous or adverse facts fail closed", () => {
+  const account = { id: "ex-okx-main", exchange: "OKX", label: "OKX 统一账户", status: "configured", updatedAt: "2026-08-30T06:32:11Z" };
+  const data = {
+    resourceState: { cockpit: "loaded" },
+    exchangeAccounts: [account],
+    accountSnapshots: [{ id: "snapshot-current", accountId: account.id, status: "ok", createdAt: "2026-08-30T06:33:00Z" }],
+    traces: [{ workspaceId: "live", sourceSection: "cockpit", objectType: "Account", objectId: account.id, stage: "monitor", status: "complete", evidenceId: "trace-account" }]
+  };
+  const candidate = { id: account.id, type: "Account", workspaceId: "account", route: "marketAccount", sourceSection: "cockpit" };
+  const selection = createV2Selection({ data, candidate });
+
+  assert.ok(selection, "a unique current source-backed Account must resolve");
+  assert.equal(selection.object.raw, account);
+  assert.equal(selection.object.id, account.id);
+  assert.equal(selection.object.type, "Account");
+  assert.equal(selection.object.workspaceId, "live");
+  assert.equal(selection.object.route, "marketAccount");
+  assert.equal(selection.context.objectId, account.id);
+  assert.equal(selection.context.objectType, "Account");
+  assert.equal(selection.trace.objectId, account.id);
+  assert.equal(selection.trace.stages.find((stage) => stage.label === "Monitor")?.evidence, "trace-account");
+
+  assert.equal(createV2Selection({ data: { resourceState: { cockpit: "loaded" } }, candidate }), null, "missing Account registry fails closed");
+  assert.equal(createV2Selection({ data: { ...data, exchangeAccounts: [account, { ...account }] }, candidate }), null, "duplicate Account identity fails closed");
+  assert.equal(createV2Selection({ data: { ...data, exchangeAccounts: [{ ...account, id: " bad id " }] }, candidate: { ...candidate, id: " bad id " } }), null, "invalid Account identity fails closed");
+  assert.equal(createV2Selection({ data: { ...data, exchangeAccounts: [{ ...account, id: "Unavailable" }] }, candidate: { ...candidate, id: "Unavailable" } }), null, "placeholder Account identity fails closed");
+  assert.equal(createV2Selection({ data: { ...data, markets: [{ symbol: account.id }], exchangeAccounts: [account] }, candidate: { id: account.id } }), null, "untyped Account/Market collision fails closed");
+  assert.equal(createV2Selection({ data: { ...data, resourceState: { cockpit: "stale" } }, candidate }), null, "stale Account facts fail closed");
+  assert.equal(createV2Selection({ data: { ...data, exchangeAccounts: [{ ...account, permission: "forbidden" }] }, candidate }), null, "forbidden Account facts fail closed");
+});

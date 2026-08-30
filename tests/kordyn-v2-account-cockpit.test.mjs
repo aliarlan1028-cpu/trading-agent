@@ -55,6 +55,12 @@ const {
 
 const data = Object.freeze({
   portfolio: Object.freeze({ totalEquityUsdt: 28_640.72, availableMarginUsdt: 13_870.1 }),
+  exchangeAccounts: Object.freeze([
+    Object.freeze({ id: "ex_okx_main", exchange: "OKX", label: "OKX 统一账户", status: "configured", updatedAt: "2026-08-30T06:32:11.000Z" })
+  ]),
+  accountSnapshots: Object.freeze([
+    Object.freeze({ id: "snapshot-main", accountId: "ex_okx_main", status: "ok", createdAt: "2026-08-30T06:32:11.000Z" })
+  ]),
   positions: Object.freeze([]),
   markets: Object.freeze([
     Object.freeze({
@@ -172,7 +178,7 @@ test("Market and Account controls emit only canonical Root selection payloads", 
   const accountButton = findElement(accountTree, (node) => node.props?.["data-kordyn-v2-object-type"] === "Account");
   assert.ok(accountButton);
   accountButton.props.onClick();
-  assert.deepEqual(selected[1], { id: "ex_okx_main", type: "Account" });
+  assert.deepEqual(selected[1], { id: "ex_okx_main", type: "Account", workspaceId: "account", route: "marketAccount", sourceSection: "cockpit" });
 });
 
 test("unavailable market and account facts never render as fabricated zero", () => {
@@ -192,6 +198,75 @@ test("unavailable market and account facts never render as fabricated zero", () 
   assert.match(market, /账户权益<\/dt><dd>Unavailable<\/dd>/);
   assert.match(account, /总权益<\/dt><dd>Unavailable<\/dd>/);
   assert.match(account, /未实现盈亏<\/dt><dd>Unavailable<\/dd>/);
+});
+
+test("missing canonical selections render explicit empty truth without unavailable or partial object attributes", () => {
+  const missingModel = buildAccountDomainModel({ markets: [], watchlist: [], exchangeAccounts: [] });
+  const market = render(MarketWorkspace, { model: missingModel, selection: null });
+  const account = render(AccountWorkspace, { model: missingModel, selection: null });
+
+  assert.match(market, /选择市场/);
+  assert.doesNotMatch(market, /class="kordynV2MarketAnalytic"[^>]*data-kordyn-v2-object-/);
+  assert.doesNotMatch(account, /data-kordyn-v2-object-id="Unavailable"/);
+  assert.doesNotMatch(account, /data-kordyn-v2-object-type="Account"/);
+
+  const placeholderModel = buildAccountDomainModel({
+    markets: [{ symbol: "Unavailable", price: 1 }],
+    exchangeAccounts: [{ id: "Unavailable", exchange: "OKX" }]
+  });
+  const placeholderMarket = render(MarketWorkspace, { model: placeholderModel, selection: { object: { id: "Unavailable", type: "Market" } } });
+  const placeholderAccount = render(AccountWorkspace, { model: placeholderModel, selection: { object: { id: "Unavailable", type: "Account" } } });
+  assert.doesNotMatch(`${placeholderMarket}${placeholderAccount}`, /data-kordyn-v2-object-id="Unavailable"/);
+});
+
+test("mismatched and duplicate Market selections cannot become the analytic canonical object", () => {
+  const duplicateModel = buildAccountDomainModel({
+    markets: [{ symbol: "BTC/USDT", price: 68000 }, { symbol: "BTC/USDT", price: 68001 }],
+    watchlist: []
+  });
+  for (const selection of [
+    { object: { id: "ETH/USDT", type: "Market" } },
+    { object: { id: "BTC/USDT", type: "Position" } },
+    { object: { id: "BTC/USDT", type: "Market" } }
+  ]) {
+    const html = render(MarketWorkspace, { model: duplicateModel, selection });
+    assert.match(html, /选择市场/);
+    assert.doesNotMatch(html, /class="kordynV2MarketAnalytic"[^>]*data-kordyn-v2-object-id=/);
+  }
+});
+
+test("Full Truth marker reflects the validated mode and adverse resource states never inherit a healthy tone", () => {
+  const compact = render(AccountWorkspace, { truth: { ...truth, mode: "compact" } });
+  const stale = render(AccountWorkspace, { state: { ...readyState, kind: "stale" } });
+  const failed = render(MarketWorkspace, { state: { ...readyState, kind: "failed" } });
+
+  assert.match(compact, /data-kordyn-v2-truth-mode="compact"/);
+  assert.match(stale, /data-resource-tone="warning"/);
+  assert.match(failed, /data-resource-tone="critical"/);
+  assert.doesNotMatch(stale, /data-resource-tone="healthy"/);
+  assert.doesNotMatch(failed, /data-resource-tone="healthy"/);
+});
+
+test("authoritative empty and unavailable collections have different copy and watchlist counts", () => {
+  const absent = render(MarketWorkspace, { model: buildAccountDomainModel({}), selection: null });
+  const empty = render(MarketWorkspace, { model: buildAccountDomainModel({ markets: [], watchlist: [] }), selection: null });
+  const invalid = render(MarketWorkspace, { model: buildAccountDomainModel({ markets: "bad", watchlist: [null] }), selection: null });
+
+  assert.match(absent, /市场事实明确未加载/);
+  assert.match(absent, /观察列表<\/dt><dd>Unavailable<\/dd>/);
+  assert.match(empty, /当前没有市场/);
+  assert.match(empty, /观察列表<\/dt><dd>0<\/dd>/);
+  assert.match(invalid, /市场事实不可用/);
+  assert.match(invalid, /观察列表<\/dt><dd>Unavailable<\/dd>/);
+});
+
+test("unavailable market change is neutral and never borrows an upward trend icon", () => {
+  const html = render(MarketWorkspace, {
+    model: buildAccountDomainModel({ markets: [{ symbol: "BTC/USDT", price: null, change24hPct: null }], watchlist: [] }),
+    selection: { object: { id: "BTC/USDT", type: "Market" } }
+  });
+  assert.match(html, /data-market-trend="unavailable"/);
+  assert.doesNotMatch(html, /lucide-trending-(?:up|down)/);
 });
 
 test("watchlist and reconciliation helpers preserve raw outcomes and fail closed while actions are disabled", async () => {
@@ -282,5 +357,8 @@ test("account CSS carries touch, responsive, focus, and reduced-motion safeguard
   assert.match(css, /@media\s*\([^)]*max-width:\s*430px\)/);
   assert.match(css, /@media\s*\([^)]*max-width:\s*390px\)/);
   assert.match(css, /prefers-reduced-motion:\s*reduce/);
+  assert.match(css, /\[data-resource-tone="healthy"\][^{]*\{[^}]*var\(--kordyn-v2-mint\)/s);
+  assert.match(css, /\[data-resource-tone="warning"\][^{]*\{[^}]*var\(--kordyn-v2-amber\)/s);
+  assert.match(css, /\[data-resource-tone="critical"\][^{]*\{[^}]*var\(--kordyn-v2-danger\)/s);
   assert.doesNotMatch(css, /!important|overflow-x\s*:\s*(?:auto|scroll)|(?:^|[;{])\s*min-width\s*:\s*(?:[4-9]\d\d|\d{4,})px/m);
 });

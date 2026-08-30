@@ -12,8 +12,28 @@ const asList = (value) => Array.isArray(value) ? value : [];
 
 export const canonicalPositionIdentity = (row = {}) => firstValue(row.id, row.positionId, row.instId, row.symbol);
 
+const validAccountIdentity = (value) => typeof value === "string"
+  && value.length > 0
+  && value.length <= 240
+  && value === value.trim()
+  && !/[\p{White_Space}\p{Cc}]/u.test(value)
+  && !["unavailable", "unknown", "n/a", "—"].includes(value.toLowerCase());
+
+export function canonicalAccountIdentity(row) {
+  if (!row || typeof row !== "object" || Array.isArray(row)) return null;
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(row, "id");
+    return descriptor && Object.hasOwn(descriptor, "value") && validAccountIdentity(descriptor.value)
+      ? descriptor.value
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 const searchCollections = Object.freeze([
   { key: "markets", type: "Market", route: "market", workspaceId: "live", sourceSection: "cockpit", id: (row) => row.symbol || row.id, title: (row) => row.symbol || row.name },
+  { key: "exchangeAccounts", type: "Account", route: "marketAccount", workspaceId: "live", sourceSection: "cockpit", id: canonicalAccountIdentity, title: (row) => row.label || row.exchange || canonicalAccountIdentity(row) },
   { key: "positions", type: "Position", route: "positions", workspaceId: "live", sourceSection: "cockpit", id: canonicalPositionIdentity, title: (row) => row.symbol || row.instId || row.name },
   { key: "tradePlans", type: "Trade plan", route: "signalHub", workspaceId: "live", sourceSection: "cockpit", id: (row) => row.id, title: (row) => row.title || row.symbol || row.name },
   { key: "orders", type: "Order", route: "tradeLedger", workspaceId: "live", sourceSection: "cockpit", id: (row) => row.id || row.orderId, title: (row) => row.title || row.symbol || row.id },
@@ -201,8 +221,11 @@ function workspaceSelectionFailsClosed(data, workspaceId) {
 
 export function resolveShellObjectSelection(data = {}, candidate = null, workspaceId = candidate?.workspaceId) {
   if (!candidate?.id || candidate.type === "Feature") return null;
+  const candidateId = String(candidate.id);
+  const accountIdentityMatches = asList(data.exchangeAccounts).filter((row) => canonicalAccountIdentity(row) === candidateId);
+  if ((candidate.type === "Account" || accountIdentityMatches.length > 0) && (!validAccountIdentity(candidate.id) || accountIdentityMatches.length !== 1)) return null;
   const matches = buildShellSearchIndex(data).filter((row) => (
-    row.id === String(candidate.id)
+    row.id === candidateId
     && (!candidate.type || row.type === candidate.type)
     && (!workspaceId || row.workspaceId === workspaceId)
     && (!candidate.workspaceId || row.workspaceId === candidate.workspaceId)

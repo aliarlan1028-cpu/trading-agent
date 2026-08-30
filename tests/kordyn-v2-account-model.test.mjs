@@ -92,6 +92,7 @@ test("latest reconciliation is projected from the source-backed cockpit report w
   });
 
   assert.deepEqual(model.reconciliation, {
+    state: "loaded",
     loaded: true,
     latest: {
       id: "recon-newer",
@@ -106,8 +107,9 @@ test("latest reconciliation is projected from the source-backed cockpit report w
 });
 
 test("missing and hostile reconciliation inputs remain bounded and unavailable", () => {
-  assert.deepEqual(buildAccountDomainModel({}).reconciliation, { loaded: false, latest: null });
-  assert.deepEqual(buildAccountDomainModel({ reconciliationReports: [] }).reconciliation, { loaded: true, latest: null });
+  assert.deepEqual(buildAccountDomainModel({}).reconciliation, { state: "absent", loaded: false, latest: null });
+  assert.deepEqual(buildAccountDomainModel({ reconciliationReports: [] }).reconciliation, { state: "loaded", loaded: true, latest: null });
+  assert.deepEqual(buildAccountDomainModel({ reconciliationReports: [null, 4, "bad"] }).reconciliation, { state: "invalid", loaded: false, latest: null });
 
   const model = buildAccountDomainModel({
     reconciliationReports: [
@@ -126,16 +128,59 @@ test("missing and hostile reconciliation inputs remain bounded and unavailable",
   });
 
   assert.deepEqual(model.reconciliation, {
+    state: "loaded",
     loaded: true,
     latest: {
       id: "recon-safe",
       status: "degraded",
       severity: null,
       createdAt: "2026-08-26T10:00:00.000Z",
-      differenceCount: 3,
+      differenceCount: 1,
       differences: [{ type: "snapshot_sync_error", severity: "medium", message: "Private snapshot is unavailable" }]
     }
   });
+});
+
+test("reconciliation ignores reports without a parseable createdAt and malformed newer rows cannot displace valid truth", () => {
+  const model = buildAccountDomainModel({
+    reconciliationReports: [
+      { id: "valid-older", status: "degraded", createdAt: "2026-08-30T06:30:00Z", differences: [] },
+      { id: "invalid-newer", status: "ok", createdAt: "not-a-time", differences: [] },
+      { id: "missing-time", status: "ok", differences: [] },
+      null
+    ]
+  });
+
+  assert.equal(model.reconciliation.state, "loaded");
+  assert.equal(model.reconciliation.latest.id, "valid-older");
+  assert.equal(model.reconciliation.latest.status, "degraded");
+});
+
+test("market, watchlist, and Account availability distinguish absent, invalid, authoritative empty, and mixed-valid facts", () => {
+  const absent = buildAccountDomainModel({});
+  assert.deepEqual(absent.availability?.markets, { state: "absent", count: null });
+  assert.deepEqual(absent.availability?.watchlist, { state: "absent", count: null });
+  assert.deepEqual(absent.availability?.accounts, { state: "absent", count: null });
+
+  const empty = buildAccountDomainModel({ markets: [], watchlist: [], exchangeAccounts: [] });
+  assert.deepEqual(empty.availability?.markets, { state: "loaded", count: 0 });
+  assert.deepEqual(empty.availability?.watchlist, { state: "loaded", count: 0 });
+  assert.deepEqual(empty.availability?.accounts, { state: "loaded", count: 0 });
+
+  const invalid = buildAccountDomainModel({ markets: "bad", watchlist: [null, 3], exchangeAccounts: [null, { id: " bad id " }] });
+  assert.deepEqual(invalid.availability?.markets, { state: "invalid", count: null });
+  assert.deepEqual(invalid.availability?.watchlist, { state: "invalid", count: null });
+  assert.deepEqual(invalid.availability?.accounts, { state: "invalid", count: null });
+
+  const mixed = buildAccountDomainModel({
+    markets: [null, { symbol: "BTC/USDT", price: 68000 }],
+    watchlist: [null, "BTC/USDT"],
+    exchangeAccounts: [null, { id: "ex-okx", exchange: "OKX", label: "OKX" }]
+  });
+  assert.deepEqual(mixed.availability?.markets, { state: "loaded", count: 1 });
+  assert.deepEqual(mixed.availability?.watchlist, { state: "loaded", count: 1 });
+  assert.deepEqual(mixed.availability?.accounts, { state: "loaded", count: 1 });
+  assert.equal(mixed.accounts?.[0]?.id, "ex-okx");
 });
 
 test("missing position and portfolio financial values remain unavailable instead of selector fallback zero", () => {

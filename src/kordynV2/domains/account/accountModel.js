@@ -23,7 +23,9 @@ const validPositionIdentity = (value) => typeof value === "string"
   && value.length > 0
   && value.length <= 240
   && value === value.trim()
-  && !/[\p{White_Space}\p{Cc}]/u.test(value);
+  && !/[\p{White_Space}\p{Cc}]/u.test(value)
+  && !["unavailable", "unknown", "n/a", "—"].includes(value.toLowerCase());
+const availability = (state, count = null) => ({ state, count });
 
 function plainRecord(value) {
   if (!value || typeof value !== "object") return false;
@@ -115,19 +117,28 @@ function installRecord(source, root, field) {
 
 function installRecordCollection(source, root, field, { requireEveryRecord = false } = {}) {
   const read = ownDataRead(root, field);
-  if (read.kind !== "value") return;
+  if (read.kind === "missing") return availability("absent");
+  if (read.kind !== "value") return availability("invalid");
   const values = arrayValues(read.value);
-  if (!values) return;
+  if (!values) return availability("invalid");
   const records = values.map(recordSnapshot);
-  if (requireEveryRecord && records.some((record) => record === null)) return;
-  source[field] = records.filter(Boolean);
+  if (requireEveryRecord && records.some((record) => record === null)) return availability("invalid");
+  const valid = records.filter(Boolean);
+  if (values.length > 0 && valid.length === 0) return availability("invalid");
+  source[field] = valid;
+  return availability("loaded", valid.length);
 }
 
 function installWatchlist(source, root) {
   const read = ownDataRead(root, "watchlist");
-  if (read.kind !== "value") return;
+  if (read.kind === "missing") return availability("absent");
+  if (read.kind !== "value") return availability("invalid");
   const values = arrayValues(read.value);
-  if (values) source.watchlist = values.filter((value) => typeof value === "string");
+  if (!values) return availability("invalid");
+  const valid = [...new Set(values.filter(validPositionIdentity))];
+  if (values.length > 0 && valid.length === 0) return availability("invalid");
+  source.watchlist = valid;
+  return availability("loaded", valid.length);
 }
 
 function boundedText(value, maxLength = 2_000) {
@@ -147,30 +158,69 @@ function reconciliationDifference(value) {
   return { type, severity, message };
 }
 
-function reconciliationProjection(source) {
-  if (!Object.hasOwn(source, "reconciliationReports")) return { loaded: false, latest: null };
+function reconciliationProjection(source, collection) {
+  if (collection.state !== "loaded") return { state: collection.state, loaded: false, latest: null };
   const reports = source.reconciliationReports;
-  if (!reports.length) return { loaded: true, latest: null };
-  const rows = reports.map((report, index) => {
+  if (!reports.length) return { state: "loaded", loaded: true, latest: null };
+  const rows = reports.flatMap((report, index) => {
     const createdAt = boundedText(report.createdAt, 240);
-    const timestamp = createdAt && Number.isFinite(Date.parse(createdAt)) ? Date.parse(createdAt) : 0;
-    return { report, index, timestamp };
+    const timestamp = createdAt ? Date.parse(createdAt) : Number.NaN;
+    return Number.isFinite(timestamp) ? [{ report, index, timestamp }] : [];
   }).sort((a, b) => b.timestamp - a.timestamp || a.index - b.index);
   const report = rows[0]?.report;
-  if (!report) return { loaded: true, latest: null };
+  if (!report) return { state: "invalid", loaded: false, latest: null };
   const rawDifferences = arrayValues(report.differences);
   const differences = rawDifferences ? rawDifferences.map(reconciliationDifference).filter(Boolean) : [];
   return {
+    state: "loaded",
     loaded: true,
     latest: {
       id: boundedText(report.id, 240),
       status: boundedText(report.status, 240),
       severity: boundedText(report.severity, 120),
       createdAt: boundedText(report.createdAt, 240),
-      differenceCount: rawDifferences ? rawDifferences.length : null,
+      differenceCount: rawDifferences ? differences.length : null,
       differences
     }
   };
+}
+
+function uniqueIdentityRows(rows, identity) {
+  const candidates = rows.flatMap((row) => {
+    const id = identity(row);
+    return id ? [{ id, row }] : [];
+  });
+  const counts = new Map();
+  for (const { id } of candidates) counts.set(id, (counts.get(id) || 0) + 1);
+  return candidates.filter(({ id }) => counts.get(id) === 1);
+}
+
+function projectedAvailability(collection, count) {
+  if (collection.state !== "loaded") return collection;
+  if (collection.count === 0) return availability("loaded", 0);
+  return count > 0 ? availability("loaded", count) : availability("invalid");
+}
+
+function accountProjection(source) {
+  const snapshots = source.accountSnapshots || [];
+  return uniqueIdentityRows(source.exchangeAccounts || [], (row) => validPositionIdentity(row.id) ? row.id : null).map(({ id, row }) => {
+    const latestSnapshot = snapshots
+      .flatMap((snapshot, index) => {
+        if (snapshot.accountId !== id || !boundedText(snapshot.createdAt, 240)) return [];
+        const timestamp = Date.parse(snapshot.createdAt);
+        return Number.isFinite(timestamp) ? [{ snapshot, index, timestamp }] : [];
+      })
+      .sort((a, b) => b.timestamp - a.timestamp || a.index - b.index)[0]?.snapshot || null;
+    return {
+      id,
+      label: boundedText(row.label, 240) || boundedText(row.exchange, 120) || id,
+      exchange: boundedText(row.exchange, 120),
+      status: boundedText(row.status, 120),
+      source: boundedText(row.source, 240) || boundedText(row.exchange, 120),
+      asOf: latestSnapshot?.createdAt || boundedText(row.updatedAt, 240) || boundedText(row.createdAt, 240),
+      snapshotId: boundedText(latestSnapshot?.id, 240)
+    };
+  });
 }
 
 function positionSource(root) {
@@ -202,20 +252,38 @@ function positionSource(root) {
 function selectorSource(data) {
   const root = plainRecord(data) ? data : null;
   const source = Object.create(null);
-  if (!root) return { source, positionFactsAvailable: false };
+  if (!root) return {
+    source,
+    positionFactsAvailable: false,
+    availability: {
+      markets: availability("invalid"), watchlist: availability("invalid"), accounts: availability("invalid"),
+      accountSnapshots: availability("invalid"), reconciliation: availability("invalid")
+    }
+  };
 
   for (const field of ["portfolio", "performance", "executionOrderStatus", "tradeDataStatus"]) {
     installRecord(source, root, field);
   }
-  for (const field of ["markets", "orders", "executionOrders", "fills", "reviews", "tradePlans", "reconciliationReports"]) {
-    installRecordCollection(source, root, field);
+  const collectionAvailability = Object.create(null);
+  for (const field of ["markets", "orders", "executionOrders", "fills", "reviews", "tradePlans", "reconciliationReports", "exchangeAccounts", "accountSnapshots"]) {
+    collectionAvailability[field] = installRecordCollection(source, root, field);
   }
   installRecordCollection(source, root, "closedTradeLifecycles", { requireEveryRecord: true });
-  installWatchlist(source, root);
+  collectionAvailability.watchlist = installWatchlist(source, root);
 
   const positions = positionSource(root);
   if (positions.loaded) source.positions = positions.positions;
-  return { source, positionFactsAvailable: positions.available };
+  return {
+    source,
+    positionFactsAvailable: positions.available,
+    availability: {
+      markets: collectionAvailability.markets,
+      watchlist: collectionAvailability.watchlist,
+      accounts: collectionAvailability.exchangeAccounts,
+      accountSnapshots: collectionAvailability.accountSnapshots,
+      reconciliation: collectionAvailability.reconciliationReports
+    }
+  };
 }
 
 function positionNotional(position = {}) {
@@ -268,7 +336,7 @@ function executionTotals(data) {
 }
 
 export function buildAccountDomainModel(data = {}) {
-  const { source, positionFactsAvailable } = selectorSource(data);
+  const { source, positionFactsAvailable, availability: sourceAvailability } = selectorSource(data);
   const portfolio = source.portfolio || Object.create(null);
   const positionView = buildPositionView(source);
   const positions = positionView.positions.map((position) => ({
@@ -281,6 +349,13 @@ export function buildAccountDomainModel(data = {}) {
     orders: baseExecution.orders.map((order) => ({ ...order, exitAction: executionExitAction(order) })),
     performance: executionPerformance(source, baseExecution),
     totals: executionTotals(source)
+  };
+  const markets = uniqueIdentityRows(buildMarketRows(source), (row) => validPositionIdentity(row.symbol) ? row.symbol : null).map(({ row }) => row);
+  const accounts = accountProjection(source);
+  const modelAvailability = {
+    markets: projectedAvailability(sourceAvailability.markets, markets.length),
+    watchlist: sourceAvailability.watchlist,
+    accounts: projectedAvailability(sourceAvailability.accounts, accounts.length)
   };
 
   return {
@@ -295,9 +370,11 @@ export function buildAccountDomainModel(data = {}) {
         finitePositionFinancial(firstKnown(position.margin, position.initialMargin))
       ))
     },
-    markets: buildMarketRows(source),
+    availability: modelAvailability,
+    accounts,
+    markets,
     watchlist: (source.watchlist || []).slice(),
-    reconciliation: reconciliationProjection(source),
+    reconciliation: reconciliationProjection(source, sourceAvailability.reconciliation),
     positions,
     openOrders: positionView.openOrders.slice(),
     plans: (source.tradePlans || []).slice(),

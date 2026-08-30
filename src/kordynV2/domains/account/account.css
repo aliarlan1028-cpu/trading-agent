@@ -59,13 +59,40 @@
   padding: 0 10px;
   display: inline-flex;
   align-items: center;
-  border: 1px solid rgba(32, 215, 148, 0.22);
+  border: 1px solid var(--kordyn-v2-border-strong);
   border-radius: 7px;
-  color: var(--kordyn-v2-mint);
-  background: rgba(19, 74, 61, 0.18);
+  color: var(--kordyn-v2-muted);
+  background: rgba(24, 35, 50, 0.58);
   font-family: var(--kordyn-v2-mono);
   font-size: 11px;
   font-style: normal;
+}
+
+[data-resource-tone="healthy"] {
+  color: var(--kordyn-v2-mint);
+}
+
+[data-resource-tone="warning"] {
+  color: var(--kordyn-v2-amber);
+}
+
+[data-resource-tone="critical"] {
+  color: var(--kordyn-v2-danger);
+}
+
+.kordynV2AccountWorkspaceTitle > em[data-resource-tone="healthy"] {
+  border-color: rgba(32, 215, 148, 0.22);
+  background: rgba(19, 74, 61, 0.18);
+}
+
+.kordynV2AccountWorkspaceTitle > em[data-resource-tone="warning"] {
+  border-color: rgba(244, 173, 86, 0.3);
+  background: rgba(83, 57, 24, 0.25);
+}
+
+.kordynV2AccountWorkspaceTitle > em[data-resource-tone="critical"] {
+  border-color: rgba(255, 89, 104, 0.34);
+  background: rgba(93, 28, 40, 0.25);
 }
 
 .kordynV2AccountWorkspaceTitle > button {
@@ -267,6 +294,34 @@
     linear-gradient(180deg, rgba(9, 21, 37, 0.7), rgba(5, 14, 25, 0.84));
 }
 
+.kordynV2MarketAnalytic.is-empty {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.kordynV2MarketEmptyAnalytic {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--kordyn-v2-muted);
+}
+
+.kordynV2MarketEmptyAnalytic h2,
+.kordynV2MarketEmptyAnalytic p {
+  margin: 0;
+}
+
+.kordynV2MarketEmptyAnalytic h2 {
+  color: var(--kordyn-v2-text-soft);
+  font-size: 16px;
+}
+
+.kordynV2MarketEmptyAnalytic p {
+  margin-top: 5px;
+  font-size: 11px;
+}
+
 .kordynV2MarketAnalytic > header {
   min-width: 0;
   display: flex;
@@ -282,7 +337,8 @@
   gap: 9px;
 }
 
-.kordynV2MarketAnalytic > header strong {
+.kordynV2MarketAnalytic > header h2 {
+  margin: 0;
   overflow: hidden;
   font-family: var(--kordyn-v2-mono);
   font-size: 18px;
@@ -348,6 +404,13 @@
 
 [data-market-trend="negative"] {
   color: var(--kordyn-v2-danger);
+}
+
+.kordynV2MarketActionStatus {
+  min-height: 18px;
+  margin: 0;
+  color: var(--kordyn-v2-muted);
+  font-size: 11px;
 }
 
 .kordynV2MarketFacts {
@@ -585,10 +648,84 @@
 }
 
 .kordynV2AccountLedger > header em {
-  color: var(--kordyn-v2-mint);
+  color: var(--kordyn-v2-muted);
   font-family: var(--kordyn-v2-mono);
   font-size: 10px;
   font-style: normal;
+}
+
+.kordynV2AccountRegistry {
+  min-width: 0;
+  margin-top: 18px;
+  border-top: 1px solid var(--kordyn-v2-border);
+  border-bottom: 1px solid var(--kordyn-v2-border);
+}
+
+.kordynV2AccountRegistry > header {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.kordynV2AccountRegistry > header h2 {
+  margin: 0;
+  color: var(--kordyn-v2-text-soft);
+  font-size: 12px;
+}
+
+.kordynV2AccountRegistry > header span {
+  color: var(--kordyn-v2-muted);
+  font-family: var(--kordyn-v2-mono);
+  font-size: 10px;
+}
+
+.kordynV2AccountRegistry > div {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 0 0 10px;
+}
+
+.kordynV2AccountRegistry button {
+  min-width: 0;
+  min-height: 40px;
+  padding: 5px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--kordyn-v2-border);
+  border-radius: 8px;
+  color: var(--kordyn-v2-text-soft);
+  background: rgba(10, 22, 38, 0.7);
+  text-align: left;
+}
+
+.kordynV2AccountRegistry button[aria-pressed="true"] {
+  border-color: rgba(76, 127, 222, 0.52);
+  background: rgba(20, 48, 91, 0.3);
+}
+
+.kordynV2AccountRegistry button span,
+.kordynV2AccountRegistry button strong,
+.kordynV2AccountRegistry button small {
+  min-width: 0;
+  display: block;
+}
+
+.kordynV2AccountRegistry button small {
+  margin-top: 3px;
+  color: var(--kordyn-v2-muted);
+  font-size: 9px;
+}
+
+.kordynV2AccountRegistry > div > p {
+  margin: 0;
+  padding: 8px 0;
+  color: var(--kordyn-v2-muted);
+  font-size: 10px;
 }
 
 .kordynV2AccountMetrics {
@@ -1019,6 +1156,23 @@
     background: rgba(7, 17, 30, 0.76);
   }
 
+  .kordynV2AccountMobile .kordynV2AccountRegistry {
+    margin: 0 0 12px;
+    padding: 0 12px;
+    border: 1px solid var(--kordyn-v2-border);
+    border-radius: 13px;
+    background: rgba(7, 17, 30, 0.74);
+  }
+
+  .kordynV2AccountMobile .kordynV2AccountRegistry > div {
+    display: block;
+  }
+
+  .kordynV2AccountMobile .kordynV2AccountRegistry button {
+    width: 100%;
+    min-height: 44px;
+  }
+
   .kordynV2MobileAccountTruth > header {
     min-width: 0;
     min-height: 60px;
@@ -1106,7 +1260,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    color: var(--kordyn-v2-mint);
+    color: var(--kordyn-v2-muted);
   }
 
   .kordynV2MobileAccountTruth > footer time {
