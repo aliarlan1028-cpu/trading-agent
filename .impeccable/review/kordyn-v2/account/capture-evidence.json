@@ -2,7 +2,8 @@
   "schemaVersion": 1,
   "runner": "tests/run-kordyn-v2-account-browser.mjs",
   "fixture": "tests/kordyn-v2-account-browser.jsx",
-  "productionSourceCommit": "bfbdce394dc21617b5b0ab070e62f475a5e77bd4",
+  "productSourceCommit": "857e0787adde4b8529a26a1ec3775fee3b49a4e0",
+  "captureTestSourceCommit": "41db7e2feca86e71ef1d874d3c94372ea56a393a",
   "captures": [
     {
       "file": "desktop-account-position--1440x900.png",
@@ -36,7 +37,26 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": true,
-      "sha256": "363f53f1ef460cafaf151300c94465c2d1e09512d14be186b5f8c3ccdb6e2e32"
+      "sha256": "add8445cf6d4901fcb1219fc177cd9c3e417d08f27de6988c018f30d34d57677",
+      "priceBoundaryGeometry": {
+        "entry": {
+          "left": 1027.8359375,
+          "top": 464.5,
+          "right": 1071.1953125,
+          "bottom": 504.5,
+          "width": 43.359375,
+          "height": 40
+        },
+        "mark": {
+          "left": 1046.7109375,
+          "top": 512.5,
+          "right": 1090.0703125,
+          "bottom": 552.5,
+          "width": 43.359375,
+          "height": 40
+        },
+        "overlaps": false
+      }
     },
     {
       "file": "desktop-account-position--1180x800.png",
@@ -70,7 +90,26 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": true,
-      "sha256": "8d03e49c6fab2cbbbc863b7ebcdad14f79288298dc7555305812ad8f1827f680"
+      "sha256": "40cb9608d41c2e0ed9fc773100522bcb4765ace0bce91a4f1167cbd80151deed",
+      "priceBoundaryGeometry": {
+        "entry": {
+          "left": 826.3828125,
+          "top": 505,
+          "right": 869.7421875,
+          "bottom": 545,
+          "width": 43.359375,
+          "height": 40
+        },
+        "mark": {
+          "left": 840.3515625,
+          "top": 553,
+          "right": 883.7109375,
+          "bottom": 593,
+          "width": 43.359375,
+          "height": 40
+        },
+        "overlaps": false
+      }
     },
     {
       "file": "mobile-account-position--390x844.png",
@@ -104,8 +143,132 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": true,
-      "sha256": "5bc1575de58246173f8df37f9e09d91e668b11f165b82d7f7fae4dde15ab69c5",
-      "structuralOnly": true
+      "sha256": "0fb5e03e40bda817ff729c3dbcde3f7924138a54a7c392853266220705787b00",
+      "structuralOnly": true,
+      "labelGeometry": {
+        "layout": {
+          "detail": {
+            "left": 9,
+            "top": 346,
+            "right": 381,
+            "bottom": 1573.390625,
+            "width": 372,
+            "height": 1227.390625
+          },
+          "truth": {
+            "left": 9,
+            "top": 346,
+            "right": 381,
+            "bottom": 967,
+            "width": 372,
+            "height": 621
+          },
+          "inspector": {
+            "left": 9,
+            "top": 979,
+            "right": 381,
+            "bottom": 1573.390625,
+            "width": 372,
+            "height": 594.390625
+          }
+        },
+        "symbol": {
+          "text": "ETH/USDT",
+          "width": 79.171875,
+          "height": 20,
+          "clientWidth": 79,
+          "scrollWidth": 79,
+          "lineHeight": 20.4,
+          "lines": 1,
+          "overflowWrap": "normal",
+          "wordBreak": "keep-all",
+          "whiteSpace": "nowrap"
+        },
+        "ownership": {
+          "text": "手动 / 外部",
+          "width": 73.671875,
+          "height": 14,
+          "clientWidth": 74,
+          "scrollWidth": 74,
+          "lineHeight": 12,
+          "lines": 1,
+          "overflowWrap": "normal",
+          "wordBreak": "keep-all",
+          "whiteSpace": "nowrap"
+        },
+        "source": {
+          "text": "exchange_rest",
+          "width": 147,
+          "height": 10,
+          "clientWidth": 147,
+          "scrollWidth": 147,
+          "lineHeight": 10.799999999999999,
+          "lines": 1,
+          "overflowWrap": "normal",
+          "wordBreak": "keep-all",
+          "whiteSpace": "nowrap"
+        },
+        "entry": {
+          "text": "3,420.50",
+          "width": 147.5,
+          "height": 14,
+          "clientWidth": 148,
+          "scrollWidth": 148,
+          "lineHeight": 14.399999999999999,
+          "lines": 1,
+          "overflowWrap": "normal",
+          "wordBreak": "keep-all",
+          "whiteSpace": "nowrap"
+        },
+        "mark": {
+          "text": "3,468.20",
+          "width": 147.5,
+          "height": 14,
+          "clientWidth": 148,
+          "scrollWidth": 148,
+          "lineHeight": 14.399999999999999,
+          "lines": 1,
+          "overflowWrap": "normal",
+          "wordBreak": "keep-all",
+          "whiteSpace": "nowrap"
+        },
+        "inspectorSource": {
+          "text": "exchange_rest",
+          "width": 167,
+          "height": 10,
+          "clientWidth": 167,
+          "scrollWidth": 167,
+          "lineHeight": 10.799999999999999,
+          "lines": 1,
+          "overflowWrap": "normal",
+          "wordBreak": "keep-all",
+          "whiteSpace": "nowrap"
+        },
+        "inspectorOwnership": {
+          "text": "手动 / 外部",
+          "width": 167,
+          "height": 13,
+          "clientWidth": 167,
+          "scrollWidth": 167,
+          "lineHeight": 10.799999999999999,
+          "lines": 1,
+          "overflowWrap": "normal",
+          "wordBreak": "keep-all",
+          "whiteSpace": "nowrap"
+        },
+        "protectionReason": {
+          "text": "ownership_not_managed",
+          "width": 91.90625,
+          "height": 11,
+          "clientWidth": 92,
+          "scrollWidth": 92,
+          "lineHeight": 9.6,
+          "lines": 1,
+          "overflowWrap": "normal",
+          "wordBreak": "keep-all",
+          "whiteSpace": "nowrap"
+        }
+      }
     },
     {
       "file": "mobile-account-detail--430x932.png",
@@ -139,75 +302,442 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": true,
-      "sha256": "368fb8fbbef87d3797db4e67c43303ad3833a95897fcd15a45539ca9e359099c",
+      "sha256": "c6ce6303f5c059dca5bc78485466869785bb5c1eabf24f236c067e4d52a131a9",
       "structuralOnly": true
     }
   ],
   "interactions": [
     {
       "label": "Market",
+      "viewport": "1440x900",
+      "device": "desktop",
       "id": "BTC/USDT",
       "type": "Market",
-      "workspace": "market"
+      "workspace": "market",
+      "root": {
+        "id": "BTC/USDT",
+        "type": "Market",
+        "workspace": "market"
+      },
+      "context": {
+        "viewport": "1440x900",
+        "root": {
+          "id": "BTC/USDT",
+          "type": "Market"
+        },
+        "visibleIdentity": "Market / BTC/USDT",
+        "tab": "context",
+        "closeMethod": "Escape",
+        "focusReturned": true
+      },
+      "proof": {
+        "viewport": "1440x900",
+        "root": {
+          "id": "BTC/USDT",
+          "type": "Market"
+        },
+        "visibleIdentity": "Market / BTC/USDT",
+        "tab": "proof",
+        "closeMethod": "close-button",
+        "focusReturned": true
+      }
     },
     {
       "label": "Account",
+      "viewport": "1440x900",
+      "device": "desktop",
       "id": "ex-okx-main",
       "type": "Account",
-      "workspace": "account"
+      "workspace": "account",
+      "root": {
+        "id": "ex-okx-main",
+        "type": "Account",
+        "workspace": "account"
+      },
+      "context": {
+        "viewport": "1440x900",
+        "root": {
+          "id": "ex-okx-main",
+          "type": "Account"
+        },
+        "visibleIdentity": "Account / ex-okx-main",
+        "tab": "context",
+        "closeMethod": "Escape",
+        "focusReturned": true
+      },
+      "proof": {
+        "viewport": "1440x900",
+        "root": {
+          "id": "ex-okx-main",
+          "type": "Account"
+        },
+        "visibleIdentity": "Account / ex-okx-main",
+        "tab": "proof",
+        "closeMethod": "close-button",
+        "focusReturned": true
+      }
     },
     {
       "label": "Position",
+      "viewport": "1440x900",
+      "device": "desktop",
       "id": "position-eth",
       "type": "Position",
-      "workspace": "positions"
+      "workspace": "positions",
+      "root": {
+        "id": "position-eth",
+        "type": "Position",
+        "workspace": "positions"
+      },
+      "context": {
+        "viewport": "1440x900",
+        "root": {
+          "id": "position-eth",
+          "type": "Position"
+        },
+        "visibleIdentity": "Position / position-eth",
+        "tab": "context",
+        "closeMethod": "Escape",
+        "focusReturned": true
+      },
+      "proof": {
+        "viewport": "1440x900",
+        "root": {
+          "id": "position-eth",
+          "type": "Position"
+        },
+        "visibleIdentity": "Position / position-eth",
+        "tab": "proof",
+        "closeMethod": "close-button",
+        "focusReturned": true
+      }
     },
     {
       "label": "Trade plan",
+      "viewport": "1440x900",
+      "device": "desktop",
       "id": "plan-btc-task5",
       "type": "Trade plan",
-      "workspace": "plans"
+      "workspace": "plans",
+      "root": {
+        "id": "plan-btc-task5",
+        "type": "Trade plan",
+        "workspace": "plans"
+      },
+      "context": {
+        "viewport": "1440x900",
+        "root": {
+          "id": "plan-btc-task5",
+          "type": "Trade plan"
+        },
+        "visibleIdentity": "Trade plan / plan-btc-task5",
+        "tab": "context",
+        "closeMethod": "Escape",
+        "focusReturned": true
+      },
+      "proof": {
+        "viewport": "1440x900",
+        "root": {
+          "id": "plan-btc-task5",
+          "type": "Trade plan"
+        },
+        "visibleIdentity": "Trade plan / plan-btc-task5",
+        "tab": "proof",
+        "closeMethod": "close-button",
+        "focusReturned": true
+      }
     },
     {
       "label": "Execution",
+      "viewport": "1180x800",
+      "device": "desktop",
       "id": "execution-btc",
       "type": "Execution",
-      "workspace": "orders"
+      "workspace": "orders",
+      "root": {
+        "id": "execution-btc",
+        "type": "Execution",
+        "workspace": "orders"
+      },
+      "context": {
+        "viewport": "1180x800",
+        "root": {
+          "id": "execution-btc",
+          "type": "Execution"
+        },
+        "visibleIdentity": "Execution / execution-btc",
+        "tab": "context",
+        "closeMethod": "Escape",
+        "focusReturned": true
+      },
+      "proof": {
+        "viewport": "1180x800",
+        "root": {
+          "id": "execution-btc",
+          "type": "Execution"
+        },
+        "visibleIdentity": "Execution / execution-btc",
+        "tab": "proof",
+        "closeMethod": "close-button",
+        "focusReturned": true
+      }
     },
     {
       "label": "Order",
+      "viewport": "1180x800",
+      "device": "desktop",
       "id": "order-btc-task5",
       "type": "Order",
-      "workspace": "orders"
+      "workspace": "orders",
+      "root": {
+        "id": "order-btc-task5",
+        "type": "Order",
+        "workspace": "orders"
+      },
+      "context": {
+        "viewport": "1180x800",
+        "root": {
+          "id": "order-btc-task5",
+          "type": "Order"
+        },
+        "visibleIdentity": "Order / order-btc-task5",
+        "tab": "context",
+        "closeMethod": "Escape",
+        "focusReturned": true
+      },
+      "proof": {
+        "viewport": "1180x800",
+        "root": {
+          "id": "order-btc-task5",
+          "type": "Order"
+        },
+        "visibleIdentity": "Order / order-btc-task5",
+        "tab": "proof",
+        "closeMethod": "close-button",
+        "focusReturned": true
+      }
     },
     {
       "label": "Fill",
+      "viewport": "1180x800",
+      "device": "desktop",
       "id": "fill-btc-task5",
       "type": "Fill",
-      "workspace": "fills"
+      "workspace": "fills",
+      "root": {
+        "id": "fill-btc-task5",
+        "type": "Fill",
+        "workspace": "fills"
+      },
+      "context": {
+        "viewport": "1180x800",
+        "root": {
+          "id": "fill-btc-task5",
+          "type": "Fill"
+        },
+        "visibleIdentity": "Fill / fill-btc-task5",
+        "tab": "context",
+        "closeMethod": "Escape",
+        "focusReturned": true
+      },
+      "proof": {
+        "viewport": "1180x800",
+        "root": {
+          "id": "fill-btc-task5",
+          "type": "Fill"
+        },
+        "visibleIdentity": "Fill / fill-btc-task5",
+        "tab": "proof",
+        "closeMethod": "close-button",
+        "focusReturned": true
+      }
     },
     {
       "label": "Closed trade",
+      "viewport": "1180x800",
+      "device": "desktop",
       "id": "closed:execution-btc",
       "type": "Closed trade",
-      "workspace": "fills"
+      "workspace": "fills",
+      "root": {
+        "id": "closed:execution-btc",
+        "type": "Closed trade",
+        "workspace": "fills"
+      },
+      "context": {
+        "viewport": "1180x800",
+        "root": {
+          "id": "closed:execution-btc",
+          "type": "Closed trade"
+        },
+        "visibleIdentity": "Closed trade / closed:execution-btc",
+        "tab": "context",
+        "closeMethod": "Escape",
+        "focusReturned": true
+      },
+      "proof": {
+        "viewport": "1180x800",
+        "root": {
+          "id": "closed:execution-btc",
+          "type": "Closed trade"
+        },
+        "visibleIdentity": "Closed trade / closed:execution-btc",
+        "tab": "proof",
+        "closeMethod": "close-button",
+        "focusReturned": true
+      }
     },
     {
       "label": "Review",
+      "viewport": "1180x800",
+      "device": "desktop",
       "id": "review-btc-task5",
       "type": "Review",
-      "workspace": "fills"
+      "workspace": "fills",
+      "root": {
+        "id": "review-btc-task5",
+        "type": "Review",
+        "workspace": "fills"
+      },
+      "context": {
+        "viewport": "1180x800",
+        "root": {
+          "id": "review-btc-task5",
+          "type": "Review"
+        },
+        "visibleIdentity": "Review / review-btc-task5",
+        "tab": "context",
+        "closeMethod": "Escape",
+        "focusReturned": true
+      },
+      "proof": {
+        "viewport": "1180x800",
+        "root": {
+          "id": "review-btc-task5",
+          "type": "Review"
+        },
+        "visibleIdentity": "Review / review-btc-task5",
+        "tab": "proof",
+        "closeMethod": "close-button",
+        "focusReturned": true
+      }
+    },
+    {
+      "label": "Mobile Position",
+      "viewport": "390x844",
+      "device": "mobile",
+      "id": "position-eth",
+      "type": "Position",
+      "workspace": "positions",
+      "root": {
+        "id": "position-eth",
+        "type": "Position",
+        "workspace": "positions"
+      },
+      "context": {
+        "viewport": "390x844",
+        "root": {
+          "id": "position-eth",
+          "type": "Position"
+        },
+        "visibleIdentity": "Position / position-eth",
+        "tab": "context",
+        "closeMethod": "Escape",
+        "focusReturned": true
+      },
+      "proof": {
+        "viewport": "390x844",
+        "root": {
+          "id": "position-eth",
+          "type": "Position"
+        },
+        "visibleIdentity": "Position / position-eth",
+        "tab": "proof",
+        "closeMethod": "close-button",
+        "focusReturned": true
+      }
     },
     {
       "label": "Mobile Trade plan",
+      "viewport": "430x932",
+      "device": "mobile",
       "id": "plan-btc-task5",
       "type": "Trade plan",
-      "workspace": "plans"
+      "workspace": "plans",
+      "root": {
+        "id": "plan-btc-task5",
+        "type": "Trade plan",
+        "workspace": "plans"
+      },
+      "context": {
+        "viewport": "430x932",
+        "root": {
+          "id": "plan-btc-task5",
+          "type": "Trade plan"
+        },
+        "visibleIdentity": "Trade plan / plan-btc-task5",
+        "tab": "context",
+        "closeMethod": "Escape",
+        "focusReturned": true
+      },
+      "proof": {
+        "viewport": "430x932",
+        "root": {
+          "id": "plan-btc-task5",
+          "type": "Trade plan"
+        },
+        "visibleIdentity": "Trade plan / plan-btc-task5",
+        "tab": "proof",
+        "closeMethod": "close-button",
+        "focusReturned": true
+      }
+    }
+  ],
+  "adverseInteractions": [
+    {
+      "label": "Desktop missing Execution",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "candidate": {
+        "id": "execution-missing",
+        "type": "Execution"
+      },
+      "before": {
+        "id": "plan-orphan-task5",
+        "type": "Trade plan",
+        "workspace": "plans"
+      },
+      "after": {
+        "id": "plan-orphan-task5",
+        "type": "Trade plan",
+        "workspace": "plans"
+      },
+      "failClosed": true
+    },
+    {
+      "label": "Mobile missing Execution",
+      "viewport": "430x932",
+      "device": "mobile",
+      "candidate": {
+        "id": "execution-missing",
+        "type": "Execution"
+      },
+      "before": {
+        "id": "plan-orphan-task5",
+        "type": "Trade plan",
+        "workspace": "plans"
+      },
+      "after": {
+        "id": "plan-orphan-task5",
+        "type": "Trade plan",
+        "workspace": "plans"
+      },
+      "failClosed": true
     }
   ],
   "actionLedgers": [
     {
-      "phase": "desktop",
+      "phase": "desktop-1440",
       "ledger": {
         "actionRequests": [
           {
@@ -287,6 +817,15 @@
           }
         ],
         "authorityWrites": 4,
+        "downloads": []
+      }
+    },
+    {
+      "phase": "desktop-1180",
+      "ledger": {
+        "actionRequests": [],
+        "actionResults": [],
+        "authorityWrites": 0,
         "downloads": [
           {
             "endpoint": "/api/posters/trades/execution-btc",
@@ -296,7 +835,16 @@
       }
     },
     {
-      "phase": "mobile",
+      "phase": "mobile-390",
+      "ledger": {
+        "actionRequests": [],
+        "actionResults": [],
+        "authorityWrites": 0,
+        "downloads": []
+      }
+    },
+    {
+      "phase": "mobile-430",
       "ledger": {
         "actionRequests": [],
         "actionResults": [],
@@ -313,7 +861,7 @@
           "mode": "manual_ui"
         },
         "method": "POST",
-        "phase": "desktop"
+        "phase": "desktop-1440"
       },
       {
         "endpoint": "/api/execution-orders/execution-eth/close",
@@ -323,19 +871,19 @@
           "expectedStatus": "protecting"
         },
         "method": "POST",
-        "phase": "desktop"
+        "phase": "desktop-1440"
       },
       {
         "endpoint": "/api/execution-orders/poll",
         "payload": {},
         "method": "POST",
-        "phase": "desktop"
+        "phase": "desktop-1440"
       },
       {
         "endpoint": "/api/trade-plans/plan-btc-task5/approve",
         "payload": {},
         "method": "POST",
-        "phase": "desktop"
+        "phase": "desktop-1440"
       }
     ],
     "actionResults": [
@@ -352,7 +900,7 @@
           ],
           "message": "partial reconciliation"
         },
-        "phase": "desktop"
+        "phase": "desktop-1440"
       },
       {
         "endpoint": "/api/execution-orders/execution-eth/close",
@@ -361,7 +909,7 @@
           "error": "position_refresh_required",
           "httpStatus": 409
         },
-        "phase": "desktop"
+        "phase": "desktop-1440"
       },
       {
         "endpoint": "/api/execution-orders/poll",
@@ -369,7 +917,7 @@
           "ok": false,
           "polled": true
         },
-        "phase": "desktop"
+        "phase": "desktop-1440"
       },
       {
         "endpoint": "/api/trade-plans/plan-btc-task5/approve",
@@ -388,7 +936,7 @@
           },
           "message": "approval consumed, order not submitted"
         },
-        "phase": "desktop"
+        "phase": "desktop-1440"
       }
     ],
     "authorityWrites": 4,
@@ -396,7 +944,7 @@
       {
         "endpoint": "/api/posters/trades/execution-btc",
         "filename": "closed-trade-execution-btc.png",
-        "phase": "desktop"
+        "phase": "desktop-1180"
       }
     ]
   },

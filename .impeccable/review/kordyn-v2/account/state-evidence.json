@@ -2,7 +2,8 @@
   "schemaVersion": 1,
   "runner": "tests/run-kordyn-v2-account-browser.mjs",
   "fixture": "tests/kordyn-v2-account-browser.jsx",
-  "productionSourceCommit": "bfbdce394dc21617b5b0ab070e62f475a5e77bd4",
+  "productSourceCommit": "857e0787adde4b8529a26a1ec3775fee3b49a4e0",
+  "captureTestSourceCommit": "41db7e2feca86e71ef1d874d3c94372ea56a393a",
   "states": [
     {
       "file": "state-loading--1440x900.png",
@@ -36,7 +37,7 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": false,
-      "sha256": "7fef52b12a1ec8f48c9f455232cd1b14b2664fe025b90daf05358afe5fd21b22",
+      "sha256": "4ded69f2409d6788d9103f2574f6b6273031d7ab751b53b31043e5b8905fd8f4",
       "state": "loading",
       "retainsFacts": false,
       "geometry": {
@@ -89,7 +90,7 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": false,
-      "sha256": "c2c8b3d1de41f9c16d0001ad1e26243dea24e27ed8d260561b3cd3d19ef4d6bd",
+      "sha256": "d77976edc2d86c34993c7ad63941ce730b0aeb9e96e361f38a7ba1932f8d87ee",
       "state": "empty",
       "retainsFacts": false,
       "geometry": {
@@ -205,7 +206,7 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": true,
-      "sha256": "53fbd317b441370e136cd218f8c466a38638bfe495a6a0550f789d47de9ad069",
+      "sha256": "ec15c2b4c6f99469ad388840cd4d81b3bc3052a71a6ce05baea70c1d33134a88",
       "state": "stale",
       "retainsFacts": true,
       "geometry": {
@@ -261,7 +262,7 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": true,
-      "sha256": "efb835b26ebcb5591e183b7b0c94dda349ef6f10af15453330bee1ed32e209c6",
+      "sha256": "86e3341af9f79a1c9c1b8ad7c3f5451ffdc0876e67fd94ab1c332fb23f088f8c",
       "state": "degraded",
       "retainsFacts": true,
       "geometry": {
@@ -370,7 +371,7 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": false,
-      "sha256": "d67a30ae0616221956028fddd46feba16f7f2440f4c318ace4e54aa9c849e501",
+      "sha256": "0f5f45f890e61a37d82c19253e3f7959ebae6dd391390555c44f37343e88150c",
       "state": "forbidden",
       "retainsFacts": false,
       "geometry": {
@@ -423,7 +424,7 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": false,
-      "sha256": "0714cb02a25297833f483ec30284ee71c7b1b531f027d2812011f076e0f9dc91",
+      "sha256": "1932fa5eb3198e808b48d53c3c275a4e806ff0f42c25c96fa7d8048f4a302b78",
       "state": "disabled",
       "retainsFacts": false,
       "geometry": {
@@ -476,7 +477,7 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": false,
-      "sha256": "3edad0df5a7fdeb323fff90b31f5e72029ec062fbf2fd364b782e8de598ea42f",
+      "sha256": "d7b26fb831bdafad9a8a702df2c7553dd3c11b3126be9245343d0ba53950b0c6",
       "state": "approval",
       "retainsFacts": false,
       "geometry": {
@@ -618,7 +619,7 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": false,
-      "sha256": "e81e568f550433f0bb8d609dd78789628196ea7258c180d2b0a455275deaac11",
+      "sha256": "107d8f79c0c8a66209faf7ced9b0be8e5260c5a70b9e6c92500b1b2ecf9b7453",
       "state": "no-result",
       "retainsFacts": false,
       "geometry": {
@@ -671,7 +672,7 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": true,
-      "sha256": "c7c58766e5ddf7a26810cccec0e1e90d49417a7a216a7a28ad0afc6251ad16e5",
+      "sha256": "a931f112db0b4df53f336816111ecd929b9a9f00e665f59b975b28b5becf4dd8",
       "state": "long-content",
       "retainsFacts": false,
       "geometry": {
@@ -727,9 +728,16 @@
       "actionRequestsAtCapture": 0,
       "legacyProductStyles": false,
       "accountCss": true,
-      "sha256": "65e5d7f56cda97515eb4c775bc047e26f16ee7a291af8e76d21eebfc4e6d66ff",
+      "sha256": "2a95e39445d948a0daf9bb11756baf0d647a40f4814635c27415283945484fec",
       "state": "large-list",
       "retainsFacts": false,
+      "largeListEvidence": {
+        "shownCount": 180,
+        "sourceCount": 180,
+        "firstId": "ASSET1/USDT",
+        "lastId": "ASSET180/USDT",
+        "complete": true
+      },
       "geometry": {
         "innerWidth": 430,
         "document": {
