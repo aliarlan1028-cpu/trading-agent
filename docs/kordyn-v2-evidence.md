@@ -2,11 +2,99 @@
 
 ## Current governed comparison status
 
-- Current production and capture source: `0f44ddfa2e5f9344a9820e1d68c25dd34eaad9e3`.
-- Current comparison scope: Foundation Plan 01 shared shell plus the completed Plan 02 AI-domain checkpoint.
-- Completed concept comparisons: `4 / 15` — Desktop AI Mission, Desktop AI Signals, APP AI Mission, and APP AI Approval.
-- Pending domain implementation: `11 / 15` — no production comparison or fidelity claim is made for these remaining surfaces.
-- Current Task 5 verdict: all eight AI comparisons retain the machine verdict `human region review required`; original-size human region review found no remaining material topology, density, hierarchy, permission, state, or action-meaning mismatch.
+- Current product/capture source for the newest completed Account-domain checkpoint: `bfbdce394dc21617b5b0ab070e62f475a5e77bd4`.
+- Current Account evidence commit: `8481550253838203c596757a69915f7b8c725f7d`.
+- Current comparison scope: Foundation Plan 01 shared shell, completed Plan 02 AI-domain checkpoint, and completed Plan 03 Account Position checkpoint.
+- Completed governed concept comparisons: `5 / 15` — Desktop AI Mission, Desktop AI Signals, APP AI Mission, APP AI Approval, and Desktop Account Position.
+- Pending domain implementation: `10 / 15` — no production comparison or fidelity claim is made for these remaining surfaces.
+- Current Plan 03 Task 5 verdict: Account scope comparator reports `1` scoped concept / `1` completed / `0` scoped pending, with the machine verdict `human region review required`. Pixel MAE is diagnostic only; original-size human review recorded the Account-specific visual deltas below instead of treating the comparison as pixel equivalence.
+
+## Plan 03 Account-domain checkpoint — Task 5
+
+Task 5 closes the Account-domain state/capability/evidence gate against production and capture source commit `bfbdce394dc21617b5b0ab070e62f475a5e77bd4`. The evidence commit is `8481550253838203c596757a69915f7b8c725f7d`.
+
+The Account master browser runner mounts the real production `KordynV2Root`, lazy `domains/account/index.jsx`, real Account presenters, canonical selection resolver, state boundary, `ConfirmHost`, and `createV2Actions().account`. Its fixture is production-shaped and credential-free; all protected actions are captured as fixture-authority writes inside the browser ledger and no production write interface is called.
+
+### Account capability ownership — 11 / 11
+
+Every deployed `live.*` capability is now backed by `ACCOUNT_CAPABILITY_SURFACES` with a registered Account workspace, real legacy route from `KORDYN_V2_WORKSPACES`, Desktop and APP presenter, object identity, action boundary, permission boundary, and resource-state boundary.
+
+| Capability | Workspace / route | Object and action truth |
+| --- | --- | --- |
+| `live.overview` | `account / marketAccount` | Read-only Account truth summary; no standalone mutable object. |
+| `live.market` | `market / market` | Market by bounded symbol/id; only watchlist and reconciliation boundaries already present. |
+| `live.account` | `account / marketAccount` | Account by unique `exchangeAccounts[].id`; snapshots are freshness evidence. |
+| `live.positions` | `positions / positions` | Position by `id → positionId → instId → symbol`; selection is read-only. |
+| `live.execution` | `plans / executionReview` | Deployed object remains `Trade plan`; approve/reject delegates to the existing AI authority. |
+| `live.orders` | `orders / tradeLedger` | `Execution` and `Order` remain separate; no cancel/amend action is invented. |
+| `live.fills` | `fills / tradeLedger` | Fill and closed lifecycle facts stay distinct. |
+| `live.protection` | `positions / positions` | Sole protected close boundary remains existing `exitExecutionOrder` when eligible. |
+| `live.reconcile-status` | `account / marketAccount` | Existing reconcile action/result and freshness facts only. |
+| `live.review-status` | `fills / tradeLedger` | Real Review linkage; navigation is not treated as proof a Review exists. |
+| `live.closed-trade-poster` | `fills / tradeLedger` | Exact reconciled Closed trade → unique closed Execution → server PNG download. |
+
+The state/capability test rejects invented cancel/amend, client poster generation, translation, automatic delivery, and raw presenter data reads.
+
+### Account state evidence — 13 / 13
+
+The Account state sidecar is `.impeccable/review/kordyn-v2/account/state-evidence.json` with SHA-256 `bbc82e37a4731472c6d15ee8c624cdac90b4ca2457da93ed1b4fb7564470716a`. It records `13` real Root-mounted state screenshots, all with document overflow `0`.
+
+| State | Evidence note |
+| --- | --- |
+| `loading` | Real shell/state panel; no last-valid facts reused. |
+| `empty` | APP `390x844`; authoritative empty result distinct from missing/failure. |
+| `processing` | Desktop `1180x800`; real Trade plan approve was clicked, `data-action-state="processing"` is visible, confirmation is open, terminal success is absent, and fixture authority writes remain `0`. |
+| `stale` | APP `390x844`; last-valid source/time retained and protected mutation disabled. |
+| `degraded` | APP `430x932`; last-valid source/time retained and protected mutation disabled. |
+| `failed` | Desktop `1440x900`; explicit retry/read-failure boundary. |
+| `forbidden` | APP `390x844`; protected facts and mutation controls absent. |
+| `disabled` | Desktop `1180x800`; disabled is distinct from failed/forbidden. |
+| `approval` | APP `430x932`; waiting-for-approval state does not imply execution. |
+| `partial` | Desktop `1440x900`; real approve action returns partial. Sidecar separates completed `approval consumed` from failed `capacity_changed`; the screenshot shows the product-level partial result and does not claim to render a completed/failed list. |
+| `no-result` | APP `390x844`; no-result is distinct from empty/failure. |
+| `long-content` | APP `390x844`; real closed-trade detail contains the bounded authoritative body through `完整财务证据链 #72`, scrollable without horizontal overflow. |
+| `large-list` | APP `430x932`; real Market list reports `64` authoritative identities and remains vertically scrollable. |
+
+Missing finance remains `Unavailable`; a finite authoritative `0` remains `0`. Hostile text-like fields are sanitized to fallback text instead of being shown as literal attack strings. The accepted 64-row authoritative fixture is complete. Evidence-only input above the explicit 96-row bound is marked/bounded by the adapter; this checkpoint makes no unlimited-list rendering claim.
+
+### Fresh Account captures and comparison
+
+Capture root: `.impeccable/review/kordyn-v2/account/` (`19` files: 17 PNGs and two sidecars). Comparison root: `.impeccable/review/kordyn-v2/account-compare/` (`9` files: six PNGs, two geometry ledgers, and one index).
+
+| Capture | Dimensions | SHA-256 | Overflow | Role |
+| --- | ---: | --- | ---: | --- |
+| `desktop-account-position--1440x900.png` | `1440x900` | `363f53f1ef460cafaf151300c94465c2d1e09512d14be186b5f8c3ccdb6e2e32` | `0` | governed comparison actual |
+| `desktop-account-position--1180x800.png` | `1180x800` | `8d03e49c6fab2cbbbc863b7ebcdad14f79288298dc7555305812ad8f1827f680` | `0` | governed comparison actual |
+| `mobile-account-position--390x844.png` | `390x844` | `5bc1575de58246173f8df37f9e09d91e668b11f165b82d7f7fae4dde15ab69c5` | `0` | structural APP evidence only |
+| `mobile-account-detail--430x932.png` | `430x932` | `368fb8fbbef87d3797db4e67c43303ad3833a95897fcd15a45539ca9e359099c` | `0` | structural APP evidence only |
+
+Comparison index SHA-256: `b54de1d14b58aaca72b2abbb65c8fe9363ac1e68b275dd56f91b7191b25af99d`.
+
+| Identity | Approved source SHA-256 | Actual SHA-256 | Pixel MAE | Machine verdict |
+| --- | --- | --- | ---: | --- |
+| `desktop-account-position--1440x900` | `38d6a875aa1cd26af0ef19510fe993255c572d97468ad9a940d734c92acfd148` | `363f53f1ef460cafaf151300c94465c2d1e09512d14be186b5f8c3ccdb6e2e32` | `0.054732` | human region review required |
+| `desktop-account-position--1180x800` | `38d6a875aa1cd26af0ef19510fe993255c572d97468ad9a940d734c92acfd148` | `8d03e49c6fab2cbbbc863b7ebcdad14f79288298dc7555305812ad8f1827f680` | `0.054901` | human region review required |
+
+Account scope-local comparison truth is explicit in the index: manifest `15`, scoped concepts `1`, completed scoped concepts `1`, scoped pending `0`, out of scope `14`. Cumulative governed coverage is now `5 / 15`; the remaining non-Account and future-domain rasters are not reclassified as Account pending and are not filled with stale screenshots.
+
+Original-size human review opened all `23` final PNG images: 17 Account actual/state captures and six Account comparison reference/overlay/difference images. The Desktop Account Position actual keeps the Account domain, Position workspace, selected `Position / position-eth`, Context/Proof access, protection evidence, safety action, related execution/protection record table, Account truth strip, and bounded AI support. Recorded deltas versus the immutable concept include the production surface's current two-position fixture, replacement of the richer concept chart cockpit with a bounded price-boundary/evidence composition, and production-shaped `Unavailable` facts where the concept uses denser illustrative market data. These deltas are recorded for human region review; no pixel-equivalence claim is made.
+
+### Fresh Plan 03 Task 5 gates
+
+- The exact original state/capability TDD RED console was not retained. It is therefore not reconstructed here as an exact exit code, count, or diagnostic. The implemented test file and fresh GREEN gates below are the retained evidence.
+- Incremental browser-harness failures were investigated before the final GREEN, including CDP target lifecycle, trusted Position click, lazy Account render wait, state routing, long-content mount, Context/Proof close focus, delayed authoritative action ledger, and page-reload download-ledger aggregation. The historical console transcript is not asserted as an exact record.
+- Account performance ownership assertions were added and now pass in the retained fresh performance gate below; the historical RED console/count is not retained and is not reproduced as an exact result.
+- Fresh focused Account/Task1-4/comparison/performance tests: `175 / 175`, exit `0`.
+- Canonical Account master-browser evidence: exit `0`; product/capture source `bfbdce394dc21617b5b0ab070e62f475a5e77bd4`; captures `4`; states `13`; interactions `10`; fixture-authority writes `4`; download `1`; Account CSS `true`; legacy authenticated CSS `false`. The documentation closeout reran the same production browser gate against evidence HEAD `8481550` in an isolated temporary output and obtained the same semantic counts; that non-canonical output was discarded and did not relabel the committed pixels.
+- Account comparator: exit `0`; counts `15 / 1 / 0 / 2 / 9` for legacy count fields, plus scopeCounts `15 / 1 / 1 / 0 / 14`; verdict `human region review required`.
+- Isolated performance build: exit `0`; public CSS/JS `15,304 / 381,073`; AI shell CSS `54,995`; Account domain CSS `112,930 / 120,000`; `loadsLegacyProductStyles:false`; `forbiddenLegacyCss:[]`; shared shell CSS is reported explicitly as Vite-owned shared dependency.
+- AI actions compatibility after the scoped `ConfirmHost` style fix: exit `0`; approvals, partial/failure, poster, translation, dialog, disabled-state gates all pass.
+- Impeccable detector after the only Task5 production UI style edit: implementation record says it ran exactly once, exit `0`, output `[]`; this documentation pass did not independently replay it.
+- Full repository test suite: `2051 / 2051`, exit `0`.
+- ESLint: exit `0`.
+- Production build: exit `0`, `1720` modules transformed.
+
+Task 5 does not enable a flag, cut over traffic, start Plan 04, modify backend/API/database/auth/permission/trading/risk behavior, deploy, merge, push, or remove legacy production code.
 
 ## Historical Foundation checkpoint — Plan 01 / Task 8
 
@@ -15,7 +103,7 @@
 - Historical comparison scope at that checkpoint: Foundation Plan 01 shared shell only.
 - Historical completed comparisons at that checkpoint: `2 / 15` — Desktop AI Mission shell and Mobile AI Mission shell.
 - Historical pending count at that checkpoint: `13 / 15`.
-- Historical independent verdict: **Task 8 APPROVE — 0 Critical / 0 Important / 0 Minor; visual 390/430 PASS.** The position Important was formally withdrawn after response-boundary verification. Task 8 cleared the Foundation gate before Plan 02 began; the canonical current status is the `4 / 15` and `11 / 15` Task 5 status above.
+- Historical independent verdict: **Task 8 APPROVE — 0 Critical / 0 Important / 0 Minor; visual 390/430 PASS.** The position Important was formally withdrawn after response-boundary verification. Task 8 cleared the Foundation gate before Plan 02 began; the canonical current status is the `5 / 15` completed and `10 / 15` pending coverage recorded above.
 
 ## Staged concept coverage
 
@@ -24,7 +112,7 @@
 | `desktop-ai-mission-control` | Desktop | `ai / missions` | `1440x900`, `1180x800` | Compared — Foundation shell and Plan 02 AI domain |
 | `mobile-ai-mission-home` | APP | `ai / missions` | `390x844`, `430x932` | Compared — Foundation shell and Plan 02 AI domain |
 | `desktop-ai-signals` | Desktop | `ai / intelligence` | `1440x900`, `1180x800` | Compared — Plan 02 AI domain |
-| `desktop-account-position` | Desktop | `account / positions` | `1440x900`, `1180x800` | pending domain implementation |
+| `desktop-account-position` | Desktop | `account / positions` | `1440x900`, `1180x800` | Compared — Plan 03 Account domain |
 | `desktop-assets-relationship` | Desktop | `assets / relationships` | `1440x900`, `1180x800` | pending domain implementation |
 | `desktop-strategy-registry` | Desktop | `assets / strategies` | `1440x900`, `1180x800` | pending domain implementation |
 | `desktop-knowledge-incubator` | Desktop | `assets / knowledge` | `1440x900`, `1180x800` | pending domain implementation |
