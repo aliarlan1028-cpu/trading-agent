@@ -709,6 +709,7 @@ async function captureProductionSurfaces(cdp, baseUrl) {
 async function captureStateScenarios(cdp, baseUrl) {
   const states = [];
   for (const item of stateScenarios) {
+    let stateEvidenceExtras = {};
     const scenario = ["processing", "partial"].includes(item.kind) ? "ready" : item.kind;
     await navigatePage(cdp, baseUrl, item.viewport, scenario);
     await navigateAccount(cdp, item.workspaceId, item.viewport, scenario);
@@ -820,7 +821,25 @@ async function captureStateScenarios(cdp, baseUrl) {
       assert.equal(await evaluate(cdp, "Boolean(document.querySelector('[data-kordyn-v2-position-exit]:not([disabled]), [data-kordyn-v2-reconcile-action]:not([disabled])'))"), false, `${item.kind}: protected mutation disabled`);
     }
     if (item.kind === "large-list") {
-      assert.ok(await evaluate(cdp, "document.body.textContent.includes('ASSET64/USDT')"), "large-list keeps final authoritative item");
+      const largeListEvidence = await evaluate(cdp, `(() => {
+        const picker = document.querySelector('[data-kordyn-v2-market-picker]');
+        const rows = Array.from(picker?.querySelectorAll('[data-kordyn-v2-object-type="Market"]') || []);
+        return {
+          shownCount: rows.length,
+          sourceCount: Number.parseInt(picker?.querySelector('header > span')?.textContent || '', 10),
+          firstId: rows[0]?.dataset.kordynV2ObjectId || null,
+          lastId: rows.at(-1)?.dataset.kordynV2ObjectId || null,
+          complete: rows.length > 0 && rows.length === Number.parseInt(picker?.querySelector('header > span')?.textContent || '', 10)
+        };
+      })()`);
+      assert.deepEqual(largeListEvidence, {
+        shownCount: 180,
+        sourceCount: 180,
+        firstId: "ASSET1/USDT",
+        lastId: "ASSET180/USDT",
+        complete: true
+      }, "large-list visibly preserves all 180 bounded authoritative rows");
+      stateEvidenceExtras = { largeListEvidence };
     }
     if (item.kind === "long-content") {
       await click(cdp, '[data-kordyn-v2-object-id="closed:execution-btc"][data-kordyn-v2-object-type="Closed trade"]');
@@ -843,7 +862,11 @@ async function captureStateScenarios(cdp, baseUrl) {
     }
     const file = `state-${item.kind}--${viewportName(item.viewport)}.png`;
     states.push({
-      ...(await capturePng(cdp, file, item.viewport, { state: item.kind, retainsFacts: item.retainsFacts === true })),
+      ...(await capturePng(cdp, file, item.viewport, {
+        state: item.kind,
+        retainsFacts: item.retainsFacts === true,
+        ...stateEvidenceExtras
+      })),
       geometry
     });
   }
