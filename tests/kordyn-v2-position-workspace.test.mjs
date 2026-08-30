@@ -24,6 +24,8 @@ require("esbuild").buildSync({
       export { PositionRegistry } from "./src/kordynV2/domains/account/PositionRegistry.jsx";
       export { PositionInspector, executionSelectionCandidate } from "./src/kordynV2/domains/account/PositionInspector.jsx";
       export { MobilePositionScreen } from "./src/kordynV2/domains/account/MobilePositionScreen.jsx";
+      export { DesktopShell } from "./src/kordynV2/shell/DesktopShell.jsx";
+      export { MobileShell } from "./src/kordynV2/shell/MobileShell.jsx";
       export { buildAccountDomainModel } from "./src/kordynV2/domains/account/accountModel.js";
       export { runAccountAction, requestPositionExit } from "./src/kordynV2/domains/account/index.jsx";
       export { createV2Selection } from "./src/kordynV2/viewModels/selection.js";
@@ -41,7 +43,7 @@ require("esbuild").buildSync({
 });
 
 const {
-  PositionWorkspace, PositionRegistry, PositionInspector, MobilePositionScreen,
+  PositionWorkspace, PositionRegistry, PositionInspector, MobilePositionScreen, DesktopShell, MobileShell,
   buildAccountDomainModel, createV2Selection, executionSelectionCandidate,
   positionSelectionCandidate, requestPositionExit, runAccountAction
 } = require(outFile);
@@ -53,6 +55,7 @@ const validPosition = (overrides = {}) => ({
   unrealizedPnl: 114.48, notional: 8323.68, margin: 2774.56, leverage: 3,
   liqDistancePct: 42.6, stopLoss: 3365, takeProfits: [3515, 3590],
   executionOrderId: "execution-1", planId: "plan-1", openedAt: "2026-08-30T05:00:00Z",
+  rawSyncedAt: "2026-08-30T06:00:00Z",
   ...overrides
 });
 const validExecution = (overrides = {}) => ({
@@ -99,6 +102,30 @@ test("position model uses canonical fallback identities and preserves missing fi
   assert.equal(model.positions[0].notional, 0);
 });
 
+test("stopLossPrice is a descriptor-safe canonical stop fallback without inventing zero", () => {
+  const hostile = {};
+  Object.defineProperty(hostile, "stopLossPrice", { enumerable: true, get() { throw new Error("must not run"); } });
+  const model = buildAccountDomainModel({
+    positions: [
+      validPosition({ positionId: "numeric-stop", stopLoss: undefined, stopLossPrice: 3360, executionOrderId: undefined }),
+      validPosition({ positionId: "string-stop", stopLoss: undefined, stopLossPrice: "3370.5", executionOrderId: undefined }),
+      validPosition({ positionId: "missing-stop", stopLoss: undefined, stopLossPrice: undefined, executionOrderId: undefined }),
+      validPosition({ positionId: "invalid-stop", stopLoss: undefined, stopLossPrice: "not-a-price", executionOrderId: undefined }),
+      hostile
+    ],
+    executionOrders: [], accountSnapshots: [], riskIncidents: []
+  });
+  assert.deepEqual(model.positions.map((position) => [position.id, position.stopLoss]), [
+    ["numeric-stop", 3360], ["string-stop", 3370.5], ["missing-stop", null]
+  ]);
+  const html = renderToStaticMarkup(React.createElement(PositionWorkspace, {
+    model,
+    selection: { object: { id: "numeric-stop", type: "Position" } }
+  }));
+  assert.match(html, /<dt>止损<\/dt><dd>3,360\.00<\/dd>/);
+  assert.doesNotMatch(html, /invalid-stop|must not run/);
+});
+
 test("malformed placeholder and duplicate Position identities fail closed while a valid sibling remains", () => {
   const hostile = {};
   Object.defineProperty(hostile, "positionId", { enumerable: true, get() { throw new Error("must not escape"); } });
@@ -133,6 +160,94 @@ test("source-backed protection distinguishes verified failed degraded and unavai
   assert.equal(unavailable.positions[0].ownership, "manual_external");
 });
 
+test("exchange stop absence requires a post-open current-mirror structurally trustworthy snapshot", () => {
+  const preOpen = modelFixture({
+    positions: [validPosition({ rawSyncedAt: "2026-08-30T04:00:00Z" })],
+    accountSnapshots: [validSnapshot({ createdAt: "2026-08-30T04:00:00Z", algoOrders: [] })]
+  });
+  assert.deepEqual(
+    { state: preOpen.positions[0].protection.state, reason: preOpen.positions[0].protection.reason },
+    { state: "degraded", reason: "exchange_stop_snapshot_unverified" }
+  );
+
+  const mirrorMismatch = modelFixture({ positions: [validPosition({ rawSyncedAt: "2026-08-30T06:01:00Z" })] });
+  assert.deepEqual(
+    { state: mirrorMismatch.positions[0].protection.state, reason: mirrorMismatch.positions[0].protection.reason },
+    { state: "degraded", reason: "exchange_stop_snapshot_unverified" }
+  );
+
+  const malformedOnly = modelFixture({
+    accountSnapshots: [validSnapshot({ algoOrders: [{ instId: "ETH-USDT-SWAP", algoClOrdId: "stop-execution-1", slTriggerPx: "not-a-price" }] })]
+  });
+  assert.deepEqual(
+    { state: malformedOnly.positions[0].protection.state, reason: malformedOnly.positions[0].protection.reason },
+    { state: "degraded", reason: "exchange_stop_snapshot_unverified" }
+  );
+
+  const validAmongMalformed = modelFixture({
+    accountSnapshots: [validSnapshot({ algoOrders: [
+      { instId: "ETH-USDT-SWAP", algoClOrdId: "stop-execution-1", slTriggerPx: "bad" },
+      { instId: "ETH-USDT-SWAP", algoClOrdId: "stop-execution-1", slTriggerPx: "3365" }
+    ] })]
+  });
+  assert.equal(validAmongMalformed.positions[0].protection.state, "verified");
+
+  const trustworthyAbsence = modelFixture({ accountSnapshots: [validSnapshot({ algoOrders: [] })] });
+  assert.deepEqual(
+    { state: trustworthyAbsence.positions[0].protection.state, reason: trustworthyAbsence.positions[0].protection.reason },
+    { state: "failed", reason: "exchange_stop_missing" }
+  );
+});
+
+test("all Desktop and APP protection surfaces share explicit four-state tone label and icon semantics", () => {
+  const expectations = {
+    verified: { tone: "healthy", label: "已核验", icon: "shield-check" },
+    failed: { tone: "critical", label: "保护异常", icon: "shield-alert" },
+    degraded: { tone: "warning", label: "证据降级", icon: "triangle-alert" },
+    unavailable: { tone: "unavailable", label: "证据不可用", icon: "shield" }
+  };
+  const base = modelFixture();
+  for (const [state, expected] of Object.entries(expectations)) {
+    const position = { ...base.positions[0], protection: { ...base.positions[0].protection, state } };
+    const model = { ...base, positions: [position] };
+    const selection = { object: { id: position.id, type: "Position" } };
+    const desktop = renderToStaticMarkup(React.createElement(PositionWorkspace, { model, selection }));
+    const mobile = renderToStaticMarkup(React.createElement(MobilePositionScreen, { model, selection, view: "detail" }));
+    for (const surface of ["registry", "truth", "inspector"]) {
+      assert.match(desktop, new RegExp(`data-protection-surface="${surface}" data-protection-state="${state}" data-protection-tone="${expected.tone}"`));
+    }
+    assert.match(mobile, new RegExp(`data-protection-surface="mobile-header" data-protection-state="${state}" data-protection-tone="${expected.tone}"`));
+    assert.match(desktop, new RegExp(`lucide-${expected.icon}`));
+    assert.match(mobile, new RegExp(`lucide-${expected.icon}`));
+    assert.match(desktop, new RegExp(expected.label));
+    assert.match(mobile, new RegExp(expected.label));
+  }
+});
+
+test("production shells retain one page main and Position truth has a stable labelled region", () => {
+  const model = modelFixture();
+  const selection = { object: { id: "position-1", type: "Position" } };
+  const location = { domainId: "account", workspaceId: "positions" };
+  const shellProps = {
+    location, truth: { mode: "compact" }, state: { kind: "ready" }, selection,
+    identity: {}, supportContext: {}, onNavigate() {}, onSelect() {}, onRetry() {}
+  };
+  const workspace = React.createElement(PositionWorkspace, { model, selection });
+  const mobileWorkspace = React.createElement(MobilePositionScreen, { model, selection, view: "detail" });
+  const desktop = renderToStaticMarkup(React.createElement(DesktopShell, shellProps, workspace));
+  const mobile = renderToStaticMarkup(React.createElement(MobileShell, shellProps, mobileWorkspace));
+
+  for (const html of [desktop, mobile]) {
+    assert.equal((html.match(/<main\b/g) || []).length, 1);
+    const association = html.match(/<section class="kordynV2PositionTruth[^"]*"[^>]*aria-labelledby="([^"]+)"[\s\S]*?<h2[^>]*id="([^"]+)"/);
+    assert.ok(association, "Position truth must be a labelled section");
+    assert.equal(association[1], association[2]);
+  }
+
+  const empty = renderToStaticMarkup(React.createElement(PositionWorkspace, { model, selection: { object: null } }));
+  assert.match(empty, /<section class="kordynV2PositionTruth is-empty"[^>]*aria-labelledby="([^"]+)"[\s\S]*?<h2 id="\1">选择持仓<\/h2>/);
+});
+
 test("malformed evidence siblings cannot hide valid protection and incident facts", () => {
   const revoked = Proxy.revocable({}, {});
   revoked.revoke();
@@ -147,6 +262,30 @@ test("malformed evidence siblings cannot hide valid protection and incident fact
   assert.equal(model.positions[0].protection.state, "verified");
   assert.deepEqual(model.positions[0].riskIncidents.map((row) => row.id), ["incident-1"]);
   assert.deepEqual(model.availability.riskIncidents, { state: "loaded", count: 1 });
+});
+
+test("risk incident presentation preserves lifecycle and severity without overstating resolved or low risk", () => {
+  const model = modelFixture({
+    riskIncidents: [
+      { id: "incident-open-critical", executionOrderId: "execution-1", status: "open", severity: "critical", title: "保护缺失", createdAt: "2026-08-30T06:01:00Z" },
+      { id: "incident-open-low", executionOrderId: "execution-1", status: "open", severity: "low", title: "低优先级观察", createdAt: "2026-08-30T06:02:00Z" },
+      { id: "incident-open-info", executionOrderId: "execution-1", status: "open", severity: "info", title: "信息记录", createdAt: "2026-08-30T06:03:00Z" },
+      { id: "incident-resolved-critical", executionOrderId: "execution-1", status: "resolved", severity: "critical", title: "历史高风险已解决", createdAt: "2026-08-30T06:04:00Z" }
+    ]
+  });
+  assert.deepEqual(model.positions[0].riskIncidents.map(({ id, status, severity }) => ({ id, status, severity })), [
+    { id: "incident-open-critical", status: "open", severity: "critical" },
+    { id: "incident-open-low", status: "open", severity: "low" },
+    { id: "incident-open-info", status: "open", severity: "info" },
+    { id: "incident-resolved-critical", status: "resolved", severity: "critical" }
+  ]);
+  const html = renderToStaticMarkup(React.createElement(PositionInspector, { position: model.positions[0] }));
+  assert.match(html, /data-risk-incident-id="incident-open-critical" data-incident-tone="critical"/);
+  assert.match(html, /data-risk-incident-id="incident-open-low" data-incident-tone="neutral"/);
+  assert.match(html, /data-risk-incident-id="incident-open-info" data-incident-tone="neutral"/);
+  assert.match(html, /data-risk-incident-id="incident-resolved-critical" data-incident-tone="resolved"/);
+  assert.match(html, />open · critical · 2026-08-30T06:01:00Z</);
+  assert.match(html, />resolved · critical · 2026-08-30T06:04:00Z</);
 });
 
 test("related execution linkage requires a unique explicit identity and never falls back to symbol", () => {

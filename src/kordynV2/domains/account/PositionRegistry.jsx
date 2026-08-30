@@ -1,4 +1,5 @@
-import { Bot, CircleAlert, ShieldCheck, UserRound } from "lucide-react";
+import { Bot, CircleAlert, UserRound } from "lucide-react";
+import { protectionPresentation } from "./PositionInspector.jsx";
 
 const unavailable = "Unavailable";
 const validIdentity = (value) => typeof value === "string"
@@ -31,20 +32,6 @@ export function selectedPositionFor(model, selection) {
   return matches.length === 1 ? matches[0] : null;
 }
 
-function protectionLabel(protection) {
-  if (protection?.state === "verified") return "已核验";
-  if (protection?.state === "failed") return "保护异常";
-  if (protection?.state === "degraded") return "证据降级";
-  return unavailable;
-}
-
-function registryTone(position) {
-  if (position?.protection?.state === "verified") return "healthy";
-  if (position?.protection?.state === "failed") return "critical";
-  if (position?.protection?.state === "degraded") return "warning";
-  return "unavailable";
-}
-
 export function PositionRegistry({ model, selection, onSelect = () => {}, returnFocusRef = null, mobile = false }) {
   const positions = Array.isArray(model?.positions) ? model.positions : [];
   const state = model?.availability?.positions?.state || "absent";
@@ -71,6 +58,8 @@ export function PositionRegistry({ model, selection, onSelect = () => {}, return
             </article>
           );
           const OwnershipIcon = position.ownership === "ai_managed" ? Bot : UserRound;
+          const protection = protectionPresentation(position.protection);
+          const ProtectionIcon = protection.icon;
           return (
             <button
               key={candidate.id}
@@ -86,7 +75,7 @@ export function PositionRegistry({ model, selection, onSelect = () => {}, return
               <span className="kordynV2PositionRowTitle"><strong>{text(position.symbol)}</strong><em data-position-direction={directionLabel(position.direction)}>{directionLabel(position.direction)}</em></span>
               <span className="kordynV2PositionRowMeta"><OwnershipIcon size={13} aria-hidden="true" />{position.ownership === "ai_managed" ? "AI 托管" : position.ownership === "manual_external" ? "手动 / 外部" : unavailable}<b>{finite(position.leverage) ? `${number(position.leverage, 0)}x` : unavailable}</b></span>
               <span className="kordynV2PositionRowFacts"><small>未实现盈亏</small><strong data-pnl-tone={finite(position.unrealizedPnl) && position.unrealizedPnl < 0 ? "negative" : finite(position.unrealizedPnl) ? "positive" : "unavailable"}>{number(position.unrealizedPnl)}</strong><small>敞口</small><b>{number(position.notional)}</b></span>
-              <span className="kordynV2PositionRowProtection" data-protection-tone={registryTone(position)}><ShieldCheck size={14} aria-hidden="true" />{protectionLabel(position.protection)}</span>
+              <span className="kordynV2PositionRowProtection" data-protection-surface="registry" data-protection-state={protection.state} data-protection-tone={protection.tone}><ProtectionIcon size={14} aria-hidden="true" />{protection.label}</span>
             </button>
           );
         })}

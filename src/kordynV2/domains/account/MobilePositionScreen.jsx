@@ -1,19 +1,18 @@
-import { ArrowLeft, ShieldCheck } from "lucide-react";
-import { PositionInspector } from "./PositionInspector.jsx";
+import { ArrowLeft } from "lucide-react";
+import { PositionInspector, protectionPresentation } from "./PositionInspector.jsx";
 import { PositionRegistry, selectedPositionFor } from "./PositionRegistry.jsx";
 import { PositionTruthField } from "./PositionWorkspace.jsx";
 
-const unavailable = "Unavailable";
-const text = (value) => typeof value === "string" && value ? value : unavailable;
-
 export function MobilePositionScreen({ model, state, selection, actionsDisabled = false, actionOutcome = null, view = "list", onSelect = () => {}, onExit = () => {}, onOpenList = () => {}, detailHeadingRef = null, returnFocusRef = null }) {
   const selected = selectedPositionFor(model, selection);
+  const protection = protectionPresentation(selected?.protection);
+  const ProtectionIcon = protection.icon;
   if (view === "detail") {
     return (
       <div className="kordynV2PositionMobile" data-kordyn-v2-position-mobile-view="detail">
         <header className="kordynV2PositionMobileNav">
           <button type="button" data-kordyn-v2-position-back="true" onClick={(event) => onOpenList(event)}><ArrowLeft size={18} aria-hidden="true" />持仓列表</button>
-          <span><ShieldCheck size={15} aria-hidden="true" />{text(selected?.protection?.state)}</span>
+          <span data-protection-surface="mobile-header" data-protection-state={protection.state} data-protection-tone={protection.tone}><ProtectionIcon size={15} aria-hidden="true" />{protection.label}</span>
         </header>
         <div className="kordynV2PositionMobileDetail">
           <PositionTruthField position={selected} state={state} headingRef={detailHeadingRef} mobile canonical={selection?.object?.type === "Position" && selection.object.id === selected?.id} />

@@ -23,6 +23,8 @@ Modified within the Task 3 allowance:
 - `src/kordynV2/domains/account/index.jsx`
 - `src/kordynV2/domains/account/account.css`
 - `src/kordynV2/domains/account/accountModel.js`
+- `tests/kordyn-v2-account-interactions-browser.jsx`
+- `tests/run-kordyn-v2-account-interactions-browser.mjs`
 
 ## RED → GREEN evidence
 
@@ -169,3 +171,76 @@ Additional gates:
 ## Concerns
 
 No unresolved Task 3 correctness concern is known. Final browser screenshot evidence and pixel comparison remain deliberately owned by Task 5.
+
+## Independent-review corrections after `f11a0b5`
+
+The first independent review returned Critical 0 / Important 5 / Minor 1. All six findings were reproduced against the source and corrected within Task 3. The Impeccable detector was not rerun, honoring its exactly-once contract.
+
+### 1. `stopLossPrice` compatibility
+
+RED:
+
+```text
+node scripts/run-tests-isolated.mjs tests/kordyn-v2-position-workspace.test.mjs
+```
+
+Result: exit 1; 15 tests, 14 passed / 1 failed. Numeric and numeric-string `stopLossPrice` values projected as null, while an invalid scalar Position survived.
+
+GREEN: `stopLossPrice` was added to the descriptor-safe Position financial allowlist and is now the null-preserving canonical fallback after `stopLoss`. Missing remains null and renders `Unavailable`; it is never converted to zero. Result: exit 0, 15/15 passed.
+
+### 2. Exchange-stop evidence authority
+
+RED: exit 1; 16 tests, 15 passed / 1 failed. A pre-open snapshot incorrectly produced explicit `exchange_stop_missing`.
+
+GREEN: a snapshot may prove explicit absence only when it is healthy, post-open, owns the current Position mirror by exact `rawSyncedAt === createdAt`, has a structurally valid `algoOrders` array, and declares it complete. Malformed child rows are counted separately. A unique valid matching sibling still verifies; malformed-only evidence, duplicate matches, incomplete arrays, pre-open evidence, or mirror mismatch remain degraded with `exchange_stop_snapshot_unverified`. Only a trustworthy complete current snapshot with no matching stop is failed / `exchange_stop_missing`. Result: exit 0, 16/16 passed.
+
+### 3. Shared protection presentation
+
+RED: exit 1; 17 tests, 16 passed / 1 failed. Registry, truth, inspector, and APP used inconsistent labels/tones/icons; APP always used a mint ShieldCheck.
+
+GREEN: one exported `protectionPresentation()` mapping drives all four surfaces and the related ledger: verified = healthy / ShieldCheck, failed = critical / ShieldAlert, degraded = warning / AlertTriangle, unavailable = neutral / Shield. Result: exit 0, 17/17 passed.
+
+### 4. Page-main semantics
+
+RED: exit 1; 18 tests, 17 passed / 1 failed. Real DesktopShell and MobileShell output each contained two `<main>` elements.
+
+GREEN: Position truth is now a labelled `<section>` in both selected and empty states, with a stable `aria-labelledby` → heading association. The Desktop/Mobile shell remains the sole page main. Result: exit 0, 18/18 passed.
+
+### 5. Real APP focus interaction
+
+Browser RED:
+
+```text
+node tests/run-kordyn-v2-account-interactions-browser.mjs
+```
+
+Result: exit 1 after 7.15s because the required real Position registry trigger did not exist in the production AccountDomain harness.
+
+GREEN: the existing production browser harness now mounts a third `AccountDomain` with `device="mobile"`, `workspaceId="positions"`, production-shaped Position / Execution / Snapshot fixtures, and the real `createV2Selection()`. Chrome clicks the real Position registry control, observes the actual detail heading as `document.activeElement`, verifies Position Object / Context / Trace identity, clicks the real Back control, and observes focus on the remounted initiating Position row. Result: exit 0 in 4.02s with `Kordyn V2 account production interaction browser checks passed`.
+
+### 6. Risk-incident lifecycle and severity
+
+RED: exit 1; 19 tests, 18 passed / 1 failed. Open low/info and resolved high/critical incidents used the same danger presentation as an open critical incident, and lifecycle status was not visible.
+
+GREEN: status, severity, title, and timestamp remain visible. Active high/critical is critical; active medium/warning is warning; open low/info is neutral; resolved/closed history is resolved/mint. No legitimate history is filtered. Result: exit 0, 19/19 passed.
+
+## Fresh review-fix verification
+
+Focused Task 3 plus required Position/protection and Task 1/2 account/state/selection/lazy regressions:
+
+```text
+node scripts/run-tests-isolated.mjs tests/kordyn-v2-position-workspace.test.mjs tests/position-view.test.mjs tests/position-protection-evidence.test.mjs tests/exchange-protection-accounting.test.mjs tests/position-manager-move-stop.test.mjs tests/kordyn-v2-account-model.test.mjs tests/kordyn-v2-account-actions.test.mjs tests/kordyn-v2-account-cockpit.test.mjs tests/kordyn-v2-account-interactions.test.mjs tests/kordyn-v2-ai-workspace.test.mjs tests/kordyn-v2-state-boundary.test.mjs tests/kordyn-v2-state.test.mjs tests/kordyn-v2-ai-context-selection.test.mjs
+```
+
+Result: exit 0, 161/161 passed, 0 failed; duration 597.620708 ms.
+
+Full suite: `npm test` exit 0, 1,969/1,969 passed, 0 failed/cancelled/skipped/todo; duration 13,807.98575 ms; isolated root cleaned.
+
+Additional fresh gates:
+
+- Real production Account browser interaction runner: exit 0; Market, Account, and Position interaction/focus contracts passed.
+- `npm run lint`: exit 0, no findings.
+- `npm run build`: exit 0, 1,715 modules transformed in 1.47s; Account lazy CSS `index-DdtT6d4G.css`, 42.83 kB / 6.69 kB gzip.
+- `node --check` for `accountModel.js`, the Task 3 test, and the browser runner: exit 0.
+- Source inspection: no Task 3 `!important`, `/api/positions/`, `100vw`, horizontal overflow escape, or fixed large inner minimum width. APP targets retain the established 44px contract. `account.css` remains imported only by the lazy Account domain.
+- `git diff --check`: exit 0 before final report update; rerun in the final commit gate.

@@ -1,6 +1,6 @@
-import { Activity, Bot, CircleAlert, Gauge, ShieldCheck, UserRound } from "lucide-react";
+import { Activity, Bot, CircleAlert, Gauge, UserRound } from "lucide-react";
 import { resourceTone, validatedTruthMode } from "./AccountWorkspace.jsx";
-import { executionSelectionCandidate, PositionInspector } from "./PositionInspector.jsx";
+import { executionSelectionCandidate, PositionInspector, protectionPresentation } from "./PositionInspector.jsx";
 import { PositionRegistry, selectedPositionFor } from "./PositionRegistry.jsx";
 
 export { positionSelectionCandidate } from "./PositionRegistry.jsx";
@@ -12,6 +12,7 @@ const number = (value, digits = 2) => finite(value)
   : unavailable;
 const text = (value) => typeof value === "string" && value ? value : unavailable;
 const directionLabel = (value) => /short|sell|空/iu.test(String(value || "")) ? "空" : /long|buy|多/iu.test(String(value || "")) ? "多" : unavailable;
+const POSITION_TRUTH_HEADING_ID = "kordyn-v2-position-truth-heading";
 
 function PositionFact({ label, value, tone }) {
   return <div><dt>{label}</dt><dd data-fact-tone={tone}>{value}</dd></div>;
@@ -42,22 +43,25 @@ function PriceRail({ position }) {
 
 function PositionTruthField({ position, state, headingRef = null, mobile = false, canonical = true }) {
   if (!position) return (
-    <main className="kordynV2PositionTruth is-empty">
+    <section className="kordynV2PositionTruth is-empty" aria-labelledby={POSITION_TRUTH_HEADING_ID}>
       <CircleAlert size={24} aria-hidden="true" />
-      <span><h2>选择持仓</h2><p>从持仓列表选择一个当前可用的 Position 对象。</p></span>
-    </main>
+      <span><h2 id={POSITION_TRUTH_HEADING_ID}>选择持仓</h2><p>从持仓列表选择一个当前可用的 Position 对象。</p></span>
+    </section>
   );
   const OwnershipIcon = position.ownership === "ai_managed" ? Bot : UserRound;
   const pnlTone = finite(position.unrealizedPnl) && position.unrealizedPnl < 0 ? "critical" : finite(position.unrealizedPnl) ? "healthy" : "unavailable";
+  const protection = protectionPresentation(position.protection);
+  const ProtectionIcon = protection.icon;
   return (
-    <main
+    <section
       className={`kordynV2PositionTruth${mobile ? " is-mobile" : ""}`}
+      aria-labelledby={POSITION_TRUTH_HEADING_ID}
       data-kordyn-v2-object-id={canonical ? position.id : undefined}
       data-kordyn-v2-object-type={canonical ? "Position" : undefined}
       data-kordyn-v2-related-position-id={canonical ? undefined : position.id}
     >
       <header>
-        <span><Activity size={19} aria-hidden="true" /><h2 ref={headingRef} tabIndex={mobile ? -1 : undefined}>{text(position.symbol)}</h2><em data-position-direction={directionLabel(position.direction)}>{directionLabel(position.direction)}</em></span>
+        <span><Activity size={19} aria-hidden="true" /><h2 id={POSITION_TRUTH_HEADING_ID} ref={headingRef} tabIndex={mobile ? -1 : undefined}>{text(position.symbol)}</h2><em data-position-direction={directionLabel(position.direction)}>{directionLabel(position.direction)}</em></span>
         <span className="kordynV2PositionOwnership"><OwnershipIcon size={14} aria-hidden="true" />{position.ownership === "ai_managed" ? "AI 托管" : position.ownership === "manual_external" ? "手动 / 外部" : unavailable}</span>
       </header>
       <dl className="kordynV2PositionPrimaryFacts">
@@ -76,11 +80,11 @@ function PositionTruthField({ position, state, headingRef = null, mobile = false
         <PositionFact label="止盈目标" value={position.takeProfits?.length ? position.takeProfits.map((value) => number(value)).join(" · ") : unavailable} />
       </dl>
       <footer>
-        <span><ShieldCheck size={14} aria-hidden="true" /><small>保护状态</small><strong data-protection-tone={position.protection?.state || "unavailable"}>{text(position.protection?.state)}</strong></span>
+        <span data-protection-surface="truth" data-protection-state={protection.state} data-protection-tone={protection.tone}><ProtectionIcon size={14} aria-hidden="true" /><small>保护状态</small><strong>{protection.label}</strong></span>
         <span><Gauge size={14} aria-hidden="true" /><small>事实来源</small><strong>{text(position.source || state?.source)}</strong></span>
         <time dateTime={position.observedAt || undefined}>{text(position.observedAt || state?.lastValidAt)}</time>
       </footer>
-    </main>
+    </section>
   );
 }
 
@@ -88,6 +92,7 @@ function PositionRelatedLedger({ position, onSelect = () => {} }) {
   const order = position?.relatedExecution;
   const executionCandidate = executionSelectionCandidate(order);
   const protection = position?.protection;
+  const protectionView = protectionPresentation(protection);
   return (
     <section className="kordynV2PositionLedger" data-kordyn-v2-position-ledger="true" aria-label="相关执行与保护记录">
       <header><h2>相关执行与保护记录</h2><span>仅显示当前 Position 的来源证据</span></header>
@@ -106,7 +111,7 @@ function PositionRelatedLedger({ position, onSelect = () => {} }) {
             {position && <tr>
               <td>保护快照</td>
               <td>{text(protection?.snapshotId)}</td>
-              <td data-protection-tone={protection?.state || "unavailable"}>{text(protection?.state)}</td>
+              <td data-protection-tone={protectionView.tone}>{protectionView.label}</td>
               <td>{text(protection?.source)}</td>
               <td>{number(protection?.stopPrice)}</td>
               <td>{text(protection?.asOf)}</td>

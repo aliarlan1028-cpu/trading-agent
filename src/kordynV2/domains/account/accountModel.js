@@ -18,7 +18,7 @@ const POSITION_NUMERIC_FIELDS = Object.freeze([
   "markPrice", "mark", "price", "entryPrice", "entry",
   "unrealizedPnl", "pnl", "upl",
   "margin", "initialMargin", "leverage", "liqPx", "liquidationPrice",
-  "liqDistancePct", "stopLoss", "takeProfit"
+  "liqDistancePct", "stopLoss", "stopLossPrice", "takeProfit"
 ]);
 const validPositionIdentity = (value) => typeof value === "string"
   && value.length > 0
@@ -420,18 +420,19 @@ function projectedSnapshot(snapshot) {
   const createdAt = boundedTimestamp(snapshot.createdAt);
   if (!validPositionIdentity(id) || !createdAt) return null;
   const rawAlgoOrders = arrayValues(snapshot.algoOrders);
-  const algoOrders = rawAlgoOrders
-    ? rawAlgoOrders.flatMap((value) => {
+  const projectedAlgoOrders = rawAlgoOrders
+    ? rawAlgoOrders.map((value) => {
       const row = recordSnapshot(value);
-      if (!row) return [];
+      if (!row) return null;
       const algoClOrdId = textField(row, ["algoClOrdId"]);
       const instId = textField(row, ["instId"]);
       const stopPrice = numericField(row, "slTriggerPx");
       return algoClOrdId && instId && stopPrice !== null && stopPrice > 0
-        ? [{ algoClOrdId, instId, stopPrice }]
-        : [];
+        ? { algoClOrdId, instId, stopPrice }
+        : null;
     })
     : [];
+  const algoOrders = projectedAlgoOrders.filter(Boolean);
   return {
     id,
     accountId: textField(snapshot, ["accountId"]),
@@ -440,6 +441,7 @@ function projectedSnapshot(snapshot) {
     createdAt,
     algoOrdersComplete: snapshot.algoOrdersComplete === true,
     algoOrdersValid: rawAlgoOrders !== null,
+    invalidAlgoOrderCount: projectedAlgoOrders.length - algoOrders.length,
     algoOrders
   };
 }
@@ -478,7 +480,7 @@ function positionOwnership(position) {
 }
 
 function protectionProjection(source, position, execution, ownership) {
-  const stopLoss = numericField(position, "stopLoss");
+  const stopLoss = numericField(position, "stopLoss", "stopLossPrice");
   if (ownership !== "ai_managed") return { state: "unavailable", reason: "ownership_not_managed", stopPrice: stopLoss, snapshotId: null, asOf: null, source: null };
   if (stopLoss === null) return { state: "failed", reason: "local_stop_missing", stopPrice: null, snapshotId: null, asOf: null, source: textField(position, ["source"]) };
   if (!execution) return { state: "unavailable", reason: "execution_link_unavailable", stopPrice: stopLoss, snapshotId: null, asOf: null, source: textField(position, ["source"]) };
@@ -486,11 +488,19 @@ function protectionProjection(source, position, execution, ownership) {
   const snapshot = latestProtectionSnapshot(source, position, execution);
   if (!snapshot) return { state: "unavailable", reason: "account_snapshot_unavailable", stopPrice: stopLoss, snapshotId: null, asOf: null, source: execution.exchange };
   if (!/^(?:ok|healthy|success)$/iu.test(snapshot.status || "")) return { state: "degraded", reason: "account_snapshot_degraded", stopPrice: stopLoss, snapshotId: snapshot.id, asOf: snapshot.createdAt, source: snapshot.exchange };
-  if (!snapshot.algoOrdersComplete || !snapshot.algoOrdersValid) return { state: "degraded", reason: "protection_snapshot_incomplete", stopPrice: stopLoss, snapshotId: snapshot.id, asOf: snapshot.createdAt, source: snapshot.exchange };
+  const openedAt = boundedTimestamp(position.openedAt);
+  const mirrorAt = boundedTimestamp(position.rawSyncedAt);
+  const snapshotAfterOpen = openedAt && Date.parse(snapshot.createdAt) >= Date.parse(openedAt);
+  const snapshotOwnsMirror = mirrorAt && mirrorAt === snapshot.createdAt;
+  if (!snapshotAfterOpen || !snapshotOwnsMirror || !snapshot.algoOrdersComplete || !snapshot.algoOrdersValid) {
+    return { state: "degraded", reason: "exchange_stop_snapshot_unverified", stopPrice: stopLoss, snapshotId: snapshot.id, asOf: snapshot.createdAt, source: snapshot.exchange };
+  }
   const instId = expectedInstrument(position);
   const remote = snapshot.algoOrders.filter((order) => order.algoClOrdId === execution.stopClientOrderId && order.instId.toUpperCase() === instId);
   return remote.length === 1
     ? { state: "verified", reason: null, stopPrice: remote[0].stopPrice, snapshotId: snapshot.id, asOf: snapshot.createdAt, source: snapshot.exchange }
+    : remote.length > 1 || snapshot.invalidAlgoOrderCount > 0
+      ? { state: "degraded", reason: "exchange_stop_snapshot_unverified", stopPrice: stopLoss, snapshotId: snapshot.id, asOf: snapshot.createdAt, source: snapshot.exchange }
     : { state: "failed", reason: "exchange_stop_missing", stopPrice: stopLoss, snapshotId: snapshot.id, asOf: snapshot.createdAt, source: snapshot.exchange };
 }
 
@@ -539,12 +549,13 @@ function positionProjection(source, position, executionRows, incidents) {
     margin: numericField(position, "margin", "initialMargin"),
     leverage: numericField(position, "leverage"),
     liqDistancePct: numericField(position, "liqDistancePct"),
-    stopLoss: numericField(position, "stopLoss"),
+    stopLoss: numericField(position, "stopLoss", "stopLossPrice"),
     takeProfits: takeProfits.length ? takeProfits : numericList(position.takeProfit === undefined ? undefined : [position.takeProfit]),
     planId: textField(position, ["planId", "tradePlanId"]),
     agentRunId: textField(position, ["agentRunId", "runId"]),
     strategy: textField(position, ["strategy", "strategyName"], 500),
     openedAt: boundedTimestamp(position.openedAt),
+    rawSyncedAt: boundedTimestamp(position.rawSyncedAt),
     observedAt: boundedTimestamp(position.rawSyncedAt) || boundedTimestamp(position.updatedAt) || boundedTimestamp(position.createdAt),
     relatedExecution,
     riskIncidents: linkedIncidents,

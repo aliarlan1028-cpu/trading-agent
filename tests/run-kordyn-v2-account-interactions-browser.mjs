@@ -121,6 +121,13 @@ try {
   await click(cdp, `${accountRoot} [data-kordyn-v2-reconcile-action]`);
   await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${accountRoot} [role="status"]`)})?.textContent.includes("操作未完成")`, "safe reconcile throw");
 
+  const positionRoot = '[data-browser-account-workspace="positions"]';
+  await click(cdp, `${positionRoot} [data-kordyn-v2-object-id="position-1"][data-kordyn-v2-object-type="Position"]`);
+  await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${positionRoot} [data-kordyn-v2-position-mobile-view="detail"] h2`)}) === document.activeElement`, "Position detail focus");
+  assert.deepEqual(await evaluate(cdp, "window.__kordynV2AccountInteractionCalls.selections.at(-1)"), { id: "position-1", type: "Position", contextId: "position-1", traceId: "position-1" });
+  await click(cdp, `${positionRoot} [data-kordyn-v2-position-back="true"]`);
+  await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${positionRoot} [data-kordyn-v2-object-id="position-1"][data-kordyn-v2-object-type="Position"]`)}) === document.activeElement`, "Position Back focus restoration");
+
   const result = await evaluate(cdp, `(() => ({...window.__kordynV2AccountInteractionCalls,text:document.body.textContent,marketDisabled:document.querySelector(${JSON.stringify(`${marketRoot} [data-kordyn-v2-watchlist-action]`)})?.disabled,accountDisabled:document.querySelector(${JSON.stringify(`${accountRoot} [data-kordyn-v2-reconcile-action]`)})?.disabled}))()`);
   assert.deepEqual({ watchlist: result.watchlist, reconcile: result.reconcile, unhandled: result.unhandled }, { watchlist: 1, reconcile: 1, unhandled: 0 });
   assert.equal(result.marketDisabled, false);

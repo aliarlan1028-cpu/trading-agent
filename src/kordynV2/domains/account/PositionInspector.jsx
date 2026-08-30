@@ -1,4 +1,4 @@
-import { AlertTriangle, Bot, Database, GitBranch, ShieldAlert, ShieldCheck, Waypoints } from "lucide-react";
+import { AlertTriangle, Bot, CircleAlert, Database, GitBranch, Info, Shield, ShieldAlert, ShieldCheck, Waypoints } from "lucide-react";
 
 const unavailable = "Unavailable";
 const validIdentity = (value) => typeof value === "string"
@@ -19,11 +19,26 @@ export function executionSelectionCandidate(order) {
     : null;
 }
 
-function protectionPresentation(protection) {
-  if (protection?.state === "verified") return { label: "保护已由交易所证据核验", tone: "healthy", icon: ShieldCheck };
-  if (protection?.state === "failed") return { label: "保护证据明确失败", tone: "critical", icon: ShieldAlert };
-  if (protection?.state === "degraded") return { label: "保护证据降级", tone: "warning", icon: AlertTriangle };
-  return { label: "保护证据不可用", tone: "unavailable", icon: ShieldAlert };
+const protectionPresentations = Object.freeze({
+  verified: Object.freeze({ state: "verified", label: "已核验", tone: "healthy", icon: ShieldCheck }),
+  failed: Object.freeze({ state: "failed", label: "保护异常", tone: "critical", icon: ShieldAlert }),
+  degraded: Object.freeze({ state: "degraded", label: "证据降级", tone: "warning", icon: AlertTriangle }),
+  unavailable: Object.freeze({ state: "unavailable", label: "证据不可用", tone: "unavailable", icon: Shield })
+});
+
+export function protectionPresentation(protection) {
+  return protectionPresentations[protection?.state] || protectionPresentations.unavailable;
+}
+
+function incidentPresentation(incident) {
+  const status = text(incident?.status).toLowerCase();
+  const severity = text(incident?.severity).toLowerCase();
+  const resolved = ["resolved", "closed"].includes(status);
+  const active = ["open", "active", "investigating", "pending", "triggered"].includes(status);
+  if (resolved) return { tone: "resolved", icon: ShieldCheck };
+  if (active && ["critical", "high"].includes(severity)) return { tone: "critical", icon: AlertTriangle };
+  if (active && ["medium", "warning"].includes(severity)) return { tone: "warning", icon: CircleAlert };
+  return { tone: "neutral", icon: Info };
 }
 
 function EvidenceFact({ label, value }) {
@@ -47,7 +62,7 @@ export function PositionInspector({ position, reconciliation, actionsDisabled = 
   return (
     <aside className={`kordynV2PositionInspector${mobile ? " is-mobile" : ""}`} aria-label="持仓证据与安全操作">
       <section className="kordynV2PositionEvidence">
-        <header><span><GitBranch size={17} aria-hidden="true" /><h2>来源与执行链</h2></span><em data-protection-tone={protection.tone}><ProtectionIcon size={14} aria-hidden="true" />{protection.label}</em></header>
+        <header><span><GitBranch size={17} aria-hidden="true" /><h2>来源与执行链</h2></span><em data-protection-surface="inspector" data-protection-state={protection.state} data-protection-tone={protection.tone}><ProtectionIcon size={14} aria-hidden="true" />{protection.label}</em></header>
         <dl>
           <EvidenceFact label="来源" value={text(position.source)} />
           <EvidenceFact label="管理归属" value={position.ownership === "ai_managed" ? "AI 托管" : position.ownership === "manual_external" ? "手动 / 外部" : unavailable} />
@@ -72,13 +87,17 @@ export function PositionInspector({ position, reconciliation, actionsDisabled = 
         ) : <p className="kordynV2PositionEvidenceUnavailable"><Database size={15} aria-hidden="true" />关联执行对象不可用，不能启用保护动作。</p>}
       </section>
       <section className="kordynV2PositionProtectionEvidence">
-        <header><h2>保护证据</h2><span data-protection-tone={protection.tone}>{text(position.protection?.reason || position.protection?.state)}</span></header>
+        <header><h2>保护证据</h2><span data-protection-tone={protection.tone}>{text(position.protection?.reason || protection.label)}</span></header>
         <dl>
           <EvidenceFact label="本地止损" value={number(position.stopLoss)} />
           <EvidenceFact label="交易所核验价" value={number(position.protection?.stopPrice)} />
           <EvidenceFact label="止盈目标" value={position.takeProfits?.length ? position.takeProfits.map((value) => number(value)).join(" · ") : unavailable} />
         </dl>
-        {incidents.length > 0 && <div className="kordynV2PositionIncidents" aria-label="关联风险事件">{incidents.slice(0, 4).map((incident) => <article key={incident.id}><AlertTriangle size={14} aria-hidden="true" /><span><strong>{text(incident.title)}</strong><small>{text(incident.severity)} · {text(incident.createdAt)}</small></span></article>)}</div>}
+        {incidents.length > 0 && <div className="kordynV2PositionIncidents" aria-label="关联风险事件">{incidents.slice(0, 4).map((incident) => {
+          const presentation = incidentPresentation(incident);
+          const IncidentIcon = presentation.icon;
+          return <article key={incident.id} data-risk-incident-id={incident.id} data-incident-tone={presentation.tone}><IncidentIcon size={14} aria-hidden="true" /><span><strong>{text(incident.title)}</strong><small>{text(incident.status)} · {text(incident.severity)} · {text(incident.createdAt)}</small></span></article>;
+        })}</div>}
       </section>
       <section className="kordynV2PositionSafeAction" aria-label="安全操作">
         <header><Bot size={16} aria-hidden="true" /><span><h2>安全操作</h2><small>以交易所事实为准，不乐观更新</small></span></header>
