@@ -293,10 +293,30 @@ async function captureSurfaces(cdp, baseUrl) {
     await flush(cdp, 80);
     await click(cdp, "[data-kordyn-v2-ai-support-trigger]");
     await waitForExpression(cdp, 'document.querySelector(\'[data-kordyn-v2-mobile-sheet="support"]\')', `${viewportName(viewport)} support`);
+    await flush(cdp, 100);
     const support = await evaluate(cdp, `({ state:document.querySelector('[data-kordyn-v2-ai-support-state]')?.dataset.kordynV2AiSupportState, forms:document.querySelectorAll('[data-kordyn-v2-mobile-sheet="support"] form').length, editable:document.querySelectorAll('[data-kordyn-v2-mobile-sheet="support"] input,[data-kordyn-v2-mobile-sheet="support"] textarea').length })`);
     assert.deepEqual({ forms: support.forms, editable: support.editable }, { forms: 0, editable: 0 }, `${viewportName(viewport)} read-only AI support`);
+    const supportGeometry = await evaluate(cdp, `(() => {
+      const rect = (selector) => {
+        const node = document.querySelector(selector);
+        if (!node) return null;
+        const value = node.getBoundingClientRect();
+        return { top:value.top, right:value.right, bottom:value.bottom, left:value.left, width:value.width, height:value.height };
+      };
+      const rail=rect('.kordynV2MobileStatusRail');
+      const degraded=rect('.kordynV2MobileDegradedDecision');
+      const danger=rect('[data-kordyn-v2-danger-action="kill-switch"]');
+      const sheet=rect('[data-kordyn-v2-mobile-sheet="support"]');
+      const scroller=document.querySelector('.kordynV2MobileBackground > .kordynV2StateBoundary');
+      return { rail, degraded, danger, sheet, scrollTop:scroller?.scrollTop || 0 };
+    })()`);
+    assert.ok(supportGeometry.rail && supportGeometry.degraded && supportGeometry.danger && supportGeometry.sheet, `${viewportName(viewport)} governance support geometry exists`);
+    assert.ok(supportGeometry.rail.top >= 0 && supportGeometry.rail.bottom <= supportGeometry.degraded.top + 1, `${viewportName(viewport)} status rail remains visibly before degraded decision`);
+    assert.ok(supportGeometry.degraded.bottom <= supportGeometry.danger.top + 1, `${viewportName(viewport)} degraded decision remains visibly before Emergency Stop`);
+    assert.ok(supportGeometry.danger.bottom <= supportGeometry.sheet.top - 4, `${viewportName(viewport)} Emergency Stop remains visible above read-only support sheet`);
+    assert.ok(supportGeometry.scrollTop > governanceScrollTop, `${viewportName(viewport)} governance support anchors the approved operational boundary`);
     await assertTouchTargets(cdp, `${viewportName(viewport)} governance support`);
-    captures.push(await capture(cdp, `mobile-system-governance--${viewportName(viewport)}.png`, viewport, { aiSupport: "open-read-only", supportState: support.state, underlyingGovernanceScrollTop: governanceScrollTop }));
+    captures.push(await capture(cdp, `mobile-system-governance--${viewportName(viewport)}.png`, viewport, { aiSupport: "open-read-only", supportState: support.state, underlyingGovernanceScrollTop: supportGeometry.scrollTop, supportGeometry }));
   }
   const supporting = [["event-inputs", "desktop-governance-event-inputs"], ["notifications", "desktop-governance-notifications"], ["audit", "desktop-governance-audit"], ["recovery", "desktop-governance-recovery"]];
   for (const [workspace, prefix] of supporting) {
