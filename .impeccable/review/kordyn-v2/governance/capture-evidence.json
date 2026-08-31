@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "runner": "tests/run-kordyn-v2-governance-browser.mjs",
   "fixture": "tests/kordyn-v2-governance-browser.jsx",
-  "productionSourceCommit": "946f2552dd7ff4e5fb00856ed5f5888e3b8554d2",
-  "captureTestSourceCommit": "b2f8cdb3bc41b6f5f981c9247c48cee60c5e261c",
+  "productionSourceCommit": "1977ee4a03397f3fa58bd949ce68eeae1a67f88d",
+  "captureTestSourceCommit": "d69545e543880a05eddc17d0851543a48c79d9f5",
   "captures": [
     {
       "file": "desktop-governance-boundary--1440x900.png",
@@ -28,7 +28,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "aad71dcba75b2a7637f0fa38c72274cf122c665dc859e754c64cf72300d0b546",
+      "sha256": "5c95d52416283b4d91b0f8f3a869cbe768e30bee851b58f89224b01d0119a37b",
       "aiSupport": "open-read-only"
     },
     {
@@ -54,7 +54,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "d5ec79109295f8cbccd027d028b533c6d73f09cce8fe3f42b61782fbb14dd2c1"
+      "sha256": "335dcb66fbba6aec470a8a09ab5cea2c977ba705325868f48b5f395f7d25b648"
     },
     {
       "file": "desktop-governance-operations--1440x900.png",
@@ -79,7 +79,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "52c09dd532eea687eeb14e390c40b76d2e06c9255a00c878985dd62447bfd534"
+      "sha256": "5ee36f049cab917d4a7a4a365d70a3762d80b54f6816047b4c1ec8dc5a293bf1"
     },
     {
       "file": "desktop-governance-operations--1180x800.png",
@@ -104,7 +104,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "e277954269e080c38ee4ae2bb00e14e05714b5951f85b289c97b321106884fda"
+      "sha256": "f633776dbf9ec5cd06fa2d8dc58a3d4d5c8aed3b3c3790c96200c09374b2f6f7"
     },
     {
       "file": "desktop-governance-configuration--1440x900.png",
@@ -129,7 +129,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "f284de05f42927ea5552e30a3f68c9e12630dbe6e0851141ef671d9e4d31c432"
+      "sha256": "90614a5055654d2ecf8216678ead0330974618a6240ab415c3247082cd3f8f81"
     },
     {
       "file": "desktop-governance-configuration--1180x800.png",
@@ -154,7 +154,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "87893010eab65bfe6684f9a2cecef4de9d34632f54e1d7061c930676fad70810"
+      "sha256": "fd054fcbee5af1d2a6b25f487ba92352a88b65ce127681912ddcd9a3482ccf37"
     },
     {
       "file": "desktop-governance-danger-confirm--1440x900.png",
@@ -179,7 +179,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "5ecb917b0c4c31b1e68beec379df77d9fa4fcd1e921d8ea021d41b51c6c8e3b5",
+      "sha256": "9ea7c6a31acf34468ba64870ace726f58b784814a1ad5696bbbe5fc5b7ce8c67",
       "dangerConfirmation": "kill-switch",
       "noActionAccepted": true
     },
@@ -206,7 +206,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "9d9e9c96c015ea5483a2b923784499b523f45c0ce470deaa1e1e8416ee9f56e9",
+      "sha256": "c0556520e9a370c326b7c628bba3a3d062dd172ecabe6cf1428e9621addd963e",
       "aiSupport": "closed",
       "governanceContentVisible": true
     },
@@ -233,7 +233,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "5cbac9e6182a5f3242218c9b27f079280981aacc78324f214f5d5cbf9b9d156c",
+      "sha256": "81e5820422f22aaba8fb286cb0f87248c0870bf42386bba19f05c979fd5c589e",
       "aiSupport": "open-read-only",
       "supportState": "ready",
       "underlyingGovernanceScrollTop": 150
@@ -261,7 +261,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "7a8442bd373a7ca3eb7a3781816d7ff1c4c11160d287eec85116745d8840b99a",
+      "sha256": "6a9210eb37e4fe02858205faccdceef828190c27fa223f69ebd9f3485b04e8c5",
       "aiSupport": "closed",
       "governanceContentVisible": true
     },
@@ -288,7 +288,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "d7e4cd13c706ce4c97d0150528111ccf46e642fc0e7d9428b3a7a4c29283c0db",
+      "sha256": "82b2a15c1e00fb093546da6e8934ae9518c3986d574ff36377684a7352070065",
       "aiSupport": "open-read-only",
       "supportState": "ready",
       "underlyingGovernanceScrollTop": 150
@@ -833,7 +833,7 @@
           {
             "endpoint": "/api/config/live-trading",
             "payload": {
-              "requestedMode": "full_auto",
+              "requestedMode": "semi_auto",
               "acknowledged": false,
               "maxNotionalUsdt": 3000
             },
