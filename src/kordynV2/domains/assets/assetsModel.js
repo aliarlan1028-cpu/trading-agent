@@ -237,7 +237,7 @@ export function buildAssetsDomainModel(input = {}) {
     capabilities,
     capabilityRegistry: capabilities,
     incubation: { sources, evidence, candidates, methods, rules, workflows, skills: incubatingSkills },
-    studio: { drafts, backtests },
+    studio: { drafts, backtests, marketplace: record(studio.marketplace) || null },
     reviews,
     owner: { lessons, improvements, summary: record(ownerLoop.summary) || null },
     validationRuns: { backtests, paper: list(paperReport.sessions) }

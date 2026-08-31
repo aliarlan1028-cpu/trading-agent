@@ -47,6 +47,7 @@ test("knowledge, strategy, capability, and release actions retain deployed endpo
   await assets.startSkillPaper("skill-1");
   await assets.syncSkills();
   await assets.approveSkill("skill-1", "sha256:abc");
+  await assets.runStrategyResearch();
   await assets.createStrategyDraft("Trade the validated breakout template");
   await assets.testStrategyDraft("draft-1");
   await assets.backtestStrategyDraft("draft-1", "BTC/USDT");
@@ -73,6 +74,7 @@ test("knowledge, strategy, capability, and release actions retain deployed endpo
     ["/api/knowledge/skills/skill-1/paper", {}],
     ["/api/knowledge/skills/sync", {}],
     ["/api/knowledge/skills/skill-1/approve", {}],
+    ["/api/strategy/research", {}],
     ["/api/strategy/studio/drafts", { prompt: "Trade the validated breakout template" }],
     ["/api/strategy/studio/drafts/draft-1/tests", {}],
     ["/api/strategy/studio/drafts/draft-1/backtest", { symbol: "BTC/USDT" }],

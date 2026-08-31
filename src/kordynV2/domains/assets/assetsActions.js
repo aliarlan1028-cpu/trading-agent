@@ -108,6 +108,7 @@ export function createAssetsActions(deps) {
   const createStrategyDraft = (prompt) => validText(prompt)
     ? runAction("/api/strategy/studio/drafts", { prompt: prompt.trim() })
     : invalidInput;
+  const runStrategyResearch = () => runAction("/api/strategy/research", {});
   const testStrategyDraft = (id) => withId(id, (encoded) => runAction(`/api/strategy/studio/drafts/${encoded}/tests`, {}));
   const backtestStrategyDraft = (id, symbol) => validSymbol(symbol)
     ? withId(id, (encoded) => runAction(`/api/strategy/studio/drafts/${encoded}/backtest`, { symbol }))
@@ -173,6 +174,7 @@ export function createAssetsActions(deps) {
     startSkillPaper,
     syncSkills,
     approveSkill,
+    runStrategyResearch,
     createStrategyDraft,
     testStrategyDraft,
     backtestStrategyDraft,
