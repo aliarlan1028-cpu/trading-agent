@@ -181,6 +181,25 @@ async function assertTouchTargets(cdp, label) {
   }).slice(0,30))()`);
   assert.deepEqual(failures, [], `${label}: touch targets ${JSON.stringify(failures)}`);
 }
+async function assertConfigurationGeometry(cdp, label) {
+  const geometry = await evaluate(cdp, `(() => {
+    const body=document.querySelector('.kordynV2ConfigurationEditorBody');
+    const nodes=body?[...body.querySelectorAll('label,.kordynV2MandateEditor>header')].filter((node)=>node.getClientRects().length):[];
+    const rows=nodes.map((node,index)=>{const rect=node.getBoundingClientRect();return {index,text:node.textContent.trim().slice(0,60),left:rect.left,top:rect.top,right:rect.right,bottom:rect.bottom};});
+    const overlaps=[];
+    for(let left=0;left<rows.length;left+=1){
+      for(let right=left+1;right<rows.length;right+=1){
+        const a=rows[left],b=rows[right];
+        const x=Math.min(a.right,b.right)-Math.max(a.left,b.left);
+        const y=Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top);
+        if(x>1&&y>1) overlaps.push({a:a.text,b:b.text,x:Math.round(x),y:Math.round(y)});
+      }
+    }
+    return {overlaps,scrollHeight:body?.scrollHeight||0,clientHeight:body?.clientHeight||0};
+  })()`);
+  assert.deepEqual(geometry.overlaps, [], `${label}: configuration controls overlap ${JSON.stringify(geometry)}`);
+  return geometry;
+}
 async function styleOwnership(cdp) {
   return await evaluate(cdp, `(() => {
     const values=[];
@@ -236,6 +255,7 @@ async function captureSurfaces(cdp, baseUrl) {
     for (const viewport of [viewports.desktop1440, viewports.desktop1180]) {
       await navigatePage(cdp, baseUrl, viewport);
       await navigateGovernance(cdp, viewport, workspace);
+      if (workspace === "configuration") await assertConfigurationGeometry(cdp, `${viewportName(viewport)} configuration`);
       captures.push(await capture(cdp, `${prefix}--${viewportName(viewport)}.png`, viewport));
     }
   }
