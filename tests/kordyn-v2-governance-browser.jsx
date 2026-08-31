@@ -71,7 +71,13 @@ function buildFixture() {
       { id: "task-reconcile", name: "账户对账", handler: "account_reconcile", enabled: scenario !== "disabled", systemManaged: true }
     ],
     jobRuns: [
-      { id: "job-run-patrol-42", taskId: "task-governance-patrol", taskName: "自主巡检", status: "success", createdAt: asOf, finishedAt: asOf, durationMs: 842 },
+      { id: "job-run-patrol-42", taskId: "task-governance-patrol", taskName: "自主巡检", status: "success", createdAt: asOf, finishedAt: asOf, durationMs: 842, stages: [
+        { id: "market", label: "检查市场", status: "completed" },
+        { id: "account", label: "核对账户", status: "completed" },
+        { id: "evidence", label: "验证证据", status: "completed" },
+        { id: "risk", label: "风险边界", status: "completed" },
+        { id: "monitor", label: "继续监控", status: "completed" }
+      ] },
       { id: "job-run-reconcile-41", taskId: "task-reconcile", taskName: "账户对账", status: "failed", error: "exchange_snapshot_stale", createdAt: "2026-08-31T11:20:00.000Z", finishedAt: "2026-08-31T11:20:08.000Z" }
     ],
     notifications: [
@@ -82,7 +88,10 @@ function buildFixture() {
       { id: "audit-mode-33", action: "operating_mode.evaluate", actor: "system", resource: "automation", status: "recorded", traceId: "trace-mode-33", createdAt: asOf },
       { id: "audit-task-32", action: "task.run.failed", actor: "scheduler", resource: "task-reconcile", status: "recorded", traceId: "trace-task-32", createdAt: "2026-08-31T11:20:09.000Z" }
     ],
-    reconciliationReports: [{ id: "recovery-report-28", title: "Account reconciliation 28", status: "partial", createdAt: "2026-08-31T11:20:09.000Z", differences: [{ id: "diff-order-7", type: "order", status: "open" }] }],
+    reconciliationReports: [
+      { id: "recovery-report-28", title: "Account reconciliation 28", status: "partial", createdAt: "2026-08-31T11:20:09.000Z", differences: [{ id: "diff-order-7", type: "order", status: "open" }] },
+      { id: "recovery-report-27", title: "Account reconciliation 27", status: "completed", createdAt: "2026-08-31T11:05:00.000Z", differences: [] }
+    ],
     riskIncidents: [{ id: "risk-incident-16", title: "账户快照过期", severity: "high", status: "open", source: "account_sync", createdAt: "2026-08-31T11:20:09.000Z" }],
     executionOrders: [...(base.executionOrders || []), { id: "execution-recovery-5", symbol: "BTC/USDT", status: "recovery_pending", updatedAt: asOf }],
     realtimeStarted: true,
@@ -90,24 +99,27 @@ function buildFixture() {
     accountSnapshots: [{ id: "snapshot-governance", status: "healthy", createdAt: asOf }],
     config: {
       liveTrading: { maxNotionalUsdt: 3_000 },
-      environment: { NODE_ENV: "production" },
-      network: { proxy: "not configured" },
       backup: { retentionDays: 14 },
-      security: { mfaRequired: true },
-      notifications: { telegram: { configured: true } },
-      models: { model: "gpt-5.6" }
+      llm: { providers: {
+        gemini: { hasKey: true, model: "google/gemini-3.1-pro-preview" },
+        classifier: { hasKey: true, model: "google/gemini-3.1-pro-preview" },
+        deepseek: { hasKey: true, model: "deepseek-v4-pro" }
+      } },
+      integrations: { telegram: { configured: true, hasBotToken: true, chatId: "-1001234567890", profitPosterEnabled: true, watchLanguage: "zh" }, lark: { hasWebhook: false } },
+      runtime: { authRequired: true, adminPasswordSet: true, skillSandboxImage: "node:20-alpine", okxMarketType: "perpetual_swap", httpProxySet: false, httpsProxySet: false, port: "8787" },
+      secretsMasterKeySet: true
     },
     backupStatus: { status: "verified", completedAt: "2026-08-31T06:00:00.000Z" },
     security: { mfaRequired: true, mfaEnabled: true, credentialStatus: "masked" },
     exchangeAccounts: [{ id: "exchange-okx-main", exchange: "OKX", status: "connected", keySuffix: "K7Q2" }],
     exchangeApiKeyMetadata: [{ id: "exchange-okx-main", withdrawalPermission: false, keySuffix: "K7Q2" }],
-    integrations: { telegram: { configured: true }, lark: { hasWebhook: false } },
+    integrations: { telegram: { configured: true, hasBotToken: true, chatId: "-1001234567890", profitPosterEnabled: true, watchLanguage: "zh" }, lark: { hasWebhook: false } },
     llmModels: [{ id: "gpt-5.6", name: "GPT-5.6", label: "GPT-5.6" }],
     agentProfiles: [{ id: "agent-primary", name: "KORDYN Primary", role: "trading", enabled: true }],
     users: [{ id: "fixture-user", name: "Owner K0", roleId: "owner" }],
     subscriptions: [{ id: "subscription-owner", userId: "fixture-user", status: "active", planId: "owner" }]
   };
-  if (["empty", "no-result"].includes(scenario)) {
+  if (scenario === "empty") {
     for (const key of ["mandates", "riskRules", "riskChecks", "eventRiskWindows", "eventSources", "marketIntelligenceSourceHealth", "tasks", "jobRuns", "notifications", "auditLogs", "reconciliationReports", "riskIncidents"]) data[key] = [];
   }
   if (scenario === "long-content") data.auditLogs[0].action = "recovery.context." + "evidence-chain-".repeat(560);

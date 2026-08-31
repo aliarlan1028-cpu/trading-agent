@@ -147,6 +147,11 @@ async function pressEscape(cdp) {
   await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
   await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
 }
+async function typeText(cdp, selector, value) {
+  await click(cdp, selector);
+  await cdp.send("Input.insertText", { text: value });
+  await flush(cdp, 80);
+}
 
 async function navigatePage(cdp, baseUrl, viewport, scenario = "ready", result = "success") {
   await setViewport(cdp, viewport);
@@ -257,7 +262,11 @@ async function captureSurfaces(cdp, baseUrl) {
       await navigatePage(cdp, baseUrl, viewport);
       await navigateGovernance(cdp, viewport, workspace);
       if (workspace === "configuration") await assertConfigurationGeometry(cdp, `${viewportName(viewport)} configuration`);
-      captures.push(await capture(cdp, `${prefix}--${viewportName(viewport)}.png`, viewport));
+      if (workspace === "overview" && viewport.width === 1440) {
+        await click(cdp, "[data-kordyn-v2-ai-support-trigger]");
+        await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-ai-support-panel]')", "desktop Boundary support");
+      }
+      captures.push(await capture(cdp, `${prefix}--${viewportName(viewport)}.png`, viewport, workspace === "overview" && viewport.width === 1440 ? { aiSupport: "open-read-only" } : {}));
     }
   }
   await navigatePage(cdp, baseUrl, viewports.desktop1440);
@@ -269,12 +278,16 @@ async function captureSurfaces(cdp, baseUrl) {
   for (const viewport of [viewports.mobile390, viewports.mobile430]) {
     await navigatePage(cdp, baseUrl, viewport);
     await navigateGovernance(cdp, viewport, "runs");
+    captures.push(await capture(cdp, `mobile-system-governance-content--${viewportName(viewport)}.png`, viewport, { aiSupport: "closed", governanceContentVisible: true }));
+    const governanceScrollTop = await evaluate(cdp, `(() => { const scroller=document.querySelector('.kordynV2MobileBackground > .kordynV2StateBoundary'); if (!scroller) return 0; scroller.scrollTop=150; return scroller.scrollTop; })()`);
+    assert.ok(governanceScrollTop > 0, `${viewportName(viewport)} governance support preserves scrolled operational boundary`);
+    await flush(cdp, 80);
     await click(cdp, "[data-kordyn-v2-ai-support-trigger]");
     await waitForExpression(cdp, 'document.querySelector(\'[data-kordyn-v2-mobile-sheet="support"]\')', `${viewportName(viewport)} support`);
     const support = await evaluate(cdp, `({ state:document.querySelector('[data-kordyn-v2-ai-support-state]')?.dataset.kordynV2AiSupportState, forms:document.querySelectorAll('[data-kordyn-v2-mobile-sheet="support"] form').length, editable:document.querySelectorAll('[data-kordyn-v2-mobile-sheet="support"] input,[data-kordyn-v2-mobile-sheet="support"] textarea').length })`);
     assert.deepEqual({ forms: support.forms, editable: support.editable }, { forms: 0, editable: 0 }, `${viewportName(viewport)} read-only AI support`);
     await assertTouchTargets(cdp, `${viewportName(viewport)} governance support`);
-    captures.push(await capture(cdp, `mobile-system-governance--${viewportName(viewport)}.png`, viewport, { aiSupport: "open-read-only", supportState: support.state }));
+    captures.push(await capture(cdp, `mobile-system-governance--${viewportName(viewport)}.png`, viewport, { aiSupport: "open-read-only", supportState: support.state, underlyingGovernanceScrollTop: governanceScrollTop }));
   }
   const supporting = [["event-inputs", "desktop-governance-event-inputs"], ["notifications", "desktop-governance-notifications"], ["audit", "desktop-governance-audit"], ["recovery", "desktop-governance-recovery"]];
   for (const [workspace, prefix] of supporting) {
@@ -298,14 +311,14 @@ async function captureStates(cdp, baseUrl) {
     { id: "disabled", workspace: "runs", selector: '[data-kordyn-v2-object-id="task-reconcile"] + div button:first-child:disabled', semanticSurface: "disabled Task action" },
     { id: "approval", workspace: "recovery", selector: '.cfmCard', semanticSurface: "Recovery approval confirmation", click: '.kordynV2RecoveryActions > button:nth-of-type(1)' },
     { id: "partial", workspace: "recovery", selector: '[data-kordyn-v2-governance-action-state="partial"]', semanticSurface: "partial authoritative reconciliation", result: "partial", click: '.kordynV2RecoveryActions > button:nth-of-type(1)', confirm: true },
-    { id: "no-result", workspace: "recovery", selector: '[data-kordyn-v2-object-type="Recovery"][data-kordyn-v2-object-id="recovery-current"]', semanticSurface: "Recovery without a report" },
+    { id: "no-result", workspace: "audit", viewport: viewports.desktop1180, selector: '[data-kordyn-v2-audit-filter-result="none"]', semanticSurface: "Audit filter with no matching result", type: { selector: '.kordynV2AuditLedger input[type="search"]', value: "no-such-governance-trace" } },
     { id: "long-content", workspace: "audit", selector: '[data-kordyn-v2-object-id="audit-mode-33"]', semanticSurface: "long Audit action content" },
     { id: "large-list", workspace: "audit", selector: '.kordynV2AuditLedger [data-kordyn-v2-object-type="Audit log"]:nth-of-type(50)', semanticSurface: "large Audit ledger" }
   ];
   for (let index = 0; index < scenarios.length; index += 1) {
     const spec = scenarios[index];
     const scenario = spec.id;
-    const viewport = [viewports.desktop1440, viewports.desktop1180, viewports.mobile390, viewports.mobile430][index % 4];
+    const viewport = spec.viewport || [viewports.desktop1440, viewports.desktop1180, viewports.mobile390, viewports.mobile430][index % 4];
     await navigatePage(cdp, baseUrl, viewport, scenario, spec.result || "success");
     if (scenario === "loading") {
       await click(cdp, '[data-kordyn-v2-domain-target="governance"]');
@@ -318,6 +331,7 @@ async function captureStates(cdp, baseUrl) {
       await navigateGovernance(cdp, viewport, spec.workspace);
     }
     if (spec.setupClick) await click(cdp, spec.setupClick);
+    if (spec.type) await typeText(cdp, spec.type.selector, spec.type.value);
     if (spec.click) await click(cdp, spec.click);
     if (spec.confirm) await acceptConfirm(cdp, `${scenario} action`);
     await waitForExpression(cdp, `document.querySelector(${JSON.stringify(spec.selector)})`, `${scenario} semantic surface`);

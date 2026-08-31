@@ -6,7 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { createGovernanceActions } from "../src/kordynV2/domains/governance/governanceActions.js";
 import { classifyGovernanceActionResult } from "../src/kordynV2/domains/governance/governanceActionOutcome.js";
-import { buildGovernancePermissions } from "../src/kordynV2/domains/governance/governancePermissions.js";
+import { buildGovernancePermissions, configurationTargetAllowed } from "../src/kordynV2/domains/governance/governancePermissions.js";
 
 const require = createRequire(import.meta.url);
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -44,6 +44,11 @@ test("governance permissions fail closed per deployed action class", () => {
   assert.equal(viewer.updateOwnProfile, true);
   for (const key of ["writeTask", "writeEvent", "writeRisk", "stopTrading", "flattenAll", "clearKillSwitch", "reconcile", "configureSecurity", "adminSystem"]) assert.equal(viewer[key], false, key);
   assert.equal(buildGovernancePermissions({ user: { id: "unknown" } }).writeTask, false);
+  assert.equal(buildGovernancePermissions({ user: { id: "unknown" } }).readNotifications, false);
+  assert.equal(buildGovernancePermissions({ user: { id: "operator" }, permissions: ["risk.kill_switch"] }).reconcile, false);
+  assert.equal(buildGovernancePermissions({ user: { id: "operator" }, permissions: ["write:exchange"] }).reconcile, true);
+  assert.equal(configurationTargetAllowed(buildGovernancePermissions({ user: { id: "operator" }, permissions: ["approve:live_config", "write:mandate"] }), "trading"), false);
+  assert.equal(configurationTargetAllowed(buildGovernancePermissions({ user: { id: "operator" }, permissions: ["admin:security", "write:mandate"] }), "trading"), true);
 });
 
 test("governance uses the deployed live-trading and self-profile endpoints", async () => {
@@ -67,6 +72,8 @@ test("successful deployed response shapes are not rejected by the governance out
   ]) assert.equal(classifyGovernanceActionResult(response), "success");
   assert.equal(classifyGovernanceActionResult({ ok: false, error: "denied" }), "failed");
   assert.equal(classifyGovernanceActionResult({ status: "partial", completed: ["snapshot"], failed: ["orders"] }), "partial");
+  assert.equal(classifyGovernanceActionResult({ message: "无变更", applied: [] }), "failed");
+  assert.equal(classifyGovernanceActionResult({ message: "ambiguous" }), "failed");
 });
 
 test("all durable configuration groups expose their deployed actions", () => {
@@ -113,10 +120,33 @@ test("APP runs expose Task and Agent run while Recovery exposes report truth and
 test("production editors never invent environment or credential suffix truth", () => {
   const exchange = readFileSync(path.join(rootDir, "src/kordynV2/domains/governance/configuration/ExchangeEditor.jsx"), "utf8");
   const environment = readFileSync(path.join(rootDir, "src/kordynV2/domains/governance/configuration/EnvironmentEditor.jsx"), "utf8");
+  const network = readFileSync(path.join(rootDir, "src/kordynV2/domains/governance/configuration/NetworkEditor.jsx"), "utf8");
+  const models = readFileSync(path.join(rootDir, "src/kordynV2/domains/governance/configuration/ModelEditor.jsx"), "utf8");
   const stateSurfaces = readFileSync(path.join(rootDir, "src/kordynV2/domains/governance/stateSurfaces.js"), "utf8");
   assert.doesNotMatch(exchange, /K7Q2/);
   assert.doesNotMatch(environment, /\|\|\s*"production"/);
+  assert.doesNotMatch(environment, /NODE_ENV/);
+  assert.doesNotMatch(network, /defaultValue=\{value\}|"not configured"/);
+  assert.doesNotMatch(models, /name="LLM_MODEL"|••••••••/);
+  assert.match(models, /GEMINI_MODEL/);
+  assert.match(models, /DEEPSEEK_MODEL/);
   assert.doesNotMatch(stateSurfaces, /Plan 05 governance production-shaped fixture|2026-08-31T10:18:00\.000Z/);
+});
+
+test("generic configuration editors submit only deployed runtime keys and disable missing facts", () => {
+  const files = ["EnvironmentEditor", "NetworkEditor", "ModelEditor", "NotificationEditor", "SecurityEditor"];
+  const deployed = new Set(["OKX_MARKET_TYPE", "PORT", "SKILL_SANDBOX_IMAGE", "HTTP_PROXY", "HTTPS_PROXY", "GEMINI_MODEL", "GEMINI_CLASSIFIER_MODEL", "DEEPSEEK_MODEL", "TELEGRAM_CHAT_ID", "TELEGRAM_PROFIT_POSTER_ENABLED", "TELEGRAM_WATCH_LANGUAGE", "TELEGRAM_BOT_TOKEN", "AUTH_REQUIRED", "ADMIN_PASSWORD"]);
+  for (const file of files) {
+    const source = readFileSync(path.join(rootDir, `src/kordynV2/domains/governance/configuration/${file}.jsx`), "utf8");
+    const keys = [...source.matchAll(/name="([A-Z][A-Z0-9_]*)"/g)].map((match) => match[1]);
+    assert.ok(keys.length > 0, file);
+    for (const key of keys) assert.equal(deployed.has(key), true, `${file}:${key}`);
+  }
+  const emptyModel = { trading: {}, risk: {}, environment: {}, network: {}, backup: {}, security: {}, exchange: {}, eventSources: [], notifications: {}, models: {}, agents: [], users: [], subscriptions: [], account: {} };
+  for (const target of ["environment", "network", "notifications", "models", "security"]) {
+    const html = renderToStaticMarkup(createElement(ConfigurationEditorFor, { target, model: emptyModel, actions: { saveConfig: () => {} }, actionsDisabled: false }));
+    assert.match(html, /data-kordyn-v2-config-action="save-config"[^>]*disabled=""/, target);
+  }
 });
 
 test("APP governance deep actions and rows retain 44px touch targets", () => {
