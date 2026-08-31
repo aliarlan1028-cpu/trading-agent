@@ -1,0 +1,3 @@
+import { EditorFrame, TextField, submitFields } from "./editorShared.jsx";
+export function AccountProfileEditor({ model = {}, actions, actionsDisabled = false }) { return <EditorFrame id="account" title="账户资料" description="当前身份与允许编辑的个人资料。" target={model.name || "Unavailable"} current={model.id || "Unavailable"} actionsDisabled={actionsDisabled} onSubmit={(event) => submitFields(event, (fields) => actions?.updateUser?.(model.id, fields))}><TextField label="显示名称" name="name" defaultValue={model.name || ""} disabled={actionsDisabled} /><TextField label="邮箱" name="email" defaultValue={model.email || ""} disabled={actionsDisabled} /></EditorFrame>; }
+

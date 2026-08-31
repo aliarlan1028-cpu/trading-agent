@@ -1,0 +1,3 @@
+import { EditorFrame, SelectField, submitFields } from "./editorShared.jsx";
+export function EnvironmentEditor({ model = {}, actions, actionsDisabled = false }) { const value = model.NODE_ENV || model.environment || "production"; return <EditorFrame id="environment" title="环境" description="运行环境与系统级参数。" target={value} current={value} actionsDisabled={actionsDisabled} onSubmit={(event) => submitFields(event, (fields) => actions?.saveConfig?.(fields))}><SelectField label="运行环境" name="NODE_ENV" defaultValue={value} disabled={actionsDisabled}><option value="production">Production</option><option value="development">Development</option></SelectField></EditorFrame>; }
+

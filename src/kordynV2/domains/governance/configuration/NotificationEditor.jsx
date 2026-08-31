@@ -1,0 +1,3 @@
+import { EditorFrame, submitFields } from "./editorShared.jsx";
+export function NotificationEditor({ model = {}, actions, actionsDisabled = false }) { const channel = model.telegram?.configured ? "telegram" : model.lark?.hasWebhook ? "lark" : "not configured"; return <EditorFrame id="notifications" title="通知" description="渠道配置与真实投递测试。" target={channel} current={channel} actionsDisabled={actionsDisabled} onSubmit={(event) => submitFields(event, (fields) => actions?.saveConfig?.(fields))}><button className="kordynV2InlineTest" type="button" disabled={actionsDisabled || channel === "not configured"} onClick={() => actions?.testNotification?.(channel)}>发送测试通知</button></EditorFrame>; }
+

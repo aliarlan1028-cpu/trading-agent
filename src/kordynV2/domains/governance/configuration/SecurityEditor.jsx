@@ -1,0 +1,3 @@
+import { EditorFrame, submitFields } from "./editorShared.jsx";
+export function SecurityEditor({ model = {}, actions, actionsDisabled = false }) { return <EditorFrame id="security" title="安全" description="MFA 与凭据生命周期；密钥原文不会进入 DOM。" target={model.mfaRequired ? "MFA required" : "MFA optional"} current={model.mfaEnabled ? "MFA enabled" : "MFA unavailable"} actionsDisabled={actionsDisabled} onSubmit={(event) => submitFields(event, (fields) => actions?.saveConfig?.(fields))}><label className="kordynV2MaskedField"><span>凭据状态</span><output>•••••••• · masked</output><small>只能替换或清除，不能读取原文</small></label></EditorFrame>; }
+

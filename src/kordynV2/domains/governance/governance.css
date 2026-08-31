@@ -213,6 +213,71 @@
 .kordynV2RecoveryQueue article > button:first-child small { color: var(--kordyn-v2-muted); font-size: 7px; }
 .kordynV2RecoveryQueue article > button:last-child { min-height: 32px; padding: 0 9px; border: 1px solid rgba(244, 173, 86, .3); border-radius: 7px; color: var(--kordyn-v2-amber); background: rgba(53, 35, 12, .34); cursor: pointer; font-size: 8px; }
 
+.kordynV2ConfigurationWorkspace { grid-template-rows: 42px 42px minmax(0, 1fr); }
+.kordynV2ConfigurationWorkspace > .kordynV2GovernanceTitle > em { color: var(--kordyn-v2-amber); font-size: 10px; font-style: normal; }
+.kordynV2ConfigurationNotice { padding: 0 13px; display: flex; align-items: center; border: 1px solid rgba(132, 114, 255, .25); border-radius: 9px; color: #b8adff; background: rgba(42, 32, 91, .24); font-size: 10px; }
+.kordynV2ConfigurationWorkbench { min-width: 0; min-height: 0; display: grid; grid-template-columns: 190px minmax(460px, 1fr) 252px; overflow: hidden; border: 1px solid var(--kordyn-v2-border); border-radius: 13px; background: rgba(5, 15, 27, .75); box-shadow: 0 24px 70px rgba(0, 0, 0, .24); }
+.kordynV2ConfigurationRegistry { min-width: 0; min-height: 0; padding: 9px; display: grid; align-content: start; gap: 3px; overflow-y: auto; border-right: 1px solid var(--kordyn-v2-border); background: rgba(5, 14, 25, .9); }
+.kordynV2ConfigurationRegistry > button { min-width: 0; min-height: 46px; padding: 7px 8px; display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 8px; border: 1px solid transparent; border-radius: 8px; color: var(--kordyn-v2-muted); background: transparent; cursor: pointer; text-align: left; }
+.kordynV2ConfigurationRegistry > button[data-selected="true"] { border-color: rgba(74, 129, 248, .36); color: var(--kordyn-v2-cobalt-soft); background: linear-gradient(90deg, rgba(42, 102, 226, .32), rgba(42, 102, 226, .08)); }
+.kordynV2ConfigurationRegistry button span { min-width: 0; display: grid; gap: 2px; }
+.kordynV2ConfigurationRegistry button strong, .kordynV2ConfigurationRegistry button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2ConfigurationRegistry button strong { color: var(--kordyn-v2-text-soft); font-size: 9px; }
+.kordynV2ConfigurationRegistry button small { color: var(--kordyn-v2-muted); font-size: 7px; }
+.kordynV2ConfigurationRegistry button em { min-width: 20px; color: var(--kordyn-v2-muted); font: 8px var(--kordyn-v2-mono); font-style: normal; text-align: right; }
+.kordynV2ConfigurationEditor { min-width: 0; min-height: 0; padding: 14px 16px; display: grid; grid-template-rows: auto 58px minmax(0, 1fr); gap: 12px; overflow-y: auto; }
+.kordynV2ConfigurationEditor > header { min-width: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.kordynV2ConfigurationEditor > header span { min-width: 0; display: grid; gap: 5px; }
+.kordynV2ConfigurationEditor h2, .kordynV2ConfigurationEditor p { margin: 0; }
+.kordynV2ConfigurationEditor h2 { font-size: 19px; letter-spacing: -.025em; }
+.kordynV2ConfigurationEditor p { max-width: 68ch; color: var(--kordyn-v2-muted); font-size: 10px; line-height: 1.45; }
+.kordynV2ConfigurationEditor > header em { padding: 4px 8px; border: 1px solid rgba(32, 215, 148, .24); border-radius: 999px; color: var(--kordyn-v2-mint); font-size: 8px; font-style: normal; }
+.kordynV2ConfigComparison { min-width: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.kordynV2ConfigComparison > span { min-width: 0; padding: 9px 11px; display: grid; gap: 4px; border: 1px solid rgba(74, 129, 248, .26); border-radius: 8px; background: rgba(21, 50, 96, .22); }
+.kordynV2ConfigComparison > span:last-child { border-color: rgba(32, 215, 148, .19); background: rgba(12, 50, 43, .22); }
+.kordynV2ConfigComparison small { color: var(--kordyn-v2-muted); font-size: 8px; }
+.kordynV2ConfigComparison strong { overflow: hidden; color: var(--kordyn-v2-cobalt-soft); font: 10px var(--kordyn-v2-mono); text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2ConfigComparison > span:last-child strong { color: var(--kordyn-v2-mint); }
+.kordynV2ConfigurationEditor > form { min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) 48px; gap: 12px; }
+.kordynV2ConfigurationFields { min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 12px; }
+.kordynV2ConfigurationEditor form > label, .kordynV2ConfigurationFields > label { min-width: 0; display: grid; align-content: start; gap: 6px; }
+.kordynV2ConfigurationEditor label > span { color: var(--kordyn-v2-text-soft); font-size: 9px; }
+.kordynV2ConfigurationEditor label > small { color: var(--kordyn-v2-muted); font-size: 7px; }
+.kordynV2ConfigurationEditor input, .kordynV2ConfigurationEditor select, .kordynV2ConfigurationEditor output { width: 100%; min-width: 0; min-height: 38px; padding: 0 10px; border: 1px solid rgba(116, 145, 188, .25); border-radius: 7px; color: var(--kordyn-v2-text-soft); background: rgba(5, 14, 25, .76); font: 9px var(--kordyn-v2-mono); }
+.kordynV2ConfigurationEditor output { display: flex; align-items: center; color: var(--kordyn-v2-mint); }
+.kordynV2ConfigurationEditor input:focus, .kordynV2ConfigurationEditor select:focus { border-color: var(--kordyn-v2-cobalt); outline: 2px solid rgba(52, 120, 255, .26); outline-offset: 1px; }
+.kordynV2ConfigurationEditor > form > footer { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid rgba(126, 150, 184, .12); }
+.kordynV2ConfigurationEditor > form > footer span { min-width: 0; display: flex; align-items: center; gap: 7px; color: var(--kordyn-v2-mint); font-size: 8px; }
+.kordynV2ConfigurationEditor > form > footer button, .kordynV2ConfigRuleRows article > button, .kordynV2InlineTest { min-height: 34px; padding: 0 11px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid rgba(74, 129, 248, .42); border-radius: 8px; color: #e4ecff; background: linear-gradient(180deg, rgba(45, 111, 255, .84), rgba(27, 77, 188, .9)); cursor: pointer; font-size: 8px; }
+.kordynV2ConfigurationEditor > form > footer button:disabled, .kordynV2ConfigRuleRows article > button:disabled { opacity: .45; }
+.kordynV2ConfigRuleRows { min-height: 0; overflow-y: auto; }
+.kordynV2ConfigRuleRows article { min-width: 0; min-height: 56px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 9px; border-bottom: 1px solid rgba(126, 150, 184, .11); }
+.kordynV2ConfigRuleRows article span { min-width: 0; display: grid; gap: 3px; }
+.kordynV2ConfigRuleRows article strong, .kordynV2ConfigRuleRows article small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2ConfigRuleRows article strong { font-size: 9px; }
+.kordynV2ConfigRuleRows article small { color: var(--kordyn-v2-muted); font-size: 7px; }
+.kordynV2MaskedField { align-content: center !important; }
+.kordynV2MaskedField output { letter-spacing: .12em; }
+.kordynV2ConfigAction { padding: 14px; display: flex; align-items: center; gap: 12px; border: 1px solid rgba(126, 150, 184, .14); border-radius: 9px; color: var(--kordyn-v2-cobalt-soft); background: rgba(8, 22, 38, .64); }
+.kordynV2ConfigAction span { display: grid; gap: 4px; }
+.kordynV2ConfigAction strong { color: var(--kordyn-v2-text-soft); font-size: 10px; }
+.kordynV2ConfigAction small { color: var(--kordyn-v2-muted); font-size: 8px; }
+.kordynV2InlineTest { justify-self: start; }
+.kordynV2ConfigurationInspector { min-width: 0; min-height: 0; padding: 12px; display: grid; grid-template-rows: 48px auto auto 1fr; align-content: start; gap: 12px; overflow-y: auto; border-left: 1px solid var(--kordyn-v2-border); background: rgba(4, 13, 24, .9); }
+.kordynV2ConfigurationInspector > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--kordyn-v2-cobalt-soft); }
+.kordynV2ConfigurationInspector > header span { min-width: 0; display: grid; gap: 3px; }
+.kordynV2ConfigurationInspector > header strong { color: var(--kordyn-v2-text-soft); font-size: 11px; }
+.kordynV2ConfigurationInspector > header small { color: var(--kordyn-v2-muted); font-size: 7px; }
+.kordynV2ConfigurationInspector > section { padding: 10px; display: grid; gap: 8px; border: 1px solid rgba(126, 150, 184, .13); border-radius: 9px; background: rgba(8, 22, 38, .62); }
+.kordynV2ConfigurationInspector > section > strong { font-size: 9px; }
+.kordynV2ConfigurationInspector dl { margin: 0; display: grid; gap: 7px; }
+.kordynV2ConfigurationInspector dl > div { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.kordynV2ConfigurationInspector dt { color: var(--kordyn-v2-muted); font-size: 7px; }
+.kordynV2ConfigurationInspector dd { margin: 0; overflow: hidden; max-width: 100px; color: var(--kordyn-v2-text-soft); font: 8px var(--kordyn-v2-mono); text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2ConfigurationInspector p { margin: 0; display: flex; align-items: center; gap: 7px; color: var(--kordyn-v2-mint); font-size: 8px; }
+.kordynV2ConfigurationInspector p[data-tone="warning"] { color: var(--kordyn-v2-amber); }
+.kordynV2ConfigurationInspector footer { align-self: end; color: var(--kordyn-v2-muted); font-size: 8px; line-height: 1.5; }
+
 .kordynV2GovernanceMobile { min-width: 0; min-height: 100%; padding: 12px 12px 24px; display: grid; align-content: start; gap: 12px; color: var(--kordyn-v2-text); }
 .kordynV2GovernanceMobile > header h2, .kordynV2GovernanceMobile > header p { margin: 0; }
 .kordynV2GovernanceMobile > header h2 { font-size: 25px; letter-spacing: -.035em; }
@@ -283,6 +348,19 @@
 .kordynV2MobileAuditIntegrity { padding: 14px; }
 .kordynV2MobileAuditIntegrity strong { color: var(--kordyn-v2-mint); }
 .kordynV2MobileAuditIntegrity small { color: var(--kordyn-v2-muted); }
+.kordynV2MobileConfigurationRegistry { display: grid; gap: 7px; }
+.kordynV2MobileConfigurationRegistry > button { min-width: 0; min-height: 62px; padding: 10px 12px; display: grid; grid-template-columns: 22px minmax(0, 1fr) 18px; align-items: center; gap: 10px; border: 1px solid var(--kordyn-v2-border); border-radius: 12px; color: var(--kordyn-v2-cobalt-soft); background: rgba(8, 18, 32, .86); cursor: pointer; text-align: left; }
+.kordynV2MobileConfigurationRegistry button span { min-width: 0; display: grid; gap: 4px; }
+.kordynV2MobileConfigurationRegistry button strong, .kordynV2MobileConfigurationRegistry button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2MobileConfigurationRegistry button strong { color: var(--kordyn-v2-text-soft); font-size: 13px; }
+.kordynV2MobileConfigurationRegistry button small { color: var(--kordyn-v2-muted); font-size: 10px; }
+.kordynV2MobileConfigForbidden { padding: 12px 14px; border: 1px solid rgba(244, 173, 86, .35); border-radius: 11px; color: var(--kordyn-v2-amber); background: rgba(45, 30, 10, .42); font-size: 12px; }
+.kordynV2MobileBack { justify-self: start; min-height: 44px; padding: 0 10px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--kordyn-v2-border); border-radius: 9px; color: var(--kordyn-v2-text-soft); background: rgba(8, 18, 32, .86); }
+.kordynV2GovernanceMobile > .kordynV2ConfigurationEditor { padding: 0; grid-template-rows: auto 68px auto; overflow: visible; }
+.kordynV2GovernanceMobile .kordynV2ConfigurationEditor > form { min-height: auto; grid-template-rows: auto 56px; }
+.kordynV2GovernanceMobile .kordynV2ConfigurationFields { grid-template-columns: 1fr; }
+.kordynV2GovernanceMobile .kordynV2ConfigurationEditor input, .kordynV2GovernanceMobile .kordynV2ConfigurationEditor select, .kordynV2GovernanceMobile .kordynV2ConfigurationEditor output { min-height: 44px; font-size: 12px; }
+.kordynV2GovernanceMobile .kordynV2ConfigurationEditor > form > footer button { min-height: 44px; }
 
 @media (max-width: 1240px) and (min-width: 721px) {
   .kordynV2BoundaryLead { grid-template-columns: minmax(0, 1.42fr) minmax(220px, .7fr); }
@@ -293,6 +371,8 @@
   .kordynV2OperationsMain { grid-template-columns: minmax(0, 1.18fr) minmax(280px, .82fr); }
   .kordynV2TaskRunEmbedded { grid-template-columns: 1fr; overflow-y: auto; }
   .kordynV2OperationsEvidence > div { grid-template-columns: repeat(2, 1fr); }
+  .kordynV2ConfigurationWorkbench { grid-template-columns: 170px minmax(390px, 1fr) 218px; }
+  .kordynV2ConfigurationEditor { padding-inline: 12px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

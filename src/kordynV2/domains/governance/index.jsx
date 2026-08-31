@@ -12,10 +12,14 @@ import { MobileNotificationScreen } from "./MobileNotificationScreen.jsx";
 import { MobileAuditScreen } from "./MobileAuditScreen.jsx";
 import { MobileRecoveryScreen } from "./MobileRecoveryScreen.jsx";
 import { MobileOperationsScreen } from "./MobileOperationsScreen.jsx";
+import { ConfigurationWorkspace } from "./ConfigurationWorkspace.jsx";
+import { MobileConfigurationScreen } from "./MobileConfigurationScreen.jsx";
+import { buildConfigurationModel } from "./configurationModel.js";
 import "./governance.css";
 
 export default function GovernanceDomain({ device, workspaceId, data, actions, actionsDisabled = false, selection, onSelect, onNavigate }) {
   const model = useMemo(() => buildGovernanceDomainModel(data), [data]);
+  const configurationModel = useMemo(() => buildConfigurationModel(data), [data]);
   const shared = { model, actions, actionsDisabled, selection, onSelect, onNavigate };
   if (workspaceId === "overview") return device === "mobile" ? <MobileBoundaryScreen {...shared} /> : <BoundaryWorkspace {...shared} />;
   if (workspaceId === "event-inputs") return device === "mobile" ? <MobileEventInputScreen {...shared} /> : <EventInputWorkspace {...shared} />;
@@ -23,6 +27,7 @@ export default function GovernanceDomain({ device, workspaceId, data, actions, a
   if (workspaceId === "notifications") return device === "mobile" ? <MobileNotificationScreen {...shared} /> : <NotificationWorkspace {...shared} />;
   if (workspaceId === "audit") return device === "mobile" ? <MobileAuditScreen {...shared} /> : <AuditWorkspace {...shared} />;
   if (workspaceId === "recovery") return device === "mobile" ? <MobileRecoveryScreen {...shared} /> : <RecoveryWorkspace {...shared} />;
+  if (workspaceId === "configuration") return device === "mobile" ? <MobileConfigurationScreen model={configurationModel} actions={actions} /> : <ConfigurationWorkspace model={configurationModel} actions={actions} />;
   return null;
 }
 
@@ -40,3 +45,5 @@ export { MobileTaskRunScreen } from "./MobileTaskRunScreen.jsx";
 export { MobileNotificationScreen } from "./MobileNotificationScreen.jsx";
 export { MobileAuditScreen } from "./MobileAuditScreen.jsx";
 export { MobileRecoveryScreen } from "./MobileRecoveryScreen.jsx";
+export { ConfigurationWorkspace } from "./ConfigurationWorkspace.jsx";
+export { MobileConfigurationScreen } from "./MobileConfigurationScreen.jsx";

@@ -1,0 +1,3 @@
+import { EditorFrame } from "./editorShared.jsx";
+export function EventSourceEditor({ model = [], actions, actionsDisabled = false }) { return <EditorFrame id="event-sources" title="事件源" description="配置来源、启停与连接测试；运行健康在事件输入查看。" target={`${model.filter((row) => row.enabled !== false).length} enabled`} current={`${model.length} configured`} actionsDisabled={actionsDisabled} onSubmit={(event) => event.preventDefault()}><div className="kordynV2ConfigRuleRows">{model.map((row) => <article key={row.id}><span><strong>{row.name || row.id}</strong><small>{row.status || row.lastStatus || "unknown"}</small></span><button type="button" disabled={actionsDisabled} onClick={() => actions?.testEventSource?.(row.id)}>测试</button></article>)}</div></EditorFrame>; }
+
