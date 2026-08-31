@@ -4,7 +4,7 @@
   "sourceManifest": "docs/kordyn-v2-approved-concept-manifest.md",
   "captureEvidence": ".impeccable/review/kordyn-v2/governance/capture-evidence.json",
   "productionSourceCommit": "d85e20b0d256b93e5ea0e7ab9b4b857194d41ed4",
-  "captureTestSourceCommit": "6b415020a4598728083111f869329dc24ee9ada5",
+  "captureTestSourceCommit": "dab25ec040a1107713ffb58c065265dba3ec177a",
   "outputRoot": ".impeccable/review/kordyn-v2/governance-compare",
   "counts": {
     "concepts": 4,
@@ -87,18 +87,18 @@
         },
         "overlay50": {
           "file": "desktop-governance-boundary--1440x900--overlay.png",
-          "sha256": "59523c10c3e4b33575c1f3da581e9c7c54731814c39503eae55ce0b52ebc5758"
+          "sha256": "2e6dc2abd83f7b8ae58c59a6e5e47cf6c958de28b9a339d9e029b9d94d1848cf"
         },
         "absoluteDifference": {
           "file": "desktop-governance-boundary--1440x900--difference.png",
-          "sha256": "974ec222f7815c420f4ae60c59fa39fa976dfecee244ed80cf5e79d8ab495c60"
+          "sha256": "9d45c6519cd913510aee785b3a7929948c48fdb38c7f7f8f27b1cf1724e66257"
         },
         "geometry": {
           "file": "desktop-governance-boundary--1440x900--geometry.json",
-          "sha256": "21ec20347bc5c915050c44681274906b6dd94af02c9bc7d255307d77bf3f017b"
+          "sha256": "da203c214a02c1bc6e17fe594fc679978286fd6d2cc39dafcf87ae13e7952a87"
         }
       },
-      "pixelDifference": 0.07059307371096588,
+      "pixelDifference": 0.07059446562575647,
       "releaseVerdict": "human region review required"
     },
     {
@@ -113,18 +113,18 @@
         },
         "overlay50": {
           "file": "desktop-governance-boundary--1180x800--overlay.png",
-          "sha256": "9536b59dd41b2115dabe36e61fbd87d06347818b9cb70198584b597ad4d1a9a6"
+          "sha256": "cdea476f37457de21b19ecb0b9d15d0545ec8eb93489b15a4f67942ccebaf24c"
         },
         "absoluteDifference": {
           "file": "desktop-governance-boundary--1180x800--difference.png",
-          "sha256": "bfd9fc6cde6a8bc39f9428c77b591f5a7f0dee524b84626a8f6eb33c1b76d304"
+          "sha256": "bbfa1dbaa3be31f540effaa2ac115a13e94ac40151e3eb53408247d8ddefc28b"
         },
         "geometry": {
           "file": "desktop-governance-boundary--1180x800--geometry.json",
-          "sha256": "99b0b542e83108e1007ba3c72378c4ccdccf3bcb22717c62452cb409ad0e86ce"
+          "sha256": "0d9f2e7b98abd81ee0089910ebbf922cd82fc14bc967c6379f1bd96e23abd613"
         }
       },
-      "pixelDifference": 0.07411762905727264,
+      "pixelDifference": 0.07411760967098704,
       "releaseVerdict": "human region review required"
     },
     {
@@ -139,18 +139,18 @@
         },
         "overlay50": {
           "file": "desktop-governance-operations--1440x900--overlay.png",
-          "sha256": "7eb3e59268d8a88943315fbd746321cb93e1115b548cbefb963b31a0c3374bfa"
+          "sha256": "1b2e65b71877e6b78f39e978c47d59cfc9790d4bf088bc361dd24dc91e144d12"
         },
         "absoluteDifference": {
           "file": "desktop-governance-operations--1440x900--difference.png",
-          "sha256": "d1ff1d7caf91436aa6f4737e30dc65492ecd1863b6b821f2533ec0609d33f485"
+          "sha256": "4eab4f7481452f45028c3ede343ca284b5be632a712a1e32893ec33746516268"
         },
         "geometry": {
           "file": "desktop-governance-operations--1440x900--geometry.json",
-          "sha256": "8d2c59d057ac2dac12a3c18c05b44cb516fc9884fb529d0f802b8b498c6800e1"
+          "sha256": "10e0d96dffe7d3c27af505860d66877a0714e75b853303bf0dd65cd76ffb0720"
         }
       },
-      "pixelDifference": 0.05741597877834261,
+      "pixelDifference": 0.057417384814007905,
       "releaseVerdict": "human region review required"
     },
     {
@@ -165,18 +165,18 @@
         },
         "overlay50": {
           "file": "desktop-governance-operations--1180x800--overlay.png",
-          "sha256": "625215cb718fe04d04fa4390d0cc91d5954ec05001ff9522553aaef7042c83f3"
+          "sha256": "f58c01ee89c5ad995455e0c4709e9f20a610ed7a4fa7af84c38b1490affad2b6"
         },
         "absoluteDifference": {
           "file": "desktop-governance-operations--1180x800--difference.png",
-          "sha256": "8396980e06727b0dc9c3879a07ee0b22852b379680bffc0c9fb74f55ea65bee2"
+          "sha256": "81018e90d476c8b2fc0c31ce1b5667887f937c06f61e027eeedea817c0112d90"
         },
         "geometry": {
           "file": "desktop-governance-operations--1180x800--geometry.json",
-          "sha256": "94de885aba4ef015064e476d057d26bbcd302064b5a5f4337dcdfaed63d63788"
+          "sha256": "1e854bf95be38fb509d2d875d3cdb24dcc74141467bc7bf5798aa5930f21b6df"
         }
       },
-      "pixelDifference": 0.059943565137919576,
+      "pixelDifference": 0.05994315941065692,
       "releaseVerdict": "human region review required"
     },
     {
@@ -199,7 +199,7 @@
         },
         "geometry": {
           "file": "desktop-governance-configuration--1440x900--geometry.json",
-          "sha256": "300e73409f1cb76da7055e3df801f713e887e905594f88818b4c8f4bd7422acd"
+          "sha256": "1931a7e5ff5428f21bc4ff7dce444e633b1d9f4dcc69276964e00b58a51d60ed"
         }
       },
       "pixelDifference": 0.06722036936173646,
@@ -225,7 +225,7 @@
         },
         "geometry": {
           "file": "desktop-governance-configuration--1180x800--geometry.json",
-          "sha256": "2da51ac25bf3c0abdc54f7f2c00511d011121fd3e3d12709922f2c69bf09a7b4"
+          "sha256": "ee55f2468c99c934360ee8a5367be0639237ddc79a96c6b339eb53e8619c2d22"
         }
       },
       "pixelDifference": 0.07093185859089397,
@@ -251,7 +251,7 @@
         },
         "geometry": {
           "file": "mobile-system-governance--390x844--geometry.json",
-          "sha256": "67e568c4aef16aadc46004c61821d2f820e8f27033da8bad8b6e0e02eaaeb023"
+          "sha256": "5318b3c250c49a5f0d1428c7b52895e951af5d49692dee9852586fb6c56fb263"
         }
       },
       "pixelDifference": 0.09411759543206434,
@@ -277,7 +277,7 @@
         },
         "geometry": {
           "file": "mobile-system-governance--430x932--geometry.json",
-          "sha256": "c61c7e4f8312b78ff43454232df8fd132843e0b989b1d9722921c345057c88af"
+          "sha256": "0022a32414751f96d2b5f8f480c02ed8ab6ece48f7e69220f8fb65b2c6c174a6"
         }
       },
       "pixelDifference": 0.09384568013584646,

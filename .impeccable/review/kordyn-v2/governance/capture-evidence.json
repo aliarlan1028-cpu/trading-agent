@@ -3,7 +3,7 @@
   "runner": "tests/run-kordyn-v2-governance-browser.mjs",
   "fixture": "tests/kordyn-v2-governance-browser.jsx",
   "productionSourceCommit": "d85e20b0d256b93e5ea0e7ab9b4b857194d41ed4",
-  "captureTestSourceCommit": "6b415020a4598728083111f869329dc24ee9ada5",
+  "captureTestSourceCommit": "dab25ec040a1107713ffb58c065265dba3ec177a",
   "captures": [
     {
       "file": "desktop-governance-boundary--1440x900.png",
@@ -28,7 +28,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "e8dee0ccbd67e8f427ca35dde0cbce350923edaab0424571fc96a2a93a7b5b92"
+      "sha256": "7b0d8d4007b7e43c74117a7744c373ba9ba2760cf8ec376c6a9b6ffe7bf0613a"
     },
     {
       "file": "desktop-governance-boundary--1180x800.png",
@@ -53,7 +53,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "5fdaf0350a5a6d1300498246c292252b39a4ab3134d9234d3c120cae7d26b92b"
+      "sha256": "6e30437e4869f1e49fbdb91d7afad56c5239fee8824230778fd45b423d3b2389"
     },
     {
       "file": "desktop-governance-operations--1440x900.png",
@@ -78,7 +78,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "0f3af44c0272df5dbe4af9fc5d1f2681e88ec13e650528c9bacfcf9c4496a72c"
+      "sha256": "b48b4a2de121fc1cd99b0015f27a8962450a027b9da6df72671500d0becb52ea"
     },
     {
       "file": "desktop-governance-operations--1180x800.png",
@@ -103,7 +103,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "639ddb9bb7cec16add617dcbb37d0ba408929995177cc3c7b4373a79cc416626"
+      "sha256": "f13c965416a50c34dae0499e3a8a86598a9904bb023cc7bcf0be7ab6b9cfae45"
     },
     {
       "file": "desktop-governance-configuration--1440x900.png",
@@ -178,7 +178,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "96e7bc7785c1d8ff5a4488c71d10b993372a0289584648acabc2ab5a796cbac2",
+      "sha256": "3324d291b02aa1ffe1f4aa97d09ea342fc80cd5c605d5b46d7368f6a46a1bb7d",
       "dangerConfirmation": "kill-switch",
       "noActionAccepted": true
     },

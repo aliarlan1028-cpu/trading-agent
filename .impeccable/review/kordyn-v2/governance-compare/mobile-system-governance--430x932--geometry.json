@@ -17,7 +17,7 @@
     "runner": "tests/run-kordyn-v2-governance-browser.mjs",
     "fixture": "tests/kordyn-v2-governance-browser.jsx",
     "productionSourceCommit": "d85e20b0d256b93e5ea0e7ab9b4b857194d41ed4",
-    "captureTestSourceCommit": "6b415020a4598728083111f869329dc24ee9ada5",
+    "captureTestSourceCommit": "dab25ec040a1107713ffb58c065265dba3ec177a",
     "device": "mobile",
     "domainId": "governance",
     "workspaceId": "runs"

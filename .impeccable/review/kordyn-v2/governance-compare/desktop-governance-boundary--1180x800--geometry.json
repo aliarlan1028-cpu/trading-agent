@@ -13,11 +13,11 @@
   },
   "actual": {
     "file": "desktop-governance-boundary--1180x800.png",
-    "sha256": "5fdaf0350a5a6d1300498246c292252b39a4ab3134d9234d3c120cae7d26b92b",
+    "sha256": "6e30437e4869f1e49fbdb91d7afad56c5239fee8824230778fd45b423d3b2389",
     "runner": "tests/run-kordyn-v2-governance-browser.mjs",
     "fixture": "tests/kordyn-v2-governance-browser.jsx",
     "productionSourceCommit": "d85e20b0d256b93e5ea0e7ab9b4b857194d41ed4",
-    "captureTestSourceCommit": "6b415020a4598728083111f869329dc24ee9ada5",
+    "captureTestSourceCommit": "dab25ec040a1107713ffb58c065265dba3ec177a",
     "device": "desktop",
     "domainId": "governance",
     "workspaceId": "overview"
@@ -40,12 +40,12 @@
   },
   "diagnostics": {
     "screenshotStructure": {
-      "variance": 0.011393789304388668,
-      "edgeDensity": 0.02549477750042671,
+      "variance": 0.011393884334732688,
+      "edgeDensity": 0.025495430560145794,
       "nearFlat": false
     },
     "pixelDifference": {
-      "metric": 0.07411762905727264,
+      "metric": 0.07411760967098704,
       "role": "diagnostic only"
     },
     "contentAwareComparator": {
@@ -60,11 +60,11 @@
     },
     "overlay50": {
       "file": "desktop-governance-boundary--1180x800--overlay.png",
-      "sha256": "9536b59dd41b2115dabe36e61fbd87d06347818b9cb70198584b597ad4d1a9a6"
+      "sha256": "cdea476f37457de21b19ecb0b9d15d0545ec8eb93489b15a4f67942ccebaf24c"
     },
     "absoluteDifference": {
       "file": "desktop-governance-boundary--1180x800--difference.png",
-      "sha256": "bfd9fc6cde6a8bc39f9428c77b591f5a7f0dee524b84626a8f6eb33c1b76d304"
+      "sha256": "bbfa1dbaa3be31f540effaa2ac115a13e94ac40151e3eb53408247d8ddefc28b"
     }
   },
   "releaseVerdict": "human region review required"

@@ -3,7 +3,7 @@
   "runner": "tests/run-kordyn-v2-governance-browser.mjs",
   "fixture": "tests/kordyn-v2-governance-browser.jsx",
   "productionSourceCommit": "d85e20b0d256b93e5ea0e7ab9b4b857194d41ed4",
-  "captureTestSourceCommit": "6b415020a4598728083111f869329dc24ee9ada5",
+  "captureTestSourceCommit": "dab25ec040a1107713ffb58c065265dba3ec177a",
   "states": [
     {
       "file": "state-loading--1440x900.png",
@@ -84,7 +84,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "fe1957b3de4fc740e403ff587384786a31881f8e52cb3bf47d176a93c4644d9a",
+      "sha256": "d8376dd07d1ab563f7a5639c1a2b96372b2bf01f36c71167beac866de91d650e",
       "state": "processing",
       "semanticSurface": "Task run awaiting server result",
       "structuralOnly": false
@@ -140,7 +140,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "75e9fe4eb11435bacb1fdb3e24280a35eb1141cb81194d5a581fc22ff2a7c689",
+      "sha256": "9d6c8b91c81cea2b7abed2abac65fa692561aa5f0c200bdf85505f81a9ff23b7",
       "state": "degraded",
       "semanticSurface": "degraded last-valid Boundary facts",
       "structuralOnly": false
