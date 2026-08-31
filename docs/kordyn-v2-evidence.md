@@ -7,9 +7,9 @@
 - Current Account detector-record commit: `8e300e461402674090f8a7f46e98b2bb4032eb2f`.
 - Current Account evidence commit: `414ab7d343606b501781ebcc0639ae20c6a5c788`.
 - Current Intelligent Assets product/capture source: `801a27abceb54ac8515dd6735f0f24aebfcd215c`.
-- Current Governance product source: `d85e20b0d256b93e5ea0e7ab9b4b857194d41ed4`.
-- Current Governance capture-test source: `dab25ec040a1107713ffb58c065265dba3ec177a`.
-- Current Governance evidence commit: `56371e8ad13e2598cd1412a90b868ffedecae46f`.
+- Current Governance product source: `946f2552dd7ff4e5fb00856ed5f5888e3b8554d2`.
+- Current Governance capture-test source: `b2f8cdb3bc41b6f5f981c9247c48cee60c5e261c`.
+- Current Governance evidence commit: `6f6b3ddf73e72578ed57c6742df79244193eec0f`.
 - Current comparison scope: Foundation Plan 01 shared shell plus completed Plan 02 AI, Plan 03 Account Position, Plan 04 Intelligent Assets, and Plan 05 System Governance domains.
 - Completed governed concept comparisons: `15 / 15`.
 - Pending domain implementation: `0 / 15`.
@@ -17,7 +17,7 @@
 
 ## Plan 05 System Governance checkpoint — Task 5
 
-Task 5 closes the System Governance state/capability/browser/visual gate against product source `d85e20b0d256b93e5ea0e7ab9b4b857194d41ed4` and capture-test source `dab25ec040a1107713ffb58c065265dba3ec177a`, with final evidence committed at `56371e8ad13e2598cd1412a90b868ffedecae46f`. The browser runner mounts the real `KordynV2Root`, lazy `domains/governance/index.jsx`, real Desktop and APP presenters, canonical selection, shared Context/Proof, `ConfirmHost`, and the existing `createGovernanceActions` authority boundary. Its fixture is production-shaped and credential-free; protected requests terminate in a fixture-local action ledger and no production endpoint is called.
+Task 5 closes the System Governance state/capability/browser/visual gate against product source `946f2552dd7ff4e5fb00856ed5f5888e3b8554d2` and capture-test source `b2f8cdb3bc41b6f5f981c9247c48cee60c5e261c`, with final evidence committed at `6f6b3ddf73e72578ed57c6742df79244193eec0f`. The browser runner mounts the real `KordynV2Root`, lazy `domains/governance/index.jsx`, real Desktop and APP presenters, canonical selection, shared Context/Proof, `ConfirmHost`, and the existing `createGovernanceActions` authority boundary. Its fixture is production-shaped and credential-free; protected requests terminate in a fixture-local action ledger and no production endpoint is called.
 
 ### System Governance capability ownership — 29 / 29
 
@@ -33,7 +33,7 @@ The implementation does not invent write authority. Risk posture, service health
 
 ### System Governance state evidence — 13 / 13
 
-State sidecar: `.impeccable/review/kordyn-v2/governance/state-evidence.json`, SHA-256 `6218a7e133f67ebaf4d93b0b5b5fd2f10def54beb58b555d6a651c7b4aedbe0f`.
+State sidecar: `.impeccable/review/kordyn-v2/governance/state-evidence.json`, SHA-256 `a2c72372ce3ebff84fd0868b53fb3bf208d560993736ad3b43d3dbdcef3cc6a7`.
 
 | State | Evidence truth |
 | --- | --- |
@@ -47,42 +47,42 @@ State sidecar: `.impeccable/review/kordyn-v2/governance/state-evidence.json`, SH
 | `disabled` | A disabled Task action remains distinct from forbidden or failed. |
 | `approval` | Confirmation is required; execution is not implied. |
 | `partial` | Completed and failed effects remain separate. |
-| `no-result` | No matching result remains explicit. |
+| `no-result` | A real Audit query filters an authoritative two-row ledger to `0 / 2` matches; the source ledger is not replaced by an empty fixture. |
 | `long-content` | Audit evidence remains vertically readable without horizontal overflow. |
 | `large-list` | Large Registry stays bounded and discloses list truth. |
 
 ### Real navigation, selection, and authority evidence
 
-Capture sidecar: `.impeccable/review/kordyn-v2/governance/capture-evidence.json`, SHA-256 `51abec358150ae9aac99f0e37d42ca4f8a3726f343bab36a0438bbfac7913f19`.
+Capture sidecar: `.impeccable/review/kordyn-v2/governance/capture-evidence.json`, SHA-256 `10b640196ff21e963125b87fcf13a63cd406e70d73f85ee8d7ec55a03d474614`.
 
-- `13` real surface screenshots and `13` real state screenshots cover `1440x900`, `1180x800`, `390x844`, and `430x932`; every capture reports zero document overflow. The thirteenth surface is the real emergency-stop confirmation layer.
+- `15` real surface screenshots and `13` real state screenshots cover `1440x900`, `1180x800`, `390x844`, and `430x932`; every capture reports zero document overflow. The surface set includes the real emergency-stop confirmation layer and separate APP content-closed captures at both widths so the operating boundary is inspectable independently of the support sheet.
 - Trusted production-component clicks cover Mandate, Risk incident, Event, Task, Agent run, Notification, Audit log, Recovery, and Event source Configuration record. APP additionally clicks Task, Agent run, and Recovery on the real `390px` shell. All `12` accepted selections change Root selected ID/type and visible Context/Proof identity to the same canonical object.
 - APP local navigation is exactly four destinations: `overview`, `runs`, `audit`, and `configuration`. Event Input remains a deep flow under Overview; Notification and Recovery remain deep flows under Runs. Both `390px` and `430px` paths preserve route/workspace identity and avoid duplicated inner navigation.
 - Task run, notification mark-read, reconcile, scheduler recovery, and live-trading configuration save use their deployed endpoints through the existing authority wrapper. Pending, failure, partial, and deployed success response shapes remain authoritative; the evidence ledger records fixture-local writes only and zero production writes.
-- APP AI support opens as the real read-only sheet at both widths. Governance CSS is present on real domain captures, while legacy authenticated product styles are absent.
+- APP AI support opens as the real read-only sheet at both widths. Before it opens, the browser scrolls the real Governance surface so degraded Event Input truth and Emergency Stop remain visible above the compact sheet; separate closed-sheet captures retain the complete page evidence. Governance CSS is present on real domain captures, while legacy authenticated product styles are absent.
 
 ### Captures, comparison, and human region review
 
-Capture root: `.impeccable/review/kordyn-v2/governance/` (`28` files: 26 PNGs and two sidecars). Comparison root: `.impeccable/review/kordyn-v2/governance-compare/` (`33` files: 24 PNGs, eight geometry ledgers, and one index). Comparison index SHA-256: `a590550318fa6b4547fe3b0725f5b9ad4ba2a49bade3733ccaac2c5f05d36c88`.
+Capture root: `.impeccable/review/kordyn-v2/governance/` (`30` files: 28 PNGs and two sidecars). Comparison root: `.impeccable/review/kordyn-v2/governance-compare/` (`33` files: 24 PNGs, eight geometry ledgers, and one index). Comparison index SHA-256: `e1238f14532353a4d92bada880bbfc06bfcf3b2c6902abb58fb550d8cbd83b46`.
 
 | Concept | Actual SHA-256 (`1440/390`) | Actual SHA-256 (`1180/430`) | Pixel MAE | Region verdict |
 | --- | --- | --- | --- | --- |
-| Desktop Governance Boundary | `d961a9e5ff8b0c4160ad3f61eb94c0826397b4d98ed911838c254d0463fb2dc8` | `968f3f91e728a906a975fa61fb18baa660e27e94185d939d94308e95d6671c50` | `0.070593 / 0.074117` | risk posture, selected/effective mode, Mandate, explicit dangerous controls, permission boundary, Rule and Event context retained |
-| Desktop Governance Operations | `b652e0d42c0d1f0b121bc8bcd683499c03921320367c8df819cdbca4db871fa8` | `f11429fbcaf0079bfa62a167c06201e015007eba22bb4a8d6def7af607f94102` | `0.057416 / 0.059942` | full-width service topology, Task/Run ledger, current Trace, Event Input, Audit, and Recovery retained |
-| Desktop Governance Configuration | `bc91154ea81f41c3d7270dd1281ade6ccc5baf79ac3f6517680d764b4648a160` | `928317d37f8a303b4d4c873f149dfd0f4aadd2d371ddd9551ffe2f1726faff99` | `0.067220 / 0.070932` | centralized Registry, selected/effective truth, per-target permission, confirmation, result, audit, and non-overlapping `1180px` form geometry retained |
-| APP System Governance | `f111eca84355baea5b826fcd9d03a4c5a51b1392b62925858ea5d5db34c6ae33` | `53563b17be535f43ff6580f5a532bf75179a2b273c6fbce2dcb388f358255986` | `0.094118 / 0.093846` | four-destination touch model, selectable Task/Agent run/Recovery, deep flows, Context/Proof, and read-only AI support retained |
+| Desktop Governance Boundary | `aad71dcba75b2a7637f0fa38c72274cf122c665dc859e754c64cf72300d0b546` | `d5ec79109295f8cbccd027d028b533c6d73f09cce8fe3f42b61782fbb14dd2c1` | `0.071736 / 0.073911` | selected/effective mode, readiness, Rule/health/incident/recovery truth, Audit ledger, dangerous controls, permission boundary, and read-only AI support retained |
+| Desktop Governance Operations | `52c09dd532eea687eeb14e390c40b76d2e06c9255a00c878985dd62447bfd534` | `e277954269e080c38ee4ae2bb00e14e05714b5951f85b289c97b321106884fda` | `0.058712 / 0.059209` | branched service topology, Task/Run Registry, real staged Run trace, current versus last-valid Recovery truth, Event Input, attention queue, and Audit retained |
+| Desktop Governance Configuration | `f284de05f42927ea5552e30a3f68c9e12630dbe6e0851141ef671d9e4d31c432` | `87893010eab65bfe6684f9a2cecef4de9d34632f54e1d7061c930676fad70810` | `0.066694 / 0.070013` | centralized Registry, deployed runtime keys, lifecycle/RBAC/schema/risk preflight, selected/effective truth, confirmation/result/audit, and non-overlapping `1180px` geometry retained |
+| APP System Governance | `5cbac9e6182a5f3242218c9b27f079280981aacc78324f214f5d5cbf9b9d156c` | `d7e4cd13c706ce4c97d0150528111ccf46e642fc0e7d9428b3a7a4c29283c0db` | `0.092144 / 0.093926` | four-destination touch model, selectable Task/Agent run/Recovery, deep flows, Context/Proof, degraded Event Input and stop boundary visible above the compact read-only AI support sheet; separate closed-sheet evidence preserves the complete page |
 
-Original-size review opened all eight core actuals and their overlay comparisons, the real danger confirmation, plus stale, failed, and forbidden state captures. The `1180px` Operations topology remains one readable row without clipping; a DOM geometry assertion proves the `1180px` Configuration fields do not overlap. The APP shell uses exactly four local destinations; the lower read-only AI support sheet, adverse states, and long content remain readable with no horizontal overflow. The implementation keeps the approved information topology and device-specific composition while using production-shaped bounded facts and explicit `Unavailable` values. Pixel MAE is diagnostic only.
+Original-size review opened all eight core actuals and their overlay comparisons, both APP content-closed actuals, the real danger confirmation, the real Audit no-result state, plus stale, failed, and forbidden state captures. The `1180px` Operations topology remains one readable row without clipping; a DOM geometry assertion proves the `1180px` Configuration fields do not overlap. The APP shell uses exactly four local destinations; the lower read-only AI support sheet, the independent full Governance content, adverse states, and long content remain readable with no horizontal overflow. The implementation keeps the approved information topology and device-specific composition while using production-shaped bounded facts and explicit `Unavailable` values. Pixel MAE is diagnostic only.
 
 ### Fresh Plan 05 Task 5 gates
 
-- Focused Governance/model/state/performance/comparison tests: `42 / 42`, exit `0`.
-- Canonical Governance browser gate: exit `0`; product source `d85e20b0d256b93e5ea0e7ab9b4b857194d41ed4`; capture-test source `dab25ec040a1107713ffb58c065265dba3ec177a`; captures `13`; states `13`; navigation checks `14`; interactions `12`; action modes `4`; Governance CSS `true`; legacy authenticated CSS `false`.
+- Focused Governance/model/action/workspace/state/finish/performance tests: `52 / 52`, exit `0`.
+- Canonical Governance browser gate: exit `0`; product source `946f2552dd7ff4e5fb00856ed5f5888e3b8554d2`; capture-test source `b2f8cdb3bc41b6f5f981c9247c48cee60c5e261c`; captures `15`; states `13`; navigation checks `14`; interactions `12`; action modes `4`; Governance CSS `true`; legacy authenticated CSS `false`.
 - Governance comparator: exit `0`; scoped concepts `4 / 4 / 0`, viewport comparisons `8`, artifacts `33`; machine verdict `human region review required`; the original-size human region review above records the release decision without claiming pixel equivalence.
 - Impeccable detector after all Plan 05 UI edits: exit `0`, full output `[]`.
-- Full repository test suite: `2148 / 2148`, exit `0`.
+- Full repository test suite: `2149 / 2149`, exit `0`.
 - ESLint: exit `0`.
-- Isolated performance build: exit `0`; public CSS `15,304 / 40,000`; public JS `383,019 / 450,000`; AI shell CSS `56,117 / 180,000`; Account domain CSS `114,876 / 120,000`; Governance domain CSS `108,714 / 120,000`; Governance domain JS `583,791 / 650,000`. V2 routes do not load legacy product styles; checked-in `dist` and source remain unchanged.
+- Isolated performance build: exit `0`; public CSS `15,304 / 40,000`; public JS `383,019 / 450,000`; AI shell CSS `56,117 / 180,000`; Account domain CSS `114,876 / 120,000`; Governance domain CSS `114,363 / 120,000`; Governance domain JS `592,853 / 650,000`. V2 routes do not load legacy product styles; checked-in `dist` and source remain unchanged.
 - Production build: exit `0`, `1794` modules transformed.
 - `git diff --check`: exit `0` before this evidence report finalization.
 
