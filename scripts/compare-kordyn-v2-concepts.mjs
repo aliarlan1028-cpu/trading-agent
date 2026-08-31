@@ -43,7 +43,8 @@ const SCOPE_CONFIG = Object.freeze({
     runner: "tests/run-kordyn-v2-governance-browser.mjs",
     fixture: "tests/kordyn-v2-governance-browser.jsx",
     captureKey: "governanceCaptures",
-    productionCommit: true
+    productionCommit: true,
+    captureTestCommit: true
   })
 });
 
