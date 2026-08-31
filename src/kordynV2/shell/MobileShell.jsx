@@ -32,6 +32,7 @@ export function MobileShell({
   const [evidenceDetails, setEvidenceDetails] = useState(undefined);
   const returnFocusRef = useRef(null);
   const supportTriggerRef = useRef(null);
+  const shellRef = useRef(null);
   const selectedId = selection?.object?.id || "none";
   const selectedType = typeof selection?.object?.type === "string" && selection.object.type.trim() ? selection.object.type : "none";
   const domain = KORDYN_V2_DOMAINS.find((item) => item.id === location.domainId) || KORDYN_V2_DOMAINS[0];
@@ -61,6 +62,20 @@ export function MobileShell({
     setPanel("evidence");
   }, [evidenceRequest?.details, evidenceRequest?.panel, evidenceRequest?.selection, evidenceRequest?.token, evidenceRequest?.trigger]);
 
+  useEffect(() => {
+    if (panel !== "support" || location.domainId !== "governance" || location.workspaceId !== "runs") return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      const shell = shellRef.current;
+      const scroller = shell?.querySelector(".kordynV2MobileBackground > .kordynV2StateBoundary");
+      const danger = shell?.querySelector('[data-kordyn-v2-danger-action="kill-switch"]');
+      const sheet = shell?.querySelector('[data-kordyn-v2-mobile-sheet="support"]');
+      if (!scroller || !danger || !sheet) return;
+      const overlap = danger.getBoundingClientRect().bottom - sheet.getBoundingClientRect().top + 8;
+      if (overlap > 0) scroller.scrollTop += overlap;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [location.domainId, location.workspaceId, panel]);
+
   const openSheet = (nextPanel, trigger) => {
     returnFocusRef.current = trigger;
     setPanel(nextPanel);
@@ -89,6 +104,7 @@ export function MobileShell({
 
   return (
     <div
+      ref={shellRef}
       className="kordynV2MobileShell"
       data-kordyn-v2-shell="mobile"
       data-kordyn-v2-domain={location.domainId}
