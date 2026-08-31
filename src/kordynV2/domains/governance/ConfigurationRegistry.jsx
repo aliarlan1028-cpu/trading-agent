@@ -1,4 +1,5 @@
-import { Bell, Bot, Box, CloudCog, DatabaseBackup, KeyRound, Network, RadioTower, ShieldCheck, SlidersHorizontal, UserCog, Users, WalletCards } from "lucide-react";
+import { useState } from "react";
+import { Bell, Bot, Box, CloudCog, DatabaseBackup, KeyRound, Network, RadioTower, Search, ShieldCheck, SlidersHorizontal, UserCog, Users, WalletCards } from "lucide-react";
 
 export const CONFIGURATION_GROUPS = Object.freeze([
   Object.freeze({ id: "trading", label: "交易授权", description: "运行模式与 Mandate", Icon: SlidersHorizontal }),
@@ -16,8 +17,10 @@ export const CONFIGURATION_GROUPS = Object.freeze([
   Object.freeze({ id: "account", label: "账户资料", description: "当前身份与允许编辑项", Icon: UserCog })
 ]);
 
-export function ConfigurationRegistry({ scopes = [], selectedId = "trading", onSelect = () => {} }) {
+export function ConfigurationRegistry({ scopes = [], selectedId = "trading", dirtyCount = 0, onSelect = () => {} }) {
+  const [query, setQuery] = useState("");
   const countFor = (id) => scopes.filter((row) => row.group === id).length;
-  return <nav className="kordynV2ConfigurationRegistry" aria-label="配置范围">{CONFIGURATION_GROUPS.map(({ id, label, description, Icon }) => <button type="button" key={id} data-kordyn-v2-config-target={id} data-selected={id === selectedId} onClick={() => onSelect(id)}><Icon size={15} aria-hidden="true" /><span><strong>{label}</strong><small>{description}</small></span><em>{countFor(id)}</em></button>)}</nav>;
+  const normalized = query.trim().toLowerCase();
+  const groups = normalized ? CONFIGURATION_GROUPS.filter(({ id, label, description }) => `${id} ${label} ${description}`.toLowerCase().includes(normalized)) : CONFIGURATION_GROUPS;
+  return <aside className="kordynV2ConfigurationRegistry"><label className="kordynV2ConfigurationSearch"><Search size={14} /><input type="search" value={query} data-kordyn-v2-config-search placeholder="Search configuration…" aria-label="搜索配置" onChange={(event) => setQuery(event.target.value)} /></label><nav aria-label="配置范围">{groups.map(({ id, label, description, Icon }) => <button type="button" key={id} data-kordyn-v2-config-target={id} data-selected={id === selectedId} onClick={() => onSelect(id)}><Icon size={15} aria-hidden="true" /><span><strong>{label}</strong><small>{description}</small></span><em>{countFor(id)}</em></button>)}</nav><footer data-kordyn-v2-config-unsaved={dirtyCount}><strong>未保存变更 <em>{dirtyCount}</em></strong><small>{dirtyCount ? "当前配置包含待审查改动" : "所选值与加载值一致"}</small></footer></aside>;
 }
-

@@ -144,6 +144,7 @@ export function setConfig(db, entries = {}) {
   for (const [key, rawValue] of Object.entries(entries)) {
     const value = rawValue === undefined || rawValue === null ? "" : String(rawValue);
     const previousValue = process.env[key] ?? "";
+    if (value === previousValue) continue;
     if (SECRET_KEYS.has(key)) {
       if (value === "") continue; // 空值不覆盖已有密钥
       storeSecret(db, key, value, scopeFor(key));
