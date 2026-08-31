@@ -798,3 +798,222 @@
   .kordynV2MobileKnowledge button,
   .kordynV2MobileCapabilities button { transition: border-color 150ms ease-out, background-color 150ms ease-out, box-shadow 150ms ease-out; }
 }
+
+.kordynV2ReviewReleaseWorkspace {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 14px 16px 16px;
+  display: grid;
+  grid-template-rows: 42px minmax(0, 1fr);
+  gap: 10px;
+  overflow: hidden;
+  color: var(--kordyn-v2-text);
+  background:
+    radial-gradient(circle at 55% 42%, rgba(38, 91, 173, 0.1), transparent 29%),
+    linear-gradient(180deg, rgba(4, 13, 24, 0.98), rgba(2, 8, 16, 0.99));
+}
+.kordynV2ReviewReleaseTitle > div { display: flex; align-items: center; gap: 8px; }
+.kordynV2ReviewReleaseTitle button { min-height: 34px; padding: 0 11px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--kordyn-v2-border-strong); border-radius: 8px; color: var(--kordyn-v2-text-soft); background: rgba(8, 19, 34, 0.84); cursor: pointer; font-size: 10px; }
+.kordynV2ReviewReleaseTitle button:last-child { border-color: rgba(52, 120, 255, 0.58); color: #fff; background: #1757dd; }
+.kordynV2ReviewReleaseWorkspace button:focus-visible,
+.kordynV2MobileReviews button:focus-visible,
+.kordynV2ReviewOutput textarea:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.kordynV2ReviewReleaseWorkbench { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(560px, 1.48fr) minmax(310px, .72fr); grid-template-rows: minmax(0, 1fr) 154px; gap: 10px; overflow: hidden; }
+.kordynV2ReviewColumn { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(300px, .78fr) minmax(300px, 1.22fr); gap: 10px; overflow: hidden; }
+.kordynV2OwnerColumn { min-width: 0; min-height: 0; overflow: hidden; }
+.kordynV2ReviewRegistry,
+.kordynV2ReviewInspector,
+.kordynV2OwnerQueue,
+.kordynV2ReleasePipeline,
+.kordynV2ReviewOutput { min-width: 0; min-height: 0; border: 1px solid var(--kordyn-v2-border); border-radius: 12px; background: rgba(5, 15, 28, 0.86); box-shadow: 0 22px 58px rgba(0, 0, 0, 0.22); }
+
+.kordynV2ReviewRegistry { padding: 9px; display: grid; grid-template-rows: 32px 54px minmax(0, 1fr); overflow: hidden; }
+.kordynV2ReviewRegistry > header,
+.kordynV2OwnerQueue > header,
+.kordynV2ReleasePipeline > header { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.kordynV2ReviewRegistry > header > span,
+.kordynV2OwnerQueue > header > span,
+.kordynV2ReleasePipeline > header > span { min-width: 0; display: flex; align-items: center; gap: 7px; }
+.kordynV2ReviewRegistry > header b,
+.kordynV2OwnerQueue > header b,
+.kordynV2ReleasePipeline > header b { width: 19px; height: 19px; display: grid; place-items: center; border: 1px solid rgba(126, 159, 205, 0.4); border-radius: 50%; color: var(--kordyn-v2-cobalt-soft); font: 8px var(--kordyn-v2-mono); }
+.kordynV2ReviewRegistry > header strong,
+.kordynV2OwnerQueue > header strong,
+.kordynV2ReleasePipeline > header strong { font-size: 10px; }
+.kordynV2ReviewRegistry > header small { display: flex; align-items: center; gap: 4px; color: var(--kordyn-v2-muted); font-size: 7px; }
+.kordynV2ReviewRegistry > dl { margin: 0 0 6px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid rgba(126, 159, 205, 0.12); border-radius: 8px; background: rgba(4, 12, 23, 0.52); }
+.kordynV2ReviewRegistry > dl div { min-width: 0; padding: 8px; border-right: 1px solid rgba(126, 159, 205, 0.12); text-align: center; }
+.kordynV2ReviewRegistry > dl div:last-child { border: 0; }
+.kordynV2ReviewRegistry dt { color: var(--kordyn-v2-muted); font-size: 7px; }
+.kordynV2ReviewRegistry dd { margin: 3px 0 0; color: var(--kordyn-v2-text-soft); font: 11px var(--kordyn-v2-mono); }
+.kordynV2ReviewRegistry dd[data-tone="positive"] { color: var(--kordyn-v2-mint); }
+.kordynV2ReviewRegistry dd[data-tone="negative"] { color: var(--kordyn-v2-danger); }
+.kordynV2ReviewRegistry > div { min-width: 0; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #263951 transparent; }
+.kordynV2ReviewRegistry > div > button { width: 100%; min-width: 0; min-height: 50px; padding: 7px; display: grid; grid-template-columns: 26px minmax(0, 1fr) 56px 78px 14px; align-items: center; gap: 6px; border: 1px solid transparent; border-bottom-color: rgba(132, 160, 196, 0.1); color: var(--kordyn-v2-text-soft); background: transparent; cursor: pointer; text-align: left; }
+.kordynV2ReviewRegistry > div > button[data-selected="true"] { border-color: rgba(52, 120, 255, 0.6); border-radius: 8px; background: rgba(16, 49, 102, 0.46); }
+.kordynV2ReviewAssetMark { width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid rgba(244, 173, 86, 0.42); border-radius: 50%; color: var(--kordyn-v2-amber); background: rgba(52, 31, 10, 0.42); font: 9px var(--kordyn-v2-mono); }
+.kordynV2ReviewRegistry button > span:nth-child(2) { min-width: 0; display: grid; gap: 2px; }
+.kordynV2ReviewRegistry button strong,
+.kordynV2ReviewRegistry button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2ReviewRegistry button strong { font-size: 9px; }
+.kordynV2ReviewRegistry button small { color: var(--kordyn-v2-muted); font-size: 7px; }
+.kordynV2ReviewRegistry button em { color: var(--kordyn-v2-danger); font: 8px var(--kordyn-v2-mono); font-style: normal; }
+.kordynV2ReviewRegistry button em[data-tone="positive"] { color: var(--kordyn-v2-mint); }
+.kordynV2ReviewRegistry button time { min-width: 0; display: flex; align-items: center; gap: 3px; overflow: hidden; color: var(--kordyn-v2-muted); font: 7px var(--kordyn-v2-mono); text-overflow: ellipsis; white-space: nowrap; }
+
+.kordynV2ReviewInspector { padding: 10px; display: grid; align-content: start; gap: 8px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #263951 transparent; }
+.kordynV2ReviewInspector.is-empty { align-content: center; color: var(--kordyn-v2-muted); }
+.kordynV2ReviewInspector.is-empty p { margin: 4px 0 0; font-size: 9px; }
+.kordynV2ReviewInspector > header { min-width: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.kordynV2ReviewInspector > header span { min-width: 0; display: grid; gap: 2px; }
+.kordynV2ReviewInspector > header strong { color: #fff; font-size: 11px; }
+.kordynV2ReviewInspector > header small { overflow: hidden; color: var(--kordyn-v2-muted); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2ReviewInspector > header em { padding: 4px 6px; border: 1px solid rgba(32, 215, 148, 0.24); border-radius: 6px; color: var(--kordyn-v2-mint); font: 7px var(--kordyn-v2-mono); font-style: normal; }
+.kordynV2ReviewMetrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid rgba(132, 160, 196, 0.12); border-radius: 8px; }
+.kordynV2ReviewMetrics span { min-width: 0; padding: 7px; display: grid; gap: 2px; border-right: 1px solid rgba(132, 160, 196, 0.1); }
+.kordynV2ReviewMetrics span:last-child { border: 0; }
+.kordynV2ReviewMetrics small { color: var(--kordyn-v2-muted); font-size: 7px; }
+.kordynV2ReviewMetrics strong { overflow: hidden; color: var(--kordyn-v2-text-soft); font: 8px var(--kordyn-v2-mono); text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2ReviewSummary { min-width: 0; padding: 8px; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 7px; border: 1px solid rgba(139, 91, 255, 0.22); border-radius: 8px; color: #a987ff; background: rgba(43, 24, 80, 0.3); }
+.kordynV2ReviewSummary span { min-width: 0; display: grid; gap: 3px; }
+.kordynV2ReviewSummary small { color: #c4aaff; font-size: 7px; }
+.kordynV2ReviewSummary p { margin: 0; color: var(--kordyn-v2-text-soft); font-size: 8px; line-height: 1.45; }
+.kordynV2ReviewEvidence,
+.kordynV2ReviewCauses { min-width: 0; padding: 8px; display: grid; gap: 6px; border: 1px solid rgba(132, 160, 196, 0.12); border-radius: 8px; background: rgba(4, 12, 23, 0.46); }
+.kordynV2ReviewEvidence > header,
+.kordynV2ReviewCauses > header { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.kordynV2ReviewEvidence > header span,
+.kordynV2ReviewCauses > header { color: var(--kordyn-v2-cobalt-soft); }
+.kordynV2ReviewEvidence > header span { display: flex; align-items: center; gap: 5px; }
+.kordynV2ReviewEvidence > header strong,
+.kordynV2ReviewCauses > header strong { color: var(--kordyn-v2-text-soft); font-size: 8px; }
+.kordynV2ReviewEvidence > header small { color: var(--kordyn-v2-muted); font-size: 7px; }
+.kordynV2ReviewEvidence > div { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.kordynV2ReviewEvidence button { min-width: 0; min-height: 42px; padding: 6px; display: grid; grid-template-columns: 16px minmax(0, 1fr) 14px; align-items: center; gap: 5px; border: 1px solid rgba(32, 215, 148, 0.15); border-radius: 6px; color: var(--kordyn-v2-mint); background: rgba(9, 55, 42, 0.2); cursor: pointer; text-align: left; }
+.kordynV2ReviewEvidence button span { min-width: 0; display: grid; gap: 2px; }
+.kordynV2ReviewEvidence button strong,
+.kordynV2ReviewEvidence button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2ReviewEvidence button strong { color: var(--kordyn-v2-text-soft); font-size: 7px; }
+.kordynV2ReviewEvidence button small { color: var(--kordyn-v2-muted); font: 6px var(--kordyn-v2-mono); }
+.kordynV2ReviewCauses > div { min-width: 0; min-height: 38px; padding: 5px; display: grid; grid-template-columns: 17px minmax(0, 1fr) auto; align-items: center; gap: 5px; color: var(--kordyn-v2-amber); }
+.kordynV2ReviewCauses > div span { min-width: 0; display: grid; gap: 2px; }
+.kordynV2ReviewCauses > div strong { overflow: hidden; color: var(--kordyn-v2-text-soft); font-size: 7px; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2ReviewCauses > div small { color: var(--kordyn-v2-muted); font-size: 6px; }
+.kordynV2ReviewCauses > div em { color: #b88bff; font: 8px var(--kordyn-v2-mono); font-style: normal; }
+.kordynV2ReviewBoundary { margin: 0; padding: 7px; display: flex; gap: 5px; color: #b88bff; background: rgba(54, 30, 102, 0.25); font-size: 7px; line-height: 1.45; }
+
+.kordynV2OwnerQueue { height: 100%; padding: 9px; display: grid; grid-template-rows: 36px minmax(0, 1fr); overflow: hidden; }
+.kordynV2OwnerQueue > header small { color: var(--kordyn-v2-muted); font-size: 7px; }
+.kordynV2OwnerQueue > header p { margin: 0; color: var(--kordyn-v2-violet); font-size: 7px; }
+.kordynV2OwnerQueue > div { min-width: 0; min-height: 0; display: grid; align-content: start; gap: 7px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #263951 transparent; }
+.kordynV2OwnerQueue article { border: 1px solid rgba(72, 124, 235, 0.33); border-radius: 8px; background: rgba(10, 27, 52, 0.58); }
+.kordynV2OwnerQueue article[data-selected="true"] { border-color: rgba(52, 120, 255, 0.82); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2); }
+.kordynV2OwnerQueue article[data-owner-state="validating"] { border-color: rgba(244, 173, 86, 0.46); background: rgba(49, 29, 8, 0.28); }
+.kordynV2OwnerSelect { width: 100%; min-width: 0; min-height: 68px; padding: 8px; display: grid; grid-template-columns: 30px minmax(0, 1fr) auto 15px; align-items: center; gap: 7px; border: 0; color: #6fa4ff; background: transparent; cursor: pointer; text-align: left; }
+.kordynV2OwnerSelect > span { min-width: 0; display: grid; gap: 3px; }
+.kordynV2OwnerSelect em { color: var(--kordyn-v2-cobalt-soft); font-size: 7px; font-style: normal; text-transform: uppercase; }
+.kordynV2OwnerSelect strong,
+.kordynV2OwnerSelect small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2OwnerSelect strong { color: #fff; font-size: 9px; }
+.kordynV2OwnerSelect small { color: var(--kordyn-v2-muted); font-size: 7px; }
+.kordynV2OwnerSelect > i { padding: 4px 6px; border: 1px solid rgba(244, 173, 86, 0.22); border-radius: 6px; color: var(--kordyn-v2-amber); background: rgba(49, 29, 8, 0.28); font: 6px var(--kordyn-v2-mono); font-style: normal; }
+.kordynV2OwnerQueue article footer { padding: 6px 8px 8px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; border-top: 1px solid rgba(132, 160, 196, 0.1); }
+.kordynV2OwnerQueue article footer button { min-height: 32px; padding: 0 5px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; border: 1px solid rgba(86, 126, 188, 0.25); border-radius: 6px; color: var(--kordyn-v2-text-soft); background: rgba(11, 27, 49, 0.58); cursor: pointer; font-size: 7px; }
+.kordynV2OwnerQueue article footer button:nth-child(2) { border-color: rgba(52, 120, 255, 0.45); color: #fff; background: rgba(27, 90, 211, 0.64); }
+.kordynV2OwnerQueue article footer button:last-child { border-color: rgba(255, 89, 104, 0.3); color: var(--kordyn-v2-danger); background: rgba(76, 23, 33, 0.28); }
+.kordynV2OwnerQueue article footer button:only-child { grid-column: 1 / -1; border-color: rgba(244, 173, 86, 0.32); color: var(--kordyn-v2-amber); background: rgba(50, 31, 10, 0.3); }
+.kordynV2OwnerQueue article footer button:disabled { color: var(--kordyn-v2-dim); background: rgba(12, 20, 31, 0.62); cursor: not-allowed; }
+
+.kordynV2ReleasePipeline { grid-column: 1 / -1; padding: 10px 12px; display: grid; grid-template-rows: 26px 34px minmax(0, 1fr); gap: 6px; overflow: hidden; }
+.kordynV2ReleasePipeline.is-empty { align-content: center; color: var(--kordyn-v2-muted); }
+.kordynV2ReleasePipeline.is-empty p { margin: 4px 0 0; font-size: 8px; }
+.kordynV2ReleasePipeline > header small { overflow: hidden; color: var(--kordyn-v2-muted); font-size: 7px; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2ReleaseSteps { min-width: 0; display: flex; align-items: center; gap: 5px; overflow-x: auto; }
+.kordynV2ReleaseSteps span { flex: 1 0 76px; min-height: 27px; padding: 4px 6px; display: flex; align-items: center; gap: 5px; border: 1px solid rgba(126, 159, 205, 0.16); border-radius: 6px; color: var(--kordyn-v2-muted); background: rgba(5, 14, 26, 0.58); }
+.kordynV2ReleaseSteps span[data-complete="true"] { border-color: rgba(32, 215, 148, 0.27); color: var(--kordyn-v2-mint); background: rgba(9, 55, 42, 0.24); }
+.kordynV2ReleaseSteps small { overflow: hidden; font-size: 7px; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2ReleasePipeline > article { min-width: 0; display: grid; grid-template-columns: minmax(180px, .8fr) minmax(230px, 1.2fr) 190px; align-items: center; gap: 12px; }
+.kordynV2ReleasePipeline > article > span { min-width: 0; display: grid; grid-template-columns: 22px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 6px; color: var(--kordyn-v2-cobalt-soft); }
+.kordynV2ReleasePipeline > article > span svg { grid-row: 1 / 3; }
+.kordynV2ReleasePipeline > article > span strong { color: #fff; font-size: 9px; }
+.kordynV2ReleasePipeline > article > span small { color: var(--kordyn-v2-muted); font-size: 7px; }
+.kordynV2ReleasePipeline > article p { margin: 0; display: flex; gap: 6px; color: var(--kordyn-v2-muted); font-size: 7px; line-height: 1.45; }
+.kordynV2ValidationRuns { min-width: 0; display: flex; align-items: center; gap: 5px; overflow-x: auto; }
+.kordynV2ValidationRuns > button { min-width: 110px; min-height: 42px; padding: 5px 7px; display: grid; gap: 2px; border: 1px solid rgba(244, 173, 86, 0.25); border-radius: 6px; color: var(--kordyn-v2-text-soft); background: rgba(47, 29, 10, 0.24); cursor: pointer; text-align: left; }
+.kordynV2ValidationRuns button small { color: var(--kordyn-v2-amber); font-size: 6px; }
+.kordynV2ValidationRuns button strong { overflow: hidden; font-size: 7px; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2ValidationRuns button em { color: var(--kordyn-v2-mint); font: 6px var(--kordyn-v2-mono); font-style: normal; }
+.kordynV2ReleasePipeline > article button { min-height: 36px; padding: 0 9px; border: 1px solid rgba(32, 215, 148, 0.38); border-radius: 7px; color: var(--kordyn-v2-mint); background: rgba(10, 72, 53, 0.46); cursor: pointer; font-size: 8px; }
+.kordynV2ReleasePipeline > article button:disabled { border-color: rgba(255, 89, 104, 0.3); color: var(--kordyn-v2-danger); background: rgba(76, 23, 33, 0.28); cursor: not-allowed; }
+
+.kordynV2ReviewOutput { position: absolute; z-index: 3; bottom: 26px; left: 26px; width: min(300px, calc(100% - 52px)); max-height: 322px; padding: 9px; display: grid; gap: 7px; overflow-y: auto; border-color: rgba(116, 89, 219, 0.42); background: linear-gradient(180deg, rgba(12, 22, 42, 0.98), rgba(6, 13, 25, 0.99)); box-shadow: 0 24px 68px rgba(0, 0, 0, 0.5); }
+.kordynV2ReviewOutput > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #ad83ff; }
+.kordynV2ReviewOutput > header span { min-width: 0; display: flex; align-items: baseline; gap: 6px; }
+.kordynV2ReviewOutput > header strong { color: var(--kordyn-v2-text-soft); font-size: 9px; }
+.kordynV2ReviewOutput > header small { color: var(--kordyn-v2-muted); font-size: 7px; }
+.kordynV2ReviewOutput > section { padding: 10px; display: grid; gap: 6px; border: 1px solid rgba(139, 91, 255, 0.25); border-radius: 8px; background: radial-gradient(circle at 100% 0, rgba(128, 70, 225, 0.18), transparent 38%), rgba(7, 18, 33, 0.82); }
+.kordynV2ReviewOutput > section > small { color: #ad83ff; font: 6px var(--kordyn-v2-mono); }
+.kordynV2ReviewOutput > section > strong { color: #fff; font-size: 13px; }
+.kordynV2ReviewOutput > section dl { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.kordynV2ReviewOutput > section dl div { padding: 5px; background: rgba(3, 9, 18, 0.54); }
+.kordynV2ReviewOutput > section dt { color: var(--kordyn-v2-muted); font-size: 6px; }
+.kordynV2ReviewOutput > section dd { margin: 2px 0 0; color: var(--kordyn-v2-mint); font: 8px var(--kordyn-v2-mono); }
+.kordynV2ReviewOutput > section p { margin: 0; color: var(--kordyn-v2-text-soft); font-size: 7px; line-height: 1.45; }
+.kordynV2ReviewOutput > nav { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.kordynV2ReviewOutput > nav button { min-height: 31px; padding: 0 4px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; border: 1px solid rgba(126, 159, 205, 0.18); border-radius: 6px; color: var(--kordyn-v2-muted); background: rgba(8, 18, 33, 0.65); cursor: pointer; font-size: 7px; }
+.kordynV2ReviewOutput > nav button[data-selected="true"] { border-color: rgba(52, 120, 255, 0.54); color: #fff; background: rgba(26, 84, 198, 0.62); }
+.kordynV2ReviewOutput > label { display: grid; gap: 4px; color: var(--kordyn-v2-muted); font-size: 7px; }
+.kordynV2ReviewOutput textarea { min-height: 54px; padding: 6px; resize: vertical; border: 1px solid rgba(126, 159, 205, 0.2); border-radius: 6px; color: var(--kordyn-v2-text-soft); background: rgba(3, 10, 19, 0.76); font: 7px/1.45 var(--kordyn-v2-font); }
+.kordynV2ReviewOutput > p { margin: 0; color: #b88bff; font-size: 7px; }
+.kordynV2ReviewOutput > button { min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid rgba(139, 91, 255, 0.38); border-radius: 7px; color: #d3c1ff; background: rgba(66, 38, 130, 0.42); cursor: pointer; font-size: 8px; }
+
+.kordynV2MobileReviews { gap: 12px; }
+.kordynV2MobileReviewList { min-width: 0; display: grid; gap: 7px; }
+.kordynV2MobileReviewList > header { min-height: 34px; display: flex; align-items: center; justify-content: space-between; }
+.kordynV2MobileReviewList > header small { color: var(--kordyn-v2-muted); }
+.kordynV2MobileReviewList > button { min-width: 0; min-height: 68px; padding: 10px; display: grid; grid-template-columns: minmax(0, 1fr) 18px; align-items: center; gap: 8px; border: 1px solid rgba(131, 159, 198, 0.14); border-radius: 14px; color: var(--kordyn-v2-cobalt-soft); background: rgba(7, 18, 33, 0.82); cursor: pointer; text-align: left; }
+.kordynV2MobileReviewList > button[data-selected="true"] { border-color: rgba(52, 120, 255, 0.66); background: rgba(16, 49, 102, 0.56); }
+.kordynV2MobileReviewList button span { min-width: 0; display: grid; gap: 3px; }
+.kordynV2MobileReviewList button em { color: var(--kordyn-v2-cobalt-soft); font-size: 9px; font-style: normal; }
+.kordynV2MobileReviewList button strong,
+.kordynV2MobileReviewList button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2MobileReviewList button strong { color: #fff; font-size: 12px; }
+.kordynV2MobileReviewList button small { color: var(--kordyn-v2-muted); font-size: 9px; }
+.kordynV2MobileReviewDetail { min-width: 0; padding: 9px 10px 12px; border: 1px solid rgba(82, 117, 178, 0.32); border-radius: 20px; background: linear-gradient(180deg, rgba(13, 28, 50, 0.97), rgba(5, 13, 25, 0.98)); }
+.kordynV2MobileReviewDetail > i { width: 44px; height: 4px; margin: 0 auto 7px; display: block; border-radius: 999px; background: rgba(182, 197, 222, 0.52); }
+.kordynV2MobileReviewDetail .kordynV2ReviewInspector { padding: 4px 2px 0; overflow: visible; border: 0; background: transparent; box-shadow: none; }
+.kordynV2MobileOwnerTitle { min-height: 40px; display: flex; align-items: center; gap: 7px; color: var(--kordyn-v2-amber); }
+.kordynV2MobileReviews .kordynV2OwnerQueue,
+.kordynV2MobileReviews .kordynV2ReleasePipeline { height: auto; min-height: 280px; }
+.kordynV2MobileReviews .kordynV2ReleasePipeline { display: grid; grid-template-rows: auto auto auto; overflow: visible; }
+.kordynV2MobileReviews .kordynV2ReleasePipeline > article { grid-template-columns: minmax(0, 1fr); }
+.kordynV2MobileReviews .kordynV2ReleasePipeline > article button { min-height: 44px; }
+.kordynV2MobileReviews > .kordynV2ReviewOutput { position: static; width: 100%; max-height: none; padding: 11px; }
+.kordynV2MobileReviews button { min-height: 44px; }
+.kordynV2MobileReviews .kordynV2OwnerQueue article footer { grid-template-columns: minmax(0, 1fr); }
+.kordynV2MobileReviews .kordynV2OwnerQueue article footer button { min-height: 44px; }
+.kordynV2MobileReviews .kordynV2ReviewOutput > nav button { min-height: 44px; }
+.kordynV2MobileReviews .kordynV2ReviewOutput textarea { min-height: 94px; }
+
+@media (max-width: 1180px) and (min-width: 768px) {
+  .kordynV2ReviewReleaseWorkbench { grid-template-columns: minmax(510px, 1.42fr) minmax(275px, .78fr); }
+  .kordynV2ReviewColumn { grid-template-columns: minmax(270px, .84fr) minmax(260px, 1.16fr); gap: 7px; }
+  .kordynV2ReviewRegistry > div > button { grid-template-columns: 25px minmax(0, 1fr) 50px 14px; }
+  .kordynV2ReviewRegistry button time { display: none; }
+  .kordynV2ReleasePipeline > article { grid-template-columns: minmax(170px, .8fr) minmax(210px, 1.2fr) 170px; }
+}
+
+@media (max-width: 430px) {
+  .kordynV2MobileReviews .kordynV2ReviewMetrics,
+  .kordynV2MobileReviews .kordynV2ReviewRegistry > dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kordynV2MobileReviews .kordynV2ReviewMetrics span:nth-child(2) { border-right: 0; }
+  .kordynV2MobileReviews .kordynV2ReviewEvidence > div { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .kordynV2ReviewReleaseWorkspace button,
+  .kordynV2MobileReviews button { transition: border-color 150ms ease-out, background-color 150ms ease-out, box-shadow 150ms ease-out; }
+}

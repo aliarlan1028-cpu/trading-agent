@@ -9,6 +9,8 @@ import { KnowledgeWorkspace } from "./KnowledgeWorkspace.jsx";
 import { CapabilityWorkspace } from "./CapabilityWorkspace.jsx";
 import { MobileKnowledgeScreen } from "./MobileKnowledgeScreen.jsx";
 import { MobileCapabilityScreen } from "./MobileCapabilityScreen.jsx";
+import { ReviewReleaseWorkspace } from "./ReviewReleaseWorkspace.jsx";
+import { MobileReviewReleaseScreen } from "./MobileReviewReleaseScreen.jsx";
 import "./assets.css";
 
 function shellSelectedNode(nodes, selection) {
@@ -25,6 +27,8 @@ export default function AssetsDomain({ device, workspaceId, data, actions, actio
   const [selectedSourceId, setSelectedSourceId] = useState("");
   const [selectedEvidenceId, setSelectedEvidenceId] = useState("");
   const [selectedCapabilityId, setSelectedCapabilityId] = useState("");
+  const [selectedReviewId, setSelectedReviewId] = useState("");
+  const [selectedOwnerId, setSelectedOwnerId] = useState("");
 
   useEffect(() => {
     if (globalNode?.id) setSelectedNodeId(globalNode.id);
@@ -61,6 +65,8 @@ export default function AssetsDomain({ device, workspaceId, data, actions, actio
   const globallySelectedSource = selection?.object?.type === "Knowledge" ? selection.object.id : "";
   const globallySelectedEvidence = selection?.object?.type === "Evidence" ? selection.object.id : "";
   const globallySelectedCapability = selection?.object?.type === "Capability" ? selection.object.id : "";
+  const globallySelectedReview = selection?.object?.type === "Review" ? selection.object.id : "";
+  const globallySelectedOwner = selection?.object?.type === "Owner candidate" ? selection.object.id : "";
 
   const shared = { model, actions, actionsDisabled, truth, state, selectedNodeId: globalNode?.id || selectedNodeId, onSelect: selectNode, onNavigate };
   if (workspaceId === "relationships") return device === "mobile"
@@ -85,6 +91,18 @@ export default function AssetsDomain({ device, workspaceId, data, actions, actio
     const capabilityProps = { ...shared, selectedCapabilityId: globallySelectedCapability || selectedCapabilityId, onSelect: selectCapability };
     return device === "mobile" ? <MobileCapabilityScreen {...capabilityProps} /> : <CapabilityWorkspace {...capabilityProps} />;
   }
+  if (workspaceId === "reviews") {
+    const reviewProps = {
+      ...shared,
+      selectedReviewId: globallySelectedReview || selectedReviewId,
+      selectedOwnerId: globallySelectedOwner || selectedOwnerId,
+      onSelectReview: (row) => selectKnowledgeObject(row, "Review", setSelectedReviewId),
+      onSelectOwner: (row) => selectKnowledgeObject(row, "Owner candidate", setSelectedOwnerId),
+      onSelectEvidence: (row) => selectKnowledgeObject(row, row.type === "fill" ? "Fill" : row.type === "order" ? "Order" : "Audit log", () => {}),
+      onSelectValidation: (row) => selectKnowledgeObject(row, row.selectionType || "Validation run", () => {})
+    };
+    return device === "mobile" ? <MobileReviewReleaseScreen {...reviewProps} /> : <ReviewReleaseWorkspace {...reviewProps} />;
+  }
   return null;
 }
 
@@ -101,3 +119,5 @@ export { KnowledgeWorkspace } from "./KnowledgeWorkspace.jsx";
 export { CapabilityWorkspace } from "./CapabilityWorkspace.jsx";
 export { MobileKnowledgeScreen } from "./MobileKnowledgeScreen.jsx";
 export { MobileCapabilityScreen } from "./MobileCapabilityScreen.jsx";
+export { ReviewReleaseWorkspace } from "./ReviewReleaseWorkspace.jsx";
+export { MobileReviewReleaseScreen } from "./MobileReviewReleaseScreen.jsx";

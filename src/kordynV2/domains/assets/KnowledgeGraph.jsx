@@ -5,7 +5,7 @@ export function KnowledgeGraph({ source = null, evidence = [], candidates = [] }
   const relatedCandidates = source ? candidates.filter((row) => row.provenance?.sourceId === source.id || row.sourceId === source.id) : [];
   return (
     <section className="kordynV2KnowledgeGraph" data-kordyn-v2-knowledge-graph>
-      <header><GitFork size={14} aria-hidden="true" /><strong>关系图</strong><small>来源 → 证据 → 候选</small></header>
+      <header><GitFork size={14} aria-hidden="true" /><strong>关系图</strong><small>来源 / 证据 / 候选</small></header>
       {source ? <div>
         <span data-kind="source"><BookOpen size={15} aria-hidden="true" />{source.title || source.name || source.id}</span>
         <i aria-hidden="true" />
