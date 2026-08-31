@@ -271,6 +271,22 @@ export function buildShellSearchIndex(data = {}) {
     const row = searchRow(data, "Knowledge", "knowledgeBase", item.id || item.url || item.title, item.title || item.name || item.url, item, "lab", "researchCenter");
     if (row) rows.push(row);
   }
+  for (const item of asList(data.knowledge?.chunks)) {
+    const row = searchRow(data, "Evidence", "knowledgeBase", item.id, item.title || item.text || item.id, item, "lab", "researchCenter");
+    if (row) rows.push(row);
+  }
+  for (const item of asList(data.knowledge?.candidates)) {
+    const row = searchRow(data, "Knowledge candidate", "knowledgeBase", item.id, item.title || item.name || item.id, item, "lab", "researchCenter");
+    if (row) rows.push(row);
+  }
+  for (const item of asList(data.ownerReviewLoop?.lessons)) {
+    const row = searchRow(data, "Lesson", "labReviews", item.id, item.title || item.lessonText || item.id, item, "lab", "researchCenter");
+    if (row) rows.push(row);
+  }
+  for (const item of asList(data.ownerReviewLoop?.improvements)) {
+    const row = searchRow(data, "Owner candidate", "labReviews", item.id, item.title || item.proposal || item.id, item, "lab", "researchCenter");
+    if (row) rows.push(row);
+  }
   for (const definition of ROUTE_DEFINITIONS) {
     const alias = definition.aliases.find((item) => !item.includes("*")) || definition.aliases[0];
     const workspace = WORKSPACES[definition.workspace] || CONFIGURATION_WORKSPACE;

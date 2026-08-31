@@ -5,6 +5,10 @@ import { RelationshipWorkspace } from "./RelationshipWorkspace.jsx";
 import { MobileStrategyScreen } from "./MobileStrategyScreen.jsx";
 import { StrategyWorkspace } from "./StrategyWorkspace.jsx";
 import { strategySelectionCandidate } from "./StrategyRegistry.jsx";
+import { KnowledgeWorkspace } from "./KnowledgeWorkspace.jsx";
+import { CapabilityWorkspace } from "./CapabilityWorkspace.jsx";
+import { MobileKnowledgeScreen } from "./MobileKnowledgeScreen.jsx";
+import { MobileCapabilityScreen } from "./MobileCapabilityScreen.jsx";
 import "./assets.css";
 
 function shellSelectedNode(nodes, selection) {
@@ -18,6 +22,9 @@ export default function AssetsDomain({ device, workspaceId, data, actions, actio
   const nodes = model.relationships.nodes;
   const globalNode = shellSelectedNode(nodes, selection);
   const [selectedNodeId, setSelectedNodeId] = useState(globalNode?.id || "");
+  const [selectedSourceId, setSelectedSourceId] = useState("");
+  const [selectedEvidenceId, setSelectedEvidenceId] = useState("");
+  const [selectedCapabilityId, setSelectedCapabilityId] = useState("");
 
   useEffect(() => {
     if (globalNode?.id) setSelectedNodeId(globalNode.id);
@@ -45,6 +52,16 @@ export default function AssetsDomain({ device, workspaceId, data, actions, actio
     return candidate.id === selection?.object?.id && candidate.type === selection?.object?.type;
   });
 
+  const selectKnowledgeObject = (row, type, setLocal) => {
+    const accepted = onSelect?.({ id: row.id, type, workspaceId: "assets" });
+    if (accepted) setLocal(row.id);
+    return accepted;
+  };
+  const selectCapability = (row) => selectKnowledgeObject(row, "Capability", setSelectedCapabilityId);
+  const globallySelectedSource = selection?.object?.type === "Knowledge" ? selection.object.id : "";
+  const globallySelectedEvidence = selection?.object?.type === "Evidence" ? selection.object.id : "";
+  const globallySelectedCapability = selection?.object?.type === "Capability" ? selection.object.id : "";
+
   const shared = { model, actions, actionsDisabled, truth, state, selectedNodeId: globalNode?.id || selectedNodeId, onSelect: selectNode, onNavigate };
   if (workspaceId === "relationships") return device === "mobile"
     ? <MobileRelationshipScreen {...shared} />
@@ -52,6 +69,21 @@ export default function AssetsDomain({ device, workspaceId, data, actions, actio
   if (workspaceId === "strategies") {
     const strategyProps = { ...shared, selectedStrategyId: selectedStrategy?.id || "", onSelect: selectStrategy };
     return device === "mobile" ? <MobileStrategyScreen {...strategyProps} /> : <StrategyWorkspace {...strategyProps} />;
+  }
+  if (workspaceId === "knowledge") {
+    const knowledgeProps = {
+      ...shared,
+      selectedSourceId: globallySelectedSource || selectedSourceId,
+      selectedEvidenceId: globallySelectedEvidence || selectedEvidenceId,
+      onSelectSource: (row) => selectKnowledgeObject(row, "Knowledge", setSelectedSourceId),
+      onSelectEvidence: (row) => selectKnowledgeObject(row, "Evidence", setSelectedEvidenceId),
+      onSelectCandidate: (row) => selectKnowledgeObject(row, "Knowledge candidate", () => {})
+    };
+    return device === "mobile" ? <MobileKnowledgeScreen {...knowledgeProps} /> : <KnowledgeWorkspace {...knowledgeProps} />;
+  }
+  if (workspaceId === "capabilities") {
+    const capabilityProps = { ...shared, selectedCapabilityId: globallySelectedCapability || selectedCapabilityId, onSelect: selectCapability };
+    return device === "mobile" ? <MobileCapabilityScreen {...capabilityProps} /> : <CapabilityWorkspace {...capabilityProps} />;
   }
   return null;
 }
@@ -65,3 +97,7 @@ export { StrategyRegistry } from "./StrategyRegistry.jsx";
 export { StrategyInspector } from "./StrategyInspector.jsx";
 export { StrategyStudio } from "./StrategyStudio.jsx";
 export { MobileStrategyScreen } from "./MobileStrategyScreen.jsx";
+export { KnowledgeWorkspace } from "./KnowledgeWorkspace.jsx";
+export { CapabilityWorkspace } from "./CapabilityWorkspace.jsx";
+export { MobileKnowledgeScreen } from "./MobileKnowledgeScreen.jsx";
+export { MobileCapabilityScreen } from "./MobileCapabilityScreen.jsx";

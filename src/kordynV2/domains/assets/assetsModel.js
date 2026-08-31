@@ -66,6 +66,17 @@ function preferredCapabilityKind(row) {
   return "imported";
 }
 
+const CANDIDATE_ARTIFACT_TYPES = Object.freeze({
+  strategy: "strategy_draft",
+  strategy_draft: "strategy_draft",
+  lens: "knowledge_lens",
+  knowledge_lens: "knowledge_lens",
+  workflow: "knowledge_workflow",
+  knowledge_workflow: "knowledge_workflow",
+  imported_skill: "imported_skill_record",
+  imported_skill_record: "imported_skill_record"
+});
+
 function node(type, row, label) {
   const id = identity(row);
   if (!id) return null;
@@ -185,7 +196,10 @@ export function buildAssetsDomainModel(input = {}) {
 
   const sources = list(knowledge.sources).map((row) => present(row, "imported"));
   const evidence = list(knowledge.chunks).map((row) => present(row, "knowledge-derived"));
-  const candidates = list(knowledge.candidates).map((row) => present(row, "knowledge-derived"));
+  const candidates = list(knowledge.candidates).map((row) => ({
+    ...present(row, "knowledge-derived"),
+    artifactType: CANDIDATE_ARTIFACT_TYPES[String(row.type || "").toLowerCase()] || null
+  }));
   const methods = list(knowledge.tradingMethods).map((row) => present(row, "knowledge-derived"));
   const rules = list(knowledge.ruleProposals).map((row) => present(row, "knowledge-derived"));
   const workflows = list(knowledge.workflows).map((row) => present(row, "knowledge-derived"));

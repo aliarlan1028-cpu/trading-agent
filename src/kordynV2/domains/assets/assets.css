@@ -535,3 +535,266 @@
   .kordynV2MobileStrategies .kordynV2StrategyContract,
   .kordynV2MobileStrategies .kordynV2StrategyEvidence > div { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+.kordynV2KnowledgeWorkspace,
+.kordynV2CapabilityWorkspace {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 14px 16px 16px;
+  display: grid;
+  grid-template-rows: 42px minmax(0, 1fr);
+  gap: 10px;
+  overflow: hidden;
+  color: var(--kordyn-v2-text);
+  background:
+    radial-gradient(circle at 64% 30%, rgba(130, 82, 255, 0.09), transparent 28%),
+    linear-gradient(180deg, rgba(4, 13, 24, 0.98), rgba(2, 8, 16, 0.99));
+}
+
+.kordynV2KnowledgeTitle > div,
+.kordynV2CapabilityTitle > div { display: flex; align-items: center; gap: 8px; }
+.kordynV2KnowledgeTitle button,
+.kordynV2CapabilityTitle button {
+  min-height: 34px;
+  padding: 0 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--kordyn-v2-border-strong);
+  border-radius: 8px;
+  color: var(--kordyn-v2-text-soft);
+  background: rgba(8, 19, 34, 0.84);
+  cursor: pointer;
+  font-size: 10px;
+}
+.kordynV2KnowledgeTitle button:last-child,
+.kordynV2CapabilityTitle button:last-child { border-color: rgba(52, 120, 255, 0.52); color: #fff; background: rgba(24, 83, 201, 0.82); }
+.kordynV2KnowledgeTitle button:focus-visible,
+.kordynV2CapabilityTitle button:focus-visible,
+.kordynV2KnowledgeWorkspace button:focus-visible,
+.kordynV2CapabilityWorkspace button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+.kordynV2KnowledgeWorkbench {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(220px, .78fr) minmax(360px, 1.35fr) minmax(245px, .87fr);
+  grid-template-rows: minmax(0, 1fr) 82px;
+  gap: 10px;
+  overflow: hidden;
+}
+.kordynV2KnowledgeSources,
+.kordynV2KnowledgeEvidence,
+.kordynV2KnowledgeGraph,
+.kordynV2IncubationQueue,
+.kordynV2CapabilityRegistry,
+.kordynV2CapabilityInspector {
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--kordyn-v2-border);
+  border-radius: 12px;
+  background: rgba(5, 15, 28, 0.84);
+  box-shadow: 0 20px 54px rgba(0, 0, 0, 0.2);
+}
+.kordynV2KnowledgeSources,
+.kordynV2IncubationQueue { padding: 10px; display: grid; grid-template-rows: 34px minmax(0, 1fr); overflow: hidden; }
+.kordynV2KnowledgeSources > header,
+.kordynV2IncubationQueue > header,
+.kordynV2KnowledgeEvidence > header {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.kordynV2KnowledgeSources > header strong,
+.kordynV2IncubationQueue > header strong,
+.kordynV2KnowledgeEvidence > header strong { font-size: 11px; }
+.kordynV2KnowledgeSources > header small,
+.kordynV2IncubationQueue > header small,
+.kordynV2KnowledgeEvidence > header small { color: var(--kordyn-v2-muted); font-size: 8px; }
+.kordynV2KnowledgeSources > div,
+.kordynV2IncubationQueue > div { min-width: 0; min-height: 0; display: grid; align-content: start; gap: 7px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #263951 transparent; }
+.kordynV2KnowledgeSources article { border: 1px solid rgba(131, 159, 198, 0.14); border-radius: 9px; background: rgba(7, 18, 34, 0.78); }
+.kordynV2KnowledgeSources article[data-selected="true"] { border-color: rgba(128, 79, 255, 0.64); background: rgba(39, 24, 78, 0.45); }
+.kordynV2KnowledgeSources article[data-source-stage="failed"] { border-color: rgba(255, 89, 104, 0.42); }
+.kordynV2KnowledgeSourceSelect {
+  width: 100%; min-width: 0; min-height: 52px; padding: 8px; display: grid; grid-template-columns: 22px minmax(0, 1fr) 16px; align-items: center; gap: 7px;
+  border: 0; color: #a987ff; background: transparent; cursor: pointer; text-align: left;
+}
+.kordynV2KnowledgeSourceSelect span { min-width: 0; display: grid; gap: 3px; }
+.kordynV2KnowledgeSourceSelect strong,
+.kordynV2KnowledgeSourceSelect small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2KnowledgeSourceSelect strong { color: var(--kordyn-v2-text-soft); font-size: 10px; }
+.kordynV2KnowledgeSourceSelect small { color: var(--kordyn-v2-muted); font-size: 8px; }
+.kordynV2KnowledgeSources article dl { margin: 0; padding: 0 8px 7px; display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.kordynV2KnowledgeSources article dl div { min-width: 0; }
+.kordynV2KnowledgeSources article dt { color: var(--kordyn-v2-muted); font-size: 7px; }
+.kordynV2KnowledgeSources article dd { margin: 2px 0 0; overflow: hidden; color: var(--kordyn-v2-text-soft); font: 8px var(--kordyn-v2-mono); text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2KnowledgeSources article footer { padding: 6px 8px 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 5px; border-top: 1px solid rgba(132, 160, 196, 0.1); }
+.kordynV2KnowledgeSources article footer button,
+.kordynV2IncubationQueue article footer button { min-height: 31px; padding: 0 6px; border: 1px solid rgba(81, 123, 190, 0.24); border-radius: 6px; color: var(--kordyn-v2-text-soft); background: rgba(13, 31, 56, 0.56); cursor: pointer; font-size: 8px; }
+.kordynV2KnowledgeSources article footer button:disabled,
+.kordynV2IncubationQueue article footer button:disabled { color: var(--kordyn-v2-dim); background: rgba(12, 20, 31, 0.62); cursor: not-allowed; }
+
+.kordynV2KnowledgeEvidenceColumn { min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) 126px; gap: 10px; overflow: hidden; }
+.kordynV2KnowledgeEvidence { padding: 10px; display: grid; grid-template-rows: 34px minmax(0, 1fr); overflow: hidden; }
+.kordynV2KnowledgeEvidence > header span { display: grid; gap: 2px; }
+.kordynV2KnowledgeEvidence > header em { color: #b486ff; font: 10px var(--kordyn-v2-mono); font-style: normal; }
+.kordynV2KnowledgeEvidenceBody { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(150px, .68fr) minmax(200px, 1.32fr); gap: 8px; overflow: hidden; }
+.kordynV2KnowledgeEvidenceBody nav { min-width: 0; min-height: 0; display: grid; align-content: start; gap: 5px; overflow-y: auto; }
+.kordynV2KnowledgeEvidenceBody nav button { min-width: 0; min-height: 44px; padding: 7px; display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 6px; border: 1px solid transparent; border-radius: 7px; color: #a987ff; background: rgba(18, 13, 37, 0.35); cursor: pointer; text-align: left; }
+.kordynV2KnowledgeEvidenceBody nav button[data-selected="true"] { border-color: rgba(169, 135, 255, 0.52); background: rgba(52, 31, 99, 0.45); }
+.kordynV2KnowledgeEvidenceBody nav span { min-width: 0; display: grid; gap: 3px; }
+.kordynV2KnowledgeEvidenceBody nav strong { overflow: hidden; color: var(--kordyn-v2-text-soft); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2KnowledgeEvidenceBody nav small { color: var(--kordyn-v2-muted); font: 7px var(--kordyn-v2-mono); }
+.kordynV2KnowledgeEvidenceBody article { min-width: 0; min-height: 0; padding: 10px; overflow-y: auto; border: 1px solid rgba(139, 100, 227, 0.2); border-radius: 8px; background: rgba(21, 13, 41, 0.34); }
+.kordynV2KnowledgeEvidenceBody article dl { margin: 0 0 10px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.kordynV2KnowledgeEvidenceBody article dt { color: var(--kordyn-v2-muted); font-size: 7px; }
+.kordynV2KnowledgeEvidenceBody article dd { margin: 3px 0 0; overflow-wrap: anywhere; color: var(--kordyn-v2-text-soft); font: 8px var(--kordyn-v2-mono); }
+.kordynV2KnowledgeEvidenceBody blockquote { margin: 0; padding: 12px; display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; border-left: 2px solid #9d72ff; color: #e4d9ff; background: rgba(69, 40, 122, 0.2); font-size: 10px; line-height: 1.62; }
+.kordynV2KnowledgeEvidenceBody article > p { display: flex; gap: 6px; color: var(--kordyn-v2-muted); font-size: 8px; line-height: 1.5; }
+.kordynV2KnowledgeGraph { padding: 9px; overflow: hidden; }
+.kordynV2KnowledgeGraph > header { display: flex; align-items: center; gap: 6px; color: #aa84ff; }
+.kordynV2KnowledgeGraph > header strong { color: var(--kordyn-v2-text-soft); font-size: 9px; }
+.kordynV2KnowledgeGraph > header small { margin-left: auto; color: var(--kordyn-v2-muted); font-size: 7px; }
+.kordynV2KnowledgeGraph > div { min-width: 0; margin-top: 11px; display: grid; grid-template-columns: minmax(90px, .8fr) 22px minmax(84px, 1fr) 22px minmax(84px, 1fr); align-items: center; }
+.kordynV2KnowledgeGraph > div > i { height: 1px; background: linear-gradient(90deg, #8f65ff, rgba(143, 101, 255, 0.2)); }
+.kordynV2KnowledgeGraph section { min-width: 0; display: grid; gap: 4px; }
+.kordynV2KnowledgeGraph span { min-width: 0; min-height: 24px; padding: 4px 6px; display: flex; align-items: center; gap: 5px; overflow: hidden; border: 1px solid rgba(149, 105, 255, 0.24); border-radius: 6px; color: #c7adff; background: rgba(52, 31, 99, 0.36); font-size: 7px; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2KnowledgeGraph span[data-kind="candidate"] { border-color: rgba(32, 215, 148, 0.24); color: var(--kordyn-v2-mint); background: rgba(12, 61, 47, 0.28); }
+
+.kordynV2IncubationQueue { grid-template-rows: 34px auto minmax(0, 1fr); }
+.kordynV2IncubationQueue > header span { display: grid; gap: 2px; }
+.kordynV2IncubationQueue > header em { color: var(--kordyn-v2-amber); font: 10px var(--kordyn-v2-mono); font-style: normal; }
+.kordynV2IncubationQueue > nav { margin: 3px 0 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.kordynV2IncubationQueue > nav span { min-width: 0; min-height: 25px; padding: 4px 6px; display: flex; align-items: center; gap: 5px; border: 1px solid rgba(32, 215, 148, 0.16); border-radius: 6px; color: var(--kordyn-v2-mint); background: rgba(9, 52, 40, 0.2); font-size: 7px; }
+.kordynV2IncubationQueue article { border: 1px solid rgba(244, 173, 86, 0.18); border-radius: 8px; background: rgba(45, 28, 10, 0.24); }
+.kordynV2IncubationQueue article > button { width: 100%; min-width: 0; min-height: 49px; padding: 8px; display: grid; grid-template-columns: minmax(0, 1fr) 16px; align-items: center; gap: 7px; border: 0; color: var(--kordyn-v2-amber); background: transparent; cursor: pointer; text-align: left; }
+.kordynV2IncubationQueue article > button span { min-width: 0; display: grid; gap: 3px; }
+.kordynV2IncubationQueue article > button strong,
+.kordynV2IncubationQueue article > button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2IncubationQueue article > button strong { color: var(--kordyn-v2-text-soft); font-size: 9px; }
+.kordynV2IncubationQueue article > button small { color: var(--kordyn-v2-muted); font: 7px var(--kordyn-v2-mono); }
+.kordynV2IncubationQueue article footer { padding: 6px 8px 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 5px; border-top: 1px solid rgba(244, 173, 86, 0.1); }
+.kordynV2IncubationQueue article footer button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+.kordynV2IncubationQueue article footer button:last-child { border-color: rgba(32, 215, 148, 0.3); color: var(--kordyn-v2-mint); background: rgba(10, 67, 51, 0.38); }
+.kordynV2KnowledgeLifecycle { grid-column: 1 / -1; min-width: 0; min-height: 0; padding: 9px 12px; display: grid; grid-template-columns: 160px minmax(0, 1fr); grid-template-rows: auto auto; align-items: center; gap: 5px 12px; border: 1px solid rgba(102, 129, 169, 0.18); border-radius: 10px; background: rgba(5, 15, 28, 0.72); }
+.kordynV2KnowledgeLifecycle > strong { font-size: 9px; }
+.kordynV2KnowledgeLifecycle > div { min-width: 0; display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 4px; }
+.kordynV2KnowledgeLifecycle span { min-width: 0; display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: center; gap: 4px; color: var(--kordyn-v2-muted); }
+.kordynV2KnowledgeLifecycle span b { width: 18px; height: 18px; display: grid; place-items: center; border: 1px solid rgba(128, 157, 198, 0.22); border-radius: 50%; font: 7px var(--kordyn-v2-mono); }
+.kordynV2KnowledgeLifecycle span[data-complete="true"] { color: var(--kordyn-v2-mint); }
+.kordynV2KnowledgeLifecycle span[data-complete="true"] b { border-color: rgba(32, 215, 148, 0.44); background: rgba(11, 75, 55, 0.34); }
+.kordynV2KnowledgeLifecycle small { overflow: hidden; font-size: 7px; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2KnowledgeLifecycle > p { grid-column: 2; margin: 0; color: var(--kordyn-v2-muted); font-size: 7px; }
+
+.kordynV2CapabilityWorkspace { grid-template-rows: 42px 34px minmax(0, 1fr); }
+.kordynV2CapabilityBoundary,
+.kordynV2MobileCapabilityBoundary { min-width: 0; padding: 0 11px; display: flex; align-items: center; gap: 7px; border: 1px solid rgba(32, 215, 148, 0.18); border-radius: 8px; color: var(--kordyn-v2-mint); background: rgba(9, 55, 42, 0.24); font-size: 9px; }
+.kordynV2CapabilityWorkbench { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(560px, 1.35fr) minmax(310px, .65fr); gap: 10px; overflow: hidden; }
+.kordynV2CapabilityRegistry { display: grid; grid-template-rows: 38px minmax(0, 1fr); overflow: hidden; }
+.kordynV2CapabilityRegistry > header,
+.kordynV2CapabilityRegistry > div > button { min-width: 0; display: grid; grid-template-columns: minmax(145px, 1.35fr) minmax(110px, .9fr) minmax(95px, .85fr) 72px 58px 68px 14px; align-items: center; gap: 7px; }
+.kordynV2CapabilityRegistry > header { padding: 0 10px; border-bottom: 1px solid var(--kordyn-v2-border); color: var(--kordyn-v2-muted); font-size: 7px; }
+.kordynV2CapabilityRegistry > div { min-width: 0; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #263951 transparent; }
+.kordynV2CapabilityRegistry > div > button { width: 100%; min-height: 51px; padding: 0 10px; border: 0; border-bottom: 1px solid rgba(132, 160, 196, 0.1); color: var(--kordyn-v2-text-soft); background: transparent; cursor: pointer; text-align: left; }
+.kordynV2CapabilityRegistry > div > button[data-selected="true"] { background: linear-gradient(90deg, rgba(23, 76, 159, 0.36), rgba(19, 46, 85, 0.14)); box-shadow: inset 2px 0 var(--kordyn-v2-cobalt); }
+.kordynV2CapabilityRegistry button > span:first-child { min-width: 0; display: flex; align-items: center; gap: 7px; color: #75a8ff; }
+.kordynV2CapabilityRegistry button strong { overflow: hidden; color: #fff; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2CapabilityRegistry button em { overflow: hidden; color: var(--kordyn-v2-muted); font-size: 7px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2CapabilityRegistry button code { color: var(--kordyn-v2-cobalt-soft); font: 8px var(--kordyn-v2-mono); }
+.kordynV2CapabilityRegistry button b { color: var(--kordyn-v2-amber); font: 8px var(--kordyn-v2-mono); }
+.kordynV2CapabilityRegistry button b[data-health="healthy"] { color: var(--kordyn-v2-mint); }
+.kordynV2CapabilityRegistry button b[data-health="failed"],
+.kordynV2CapabilityRegistry button b[data-health="degraded"] { color: var(--kordyn-v2-danger); }
+.kordynV2CapabilityRegistry button > span:nth-last-child(2) { color: var(--kordyn-v2-text-soft); font: 8px var(--kordyn-v2-mono); }
+
+.kordynV2CapabilityInspector { padding: 12px; display: grid; align-content: start; gap: 10px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #263951 transparent; }
+.kordynV2CapabilityInspector.is-empty { align-content: center; color: var(--kordyn-v2-muted); }
+.kordynV2CapabilityInspector > header { min-width: 0; display: flex; justify-content: space-between; gap: 8px; }
+.kordynV2CapabilityInspector > header > span { min-width: 0; display: grid; gap: 3px; }
+.kordynV2CapabilityInspector > header small { color: var(--kordyn-v2-cobalt-soft); font-size: 8px; }
+.kordynV2CapabilityInspector > header strong { overflow-wrap: anywhere; color: #fff; font-size: 13px; }
+.kordynV2CapabilityInspector > header code { color: var(--kordyn-v2-muted); font: 8px var(--kordyn-v2-mono); }
+.kordynV2CapabilityInspector > header > div { display: grid; justify-items: end; align-content: start; gap: 5px; }
+.kordynV2CapabilityInspector > header em,
+.kordynV2CapabilityInspector > header b { padding: 3px 6px; border: 1px solid rgba(32, 215, 148, 0.22); border-radius: 6px; color: var(--kordyn-v2-mint); font: 7px var(--kordyn-v2-mono); font-style: normal; }
+.kordynV2CapabilityInspector > header em[data-health="failed"],
+.kordynV2CapabilityInspector > header em[data-health="degraded"] { border-color: rgba(255, 89, 104, 0.28); color: var(--kordyn-v2-danger); }
+.kordynV2CapabilityInspector > header b { border-color: rgba(84, 125, 189, 0.22); color: var(--kordyn-v2-text-soft); }
+.kordynV2CapabilityInspector > section { min-width: 0; padding: 9px; display: grid; gap: 7px; border: 1px solid rgba(129, 159, 201, 0.13); border-radius: 8px; background: rgba(5, 15, 28, 0.56); }
+.kordynV2CapabilityInspector > section > strong { font-size: 9px; }
+.kordynV2CapabilityInspector dl { margin: 0; display: grid; gap: 6px; }
+.kordynV2CapabilityInspector dl div { min-width: 0; display: flex; justify-content: space-between; gap: 10px; }
+.kordynV2CapabilityInspector dt { color: var(--kordyn-v2-muted); font-size: 7px; }
+.kordynV2CapabilityInspector dd { margin: 0; overflow-wrap: anywhere; color: var(--kordyn-v2-text-soft); font: 8px var(--kordyn-v2-mono); text-align: right; }
+.kordynV2CapabilityImpact p { margin: 0; display: flex; gap: 6px; color: var(--kordyn-v2-muted); font-size: 8px; line-height: 1.45; }
+.kordynV2CapabilityImpact p:first-of-type { color: var(--kordyn-v2-mint); }
+.kordynV2CapabilityUsage > div { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.kordynV2CapabilityUsage span { min-width: 0; padding: 6px; display: grid; gap: 3px; color: var(--kordyn-v2-muted); background: rgba(13, 29, 50, 0.5); font-size: 7px; }
+.kordynV2CapabilityUsage span strong { overflow-wrap: anywhere; color: var(--kordyn-v2-text-soft); font: 8px var(--kordyn-v2-mono); }
+.kordynV2CapabilityInspector > .kordynV2McpGrant { border-color: rgba(244, 173, 86, 0.24); background: rgba(47, 29, 10, 0.23); }
+.kordynV2CapabilityInspector > .kordynV2McpGrant[data-kordyn-v2-mcp-grant="granted"] { border-color: rgba(32, 215, 148, 0.24); background: rgba(9, 55, 42, 0.23); }
+.kordynV2McpGrant > header { display: flex; align-items: center; gap: 6px; color: var(--kordyn-v2-amber); }
+.kordynV2McpGrant > button,
+.kordynV2CapabilityInspector > footer button { min-height: 35px; padding: 0 9px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid rgba(72, 124, 235, 0.36); border-radius: 7px; color: var(--kordyn-v2-cobalt-soft); background: rgba(17, 46, 96, 0.35); cursor: pointer; font-size: 8px; }
+.kordynV2CapabilityInspector > footer { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.kordynV2CapabilityInspector > footer button:last-child { border-color: rgba(32, 215, 148, 0.3); color: var(--kordyn-v2-mint); background: rgba(10, 67, 51, 0.35); }
+.kordynV2CapabilityInspector > footer button:disabled { border-color: var(--kordyn-v2-border); color: var(--kordyn-v2-dim); background: rgba(12, 20, 31, 0.62); cursor: not-allowed; }
+
+.kordynV2MobileKnowledge,
+.kordynV2MobileCapabilities { gap: 12px; }
+.kordynV2MobileKnowledgeSources,
+.kordynV2MobileCapabilityRows { min-width: 0; display: grid; gap: 7px; }
+.kordynV2MobileKnowledgeSources > header { min-height: 34px; display: flex; align-items: center; justify-content: space-between; }
+.kordynV2MobileKnowledgeSources > header small { color: var(--kordyn-v2-muted); }
+.kordynV2MobileKnowledgeSources > button,
+.kordynV2MobileCapabilityRows > button { min-width: 0; min-height: 68px; padding: 10px; display: grid; grid-template-columns: 34px minmax(0, 1fr) 18px; align-items: center; gap: 9px; border: 1px solid rgba(131, 159, 198, 0.14); border-radius: 14px; color: #a987ff; background: rgba(7, 18, 33, 0.82); cursor: pointer; text-align: left; }
+.kordynV2MobileKnowledgeSources > button[data-selected="true"],
+.kordynV2MobileCapabilityRows > button[data-selected="true"] { border-color: rgba(135, 92, 255, 0.62); background: rgba(43, 27, 81, 0.58); }
+.kordynV2MobileKnowledgeSources button span,
+.kordynV2MobileCapabilityRows button span { min-width: 0; display: grid; gap: 3px; }
+.kordynV2MobileKnowledgeSources button strong,
+.kordynV2MobileKnowledgeSources button small,
+.kordynV2MobileCapabilityRows button strong,
+.kordynV2MobileCapabilityRows button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2MobileKnowledgeSources button strong,
+.kordynV2MobileCapabilityRows button strong { color: #fff; font-size: 12px; }
+.kordynV2MobileKnowledgeSources button small,
+.kordynV2MobileCapabilityRows button small { color: var(--kordyn-v2-muted); font-size: 9px; }
+.kordynV2MobileCapabilityRows button em { color: var(--kordyn-v2-cobalt-soft); font-size: 8px; font-style: normal; }
+.kordynV2MobileKnowledge .kordynV2KnowledgeEvidence { min-height: 300px; padding: 10px; }
+.kordynV2MobileKnowledge .kordynV2KnowledgeEvidenceBody { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; overflow: visible; }
+.kordynV2MobileKnowledge .kordynV2KnowledgeEvidenceBody nav { max-height: 142px; }
+.kordynV2MobileKnowledge .kordynV2KnowledgeEvidenceBody article { min-height: 132px; }
+.kordynV2MobileFlowTitle { min-height: 40px; display: flex; align-items: center; gap: 7px; color: var(--kordyn-v2-amber); }
+.kordynV2MobileKnowledge .kordynV2IncubationQueue { min-height: 330px; }
+.kordynV2MobileKnowledge button,
+.kordynV2MobileCapabilities button { min-height: 44px; }
+.kordynV2MobileCapabilityBoundary { min-height: 46px; }
+.kordynV2MobileCapabilityDetail { min-width: 0; padding: 9px 10px 12px; border: 1px solid rgba(82, 117, 178, 0.32); border-radius: 20px; background: linear-gradient(180deg, rgba(13, 28, 50, 0.97), rgba(5, 13, 25, 0.98)); box-shadow: 0 -12px 36px rgba(0, 0, 0, 0.28); }
+.kordynV2MobileCapabilityDetail > i { width: 44px; height: 4px; margin: 0 auto 7px; display: block; border-radius: 999px; background: rgba(182, 197, 222, 0.52); }
+.kordynV2MobileCapabilityDetail .kordynV2CapabilityInspector { padding: 4px 2px 0; overflow: visible; border: 0; background: transparent; box-shadow: none; }
+.kordynV2MobileCapabilityDetail .kordynV2CapabilityInspector > footer { grid-template-columns: minmax(0, 1fr); }
+
+@media (max-width: 1180px) and (min-width: 768px) {
+  .kordynV2KnowledgeWorkbench { grid-template-columns: minmax(195px, .72fr) minmax(330px, 1.25fr) minmax(220px, .82fr); }
+  .kordynV2CapabilityWorkbench { grid-template-columns: minmax(500px, 1.25fr) minmax(270px, .75fr); }
+  .kordynV2CapabilityRegistry > header,
+  .kordynV2CapabilityRegistry > div > button { grid-template-columns: minmax(130px, 1.25fr) minmax(90px, .8fr) minmax(82px, .75fr) 60px 52px 56px 14px; gap: 5px; }
+}
+
+@media (max-width: 430px) {
+  .kordynV2MobileKnowledge .kordynV2KnowledgeEvidenceBody article dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .kordynV2KnowledgeWorkspace button,
+  .kordynV2CapabilityWorkspace button,
+  .kordynV2MobileKnowledge button,
+  .kordynV2MobileCapabilities button { transition: border-color 150ms ease-out, background-color 150ms ease-out, box-shadow 150ms ease-out; }
+}
