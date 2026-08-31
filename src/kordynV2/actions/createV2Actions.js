@@ -2,6 +2,7 @@ import { uiConfirm } from "../../confirm.jsx";
 import { createAccountActions } from "../domains/account/accountActions.js";
 import { createAiActions } from "../domains/ai/aiActions.js";
 import { createAssetsActions } from "../domains/assets/assetsActions.js";
+import { createGovernanceActions } from "../domains/governance/governanceActions.js";
 
 const cancelled = Object.freeze({ ok: false, cancelled: true });
 const invalidKillSwitchState = Object.freeze({ ok: false, error: "invalid_kill_switch_state" });
@@ -41,12 +42,13 @@ export function createV2Actions({
   const ai = createAiActions({ action, confirm, notify, download, navigate });
   const account = createAccountActions({ action, confirm, navigate, download, ai });
   const assets = createAssetsActions({ action, confirm, notify, download, navigate });
+  const governance = createGovernanceActions({ action, confirm, notify, navigate });
 
   return Object.freeze({
     ai,
     account,
     assets,
-    governance: Object.freeze({}),
+    governance,
     global: Object.freeze({
       reconcile: account.reconcile,
       flattenAll,
