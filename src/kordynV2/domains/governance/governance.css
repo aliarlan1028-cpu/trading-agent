@@ -1,3 +1,35 @@
+.kordynV2GovernanceDomain {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+.kordynV2GovernanceActionStatus {
+  position: absolute;
+  z-index: 12;
+  top: 12px;
+  right: 16px;
+  max-width: min(420px, calc(100% - 32px));
+  min-height: 42px;
+  padding: 8px 12px;
+  display: grid;
+  gap: 2px;
+  border: 1px solid rgba(74, 129, 248, .6);
+  border-radius: 10px;
+  color: var(--kordyn-v2-text-soft);
+  background: rgba(8, 22, 38, .97);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, .34);
+}
+.kordynV2GovernanceActionStatus strong { color: var(--kordyn-v2-cobalt-soft); font-size: 10px; }
+.kordynV2GovernanceActionStatus span { color: var(--kordyn-v2-muted); font-size: 8px; }
+.kordynV2GovernanceActionStatus[data-kordyn-v2-governance-action-state="success"] { border-color: rgba(32, 215, 148, .48); }
+.kordynV2GovernanceActionStatus[data-kordyn-v2-governance-action-state="success"] strong { color: var(--kordyn-v2-mint); }
+.kordynV2GovernanceActionStatus[data-kordyn-v2-governance-action-state="partial"] { border-color: rgba(244, 173, 86, .55); }
+.kordynV2GovernanceActionStatus[data-kordyn-v2-governance-action-state="partial"] strong { color: var(--kordyn-v2-amber); }
+.kordynV2GovernanceActionStatus[data-kordyn-v2-governance-action-state="failed"] { border-color: rgba(255, 89, 104, .55); }
+.kordynV2GovernanceActionStatus[data-kordyn-v2-governance-action-state="failed"] strong { color: var(--kordyn-v2-danger); }
+
 .kordynV2GovernanceWorkspace {
   width: 100%;
   height: 100%;
@@ -11,7 +43,7 @@
   color: var(--kordyn-v2-text);
   background: radial-gradient(circle at 72% 34%, rgba(32, 215, 148, .06), transparent 30%), linear-gradient(180deg, rgba(3, 12, 22, .98), rgba(2, 8, 16, .99));
 }
-.kordynV2GovernanceTitle { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.kordynV2GovernanceTitle { min-width: 0; padding-right: 188px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .kordynV2GovernanceTitle > span { min-width: 0; display: flex; align-items: baseline; gap: 13px; }
 .kordynV2GovernanceTitle h1, .kordynV2GovernanceTitle p { margin: 0; }
 .kordynV2GovernanceTitle h1 { font-size: 22px; letter-spacing: -.03em; }
@@ -252,6 +284,7 @@
 .kordynV2ConfigurationEditor > form > footer button:disabled, .kordynV2ConfigRuleRows article > button:disabled { opacity: .45; }
 .kordynV2ConfigRuleRows { min-height: 0; overflow-y: auto; }
 .kordynV2ConfigRuleRows article { min-width: 0; min-height: 56px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 9px; border-bottom: 1px solid rgba(126, 150, 184, .11); }
+.kordynV2ConfigObjectSelect { min-width: 0; min-height: 44px; padding: 0; border: 0; color: inherit; background: transparent; cursor: pointer; text-align: left; }
 .kordynV2ConfigRuleRows article span { min-width: 0; display: grid; gap: 3px; }
 .kordynV2ConfigRuleRows article strong, .kordynV2ConfigRuleRows article small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kordynV2ConfigRuleRows article strong { font-size: 9px; }
@@ -279,6 +312,10 @@
 .kordynV2ConfigurationInspector footer { align-self: end; color: var(--kordyn-v2-muted); font-size: 8px; line-height: 1.5; }
 
 .kordynV2GovernanceMobile { min-width: 0; min-height: 100%; padding: 12px 12px 24px; display: grid; align-content: start; gap: 12px; color: var(--kordyn-v2-text); }
+.kordynV2GovernanceDomain:has(.kordynV2GovernanceMobile) { min-height: 100%; height: auto; }
+.kordynV2GovernanceDomain:has(.kordynV2GovernanceMobile) .kordynV2GovernanceActionStatus { position: sticky; top: 8px; margin: 8px 12px -2px; max-width: none; min-height: 48px; }
+.kordynV2GovernanceDomain:has(.kordynV2GovernanceMobile) .kordynV2GovernanceActionStatus strong { font-size: 12px; }
+.kordynV2GovernanceDomain:has(.kordynV2GovernanceMobile) .kordynV2GovernanceActionStatus span { font-size: 10px; }
 .kordynV2GovernanceMobile > header h2, .kordynV2GovernanceMobile > header p { margin: 0; }
 .kordynV2GovernanceMobile > header h2 { font-size: 25px; letter-spacing: -.035em; }
 .kordynV2GovernanceMobile > header p { margin-top: 6px; color: var(--kordyn-v2-muted); font-size: 13px; }
@@ -363,11 +400,12 @@
 .kordynV2GovernanceMobile .kordynV2ConfigurationEditor > form > footer button { min-height: 44px; }
 
 @media (max-width: 1240px) and (min-width: 721px) {
+  .kordynV2GovernanceTitle { padding-right: 172px; }
   .kordynV2BoundaryLead { grid-template-columns: minmax(0, 1.42fr) minmax(220px, .7fr); }
   .kordynV2BoundaryDelta { grid-template-columns: minmax(100px, .7fr) 18px minmax(100px, .7fr) minmax(175px, 1fr); }
   .kordynV2ReadinessChain > div { grid-template-columns: repeat(5, minmax(70px, 1fr)); }
   .kordynV2BoundaryGrid, .kordynV2BoundaryLower { grid-template-columns: minmax(0, 1.35fr) minmax(230px, .65fr); }
-  .kordynV2OperationsTopology { grid-template-columns: repeat(4, minmax(94px, 1fr)); overflow-y: auto; }
+  .kordynV2OperationsTopology { grid-template-columns: repeat(7, minmax(76px, 1fr)); overflow: hidden; }
   .kordynV2OperationsMain { grid-template-columns: minmax(0, 1.18fr) minmax(280px, .82fr); }
   .kordynV2TaskRunEmbedded { grid-template-columns: 1fr; overflow-y: auto; }
   .kordynV2OperationsEvidence > div { grid-template-columns: repeat(2, 1fr); }

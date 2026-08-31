@@ -180,6 +180,11 @@ const searchCollections = Object.freeze([
   { key: "auditLogs", type: "Audit log", route: "auditSystem", workspaceId: "operations", sourceSection: "operationsCenter", id: (row) => row.id, title: (row) => row.title || row.action || row.resource || row.id },
   { key: "mandates", type: "Mandate", route: "riskMandate", workspaceId: "control", sourceSection: "riskCenter", id: (row) => row.id, title: (row) => row.name || row.title || row.id },
   { key: "riskIncidents", type: "Risk incident", route: "riskCenter", workspaceId: "control", sourceSection: "riskCenter", id: (row) => row.id, title: (row) => row.title || row.type || row.id },
+  { key: "jobRuns", type: "Agent run", route: "operationsCenter:tasks", workspaceId: "operations", sourceSection: "operationsCenter", id: (row) => row.id, title: (row) => row.taskName || row.name || row.handler || row.id },
+  { key: "notifications", type: "Notification", route: "operationsCenter:notifications", workspaceId: "operations", sourceSection: "operationsCenter", id: (row) => row.id, title: (row) => row.title || row.message || row.id },
+  { key: "eventSources", type: "Event source", route: "eventRisk", workspaceId: "control", sourceSection: "riskCenter", id: (row) => row.id || row.sourceId, title: (row) => row.name || row.label || row.id },
+  { key: "riskChecks", type: "Risk check", route: "riskOverview", workspaceId: "control", sourceSection: "riskCenter", id: (row) => row.id || row.ruleId, title: (row) => row.ruleName || row.reason || row.ruleId || row.id },
+  { key: "reconciliationReports", type: "Recovery", route: "operationsCenter:recovery", workspaceId: "operations", sourceSection: "operationsCenter", id: (row) => row.id, title: (row) => row.title || `Reconciliation ${row.id}` },
   { key: "executionOrders", type: "Execution", route: "executionReview", workspaceId: "live", sourceSection: "cockpit", project: taskFourSelectionSources.Execution.project, id: (row) => row.id || row.orderId, title: (row) => row.symbol || row.title || row.id },
   { key: "reviews", type: "Review", route: "labReviews", workspaceId: "lab", sourceSection: "cockpit", project: taskFourSelectionSources.Review.project, id: (row) => row.id, title: (row) => row.title || row.symbol || row.id }
 ]);

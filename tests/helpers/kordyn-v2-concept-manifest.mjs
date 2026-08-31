@@ -23,9 +23,13 @@ const comparisonScopes = Object.freeze({
   "desktop-knowledge-incubator": Object.freeze(["assets"]),
   "desktop-capability-registry": Object.freeze(["assets"]),
   "desktop-review-owner-release": Object.freeze(["assets"]),
+  "desktop-governance-boundary": Object.freeze(["governance"]),
+  "desktop-governance-operations": Object.freeze(["governance"]),
+  "desktop-governance-configuration": Object.freeze(["governance"]),
   "mobile-ai-mission-home": Object.freeze(["shell", "ai"]),
   "mobile-ai-task-approval": Object.freeze(["ai"]),
-  "mobile-intelligent-assets": Object.freeze(["assets"])
+  "mobile-intelligent-assets": Object.freeze(["assets"]),
+  "mobile-system-governance": Object.freeze(["governance"])
 });
 
 const rows = [
@@ -38,12 +42,12 @@ const rows = [
   ["desktop-capability-registry", "智能资产", "Capability registry", "desktop-capability-registry.png", 1586, 992, "b11c8b42683c20a8c9994256f0ec754f37d39fd6109a2a496e1bb38a2dd8a649", "assets", "capabilities", "desktop", false],
   ["desktop-review-owner-release", "智能资产", "Review, Owner queue, release, poster draft", "desktop-review-owner-release.png", 1586, 992, "468aa2d74347e6a52ad6d931726c3afcde2bd935d94df5bf9cef933f125961c6", "assets", "reviews", "desktop", false],
   ["desktop-governance-boundary", "系统治理", "Current boundary", "desktop-governance-boundary.png", 1586, 992, "ff3e1be00ead587259ef823ef4f17b17e5d4580af2018431d7af151141ca8200", "governance", "overview", "desktop", false],
-  ["desktop-governance-operations", "系统治理", "Operations", "desktop-governance-operations.png", 1586, 992, "e0dc2e320cf6ed19f9ce0e14f983f7a0b91b06d33a1b0777f93699b0e2b67108", "governance", "tasks", "desktop", false],
+  ["desktop-governance-operations", "系统治理", "Operations", "desktop-governance-operations.png", 1586, 992, "e0dc2e320cf6ed19f9ce0e14f983f7a0b91b06d33a1b0777f93699b0e2b67108", "governance", "runs", "desktop", false],
   ["desktop-governance-configuration", "系统治理", "Configuration", "desktop-governance-configuration.png", 1586, 992, "9498438347d6097d0591161ad4c08538e8c2fe9a68ef4316ead6c6169991b58d", "governance", "configuration", "desktop", false],
   ["mobile-ai-mission-home", "AI 交易员", "Mobile mission home", "mobile-ai-mission-home.png", 853, 1844, "6e0eda474f6658ff9dbfcbc6b18d4503203a78ddb30e38aa22b0760c1c902c9b", "ai", "missions", "mobile", true],
   ["mobile-ai-task-approval", "AI 交易员", "Mobile one-shot approval task", "mobile-ai-task-approval.png", 853, 1844, "341997877d9cf8cbae27b6f2f31c5cb79b546927a3e5b3ac3d9efea5c11f0778", "ai", "missions", "mobile", false],
   ["mobile-intelligent-assets", "智能资产", "Mobile relationship overview", "mobile-intelligent-assets.png", 853, 1844, "6a2785438be0ebc43a522cd31d0c4f9253930467ee83d5c73b367eaa4375d1db", "assets", "relationships", "mobile", false],
-  ["mobile-system-governance", "系统治理", "Mobile operations with open read-only AI support", "mobile-system-governance.png", 852, 1846, "cbcfd92d83b38a856e42da689347fe71b548911a4054ce7adb53ffadf4a1a9ac", "governance", "tasks", "mobile", false]
+  ["mobile-system-governance", "系统治理", "Mobile operations with open read-only AI support", "mobile-system-governance.png", 852, 1846, "cbcfd92d83b38a856e42da689347fe71b548911a4054ce7adb53ffadf4a1a9ac", "governance", "runs", "mobile", false]
 ];
 
 export const KORDYN_V2_CONCEPTS = Object.freeze(rows.map(([
@@ -82,6 +86,12 @@ export const KORDYN_V2_CONCEPTS = Object.freeze(rows.map(([
     })))
     : Object.freeze([]),
   assetCaptures: comparisonScopes[id]?.includes("assets")
+    ? Object.freeze((device === "desktop" ? desktopTargets : mobileTargets).map((viewport) => Object.freeze({
+      viewport,
+      file: `${id}--${viewport}.png`
+    })))
+    : Object.freeze([]),
+  governanceCaptures: comparisonScopes[id]?.includes("governance")
     ? Object.freeze((device === "desktop" ? desktopTargets : mobileTargets).map((viewport) => Object.freeze({
       viewport,
       file: `${id}--${viewport}.png`
