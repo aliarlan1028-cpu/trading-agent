@@ -239,6 +239,12 @@ async function captureSurfaces(cdp, baseUrl) {
       captures.push(await capture(cdp, `${prefix}--${viewportName(viewport)}.png`, viewport));
     }
   }
+  await navigatePage(cdp, baseUrl, viewports.desktop1440);
+  await navigateGovernance(cdp, viewports.desktop1440, "overview");
+  await click(cdp, '[data-kordyn-v2-danger-action="kill-switch"]');
+  await waitForExpression(cdp, "document.querySelector('.cfmCard')", "danger confirmation");
+  captures.push(await capture(cdp, "desktop-governance-danger-confirm--1440x900.png", viewports.desktop1440, { dangerConfirmation: "kill-switch", noActionAccepted: true }));
+  await pressEscape(cdp);
   for (const viewport of [viewports.mobile390, viewports.mobile430]) {
     await navigatePage(cdp, baseUrl, viewport);
     await navigateGovernance(cdp, viewport, "runs");
@@ -260,20 +266,42 @@ async function captureSurfaces(cdp, baseUrl) {
 
 async function captureStates(cdp, baseUrl) {
   const states = [];
-  const scenarios = ["loading", "empty", "processing", "stale", "degraded", "failed", "forbidden", "disabled", "approval", "partial", "no-result", "long-content", "large-list"];
+  const scenarios = [
+    { id: "loading", workspace: "overview", selector: '[data-kordyn-v2-state="loading"]', semanticSurface: "authoritative resource loading", structuralOnly: true },
+    { id: "empty", workspace: "audit", selector: '.kordynV2AuditLedger p', semanticSurface: "empty Audit ledger" },
+    { id: "processing", workspace: "runs", selector: '[data-kordyn-v2-governance-action-state="processing"]', semanticSurface: "Task run awaiting server result", click: '[data-kordyn-v2-object-id="task-governance-patrol"] + div button:first-child' },
+    { id: "stale", workspace: "overview", selector: '[data-kordyn-v2-state="stale"] .kordynV2RetainedNotice', semanticSurface: "last-valid Boundary facts" },
+    { id: "degraded", workspace: "overview", selector: '[data-kordyn-v2-state="degraded"] .kordynV2RetainedNotice', semanticSurface: "degraded last-valid Boundary facts" },
+    { id: "failed", workspace: "event-inputs", selector: '.kordynV2SourceHealth article[data-source-tone="critical"]', semanticSurface: "failed Event source" },
+    { id: "forbidden", workspace: "configuration", selector: '[data-kordyn-v2-config-editor="trading"] [data-kordyn-v2-config-action="save-live-trading"]:disabled', semanticSurface: "forbidden live-trading configuration", setupClick: '[data-kordyn-v2-config-target="trading"]' },
+    { id: "disabled", workspace: "runs", selector: '[data-kordyn-v2-object-id="task-reconcile"] + div button:first-child:disabled', semanticSurface: "disabled Task action" },
+    { id: "approval", workspace: "recovery", selector: '.cfmCard', semanticSurface: "Recovery approval confirmation", click: '.kordynV2RecoveryActions > button:nth-of-type(1)' },
+    { id: "partial", workspace: "recovery", selector: '[data-kordyn-v2-governance-action-state="partial"]', semanticSurface: "partial authoritative reconciliation", result: "partial", click: '.kordynV2RecoveryActions > button:nth-of-type(1)', confirm: true },
+    { id: "no-result", workspace: "recovery", selector: '[data-kordyn-v2-object-type="Recovery"][data-kordyn-v2-object-id="recovery-current"]', semanticSurface: "Recovery without a report" },
+    { id: "long-content", workspace: "audit", selector: '[data-kordyn-v2-object-id="audit-mode-33"]', semanticSurface: "long Audit action content" },
+    { id: "large-list", workspace: "audit", selector: '.kordynV2AuditLedger [data-kordyn-v2-object-type="Audit log"]:nth-of-type(50)', semanticSurface: "large Audit ledger" }
+  ];
   for (let index = 0; index < scenarios.length; index += 1) {
-    const scenario = scenarios[index];
+    const spec = scenarios[index];
+    const scenario = spec.id;
     const viewport = [viewports.desktop1440, viewports.desktop1180, viewports.mobile390, viewports.mobile430][index % 4];
-    await navigatePage(cdp, baseUrl, viewport, scenario);
-    await click(cdp, '[data-kordyn-v2-domain-target="governance"]');
-    await waitForExpression(cdp, `document.querySelector('[data-kordyn-v2-shell="${viewport.device}"]')?.dataset.kordynV2Domain === "governance"`, `${scenario} governance`);
-    if (["long-content", "large-list"].includes(scenario)) {
-      await click(cdp, '[data-kordyn-v2-workspace-target="audit"]');
-      await waitForExpression(cdp, `document.querySelector(${JSON.stringify(markers.audit)})`, `${scenario} audit`);
+    await navigatePage(cdp, baseUrl, viewport, scenario, spec.result || "success");
+    if (scenario === "loading") {
+      await click(cdp, '[data-kordyn-v2-domain-target="governance"]');
+      await waitForExpression(cdp, `document.querySelector('[data-kordyn-v2-shell="${viewport.device}"]')?.dataset.kordynV2Domain === "governance"`, `${scenario} governance`);
+    } else if (viewport.device === "mobile" && spec.workspace === "recovery") {
+      await navigateGovernance(cdp, viewport, "runs");
+      await click(cdp, '.kordynV2GovernanceMobile[data-kordyn-v2-governance-mobile="runs"] > .kordynV2MobilePrimary');
+      await waitForExpression(cdp, `document.querySelector(${JSON.stringify(markers.recovery)})`, `${scenario} recovery`);
+    } else {
+      await navigateGovernance(cdp, viewport, spec.workspace);
     }
-    await waitForExpression(cdp, `document.querySelector('[data-kordyn-v2-state="${scenario}"]')`, `${scenario} state`);
+    if (spec.setupClick) await click(cdp, spec.setupClick);
+    if (spec.click) await click(cdp, spec.click);
+    if (spec.confirm) await acceptConfirm(cdp, `${scenario} action`);
+    await waitForExpression(cdp, `document.querySelector(${JSON.stringify(spec.selector)})`, `${scenario} semantic surface`);
     if (viewport.device === "mobile") await assertTouchTargets(cdp, `${scenario} ${viewport.width}`);
-    states.push(await capture(cdp, `state-${scenario}--${viewportName(viewport)}.png`, viewport, { state: scenario, structuralOnly: true, expectGovernanceCss: ["long-content", "large-list", "stale", "degraded", "processing", "partial"].includes(scenario) ? true : null }));
+    states.push(await capture(cdp, `state-${scenario}--${viewportName(viewport)}.png`, viewport, { state: scenario, semanticSurface: spec.semanticSurface, structuralOnly: spec.structuralOnly === true, expectGovernanceCss: scenario === "loading" ? null : true }));
   }
   return states;
 }
@@ -397,7 +425,7 @@ async function exerciseActions(cdp, baseUrl) {
   await waitForExpression(cdp, "window.__plan05GovernanceCalls.actionResults.length === 4", "configuration result");
   await actionOutcome(cdp, "success", "configuration save");
   const ledger = await evaluate(cdp, "window.__plan05GovernanceCalls");
-  assert.deepEqual(ledger.actionRequests.map((row) => row.endpoint), ["/api/notifications/read", "/api/reconciler/run", "/api/scheduler/recover", "/api/config"], "all deployed governance action endpoints");
+  assert.deepEqual(ledger.actionRequests.map((row) => row.endpoint), ["/api/notifications/read", "/api/reconciler/run", "/api/scheduler/recover", "/api/config/live-trading"], "all deployed governance action endpoints");
   results.push({ mode: "deployed-actions", ledger });
   return results;
 }

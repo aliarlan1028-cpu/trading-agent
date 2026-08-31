@@ -15,6 +15,7 @@ import { MobileOperationsScreen } from "./MobileOperationsScreen.jsx";
 import { ConfigurationWorkspace } from "./ConfigurationWorkspace.jsx";
 import { MobileConfigurationScreen } from "./MobileConfigurationScreen.jsx";
 import { buildConfigurationModel } from "./configurationModel.js";
+import { classifyGovernanceActionResult } from "./governanceActionOutcome.js";
 import "./governance.css";
 
 const actionLabel = (key) => ({
@@ -22,14 +23,10 @@ const actionLabel = (key) => ({
   markNotificationsRead: "更新通知已读状态",
   reconcile: "运行权威对账",
   recoverScheduler: "恢复任务调度",
+  flattenAll: "一键平仓",
+  setKillSwitch: "更新紧急停止",
   saveConfig: "应用配置目标"
 }[key] || "提交治理动作");
-
-function actionState(result) {
-  if (result?.status === "partial" || (Array.isArray(result?.failed) && result.failed.length)) return "partial";
-  if (result?.ok === true || ["accepted", "success", "succeeded", "completed"].includes(result?.status)) return "success";
-  return "failed";
-}
 
 function GovernanceActionStatus({ outcome }) {
   if (!outcome) return null;
@@ -37,6 +34,8 @@ function GovernanceActionStatus({ outcome }) {
     ? "等待服务端权威结果，不提前显示成功。"
     : outcome.state === "success"
       ? "服务端已接受并返回成功结果。"
+      : outcome.state === "cancelled"
+        ? "动作已取消；当前有效状态保持不变。"
       : outcome.state === "partial"
         ? "服务端只完成了部分影响；失败项仍保留待处理。"
         : "服务端未接受该动作；当前有效状态保持不变。";
@@ -54,7 +53,7 @@ export default function GovernanceDomain({ device, workspaceId, data, actions, a
       setOutcome({ action: key, label: actionLabel(key), state: "processing" });
       try {
         const result = await value(...args);
-        setOutcome({ action: key, label: actionLabel(key), state: actionState(result), result });
+        setOutcome({ action: key, label: actionLabel(key), state: classifyGovernanceActionResult(result), result });
         return result;
       } catch (error) {
         setOutcome({ action: key, label: actionLabel(key), state: "failed", error: error?.message || "request_failed" });

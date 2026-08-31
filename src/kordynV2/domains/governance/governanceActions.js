@@ -1,4 +1,5 @@
 const cancelled = Object.freeze({ ok: false, cancelled: true });
+const invalidKillSwitchState = Object.freeze({ ok: false, error: "invalid_kill_switch_state" });
 const unavailableAction = async () => ({ ok: false, error: "action_unavailable" });
 const noOp = () => undefined;
 
@@ -34,6 +35,18 @@ export function createGovernanceActions({ action = unavailableAction, confirm = 
       `/api/risk/incidents/${safeId(id)}/close`,
       {}
     ),
+    flattenAll: () => protectedAction(
+      "Close every position at market? New entries remain paused until authoritative reconciliation confirms completion.",
+      { danger: true, title: "Flatten all positions" },
+      "/api/risk/emergency-flatten",
+      {}
+    ),
+    setKillSwitch: (enabled, reason = "") => typeof enabled !== "boolean" ? invalidKillSwitchState : protectedAction(
+      enabled ? "Activate the emergency stop and block every new trade?" : "Request clearing the emergency stop after backend revalidation?",
+      { danger: enabled, title: enabled ? "Emergency stop" : "Clear emergency stop" },
+      "/api/risk/kill-switch",
+      { enabled, reason: String(reason ?? "") }
+    ),
     refreshEventSources: () => action("/api/event-sources/refresh", {}),
     testEventSource: (id) => action(`/api/event-sources/${safeId(id)}/test`, {}),
     createEventSource: (payload) => action("/api/event-sources", payload),
@@ -49,6 +62,18 @@ export function createGovernanceActions({ action = unavailableAction, confirm = 
       "Apply this configuration target after server preflight?",
       { title: "Review and apply configuration" },
       "/api/config",
+      payload
+    ),
+    saveLiveTrading: (payload) => protectedAction(
+      "Apply this live-trading target after server preflight?",
+      { title: "Review live-trading boundary" },
+      "/api/config/live-trading",
+      payload
+    ),
+    saveOperatingMode: (payload) => protectedAction(
+      "Apply this operating mode after server safety validation?",
+      { title: "Review operating mode" },
+      "/api/system/operating-mode",
       payload
     ),
     saveMandate: (payload = {}) => {
@@ -117,6 +142,13 @@ export function createGovernanceActions({ action = unavailableAction, confirm = 
       payload,
       "PATCH"
     ),
+    updateAccountProfile: (payload) => protectedAction(
+      "Update your own account profile?",
+      { title: "Update account profile" },
+      "/api/account/profile",
+      payload,
+      "PATCH"
+    ),
     grantSubscription: (id, payload = {}) => protectedAction(
       "Grant this subscription through the deployed Owner action?",
       { title: "Grant subscription" },
@@ -126,4 +158,3 @@ export function createGovernanceActions({ action = unavailableAction, confirm = 
     notify
   });
 }
-

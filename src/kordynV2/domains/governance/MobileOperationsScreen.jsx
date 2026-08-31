@@ -1,6 +1,7 @@
 import { AlertTriangle, ArrowRight, CheckCircle2, OctagonX } from "lucide-react";
+import { MobileTaskRunScreen } from "./MobileTaskRunScreen.jsx";
 
-export function MobileOperationsScreen({ model = {}, onSelect = () => {}, onNavigate = () => {} }) {
+export function MobileOperationsScreen({ model = {}, actions, actionsDisabled = false, onSelect = () => {}, onNavigate = () => {} }) {
   const operations = model.operations || {};
   const services = new Map((operations.services || []).map((service) => [service.id, service]));
   const latestRun = operations.tasks?.recentRuns?.[0];
@@ -22,6 +23,7 @@ export function MobileOperationsScreen({ model = {}, onSelect = () => {}, onNavi
         const id = row.source?.id || row.id;
         return <button type="button" key={`${row.kind}-${id}`} data-kordyn-v2-object-type={type} data-kordyn-v2-object-id={id} onClick={() => onSelect({ id, type, workspaceId: "governance" })}><AlertTriangle size={19} /><span><strong>{row.titleZh || row.titleEn}</strong><small>{row.detail || "Evidence unavailable"}</small></span><ArrowRight size={17} /></button>;
       })}</section>
+      <MobileTaskRunScreen model={model} actions={actions} actionsDisabled={actionsDisabled} onSelect={onSelect} embedded />
       <button className="kordynV2MobilePrimary" type="button" onClick={() => onNavigate("governance", "recovery")}>打开恢复工作台 <ArrowRight size={18} /></button>
     </section>
   );

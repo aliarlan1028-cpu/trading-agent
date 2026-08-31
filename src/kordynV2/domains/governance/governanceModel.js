@@ -1,5 +1,6 @@
 import { buildControlConfigurationView } from "../../../controlConfigurationView.js";
 import { buildOperationsView } from "../../../operationsView.js";
+import { buildGovernancePermissions } from "./governancePermissions.js";
 
 const unavailable = "Unavailable";
 const list = (value) => Array.isArray(value) ? value : [];
@@ -54,8 +55,8 @@ export function buildGovernanceDomainModel(input = {}, options = {}) {
     notifications: record(operations.notifications),
     audit: record(operations.audit),
     recovery: record(operations.recovery),
+    permissions: buildGovernancePermissions(data),
     source: text(data.source ?? data.lastValidSource),
     asOf: text(data.asOf ?? data.lastValidAt)
   };
 }
-

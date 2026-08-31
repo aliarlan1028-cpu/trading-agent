@@ -12,7 +12,7 @@ const asOf = "2026-08-31T11:30:00.000Z";
 
 function buildFixture() {
   const base = JSON.parse(KORDYN_V2_PRODUCTION_FIXTURE_JSON);
-  const loaded = scenario === "ready";
+  const loaded = !["loading", "stale", "degraded"].includes(scenario);
   const data = {
     ...base,
     revision: 705,
@@ -21,6 +21,7 @@ function buildFixture() {
     lastValidSource: "Plan 05 system governance production-shaped fixture",
     lastValidAt: asOf,
     user: { ...base.user, name: "Owner K0", role: scenario === "forbidden" ? "viewer" : "owner", isOwner: scenario !== "forbidden" },
+    permissions: scenario === "forbidden" ? ["account.read", "audit.read"] : ["*"],
     resourceState: {
       ...base.resourceState,
       riskCenter: loaded ? "loaded" : scenario,
@@ -54,8 +55,8 @@ function buildFixture() {
       { id: "risk-check-notional-88", ruleId: "rule-notional", ruleName: "Maximum order notional", status: "passed", createdAt: asOf }
     ],
     eventRiskWindows: [
-      { id: "event-window-fomc", eventId: "event-window-fomc", title: "FOMC 利率决议", dueAt: "2026-09-17T18:00:00Z", blocking: true, affectedSymbols: ["BTC/USDT", "ETH/USDT"] },
-      { id: "event-window-payrolls", eventId: "event-window-payrolls", title: "美国非农就业数据", dueAt: "2026-09-18T12:30:00Z", blocking: false, affectedSymbols: ["BTC/USDT"] }
+      { id: "event-window-fomc", eventId: "event-window-fomc", title: "FOMC 利率决议", dueAt: "2026-09-17T18:00:00Z", blocking: true, relatedSymbols: ["BTC/USDT", "ETH/USDT"] },
+      { id: "event-window-payrolls", eventId: "event-window-payrolls", title: "美国非农就业数据", dueAt: "2026-09-18T12:30:00Z", blocking: false, relatedSymbols: ["BTC/USDT"] }
     ],
     eventSources: [
       { id: "event-source-fed", name: "Federal Reserve", enabled: true, status: scenario === "failed" ? "failed" : "healthy", lastSuccessAt: asOf },
@@ -122,7 +123,13 @@ window.__plan05GovernanceScenario = scenario;
 function resultFor(endpoint) {
   if (resultMode === "failure") return { ok: false, status: "failed", error: "authoritative_governance_rejection", endpoint };
   if (resultMode === "partial") return { ok: false, status: "partial", completed: ["snapshot_refreshed"], failed: ["order_difference_open"], endpoint };
-  return { ok: true, status: "accepted", id: `server-${endpoint.replaceAll("/", "-")}` };
+  if (endpoint === "/api/config/live-trading") return { message: "live trading target applied", applied: ["LIVE_TRADING_MODE", "LIVE_TRADING_MAX_NOTIONAL_USDT"] };
+  if (endpoint === "/api/account/profile") return { user: { id: "fixture-user", name: "Owner K0" } };
+  if (endpoint.startsWith("/api/risk/incidents/")) return { incident: { id: endpoint.split("/").at(-2), status: "resolved" }, message: "incident resolved" };
+  if (endpoint.startsWith("/api/notifications/")) return { notification: { deliveryStatus: "delivered" }, message: "notification request completed" };
+  if (endpoint.startsWith("/api/exchange/accounts/")) return { account: { id: endpoint.split("/").at(-1) }, message: "exchange account updated" };
+  if (endpoint.startsWith("/api/tasks/")) return { run: { id: `server-${endpoint.replaceAll("/", "-")}`, status: "accepted" }, message: "task action accepted" };
+  return { message: "governance action completed", result: { id: `server-${endpoint.replaceAll("/", "-")}` } };
 }
 
 function BrowserHarness() {
@@ -131,14 +138,14 @@ function BrowserHarness() {
     action: async (endpoint, payload = {}, method = "POST") => {
       calls.actionRequests.push({ endpoint, payload, method, resultMode });
       if (method !== "GET") calls.authorityWrites += 1;
-      await new Promise((resolve) => setTimeout(resolve, 180));
+      await new Promise((resolve) => setTimeout(resolve, scenario === "processing" ? 2_500 : 180));
       const result = resultFor(endpoint);
       calls.actionResults.push({ endpoint, result });
       return result;
     },
     ensureSection: async () => data,
     notify: () => {},
-    connectionError: scenario === "failed" ? "Plan 05 event input failed" : ""
+    connectionError: ""
   }), []);
   return <><KordynV2Root api={api} lang="zh" /><ConfirmHost /></>;
 }

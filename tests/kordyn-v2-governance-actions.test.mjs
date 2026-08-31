@@ -31,6 +31,18 @@ test("protected governance actions confirm and return authoritative results unch
   assert.deepEqual(result, { ok: false, status: "partial", completed: ["snapshot"], failed: ["orders"] });
 });
 
+test("danger governance actions retain deployed endpoints and reject invalid switch state", async () => {
+  const calls = [];
+  const governance = createGovernanceActions({ action: async (...args) => { calls.push(args); return { message: "accepted" }; }, confirm: async () => true });
+  await governance.flattenAll();
+  await governance.setKillSwitch(true, "operator test");
+  assert.deepEqual(governance.setKillSwitch("true"), { ok: false, error: "invalid_kill_switch_state" });
+  assert.deepEqual(calls, [
+    ["/api/risk/emergency-flatten", {}],
+    ["/api/risk/kill-switch", { enabled: true, reason: "operator test" }]
+  ]);
+});
+
 test("destructive actions fail closed when confirmation is declined", async () => {
   const calls = [];
   const governance = createGovernanceActions({
@@ -65,4 +77,3 @@ test("configuration actions preserve deployed HTTP methods and endpoints", async
     ["/api/admin/users/user-1/grant-free", { planId: "owner" }]
   ]);
 });
-

@@ -1,4 +1,5 @@
 import { buildControlConfigurationView } from "../../../controlConfigurationView.js";
+import { buildGovernancePermissions } from "./governancePermissions.js";
 
 const unavailable = "Unavailable";
 const list = (value) => Array.isArray(value) ? value : [];
@@ -46,6 +47,16 @@ export function buildConfigurationModel(input = {}) {
   const effectiveMode = valueOrUnavailable(system.effectiveMode ?? automation.effectiveMode ?? automation.mode ?? control.runtime?.mode);
   const auditKind = loadedKind(data, "operationsCenter", ["auditLogs"]);
   const auditRows = auditKind === "ready" ? list(data.auditLogs) : [];
+  const permissions = buildGovernancePermissions(data);
+  const configuredSecrets = [
+    ["OPENROUTER_API_KEY", "OpenRouter API Key", config.llm?.providers?.gemini?.hasKey],
+    ["DEEPSEEK_API_KEY", "DeepSeek API Key", config.llm?.providers?.deepseek?.hasKey],
+    ["OKX_API_KEY", "OKX API Key", config.exchange?.okx?.hasKey],
+    ["OKX_API_SECRET", "OKX Secret", config.exchange?.okx?.hasSecret],
+    ["OKX_API_PASSPHRASE", "OKX Passphrase", config.exchange?.okx?.hasPassphrase],
+    ["LARK_WEBHOOK_SECRET", "Lark signing secret", config.integrations?.lark?.signed],
+    ["TELEGRAM_BOT_TOKEN", "Telegram bot token", config.integrations?.telegram?.hasBotToken]
+  ].map(([key, label, configured]) => ({ key, label, configured: configured === true }));
 
   return {
     scopes: GOVERNANCE_CONFIGURATION_SCOPES,
@@ -60,10 +71,10 @@ export function buildConfigurationModel(input = {}) {
       effective: record(control.mandate)
     },
     risk: { rules: list(data.riskRules), checks: list(data.riskChecks) },
-    environment: record(config.environment),
-    network: record(config.network ?? config.proxy),
+    environment: record(config.environment ?? config.runtime),
+    network: record(config.network ?? config.proxy ?? config.runtime),
     backup: record(data.backupStatus ?? config.backup),
-    security: record(data.security ?? config.security),
+    security: { ...record(data.security ?? config.security), secrets: configuredSecrets, masterKeyConfigured: config.secretsMasterKeySet === true },
     exchange: { accounts: list(data.exchangeAccounts), keys: list(data.exchangeApiKeyMetadata) },
     eventSources: list(data.eventSources),
     notifications: record(data.integrations ?? config.notifications),
@@ -72,10 +83,11 @@ export function buildConfigurationModel(input = {}) {
     users: list(data.users),
     subscriptions: list(data.subscriptions),
     account: record(data.user),
+    permissions,
     permission: {
-      owner: data.user?.isOwner === true,
+      owner: permissions.owner,
       role: valueOrUnavailable(data.user?.role ?? data.user?.roleId),
-      canEdit: data.user?.isOwner === true
+      canEdit: permissions.owner
     },
     audit: {
       kind: auditKind,
@@ -84,4 +96,3 @@ export function buildConfigurationModel(input = {}) {
     }
   };
 }
-

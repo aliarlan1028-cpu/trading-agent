@@ -2,7 +2,9 @@ export const KORDYN_V2_PERFORMANCE_BUDGETS = Object.freeze({
   publicCss: 40_000,
   publicJs: 450_000,
   aiShellCss: 180_000,
-  accountDomainCss: 120_000
+  accountDomainCss: 120_000,
+  governanceDomainCss: 120_000,
+  governanceDomainJs: 650_000
 });
 
 function record(value, label) {
@@ -156,6 +158,7 @@ export function analyzeV2BuildManifest({ manifest: manifestInput, assetStats: as
   const v2Entry = resolveV2Entry(manifest, publicEntry);
   const legacyEntry = uniqueEntry(manifest, "src/productStyles.js", "legacy");
   const accountEntry = uniqueEntry(manifest, "src/kordynV2/domains/account/index.jsx", "account");
+  const governanceEntry = uniqueEntry(manifest, "src/kordynV2/domains/governance/index.jsx", "governance");
   const dynamicImports = manifest[publicEntry]?.dynamicImports;
   if (!Array.isArray(dynamicImports) || !dynamicImports.includes(v2Entry)) {
     throw new Error("v2_entry_not_owned_by_public_graph");
@@ -167,18 +170,22 @@ export function analyzeV2BuildManifest({ manifest: manifestInput, assetStats: as
   if (!Array.isArray(v2DynamicImports) || !v2DynamicImports.includes(accountEntry)) {
     throw new Error("account_entry_not_owned_by_v2_lazy_graph");
   }
+  if (!v2DynamicImports.includes(governanceEntry)) throw new Error("governance_entry_not_owned_by_v2_lazy_graph");
 
   const publicClosure = staticClosure(manifest, publicEntry);
   const v2Closure = staticClosure(manifest, v2Entry);
   const legacyClosure = staticClosure(manifest, legacyEntry);
   const accountClosure = staticClosure(manifest, accountEntry);
+  const governanceClosure = staticClosure(manifest, governanceEntry);
   if (v2Closure.has(legacyEntry)) throw new Error("v2_imports_legacy_styles");
   if (accountClosure.has(legacyEntry)) throw new Error("account_imports_legacy_styles");
+  if (governanceClosure.has(legacyEntry)) throw new Error("governance_imports_legacy_styles");
 
   const publicAssets = assetsForClosure(manifest, publicClosure);
   const v2Assets = assetsForClosure(manifest, v2Closure);
   const legacyAssets = assetsForClosure(manifest, legacyClosure);
   const accountAssets = assetsForClosure(manifest, accountClosure);
+  const governanceAssets = assetsForClosure(manifest, governanceClosure);
   const forbiddenLegacyCss = [...v2Assets.css].filter((file) => legacyAssets.css.has(file)).sort();
   if (forbiddenLegacyCss.length > 0) {
     throw new Error(`v2_loads_legacy_css:${forbiddenLegacyCss.join(",")}`);
@@ -187,6 +194,8 @@ export function analyzeV2BuildManifest({ manifest: manifestInput, assetStats: as
   if (accountForbiddenLegacyCss.length > 0) {
     throw new Error(`account_loads_legacy_css:${accountForbiddenLegacyCss.join(",")}`);
   }
+  const governanceForbiddenLegacyCss = [...governanceAssets.css].filter((file) => legacyAssets.css.has(file)).sort();
+  if (governanceForbiddenLegacyCss.length > 0) throw new Error(`governance_loads_legacy_css:${governanceForbiddenLegacyCss.join(",")}`);
   const sharedShellCss = [...accountAssets.css].filter((file) => v2Assets.css.has(file)).sort();
 
   const publicReport = summarize(publicEntry, publicAssets, assetStats);
@@ -201,9 +210,15 @@ export function analyzeV2BuildManifest({ manifest: manifestInput, assetStats: as
     forbiddenLegacyCss: accountForbiddenLegacyCss,
     sharedShellCss
   });
+  const governanceDomain = summarize(governanceEntry, governanceAssets, assetStats, {
+    lazyOwnedBy: v2Entry,
+    loadsLegacyProductStyles: false,
+    forbiddenLegacyCss: governanceForbiddenLegacyCss,
+    sharedShellCss: [...governanceAssets.css].filter((file) => v2Assets.css.has(file)).sort()
+  });
   return {
     public: publicReport,
-    routes: { aiShell, legacy, accountDomain },
+    routes: { aiShell, legacy, accountDomain, governanceDomain },
     budgets: {
       publicCss: {
         actual: publicReport.css,
@@ -224,6 +239,16 @@ export function analyzeV2BuildManifest({ manifest: manifestInput, assetStats: as
         actual: accountDomain.css,
         limit: KORDYN_V2_PERFORMANCE_BUDGETS.accountDomainCss,
         pass: accountDomain.css < KORDYN_V2_PERFORMANCE_BUDGETS.accountDomainCss
+      },
+      governanceDomainCss: {
+        actual: governanceDomain.css,
+        limit: KORDYN_V2_PERFORMANCE_BUDGETS.governanceDomainCss,
+        pass: governanceDomain.css < KORDYN_V2_PERFORMANCE_BUDGETS.governanceDomainCss
+      },
+      governanceDomainJs: {
+        actual: governanceDomain.js,
+        limit: KORDYN_V2_PERFORMANCE_BUDGETS.governanceDomainJs,
+        pass: governanceDomain.js < KORDYN_V2_PERFORMANCE_BUDGETS.governanceDomainJs
       }
     }
   };

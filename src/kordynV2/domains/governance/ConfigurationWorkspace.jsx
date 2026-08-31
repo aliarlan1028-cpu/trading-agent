@@ -14,6 +14,7 @@ import { RiskRuleEditor } from "./configuration/RiskRuleEditor.jsx";
 import { SecurityEditor } from "./configuration/SecurityEditor.jsx";
 import { TradingRuntimeEditor } from "./configuration/TradingRuntimeEditor.jsx";
 import { UserSubscriptionEditor } from "./configuration/UserSubscriptionEditor.jsx";
+import { configurationTargetAllowed } from "./governancePermissions.js";
 
 export function ConfigurationEditorFor({ target, model, actions, actionsDisabled, onSelect }) {
   const props = { actions, actionsDisabled, onSelect };
@@ -34,7 +35,7 @@ export function ConfigurationEditorFor({ target, model, actions, actionsDisabled
 
 export function ConfigurationWorkspace({ model = {}, actions, actionsDisabled = false, onSelect = () => {} }) {
   const [target, setTarget] = useState("trading");
-  const forbidden = model.permission?.canEdit !== true;
+  const forbidden = !configurationTargetAllowed(model.permissions, target);
   const disabled = forbidden || actionsDisabled;
-  return <section className="kordynV2GovernanceWorkspace kordynV2ConfigurationWorkspace" data-kordyn-v2-governance-workspace="configuration" data-kordyn-v2-configuration-access={forbidden ? "forbidden" : "granted"}><header className="kordynV2GovernanceTitle"><span><h1>Configuration · 系统配置</h1><p>所有持久设置的唯一入口；所选值与生效值始终分开。</p></span>{forbidden && <em>Owner 权限必需</em>}</header><div className="kordynV2ConfigurationNotice">配置变更经过权限、预检、确认与审计；敏感凭据不回显。</div><div className="kordynV2ConfigurationWorkbench"><ConfigurationRegistry scopes={model.scopes || []} selectedId={target} onSelect={setTarget} /><ConfigurationEditorFor target={target} model={model} actions={actions} actionsDisabled={disabled} onSelect={onSelect} /><ConfigurationInspector model={model} target={target} actionsDisabled={disabled} /></div></section>;
+  return <section className="kordynV2GovernanceWorkspace kordynV2ConfigurationWorkspace" data-kordyn-v2-governance-workspace="configuration" data-kordyn-v2-configuration-access={forbidden ? "forbidden" : "granted"}><header className="kordynV2GovernanceTitle"><span><h1>Configuration · 系统配置</h1><p>所有持久设置的唯一入口；所选值与生效值始终分开。</p></span>{forbidden && <em>当前身份无权修改此配置组</em>}</header><div className="kordynV2ConfigurationNotice">配置变更经过权限、预检、确认与审计；敏感凭据不回显。账户资料允许本人更新，其余配置按服务端权限逐项关闭。</div><div className="kordynV2ConfigurationWorkbench"><ConfigurationRegistry scopes={model.scopes || []} selectedId={target} onSelect={setTarget} /><ConfigurationEditorFor target={target} model={model} actions={actions} actionsDisabled={disabled} onSelect={onSelect} /><ConfigurationInspector model={model} target={target} actionsDisabled={disabled} /></div></section>;
 }

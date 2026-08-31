@@ -508,6 +508,11 @@
     background: linear-gradient(150deg, #111b37 0%, #0a1428 56%, #070f1d 100%);
   }
 
+  .kordynV2MobileShell[data-kordyn-v2-domain="governance"] .kordynV2MobileSheet[data-kordyn-v2-mobile-sheet="support"] {
+    max-height: min(39dvh, calc(100dvh - var(--v2-mobile-nav-height) - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 12px));
+    min-height: min(280px, 39dvh);
+  }
+
   .kordynV2MobileSheetHandle {
     width: 54px;
     height: 5px;

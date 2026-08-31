@@ -7,9 +7,12 @@ export function OperationsWorkspace({ model = {}, actions, actionsDisabled = fal
   const operations = model.operations || {};
   const services = operations.services || [];
   const attention = operations.attention || [];
+  const selectedRun = operations.tasks?.recentRuns?.[0];
+  const recovery = operations.recovery || {};
+  const report = recovery.latestReconciliation;
   return (
     <section className="kordynV2GovernanceWorkspace kordynV2OperationsWorkspace" data-kordyn-v2-governance-workspace="operations">
-      <header className="kordynV2GovernanceTitle"><span><h1>Operations · 运行总览</h1><p>权威运行拓扑、异常因果与恢复入口。</p></span><button type="button" disabled={actionsDisabled} onClick={() => actions?.refreshEventSources?.()}><RefreshCw size={14} />立即巡检</button></header>
+      <header className="kordynV2GovernanceTitle"><span><h1>Operations · 运行总览</h1><p>权威运行拓扑、异常因果与恢复入口。</p></span><button type="button" disabled={actionsDisabled || model.permissions?.writeEvent !== true} onClick={() => actions?.refreshEventSources?.()}><RefreshCw size={14} />立即巡检</button></header>
       <section className="kordynV2OperationsTopology" aria-label="运行拓扑">
         {services.map((service) => <div key={service.id} data-kordyn-v2-operation-service={service.id} data-service-tone={service.tone || "neutral"}>
           <i>{service.tone === "healthy" ? <CheckCircle2 size={17} /> : service.tone === "critical" ? <Siren size={17} /> : <AlertTriangle size={17} />}</i>
@@ -31,8 +34,8 @@ export function OperationsWorkspace({ model = {}, actions, actionsDisabled = fal
         </section>
       </div>
       <section className="kordynV2OperationsEvidence">
-        <header><span><strong>审计证据流</strong><small>最近运行、对账、通知与审计事件</small></span><button type="button" onClick={() => onNavigate("governance", "audit")}>查看全部 <ArrowRight size={14} /></button></header>
-        <div>{(operations.activity || []).slice(0, 6).map((row) => <span key={`${row.type}-${row.id}`}><small>{row.createdAt || "Unavailable"}</small><strong>{row.title}</strong><em data-tone={row.tone}>{row.status || row.type}</em></span>)}</div>
+        <header><span><strong>当前运行 Trace 与恢复证据</strong><small>Run、恢复结果与审计账本保持分离</small></span><button type="button" onClick={() => onNavigate("governance", "audit")}>查看全部 <ArrowRight size={14} /></button></header>
+        <div className="kordynV2OperationsEvidenceGrid"><section data-kordyn-v2-current-run-trace={selectedRun?.id || "Unavailable"}><small>当前 Run</small><strong>{selectedRun?.taskName || selectedRun?.name || "Unavailable"}</strong><span>{selectedRun?.id || "Unavailable"} · {selectedRun?.status || "no result"}</span><em data-tone={/fail|error/i.test(String(selectedRun?.status)) ? "critical" : "healthy"}>{selectedRun?.error || (selectedRun?.durationMs ? `${selectedRun.durationMs} ms` : "Evidence unavailable")}</em></section><button type="button" data-kordyn-v2-recovery-inspector={report?.id || "recovery-current"} onClick={() => onSelect({ id: report?.id || "recovery-current", type: "Recovery", workspaceId: "governance" })}><small>恢复检查器</small><strong>{report?.status || "尚无对账结果"}</strong><span>{recovery.differences?.length || 0} differences · {recovery.unknownOrders?.length || 0} unknown</span><ArrowRight size={14} /></button><section>{(operations.activity || []).slice(0, 3).map((row) => <span key={`${row.type}-${row.id}`}><small>{row.createdAt || "Unavailable"}</small><strong>{row.title}</strong><em data-tone={row.tone}>{row.status || row.type}</em></span>)}</section></div>
       </section>
     </section>
   );

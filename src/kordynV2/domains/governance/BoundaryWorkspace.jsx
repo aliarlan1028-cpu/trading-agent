@@ -5,11 +5,13 @@ import { RuleMonitor } from "./RuleMonitor.jsx";
 const displayMode = (value) => ({ full_auto: "自动交易", full_auto_small: "自动交易", auto: "自动交易", semi_auto: "半自动", observe: "暂停新开仓", halted: "紧急停止" }[value] || value || "Unavailable");
 const list = (value) => Array.isArray(value) ? value : [];
 
-export function BoundaryWorkspace({ model = {}, onNavigate = () => {}, onSelect = () => {} }) {
+export function BoundaryWorkspace({ model = {}, actions, actionsDisabled = false, onNavigate = () => {}, onSelect = () => {} }) {
   const boundary = model.boundary || {};
   const blocker = list(boundary.blockers)[0] || null;
   const mandate = boundary.mandate || {};
   const incidents = list(boundary.incidents?.items);
+  const operations = model.operations || {};
+  const permissions = model.permissions || {};
   return (
     <section className="kordynV2GovernanceWorkspace kordynV2BoundaryWorkspace" data-kordyn-v2-governance-workspace="overview">
       <header className="kordynV2GovernanceTitle"><span><h1>当前边界</h1><p>目标、阻断与当前生效事实始终分开。</p></span><button type="button" data-kordyn-v2-navigate="governance:configuration" onClick={() => onNavigate("governance", "configuration")}><KeyRound size={14} />打开权威配置</button></header>
@@ -25,6 +27,10 @@ export function BoundaryWorkspace({ model = {}, onNavigate = () => {}, onSelect 
           <p data-tone="healthy"><CheckCircle2 size={14} />允许：取消 / 平仓 / 保护 / 对账</p>
           <p data-tone="warning"><CircleGauge size={14} />条件允许：按当前有效授权继续监控</p>
           <p data-tone="critical"><Ban size={14} />禁止：新增风险 / 加仓 / 提升杠杆</p>
+          <div className="kordynV2BoundaryDangerActions" aria-label="危险操作区">
+            <button type="button" data-kordyn-v2-danger-action="kill-switch" disabled={actionsDisabled || (boundary.killSwitch ? permissions.clearKillSwitch !== true : permissions.stopTrading !== true)} onClick={() => actions?.setKillSwitch?.(!boundary.killSwitch, "system_governance_boundary")}><Ban size={13} />{boundary.killSwitch ? "申请解除停止" : "紧急停止"}</button>
+            <button type="button" data-kordyn-v2-danger-action="flatten-all" disabled={actionsDisabled || permissions.flattenAll !== true} onClick={() => actions?.flattenAll?.()}><AlertTriangle size={13} />一键平仓</button>
+          </div>
         </section>
       </div>
       <div className="kordynV2BoundaryGrid">
@@ -43,14 +49,18 @@ export function BoundaryWorkspace({ model = {}, onNavigate = () => {}, onSelect 
       </div>
       <div className="kordynV2BoundaryLower">
         <RuleMonitor rules={boundary.rules} onSelect={onSelect} />
+        <section className="kordynV2BoundaryOperationsMatrix">
+          <header><span><strong>运营健康矩阵</strong><small>服务状态与最新证据</small></span><em>{operations.services?.length || 0}</em></header>
+          <div>{(operations.services || []).map((service) => <span key={service.id} data-tone={service.tone}><i /><strong>{service.labelZh || service.id}</strong><small>{service.value || "Unavailable"}</small></span>)}</div>
+          <footer>{(operations.activity || []).slice(0, 2).map((row) => <small key={`${row.type}-${row.id}`}>{row.createdAt || "Unavailable"} · {row.title}</small>)}</footer>
+        </section>
         <section className="kordynV2IncidentQueue">
           <header><span><strong>开放风险事件</strong><small>只读事实与恢复入口</small></span><em>{boundary.incidents?.open ?? incidents.length}</em></header>
           {incidents.slice(0, 5).map((row) => <button type="button" key={row.id} data-kordyn-v2-object-type="Risk incident" data-kordyn-v2-object-id={row.id} onClick={() => onSelect({ id: row.id, type: "Risk incident", workspaceId: "governance" })}><AlertTriangle size={16} /><span><strong>{row.title || row.source || "Risk incident"}</strong><small>{row.status || "open"}</small></span><ArrowRight size={14} /></button>)}
           {!incidents.length && <p>当前没有开放风险事件。</p>}
-          <footer><button type="button" onClick={() => onNavigate("governance", "recovery")}>打开恢复工作台</button></footer>
+          <footer><button type="button" onClick={() => onNavigate("governance", "recovery")}>打开恢复工作台</button><button type="button" onClick={() => onNavigate("governance", "configuration")}>配置索引</button></footer>
         </section>
       </div>
     </section>
   );
 }
-

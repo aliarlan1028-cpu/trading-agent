@@ -25,8 +25,8 @@ function rows(value) { try { if (!Array.isArray(value)) return { values: [], cou
 
 function special(kind, facts) {
   if (["stale", "degraded"].includes(kind)) return [
-    createElement("span", { key: "source", "data-kordyn-v2-last-valid-source": text(own(facts, "source"), "Plan 05 governance production-shaped fixture") }, text(own(facts, "source"), "Plan 05 governance production-shaped fixture")),
-    createElement("time", { key: "time", "data-kordyn-v2-last-valid-at": text(own(facts, "lastValidAt"), "2026-08-31T10:18:00.000Z") }, text(own(facts, "lastValidAt"), "2026-08-31T10:18:00.000Z"))
+    createElement("span", { key: "source", "data-kordyn-v2-last-valid-source": text(own(facts, "source"), "Unavailable") }, text(own(facts, "source"), "Unavailable")),
+    createElement("time", { key: "time", "data-kordyn-v2-last-valid-at": text(own(facts, "lastValidAt"), "Unavailable") }, text(own(facts, "lastValidAt"), "Unavailable"))
   ];
   if (kind === "failed") { const source = own(facts, "failedSource"); return [createElement("article", { key: "source", "data-kordyn-v2-event-source-stage": text(own(source, "status"), "failed") }, text(own(source, "name"), "Event source unavailable"))]; }
   if (kind === "forbidden") return [createElement("span", { key: "forbidden", "data-kordyn-v2-configuration-access": "forbidden" }, "Owner authority required")];
