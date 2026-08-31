@@ -280,15 +280,29 @@ async function captureStates(cdp, baseUrl) {
 
 async function exerciseNavigation(cdp, baseUrl) {
   const rows = [];
+  const mobileWorkspaces = ["overview", "runs", "audit", "configuration"];
   for (const viewport of [viewports.mobile390, viewports.mobile430]) {
     await navigatePage(cdp, baseUrl, viewport);
     await navigateGovernance(cdp, viewport, "overview");
-    for (const workspace of Object.keys(markers)) {
+    for (const workspace of mobileWorkspaces) {
       await click(cdp, `[data-kordyn-v2-workspace-target="${workspace}"]`);
       await waitForExpression(cdp, `document.querySelector(${JSON.stringify(markers[workspace])})`, `${viewportName(viewport)} ${workspace}`);
-      const contract = await evaluate(cdp, `(() => { const nav=document.querySelector('[data-kordyn-v2-workspace-nav]'); return { workspace:document.querySelector('[data-kordyn-v2-shell="mobile"]')?.dataset.kordynV2Workspace, active:nav?.querySelectorAll('[aria-current="page"]').length, duplicate:document.querySelectorAll('[data-kordyn-v2-governance-local-nav]').length, overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth }; })()`);
-      assert.deepEqual({ workspace: contract.workspace, active: contract.active, duplicate: contract.duplicate, overflow: contract.overflow }, { workspace, active: 1, duplicate: 0, overflow: 0 }, `${viewportName(viewport)} ${workspace} navigation`);
+      const contract = await evaluate(cdp, `(() => { const nav=document.querySelector('[data-kordyn-v2-workspace-nav]'); return { workspace:document.querySelector('[data-kordyn-v2-shell="mobile"]')?.dataset.kordynV2Workspace, count:nav?.querySelectorAll('button').length, targets:[...nav?.querySelectorAll('button')||[]].map((node)=>node.dataset.kordynV2WorkspaceTarget), active:nav?.querySelectorAll('[aria-current="page"]').length, duplicate:document.querySelectorAll('[data-kordyn-v2-governance-local-nav]').length, overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth }; })()`);
+      assert.deepEqual({ workspace: contract.workspace, count: contract.count, targets: contract.targets, active: contract.active, duplicate: contract.duplicate, overflow: contract.overflow }, { workspace, count: 4, targets: ["overview", "runs", "audit", "configuration"], active: 1, duplicate: 0, overflow: 0 }, `${viewportName(viewport)} ${workspace} navigation`);
       rows.push({ viewport: viewportName(viewport), workspace, ...contract });
+    }
+    for (const flow of [
+      { id: "event-inputs", from: "runs", selector: '[data-kordyn-v2-operation-service="inputs"]', active: "overview" },
+      { id: "notifications", from: "runs", selector: '[data-kordyn-v2-notification-target="governance/notifications"]', active: "runs" },
+      { id: "recovery", from: "runs", selector: '.kordynV2GovernanceMobile[data-kordyn-v2-governance-mobile="runs"] > .kordynV2MobilePrimary', active: "runs" }
+    ]) {
+      await navigatePage(cdp, baseUrl, viewport);
+      await navigateGovernance(cdp, viewport, flow.from);
+      await click(cdp, flow.selector);
+      await waitForExpression(cdp, `document.querySelector(${JSON.stringify(markers[flow.id])})`, `${viewportName(viewport)} ${flow.id} flow`);
+      const active = await evaluate(cdp, `document.querySelector('[data-kordyn-v2-workspace-nav] [aria-current="page"]')?.dataset.kordynV2WorkspaceTarget`);
+      assert.equal(active, flow.active, `${viewportName(viewport)} ${flow.id} parent destination`);
+      rows.push({ viewport: viewportName(viewport), workspace: flow.id, flow: true, active });
     }
   }
   return rows;

@@ -7,6 +7,13 @@ import { MobileSheet } from "./MobileSheet.jsx";
 import { StateBoundary } from "./StateBoundary.jsx";
 import { WorkspaceNavigation } from "./WorkspaceNavigation.jsx";
 
+const MOBILE_GOVERNANCE_WORKSPACES = Object.freeze(["overview", "runs", "audit", "configuration"]);
+const MOBILE_GOVERNANCE_PARENT = Object.freeze({
+  "event-inputs": "overview",
+  notifications: "runs",
+  recovery: "runs"
+});
+
 export function MobileShell({
   location,
   truth,
@@ -140,6 +147,8 @@ export function MobileShell({
           <WorkspaceNavigation
             domainId={location.domainId}
             workspaceId={location.workspaceId}
+            visibleWorkspaceIds={location.domainId === "governance" ? MOBILE_GOVERNANCE_WORKSPACES : undefined}
+            activeWorkspaceId={location.domainId === "governance" ? (MOBILE_GOVERNANCE_PARENT[location.workspaceId] || location.workspaceId) : undefined}
             onNavigate={onNavigate}
           />
           <AccountTruth truth={mobileTruth} state={state} />
