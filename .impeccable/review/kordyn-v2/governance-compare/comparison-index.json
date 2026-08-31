@@ -3,7 +3,7 @@
   "scope": "governance",
   "sourceManifest": "docs/kordyn-v2-approved-concept-manifest.md",
   "captureEvidence": ".impeccable/review/kordyn-v2/governance/capture-evidence.json",
-  "productionSourceCommit": "007fcf40d032ca03dd9a24712a0882f937e92215",
+  "productionSourceCommit": "d85e20b0d256b93e5ea0e7ab9b4b857194d41ed4",
   "outputRoot": ".impeccable/review/kordyn-v2/governance-compare",
   "counts": {
     "concepts": 4,
@@ -86,18 +86,18 @@
         },
         "overlay50": {
           "file": "desktop-governance-boundary--1440x900--overlay.png",
-          "sha256": "791eccbc9bdd28a781beeef05f6cf4eafd52a189cd329704e845d8e786fb7f80"
+          "sha256": "5b60a254f00ac60d92e36b0a0839fe0b21ac6e269b15925d9aaf5d746fa10bb9"
         },
         "absoluteDifference": {
           "file": "desktop-governance-boundary--1440x900--difference.png",
-          "sha256": "b694fc92c0d50ec977f5686583a481abbb64161bdde9c87e7f510f318aec19ba"
+          "sha256": "1dee1f617a7a74b7249d6951eaffb391424f572983263bc9dda8e184bd819cde"
         },
         "geometry": {
           "file": "desktop-governance-boundary--1440x900--geometry.json",
-          "sha256": "8bb7bb910b160226d271290ab98afbdb3c687b50a1ed74707f6f013fa4f6c67d"
+          "sha256": "948d68baa97d67762595580c445a979aae7b8f26bc38ff833194f317f13456a6"
         }
       },
-      "pixelDifference": 0.06892585330428468,
+      "pixelDifference": 0.07059262486887759,
       "releaseVerdict": "human region review required"
     },
     {
@@ -112,18 +112,18 @@
         },
         "overlay50": {
           "file": "desktop-governance-boundary--1180x800--overlay.png",
-          "sha256": "099693fcca37648672d028f7300dfb30f6dd8b5b27f7e31d06a552bb5b611798"
+          "sha256": "e576d2871cd10743cf8092e5e21c7b8ffb0a942d8ece73eed00d5aba28bdfeca"
         },
         "absoluteDifference": {
           "file": "desktop-governance-boundary--1180x800--difference.png",
-          "sha256": "a6a5200c298952da16e39a06fcdba4559007d94ef200542fd8115b4cec085f86"
+          "sha256": "d39c0386ca171c28f454b8218343fa1c7d6a720d82374159a9c024934d9d83d9"
         },
         "geometry": {
           "file": "desktop-governance-boundary--1180x800--geometry.json",
-          "sha256": "585c5b3f72be933b7281b0c3f95c938294e8511a904caa90758b29614fc00ac7"
+          "sha256": "e29d62e096dd6cf3ddb4cba9cb7c686bb9d6e833944f432e4f022c6fe855b292"
         }
       },
-      "pixelDifference": 0.0725970145120195,
+      "pixelDifference": 0.07411680790960452,
       "releaseVerdict": "human region review required"
     },
     {
@@ -138,18 +138,18 @@
         },
         "overlay50": {
           "file": "desktop-governance-operations--1440x900--overlay.png",
-          "sha256": "682c1823d07215217accfd008fb2b447df2b3aa6c8550a1ee3dca16043fb36db"
+          "sha256": "49ec1cc9308d607250d07e891868e7ebe2c73b8caef5e9e52e1856fe8d7e468c"
         },
         "absoluteDifference": {
           "file": "desktop-governance-operations--1440x900--difference.png",
-          "sha256": "67fa6cb27c125eb9c447360e1dd80f8ed57fb5230e8a05475d606be01daa4d20"
+          "sha256": "f49c44311376a2a598c7c6183517dc4b6ec8fc2c4c6ae9cf3fd1079984f00671"
         },
         "geometry": {
           "file": "desktop-governance-operations--1440x900--geometry.json",
-          "sha256": "4d9ea89891bba5a40766831cddb4b2c0b5ce131cad391eaa052695f9f2fb17dd"
+          "sha256": "d053f6fffab2b1616a5eb373c0640ca5275da13e0a13b6293a2abf770332a523"
         }
       },
-      "pixelDifference": 0.057722855644315334,
+      "pixelDifference": 0.057416265230371986,
       "releaseVerdict": "human region review required"
     },
     {
@@ -164,18 +164,18 @@
         },
         "overlay50": {
           "file": "desktop-governance-operations--1180x800--overlay.png",
-          "sha256": "b88c249b4954b7bce67e4e9a14aba647c13bf35b02fbb6845c578d29a752c339"
+          "sha256": "6e9f1c5bf7ea47770d97b0bb951da3b33586372be488c501e5087609475308a5"
         },
         "absoluteDifference": {
           "file": "desktop-governance-operations--1180x800--difference.png",
-          "sha256": "6d2988bb083732cda845114a94f19c4f6b2bd87ec6da32eb0c8d56f9fa4b9922"
+          "sha256": "864940c145421dd0d376ab6b0f8e24f912357ce5242ceccb757986918ab35e66"
         },
         "geometry": {
           "file": "desktop-governance-operations--1180x800--geometry.json",
-          "sha256": "cf5d390e292d1642aa41b242a9260e3fa026d9f78c2a80ae96edd22459d4d8dc"
+          "sha256": "63e98c6f12f6609bafb916c3ec905768f21e03a579d53283d4db449ba685c3ad"
         }
       },
-      "pixelDifference": 0.059719613382075994,
+      "pixelDifference": 0.05994216101694915,
       "releaseVerdict": "human region review required"
     },
     {
@@ -190,18 +190,18 @@
         },
         "overlay50": {
           "file": "desktop-governance-configuration--1440x900--overlay.png",
-          "sha256": "85b80621cc3b48e7284043c8ade8e52f6e19723bc5b24bfe0abcdc499a27f113"
+          "sha256": "7649329e574e7ee541aefa403a611e6aa2317dfc0ccd2c74a3792e920f16d1aa"
         },
         "absoluteDifference": {
           "file": "desktop-governance-configuration--1440x900--difference.png",
-          "sha256": "7f7b6f7d1ca9e1bf1423c4062e1f0b83d769e4a551f16edfd725813b4249b98c"
+          "sha256": "1b0bec511ff3584f6ee736acd2228c2cf2d2cea26b15bbaa1834c4ce594c4450"
         },
         "geometry": {
           "file": "desktop-governance-configuration--1440x900--geometry.json",
-          "sha256": "18e9c545fe2c3d19607ca6ab43147e7773ac260d4ef1ca6471f212daba172f58"
+          "sha256": "cf631668ae8df166ba58b43c8d94ea45cf7ef6148afb418c9c50c8b479b9b39d"
         }
       },
-      "pixelDifference": 0.06482629508593561,
+      "pixelDifference": 0.06722036936173646,
       "releaseVerdict": "human region review required"
     },
     {
@@ -216,18 +216,18 @@
         },
         "overlay50": {
           "file": "desktop-governance-configuration--1180x800--overlay.png",
-          "sha256": "2691fb604c948384db3beea0f838ae5e7b3c1b0f5cd29ea0e9da3f2e878b85d9"
+          "sha256": "e817e96b25fa8b805d9ba9134f0b885ba51d58a77a79a41c674a3a7c1757718d"
         },
         "absoluteDifference": {
           "file": "desktop-governance-configuration--1180x800--difference.png",
-          "sha256": "59b7868e9fd5b5340bdbf0010eaee8f8385812690a0c62335feae69396e4616a"
+          "sha256": "20300c034a64ae4fd84a52930bc5358cd1030876967586933c45803f56c9fbab"
         },
         "geometry": {
           "file": "desktop-governance-configuration--1180x800--geometry.json",
-          "sha256": "64a5173c008f26add8b97aaadd5440eb0aeb4c4cab7e4d4688916638de416b22"
+          "sha256": "a571da5bb27d6e86a69344455ad124062eaf248aa8e19f641417a31d164e0cef"
         }
       },
-      "pixelDifference": 0.06826436385288578,
+      "pixelDifference": 0.07093185859089397,
       "releaseVerdict": "human region review required"
     },
     {
@@ -242,18 +242,18 @@
         },
         "overlay50": {
           "file": "mobile-system-governance--390x844--overlay.png",
-          "sha256": "5c258a2d58f51e97ccbb0b9f5b39d3d3006d6d3da5bb4f10908cb373d8a5383f"
+          "sha256": "1f8c0c6fed226ba6e21df57963a3aaeed0f5d5812f6965209c077b289dccafac"
         },
         "absoluteDifference": {
           "file": "mobile-system-governance--390x844--difference.png",
-          "sha256": "718476cfc6982ef0cb883c41bc592c88d2cca66c8968c4184ddc3352b3075283"
+          "sha256": "9ede152ef077e643f68bba14d0fb3268385321d38ba3eb9eba8de7f7a9469496"
         },
         "geometry": {
           "file": "mobile-system-governance--390x844--geometry.json",
-          "sha256": "043e3a51bdfa3f8e45f3c518b9722ecfa18967c689e01b3f17fb4a83bb36b9ae"
+          "sha256": "1983f960fdfd6e91e3f8ab571ebfd39e63b3c1fb168b6c5282a0c59f558adbc4"
         }
       },
-      "pixelDifference": 0.10023953624873613,
+      "pixelDifference": 0.09411759543206434,
       "releaseVerdict": "human region review required"
     },
     {
@@ -268,18 +268,18 @@
         },
         "overlay50": {
           "file": "mobile-system-governance--430x932--overlay.png",
-          "sha256": "1b2322f8daf5dfddff159f9b58758eae156bd6f0bce1e4fa2575dda62ce74271"
+          "sha256": "17d9f971c8b0e64ffc57357ff5b9546d15b527161176827dbf94893f32fb332b"
         },
         "absoluteDifference": {
           "file": "mobile-system-governance--430x932--difference.png",
-          "sha256": "5abc551f2d82d36af1d099fe4b4e9064370861ae8067544e48d3e98f43f6c9ef"
+          "sha256": "8d361b07008d334e4d45875ca501039a30b71a662ba95b528a31c1f44f07732a"
         },
         "geometry": {
           "file": "mobile-system-governance--430x932--geometry.json",
-          "sha256": "875ef5200aa3e753af3a13eb76d2271eb21f29a4071465e9e8b09e8608568857"
+          "sha256": "9b2e156e4fd054f00583cbce9240f43ddafa9d21f133a93a1e1957e11f2fa27b"
         }
       },
-      "pixelDifference": 0.09546087596964462,
+      "pixelDifference": 0.09384568013584646,
       "releaseVerdict": "human region review required"
     }
   ],

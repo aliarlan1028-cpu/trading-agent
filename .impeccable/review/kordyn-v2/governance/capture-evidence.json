@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "runner": "tests/run-kordyn-v2-governance-browser.mjs",
   "fixture": "tests/kordyn-v2-governance-browser.jsx",
-  "productionSourceCommit": "007fcf40d032ca03dd9a24712a0882f937e92215",
+  "productionSourceCommit": "d85e20b0d256b93e5ea0e7ab9b4b857194d41ed4",
   "captures": [
     {
       "file": "desktop-governance-boundary--1440x900.png",
@@ -27,7 +27,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "3b38aaa3ee4fd7306cc152591423310f6017e45b23381e9d18a8b1d3dc907ff6"
+      "sha256": "d961a9e5ff8b0c4160ad3f61eb94c0826397b4d98ed911838c254d0463fb2dc8"
     },
     {
       "file": "desktop-governance-boundary--1180x800.png",
@@ -52,7 +52,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "444000748c4e95b040898dbf2e260e1a29244b0d4d5d611dc65d896a21896501"
+      "sha256": "968f3f91e728a906a975fa61fb18baa660e27e94185d939d94308e95d6671c50"
     },
     {
       "file": "desktop-governance-operations--1440x900.png",
@@ -77,7 +77,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "8ad5805321b35c28cb5b077a48d485c38a6d2c7ce88b8907e535927c631b9391"
+      "sha256": "b652e0d42c0d1f0b121bc8bcd683499c03921320367c8df819cdbca4db871fa8"
     },
     {
       "file": "desktop-governance-operations--1180x800.png",
@@ -102,7 +102,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "a6ef1dd23c4bb394a1337c22e0091b12eaeb1287a1473503737e221114bcd33c"
+      "sha256": "f11429fbcaf0079bfa62a167c06201e015007eba22bb4a8d6def7af607f94102"
     },
     {
       "file": "desktop-governance-configuration--1440x900.png",
@@ -127,7 +127,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "628d86a7b3338be2b364a3feb3e6bda15635108b3f2d5fa2ae4add8a3bbffbae"
+      "sha256": "bc91154ea81f41c3d7270dd1281ade6ccc5baf79ac3f6517680d764b4648a160"
     },
     {
       "file": "desktop-governance-configuration--1180x800.png",
@@ -152,7 +152,34 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "022bfe4fc6e07710892333d65d81955743d280b2fea31a59b316cd40f57e086b"
+      "sha256": "928317d37f8a303b4d4c873f149dfd0f4aadd2d371ddd9551ffe2f1726faff99"
+    },
+    {
+      "file": "desktop-governance-danger-confirm--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "governance",
+      "workspaceId": "overview",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440
+      },
+      "shell": {
+        "domainId": "governance",
+        "workspaceId": "overview",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "governanceCss": true,
+      "sha256": "cf5e974d8906822c15405eff2d13f41829600ec547eb5c864d454fc6c93a9e73",
+      "dangerConfirmation": "kill-switch",
+      "noActionAccepted": true
     },
     {
       "file": "mobile-system-governance--390x844.png",
@@ -177,7 +204,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "eecaff6794cac79f10f9ca37245f70cd9ae324e3595c8702f8ed6820c62ef97e",
+      "sha256": "f111eca84355baea5b826fcd9d03a4c5a51b1392b62925858ea5d5db34c6ae33",
       "aiSupport": "open-read-only",
       "supportState": "ready"
     },
@@ -204,7 +231,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "3e5dae8c2ff33d41009244b718cfadb9ecb512caa201e24ce62d3a0aac78cca2",
+      "sha256": "53563b17be535f43ff6580f5a532bf75179a2b273c6fbce2dcb388f358255986",
       "aiSupport": "open-read-only",
       "supportState": "ready"
     },
@@ -231,7 +258,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "21a05950de9d2760a182e1a80c1fddfffd0d75fc44d318ed14573cb1585b9174",
+      "sha256": "d1f5a2477a5b44e7601559dbfeb1c8fdd34d8b31d9e8172715b04d06e43c9384",
       "supportingSurface": true
     },
     {
@@ -674,9 +701,11 @@
           {
             "endpoint": "/api/tasks/task-governance-patrol/run",
             "result": {
-              "ok": true,
-              "status": "accepted",
-              "id": "server--api-tasks-task-governance-patrol-run"
+              "run": {
+                "id": "server--api-tasks-task-governance-patrol-run",
+                "status": "accepted"
+              },
+              "message": "task action accepted"
             }
           }
         ],
@@ -708,9 +737,10 @@
             "resultMode": "success"
           },
           {
-            "endpoint": "/api/config",
+            "endpoint": "/api/config/live-trading",
             "payload": {
               "requestedMode": "full_auto",
+              "acknowledged": false,
               "maxNotionalUsdt": 3000
             },
             "method": "POST",
@@ -721,33 +751,38 @@
           {
             "endpoint": "/api/notifications/read",
             "result": {
-              "ok": true,
-              "status": "accepted",
-              "id": "server--api-notifications-read"
+              "notification": {
+                "deliveryStatus": "delivered"
+              },
+              "message": "notification request completed"
             }
           },
           {
             "endpoint": "/api/reconciler/run",
             "result": {
-              "ok": true,
-              "status": "accepted",
-              "id": "server--api-reconciler-run"
+              "message": "governance action completed",
+              "result": {
+                "id": "server--api-reconciler-run"
+              }
             }
           },
           {
             "endpoint": "/api/scheduler/recover",
             "result": {
-              "ok": true,
-              "status": "accepted",
-              "id": "server--api-scheduler-recover"
+              "message": "governance action completed",
+              "result": {
+                "id": "server--api-scheduler-recover"
+              }
             }
           },
           {
-            "endpoint": "/api/config",
+            "endpoint": "/api/config/live-trading",
             "result": {
-              "ok": true,
-              "status": "accepted",
-              "id": "server--api-config"
+              "message": "live trading target applied",
+              "applied": [
+                "LIVE_TRADING_MODE",
+                "LIVE_TRADING_MAX_NOTIONAL_USDT"
+              ]
             }
           }
         ],

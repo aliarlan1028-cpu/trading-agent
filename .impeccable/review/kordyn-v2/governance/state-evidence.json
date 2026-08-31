@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "runner": "tests/run-kordyn-v2-governance-browser.mjs",
   "fixture": "tests/kordyn-v2-governance-browser.jsx",
-  "productionSourceCommit": "007fcf40d032ca03dd9a24712a0882f937e92215",
+  "productionSourceCommit": "d85e20b0d256b93e5ea0e7ab9b4b857194d41ed4",
   "states": [
     {
       "file": "state-loading--1440x900.png",
@@ -27,8 +27,9 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": false,
-      "sha256": "fc78f0cf78eabb0cd9780a9be9f997c91f7163ef79ab1f08df5445f234423456",
+      "sha256": "a82b61a9a3b90919a213515b3940525ae21cbaebc7fb43d44147dfd657efdc97",
       "state": "loading",
+      "semanticSurface": "authoritative resource loading",
       "structuralOnly": true
     },
     {
@@ -36,7 +37,7 @@
       "viewport": "1180x800",
       "device": "desktop",
       "domainId": "governance",
-      "workspaceId": "overview",
+      "workspaceId": "audit",
       "viewportGeometry": {
         "width": 1180,
         "height": 800
@@ -47,23 +48,24 @@
       },
       "shell": {
         "domainId": "governance",
-        "workspaceId": "overview",
+        "workspaceId": "audit",
         "selectedId": "run-btc-analysis",
         "selectedType": "Agent run"
       },
       "noProductionWrites": true,
       "legacyProductStyles": false,
-      "governanceCss": false,
-      "sha256": "ea489383b5fa44370e8b0c2edf410f2a9e29a70d8a58c6e2075bdf305c82d2c7",
+      "governanceCss": true,
+      "sha256": "391b9bd0a2a41ccbfd8f3bda1010afe1e8816d54034d0c7d0f3e4c308189e2d2",
       "state": "empty",
-      "structuralOnly": true
+      "semanticSurface": "empty Audit ledger",
+      "structuralOnly": false
     },
     {
       "file": "state-processing--390x844.png",
       "viewport": "390x844",
       "device": "mobile",
       "domainId": "governance",
-      "workspaceId": "overview",
+      "workspaceId": "runs",
       "viewportGeometry": {
         "width": 390,
         "height": 844
@@ -74,16 +76,17 @@
       },
       "shell": {
         "domainId": "governance",
-        "workspaceId": "overview",
+        "workspaceId": "runs",
         "selectedId": "run-btc-analysis",
         "selectedType": "Agent run"
       },
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "d127344e850db62c6d72d8636a3ff6a31048d21281097380ce76dd55ded69b9a",
+      "sha256": "604e9f6dee1c7ec67a3c3f68b38286c973670d86f3a21b2ba17e4e1ff17b0fba",
       "state": "processing",
-      "structuralOnly": true
+      "semanticSurface": "Task run awaiting server result",
+      "structuralOnly": false
     },
     {
       "file": "state-stale--430x932.png",
@@ -108,9 +111,10 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "7375cefcb10193081c4388930b60f6b5b2d98ada5df5749174df71a884892121",
+      "sha256": "7ecb0794e1091fd755714b40ce5fd9ee9c78f216c51fa0ae750bebaf519259ca",
       "state": "stale",
-      "structuralOnly": true
+      "semanticSurface": "last-valid Boundary facts",
+      "structuralOnly": false
     },
     {
       "file": "state-degraded--1440x900.png",
@@ -135,16 +139,17 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "d36ee581e72b009e7dc67c86b94a048b29eed562bf85d98a7f617c64cca32f63",
+      "sha256": "7ccb70aa33659032d76640cc522f7388037b4670380f3ffa58656c376c985f16",
       "state": "degraded",
-      "structuralOnly": true
+      "semanticSurface": "degraded last-valid Boundary facts",
+      "structuralOnly": false
     },
     {
       "file": "state-failed--1180x800.png",
       "viewport": "1180x800",
       "device": "desktop",
       "domainId": "governance",
-      "workspaceId": "overview",
+      "workspaceId": "event-inputs",
       "viewportGeometry": {
         "width": 1180,
         "height": 800
@@ -155,23 +160,24 @@
       },
       "shell": {
         "domainId": "governance",
-        "workspaceId": "overview",
+        "workspaceId": "event-inputs",
         "selectedId": "run-btc-analysis",
         "selectedType": "Agent run"
       },
       "noProductionWrites": true,
       "legacyProductStyles": false,
-      "governanceCss": false,
-      "sha256": "40b796add11a18a10c1f0a9f5c7b112c9d739a9ae3a5bac4b18927f6dedca581",
+      "governanceCss": true,
+      "sha256": "ecc4c195c43e40910af248907317c26d3f8e4b885078c18b5d2d70ab5a22870d",
       "state": "failed",
-      "structuralOnly": true
+      "semanticSurface": "failed Event source",
+      "structuralOnly": false
     },
     {
       "file": "state-forbidden--390x844.png",
       "viewport": "390x844",
       "device": "mobile",
       "domainId": "governance",
-      "workspaceId": "overview",
+      "workspaceId": "configuration",
       "viewportGeometry": {
         "width": 390,
         "height": 844
@@ -182,23 +188,24 @@
       },
       "shell": {
         "domainId": "governance",
-        "workspaceId": "overview",
+        "workspaceId": "configuration",
         "selectedId": "run-btc-analysis",
         "selectedType": "Agent run"
       },
       "noProductionWrites": true,
       "legacyProductStyles": false,
-      "governanceCss": false,
-      "sha256": "dc74852368063dcfa45cad203cfd3b20281af7667e87ba96a138214a429f62e9",
+      "governanceCss": true,
+      "sha256": "a80b6617f5ebc5cdf6801ded632eab7e7feab427c13165e42b2375cc4798b343",
       "state": "forbidden",
-      "structuralOnly": true
+      "semanticSurface": "forbidden live-trading configuration",
+      "structuralOnly": false
     },
     {
       "file": "state-disabled--430x932.png",
       "viewport": "430x932",
       "device": "mobile",
       "domainId": "governance",
-      "workspaceId": "overview",
+      "workspaceId": "runs",
       "viewportGeometry": {
         "width": 430,
         "height": 932
@@ -209,23 +216,24 @@
       },
       "shell": {
         "domainId": "governance",
-        "workspaceId": "overview",
+        "workspaceId": "runs",
         "selectedId": "run-btc-analysis",
         "selectedType": "Agent run"
       },
       "noProductionWrites": true,
       "legacyProductStyles": false,
-      "governanceCss": false,
-      "sha256": "d25238a4a25695172e6868e681c4a0f9ff846d789d54b904cd94484d259e64f5",
+      "governanceCss": true,
+      "sha256": "d5eb0a261bd2bc3e1dfa10e2a9ecd0ead5d513a97d581840213474f49d82b9de",
       "state": "disabled",
-      "structuralOnly": true
+      "semanticSurface": "disabled Task action",
+      "structuralOnly": false
     },
     {
       "file": "state-approval--1440x900.png",
       "viewport": "1440x900",
       "device": "desktop",
       "domainId": "governance",
-      "workspaceId": "overview",
+      "workspaceId": "recovery",
       "viewportGeometry": {
         "width": 1440,
         "height": 900
@@ -236,23 +244,24 @@
       },
       "shell": {
         "domainId": "governance",
-        "workspaceId": "overview",
+        "workspaceId": "recovery",
         "selectedId": "run-btc-analysis",
         "selectedType": "Agent run"
       },
       "noProductionWrites": true,
       "legacyProductStyles": false,
-      "governanceCss": false,
-      "sha256": "13ff56fbbc17c1fb2cff095472f4d77ffe7a813e119abd1dfb0ad8e7693c52f9",
+      "governanceCss": true,
+      "sha256": "3443ce12430bcda96202a9e513eddd25c69e846961c581fcb4d0a128b37ad37d",
       "state": "approval",
-      "structuralOnly": true
+      "semanticSurface": "Recovery approval confirmation",
+      "structuralOnly": false
     },
     {
       "file": "state-partial--1180x800.png",
       "viewport": "1180x800",
       "device": "desktop",
       "domainId": "governance",
-      "workspaceId": "overview",
+      "workspaceId": "recovery",
       "viewportGeometry": {
         "width": 1180,
         "height": 800
@@ -263,23 +272,24 @@
       },
       "shell": {
         "domainId": "governance",
-        "workspaceId": "overview",
+        "workspaceId": "recovery",
         "selectedId": "run-btc-analysis",
         "selectedType": "Agent run"
       },
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "c8398e0e7cff7c9604f028b3b6cdfdd8314504dbee8a86c8db1ed7887ec005e1",
+      "sha256": "09b375d9dae10e6affc09dabf15430c38531d529780ffcfee690624cd8f7f8e4",
       "state": "partial",
-      "structuralOnly": true
+      "semanticSurface": "partial authoritative reconciliation",
+      "structuralOnly": false
     },
     {
       "file": "state-no-result--390x844.png",
       "viewport": "390x844",
       "device": "mobile",
       "domainId": "governance",
-      "workspaceId": "overview",
+      "workspaceId": "recovery",
       "viewportGeometry": {
         "width": 390,
         "height": 844
@@ -290,16 +300,17 @@
       },
       "shell": {
         "domainId": "governance",
-        "workspaceId": "overview",
+        "workspaceId": "recovery",
         "selectedId": "run-btc-analysis",
         "selectedType": "Agent run"
       },
       "noProductionWrites": true,
       "legacyProductStyles": false,
-      "governanceCss": false,
-      "sha256": "82350052f3250c446b36e5a8a0de372fb0c178934c63857230005db478d9f686",
+      "governanceCss": true,
+      "sha256": "958c941f04cea2bc3a9d156e3cf763f700c9a09f91c923ddaf4274bc8b0c9edb",
       "state": "no-result",
-      "structuralOnly": true
+      "semanticSurface": "Recovery without a report",
+      "structuralOnly": false
     },
     {
       "file": "state-long-content--430x932.png",
@@ -324,9 +335,10 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "367cc8b58b0580a743df0a7a941831d7098e1c8bb1a3bb1da5bc8f6dfa34555e",
+      "sha256": "f46e2b9580eb0c5f15df9175b4d323c3866123028625709c5c4f91b443c213d6",
       "state": "long-content",
-      "structuralOnly": true
+      "semanticSurface": "long Audit action content",
+      "structuralOnly": false
     },
     {
       "file": "state-large-list--1440x900.png",
@@ -351,9 +363,10 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "452336d553360067646626b2bea9bdbe492fe7b887d7e1c1b43543c5b22b893a",
+      "sha256": "0656f33a0e9bdbf2aca5cfcc3c96363d536b5afa3b4c71db20c82ef562daa122",
       "state": "large-list",
-      "structuralOnly": true
+      "semanticSurface": "large Audit ledger",
+      "structuralOnly": false
     }
   ]
 }
