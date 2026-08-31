@@ -8,7 +8,7 @@ const browserGlobals = {
   fetch: "readonly", console: "readonly", setTimeout: "readonly", clearTimeout: "readonly",
   setInterval: "readonly", clearInterval: "readonly", URL: "readonly", URLSearchParams: "readonly",
   AbortController: "readonly", EventSource: "readonly", WebSocket: "readonly", FileReader: "readonly",
-  Blob: "readonly", crypto: "readonly", TextEncoder: "readonly", TextDecoder: "readonly",
+  Blob: "readonly", FormData: "readonly", crypto: "readonly", TextEncoder: "readonly", TextDecoder: "readonly",
   performance: "readonly", requestAnimationFrame: "readonly", cancelAnimationFrame: "readonly",
   ResizeObserver: "readonly", IntersectionObserver: "readonly", atob: "readonly", btoa: "readonly",
   alert: "readonly", confirm: "readonly", prompt: "readonly", structuredClone: "readonly",

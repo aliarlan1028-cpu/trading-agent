@@ -17,4 +17,3 @@ export function submitFields(event, submit) {
   const fields = Object.fromEntries(new FormData(event.currentTarget).entries());
   return submit?.(fields);
 }
-
