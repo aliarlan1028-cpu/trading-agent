@@ -3,6 +3,7 @@
   "runner": "tests/run-kordyn-v2-governance-browser.mjs",
   "fixture": "tests/kordyn-v2-governance-browser.jsx",
   "productionSourceCommit": "d85e20b0d256b93e5ea0e7ab9b4b857194d41ed4",
+  "captureTestSourceCommit": "6b415020a4598728083111f869329dc24ee9ada5",
   "captures": [
     {
       "file": "desktop-governance-boundary--1440x900.png",
@@ -27,7 +28,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "d961a9e5ff8b0c4160ad3f61eb94c0826397b4d98ed911838c254d0463fb2dc8"
+      "sha256": "e8dee0ccbd67e8f427ca35dde0cbce350923edaab0424571fc96a2a93a7b5b92"
     },
     {
       "file": "desktop-governance-boundary--1180x800.png",
@@ -52,7 +53,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "968f3f91e728a906a975fa61fb18baa660e27e94185d939d94308e95d6671c50"
+      "sha256": "5fdaf0350a5a6d1300498246c292252b39a4ab3134d9234d3c120cae7d26b92b"
     },
     {
       "file": "desktop-governance-operations--1440x900.png",
@@ -77,7 +78,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "b652e0d42c0d1f0b121bc8bcd683499c03921320367c8df819cdbca4db871fa8"
+      "sha256": "0f3af44c0272df5dbe4af9fc5d1f2681e88ec13e650528c9bacfcf9c4496a72c"
     },
     {
       "file": "desktop-governance-operations--1180x800.png",
@@ -102,7 +103,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "f11429fbcaf0079bfa62a167c06201e015007eba22bb4a8d6def7af607f94102"
+      "sha256": "639ddb9bb7cec16add617dcbb37d0ba408929995177cc3c7b4373a79cc416626"
     },
     {
       "file": "desktop-governance-configuration--1440x900.png",
@@ -177,7 +178,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "cf5e974d8906822c15405eff2d13f41829600ec547eb5c864d454fc6c93a9e73",
+      "sha256": "96e7bc7785c1d8ff5a4488c71d10b993372a0289584648acabc2ab5a796cbac2",
       "dangerConfirmation": "kill-switch",
       "noActionAccepted": true
     },
@@ -448,6 +449,42 @@
       },
       "context": "Event source / event-source-fed",
       "proof": "Event source / event-source-fed"
+    },
+    {
+      "label": "APP Task",
+      "viewport": "390x844",
+      "device": "mobile",
+      "root": {
+        "id": "task-governance-patrol",
+        "type": "Task",
+        "workspace": "runs"
+      },
+      "context": "Task / task-governance-patrol",
+      "proof": "Task / task-governance-patrol"
+    },
+    {
+      "label": "APP Agent run",
+      "viewport": "390x844",
+      "device": "mobile",
+      "root": {
+        "id": "job-run-patrol-42",
+        "type": "Agent run",
+        "workspace": "runs"
+      },
+      "context": "Agent run / job-run-patrol-42",
+      "proof": "Agent run / job-run-patrol-42"
+    },
+    {
+      "label": "APP Recovery",
+      "viewport": "390x844",
+      "device": "mobile",
+      "root": {
+        "id": "recovery-report-28",
+        "type": "Recovery",
+        "workspace": "recovery"
+      },
+      "context": "Recovery / recovery-report-28",
+      "proof": "Recovery / recovery-report-28"
     }
   ],
   "navigation": [

@@ -4,6 +4,7 @@
   "sourceManifest": "docs/kordyn-v2-approved-concept-manifest.md",
   "captureEvidence": ".impeccable/review/kordyn-v2/governance/capture-evidence.json",
   "productionSourceCommit": "d85e20b0d256b93e5ea0e7ab9b4b857194d41ed4",
+  "captureTestSourceCommit": "6b415020a4598728083111f869329dc24ee9ada5",
   "outputRoot": ".impeccable/review/kordyn-v2/governance-compare",
   "counts": {
     "concepts": 4,
@@ -86,18 +87,18 @@
         },
         "overlay50": {
           "file": "desktop-governance-boundary--1440x900--overlay.png",
-          "sha256": "5b60a254f00ac60d92e36b0a0839fe0b21ac6e269b15925d9aaf5d746fa10bb9"
+          "sha256": "59523c10c3e4b33575c1f3da581e9c7c54731814c39503eae55ce0b52ebc5758"
         },
         "absoluteDifference": {
           "file": "desktop-governance-boundary--1440x900--difference.png",
-          "sha256": "1dee1f617a7a74b7249d6951eaffb391424f572983263bc9dda8e184bd819cde"
+          "sha256": "974ec222f7815c420f4ae60c59fa39fa976dfecee244ed80cf5e79d8ab495c60"
         },
         "geometry": {
           "file": "desktop-governance-boundary--1440x900--geometry.json",
-          "sha256": "948d68baa97d67762595580c445a979aae7b8f26bc38ff833194f317f13456a6"
+          "sha256": "21ec20347bc5c915050c44681274906b6dd94af02c9bc7d255307d77bf3f017b"
         }
       },
-      "pixelDifference": 0.07059262486887759,
+      "pixelDifference": 0.07059307371096588,
       "releaseVerdict": "human region review required"
     },
     {
@@ -112,18 +113,18 @@
         },
         "overlay50": {
           "file": "desktop-governance-boundary--1180x800--overlay.png",
-          "sha256": "e576d2871cd10743cf8092e5e21c7b8ffb0a942d8ece73eed00d5aba28bdfeca"
+          "sha256": "9536b59dd41b2115dabe36e61fbd87d06347818b9cb70198584b597ad4d1a9a6"
         },
         "absoluteDifference": {
           "file": "desktop-governance-boundary--1180x800--difference.png",
-          "sha256": "d39c0386ca171c28f454b8218343fa1c7d6a720d82374159a9c024934d9d83d9"
+          "sha256": "bfd9fc6cde6a8bc39f9428c77b591f5a7f0dee524b84626a8f6eb33c1b76d304"
         },
         "geometry": {
           "file": "desktop-governance-boundary--1180x800--geometry.json",
-          "sha256": "e29d62e096dd6cf3ddb4cba9cb7c686bb9d6e833944f432e4f022c6fe855b292"
+          "sha256": "99b0b542e83108e1007ba3c72378c4ccdccf3bcb22717c62452cb409ad0e86ce"
         }
       },
-      "pixelDifference": 0.07411680790960452,
+      "pixelDifference": 0.07411762905727264,
       "releaseVerdict": "human region review required"
     },
     {
@@ -138,18 +139,18 @@
         },
         "overlay50": {
           "file": "desktop-governance-operations--1440x900--overlay.png",
-          "sha256": "49ec1cc9308d607250d07e891868e7ebe2c73b8caef5e9e52e1856fe8d7e468c"
+          "sha256": "7eb3e59268d8a88943315fbd746321cb93e1115b548cbefb963b31a0c3374bfa"
         },
         "absoluteDifference": {
           "file": "desktop-governance-operations--1440x900--difference.png",
-          "sha256": "f49c44311376a2a598c7c6183517dc4b6ec8fc2c4c6ae9cf3fd1079984f00671"
+          "sha256": "d1ff1d7caf91436aa6f4737e30dc65492ecd1863b6b821f2533ec0609d33f485"
         },
         "geometry": {
           "file": "desktop-governance-operations--1440x900--geometry.json",
-          "sha256": "d053f6fffab2b1616a5eb373c0640ca5275da13e0a13b6293a2abf770332a523"
+          "sha256": "8d2c59d057ac2dac12a3c18c05b44cb516fc9884fb529d0f802b8b498c6800e1"
         }
       },
-      "pixelDifference": 0.057416265230371986,
+      "pixelDifference": 0.05741597877834261,
       "releaseVerdict": "human region review required"
     },
     {
@@ -164,18 +165,18 @@
         },
         "overlay50": {
           "file": "desktop-governance-operations--1180x800--overlay.png",
-          "sha256": "6e9f1c5bf7ea47770d97b0bb951da3b33586372be488c501e5087609475308a5"
+          "sha256": "625215cb718fe04d04fa4390d0cc91d5954ec05001ff9522553aaef7042c83f3"
         },
         "absoluteDifference": {
           "file": "desktop-governance-operations--1180x800--difference.png",
-          "sha256": "864940c145421dd0d376ab6b0f8e24f912357ce5242ceccb757986918ab35e66"
+          "sha256": "8396980e06727b0dc9c3879a07ee0b22852b379680bffc0c9fb74f55ea65bee2"
         },
         "geometry": {
           "file": "desktop-governance-operations--1180x800--geometry.json",
-          "sha256": "63e98c6f12f6609bafb916c3ec905768f21e03a579d53283d4db449ba685c3ad"
+          "sha256": "94de885aba4ef015064e476d057d26bbcd302064b5a5f4337dcdfaed63d63788"
         }
       },
-      "pixelDifference": 0.05994216101694915,
+      "pixelDifference": 0.059943565137919576,
       "releaseVerdict": "human region review required"
     },
     {
@@ -198,7 +199,7 @@
         },
         "geometry": {
           "file": "desktop-governance-configuration--1440x900--geometry.json",
-          "sha256": "cf631668ae8df166ba58b43c8d94ea45cf7ef6148afb418c9c50c8b479b9b39d"
+          "sha256": "300e73409f1cb76da7055e3df801f713e887e905594f88818b4c8f4bd7422acd"
         }
       },
       "pixelDifference": 0.06722036936173646,
@@ -224,7 +225,7 @@
         },
         "geometry": {
           "file": "desktop-governance-configuration--1180x800--geometry.json",
-          "sha256": "a571da5bb27d6e86a69344455ad124062eaf248aa8e19f641417a31d164e0cef"
+          "sha256": "2da51ac25bf3c0abdc54f7f2c00511d011121fd3e3d12709922f2c69bf09a7b4"
         }
       },
       "pixelDifference": 0.07093185859089397,
@@ -250,7 +251,7 @@
         },
         "geometry": {
           "file": "mobile-system-governance--390x844--geometry.json",
-          "sha256": "1983f960fdfd6e91e3f8ab571ebfd39e63b3c1fb168b6c5282a0c59f558adbc4"
+          "sha256": "67e568c4aef16aadc46004c61821d2f820e8f27033da8bad8b6e0e02eaaeb023"
         }
       },
       "pixelDifference": 0.09411759543206434,
@@ -276,7 +277,7 @@
         },
         "geometry": {
           "file": "mobile-system-governance--430x932--geometry.json",
-          "sha256": "9b2e156e4fd054f00583cbce9240f43ddafa9d21f133a93a1e1957e11f2fa27b"
+          "sha256": "c61c7e4f8312b78ff43454232df8fd132843e0b989b1d9722921c345057c88af"
         }
       },
       "pixelDifference": 0.09384568013584646,
