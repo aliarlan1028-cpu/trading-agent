@@ -150,8 +150,9 @@ test("APP shell follows the approved compact identity, title, destinations, and 
   assert.match(html, /data-kordyn-v2-notification-target="governance\/notifications"/);
   assert.match(html, /data-kordyn-v2-account-truth-mode="full"/);
   assert.match(html, /data-kordyn-v2-truth-fact="available"/);
-  assert.doesNotMatch(html, /kordynV2MobileEvidenceDock/);
-  assert.doesNotMatch(html, /data-kordyn-v2-(?:context|proof)-trigger/);
+  assert.match(html, /kordynV2MobileEvidenceDock/);
+  assert.match(html, /data-kordyn-v2-context-trigger/);
+  assert.match(html, /data-kordyn-v2-proof-trigger/);
 });
 
 test("APP shell preserves each non-Mission domain canonical truth mode", () => {
@@ -267,6 +268,8 @@ test("APP shell keeps unknown and adverse truth fail-closed", () => {
   assert.match(html, /data-health-tone="unavailable"/);
   assert.match(html, />Unavailable</);
   assert.doesNotMatch(html, /风险正常|运行正常|实时正常/);
+  assert.doesNotMatch(html, /kordynV2MobileEvidenceDock/);
+  assert.doesNotMatch(html, /data-kordyn-v2-(?:context|proof)-trigger/);
 });
 
 test("Trace identity gives explicit object identity precedence over a record id", () => {

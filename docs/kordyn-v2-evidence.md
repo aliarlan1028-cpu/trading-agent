@@ -6,10 +6,102 @@
 - Current Account capture-test source: `e3eb0b3c216eafe9a63ed6b40ec998f693ba50a2`.
 - Current Account detector-record commit: `8e300e461402674090f8a7f46e98b2bb4032eb2f`.
 - Current Account evidence commit: `414ab7d343606b501781ebcc0639ae20c6a5c788`.
-- Current comparison scope: Foundation Plan 01 shared shell, completed Plan 02 AI-domain checkpoint, and completed Plan 03 Account Position checkpoint.
-- Completed governed concept comparisons: `5 / 15` — Desktop AI Mission, Desktop AI Signals, APP AI Mission, APP AI Approval, and Desktop Account Position.
-- Pending domain implementation: `10 / 15` — no production comparison or fidelity claim is made for these remaining surfaces.
-- Current Plan 03 Task 5 verdict: Account scope comparator reports `1` scoped concept / `1` completed / `0` scoped pending, with the machine verdict `human region review required`. Pixel MAE is diagnostic only; original-size human review recorded the Account-specific visual deltas below instead of treating the comparison as pixel equivalence.
+- Current Intelligent Assets product/capture source: `801a27abceb54ac8515dd6735f0f24aebfcd215c`.
+- Current comparison scope: Foundation Plan 01 shared shell, completed Plan 02 AI domain, completed Plan 03 Account Position, and completed Plan 04 Intelligent Assets.
+- Completed governed concept comparisons: `11 / 15` — the prior five concepts plus Desktop Assets Relationship, Strategy Registry, Knowledge Incubator, Capability Registry, Review/Owner Release, and APP Intelligent Assets.
+- Pending domain implementation: `4 / 15` — the three Desktop Governance concepts and APP Governance. No production comparison or fidelity claim is made for them.
+- Current Plan 04 Task 6 verdict: Assets scope comparator reports `6` scoped concepts / `6` completed / `0` scoped pending / `12` viewport comparisons. Its machine verdict remains `human region review required`; original-size region review is recorded below and no pixel-equivalence claim is made.
+
+## Plan 04 Intelligent Assets checkpoint — Task 6
+
+Task 6 closes the Intelligent Assets state/capability/browser/visual gate against product and capture source `801a27abceb54ac8515dd6735f0f24aebfcd215c`. The browser runner mounts the real `KordynV2Root`, lazy `domains/assets/index.jsx`, real Desktop and APP presenters, canonical selection, shared Context/Proof, `ConfirmHost`, and the existing `createV2Actions().assets` boundary. Its fixture is production-shaped and credential-free; protected requests are captured in a local authority ledger and no production endpoint is called.
+
+### Intelligent Assets capability ownership — 18 / 18
+
+`ASSET_CAPABILITY_SURFACES` maps every deployed `lab.*` capability to a real workspace, canonical object identity, existing action boundary, permission/state boundary, and separate Desktop/APP presenter.
+
+| Capability | Workspace / route | Canonical object and deployed boundary |
+| --- | --- | --- |
+| `lab.research-map` | `relationships / labMap` | Explicit Knowledge, Strategy, Capability, Mission, Review, Lesson, and Owner candidate references; read-only edges. |
+| `lab.knowledge-import` | `knowledge / knowledgeBase` | Immutable Knowledge source; existing import/configuration and `parse-real` boundary only. |
+| `lab.knowledge-evidence` | `knowledge / knowledgeBase` | Evidence chunk plus source/location; source text never becomes execution authority. |
+| `lab.knowledge-graph` | `knowledge / knowledgeBase` | Explicit `sourceId` edges; no inferred relationship. |
+| `lab.knowledge-artifacts` | `knowledge / knowledgeBase` | Candidate with supported artifact type; existing ignore/adopt/approve-prompt actions. |
+| `lab.knowledge-workflows` | `knowledge / knowledgeBase` | Workflow candidate and content version; Registry validation remains mandatory. |
+| `lab.strategy-core` | `strategies / strategyLib` | Strategy product/version; existing eligible-set enable/disable boundary. |
+| `lab.strategy-studio` | `strategies / strategyLib` | Draft, generated tests, backtest, OOS, and existing publish endpoint. |
+| `lab.strategy-knowledge` | `strategies / strategyLib` | Knowledge-derived Strategy version retaining source provenance. |
+| `lab.strategy-imported` | `strategies / strategyLib` | Imported Strategy version retaining import provenance. |
+| `lab.strategy-adaptive` | `strategies / strategyLib` | Immutable Owner candidate version; staged validation and explicit Owner release. |
+| `lab.capability-native` | `capabilities / capabilityLib` | Code-registered Capability; system-managed and not user-toggleable. |
+| `lab.capability-workflow` | `capabilities / capabilityLib` | Knowledge workflow Capability; existing post-validation skill boundary. |
+| `lab.capability-imported-skill` | `capabilities / capabilityLib` | Imported Skill plus fingerprint/version; existing validation/paper/approval boundary. |
+| `lab.capability-mcp` | `capabilities / capabilityLib` | MCP server plus declared tools; missing or unknown grant fails closed. |
+| `lab.capability-connectors` | `capabilities / capabilityLib` | Code-registered connector; protected configuration remains authoritative. |
+| `lab.trade-review` | `reviews / labReviews` | Financially reconciled Review; read-only evidence and existing output path. |
+| `lab.owner-review` | `reviews / labReviews` | Evidence-linked Owner candidate; existing decision, pure-forward, verify, and release actions. |
+
+Native strategies and tools enter their Registry directly. Imported and knowledge-derived assets keep distinct provenance. Knowledge processing exposes only currently deployed candidate types; it cannot generate arbitrary executable code, register unknown tools, rewrite live trading directly, or display an unvalidated candidate as published.
+
+### Intelligent Assets state evidence — 13 / 13
+
+State sidecar: `.impeccable/review/kordyn-v2/assets/state-evidence.json`, SHA-256 `57bf593f9cc23c3d803a0c6c34238ae11855cada81a490e9018d8c4a4f6b0253`. Every screenshot has document overflow `0`.
+
+| State | Evidence truth |
+| --- | --- |
+| `loading` | No guessed Registry facts while authority is pending. |
+| `empty` | Authoritative empty remains distinct from missing/failure. |
+| `processing` | Existing lifecycle remains visible; terminal release is not shown early. |
+| `stale` | Last-valid source/time retained; capability mutation disabled. |
+| `degraded` | Last-valid facts retained; candidate approval/release disabled. |
+| `failed` | Failed source remains failed and cannot generate healthy evidence/candidates. |
+| `forbidden` | Owner queue and protected evidence/actions stay hidden. |
+| `disabled` | Missing MCP grant remains unavailable. |
+| `approval` | Owner confirmation required; no validation or release implied. |
+| `partial` | Completed and failed effects remain separate. |
+| `no-result` | Missing explicit references produce no relationship. |
+| `long-content` | Evidence is bounded with source character counts instead of silently truncating. |
+| `large-list` | Registry reports shown/source counts and completeness explicitly. |
+
+State presenters use own-data descriptors and bounded primitive text. Throwing getters, revoked proxies, hostile HTML/event attributes, objects, symbols, and unsupported arrays fail closed without erasing valid siblings.
+
+### Real interaction and authority evidence
+
+Capture sidecar: `.impeccable/review/kordyn-v2/assets/capture-evidence.json`, SHA-256 `f3e7cf7f972a89f2738e24c45e00ba1f221e08613113c115d299511d62810e65`.
+
+- `18` real surface screenshots and `13` real state screenshots were captured at `1440x900`, `1180x800`, `390x844`, and `430x932`; all report zero document overflow.
+- Trusted clicks cover Knowledge source, Evidence, Strategy product, Capability, Review, Owner candidate, Validation/Paper run, and APP Strategy product. Each click changes the Root selected ID/type and the visible Context/Proof identity to the same canonical object.
+- Desktop Context closes through a real Escape key path after focus enters the dialog; Proof and APP evidence sheets close through their real product controls.
+- APP surfaces pass the `44px` touch-target gate. The knowledge incubation and capability inspector actions found below the threshold during RED were corrected before final capture.
+- Source conversion and Owner decision run through failure, partial, and success responses. Each mode records exactly the two expected bounded endpoints: `/api/knowledge/convert` and `/api/review/improvements/owner-candidate-35/action`. The fixture ledger reports two local authority writes per mode and zero production writes.
+- Assets CSS is loaded for real Assets workspaces, every capture rejects legacy authenticated styles, and state boundaries truthfully record whether the lazy Assets chunk had loaded at capture time.
+
+### Captures, comparisons, and human region review
+
+Capture root: `.impeccable/review/kordyn-v2/assets/` (`33` files: 18 surface PNGs, 13 state PNGs, and two sidecars). Comparison root: `.impeccable/review/kordyn-v2/assets-compare/` (`49` files: 36 PNGs, 12 geometry ledgers, and one index). Comparison index SHA-256: `89b699343f984109c9a484f82c7eabac403db0cb8a013b81201ddf69e5e1d108`.
+
+| Concept | Actual SHA-256 (`1440/390`) | Actual SHA-256 (`1180/430`) | Pixel MAE | Region verdict |
+| --- | --- | --- | --- | --- |
+| Desktop Assets Relationship | `3346d78db66bd315d22b196280b75b77ec81c62b477f8d7f01e46d1f26f25840` | `d465984659ccadf9626613c8b2a3d8aeca9dd43e4ae42535aff4302a59e266a9` | `0.076330 / 0.079607` | topology, source classes, queue, inspector, and routes retained |
+| Desktop Strategy Registry | `5cd87e30ed8c48969238f4e48ce13a8fb9e32aad1748cde3577d524745050710` | `a9fbc0d805ffd6d29c53a8387da6050c28fd3c0ae4e89de8d2798d2a8cec9c3b` | `0.060302 / 0.062580` | Registry, selected truth, lineage, evidence, and Studio retained |
+| Desktop Knowledge Incubator | `6ee98a2b12b71d5b1f8bfcc12d56189a48181684199e2c916fefeeba80fe54e6` | `fd912cc7e302c5a18378feb42c8b3014becb6d8e0b78a0f80fff80657fbee09b` | `0.064678 / 0.068174` | source, evidence, graph, candidate routing, and lifecycle retained |
+| Desktop Capability Registry | `248e91b64c73c38ddcfd18876398deb2cab78521b9304fc990adb8e13020ed6c` | `ccf74dd828f1676a23349310133ec147f26efeaf065b8d9052e789a51e159be0` | `0.062207 / 0.064550` | provenance, permission impact, health, usage, and grant boundary retained |
+| Desktop Review/Owner Release | `c5d17cd845d4c67fe49aa64f83bacb4dfb9763ac9453f5371b375616c7154052` | `7a555845a48350b2bc3ac13e13c56e90915d493df18109367630a1d738422a21` | `0.068702 / 0.072619` | review, evidence, Owner queue, release path, and editable output draft retained |
+| APP Intelligent Assets | `994afaebf189c9d5ff1b0e78e70c6fbbcaf3d929ad608c25ac9337c9ecc76285` | `b97cdbfe51cece8c40000f161181bad3810c6f60345f1d11b885fd789469da97` | `0.086120 / 0.085462` | touch relationship thread and object drill-down retained |
+
+Original-size review opened all 12 normalized references, all 12 actual/overlay comparisons, and all 12 absolute-difference images. The product keeps the approved information topology, workspace family, density hierarchy, AI support boundary, and device-specific composition. Recorded differences are truthful rather than hidden: the immutable concepts contain richer illustrative assets and more rows, while the product screenshots use the same bounded production-shaped fixture and show `Unavailable` where an authoritative field is absent. APP intentionally uses the real shared compact truth/header and exposes separate full-screen Knowledge, Capability, and Review flows instead of squeezing Desktop panels. Pixel MAE remains diagnostic only.
+
+### Fresh Plan 04 Task 6 gates
+
+- Focused Assets model/action/workspace/state tests: `49 / 49`, exit `0`.
+- Canonical Assets browser gate: exit `0`; product source `801a27a`; captures `18`; states `13`; interactions `8`; action modes `3`; Assets CSS `true`; legacy authenticated CSS `false`.
+- Assets comparator: exit `0`; scoped concepts `6 / 6 / 0`, viewport comparisons `12`, artifacts `49`; verdict `human region review required`.
+- Impeccable detector after all Plan 04 UI edits: exit `0`, `[]`.
+- Isolated performance build: exit `0`; public CSS/JS `15,304 / 382,012`; AI shell CSS `55,847`; Account domain CSS `114,606 / 120,000`; V2 routes do not load legacy product styles.
+- Full repository test suite: `2107 / 2107`, exit `0`. Verification closeout also updated the lazy-domain count from two to three and replaced an expired fixed-date test epoch with a rolling recent epoch; production analysis logic is unchanged.
+- ESLint: exit `0`; production build: exit `0`, `1752` modules transformed; `git diff --check`: exit `0` before evidence report finalization.
+
+Plan 04 does not enable a flag, cut over traffic, deploy, merge, push, modify backend/API/database/auth/permission/trading/risk semantics, start Plan 05, or remove legacy production code.
 
 ## Plan 03 Account-domain checkpoint — Task 5
 
@@ -77,7 +169,7 @@ Capture sidecar SHA-256: `2ff5e678ed02cca09801e442c7712c39adf9684f010deb77fbc7e9
 | `desktop-account-position--1440x900` | `38d6a875aa1cd26af0ef19510fe993255c572d97468ad9a940d734c92acfd148` | `7eff9bfd8c1001b23861f9dccc6fb89620da9f01e14669dc1bb873b1a5c1b871` | `0.054344026870007264` | human region review required |
 | `desktop-account-position--1180x800` | `38d6a875aa1cd26af0ef19510fe993255c572d97468ad9a940d734c92acfd148` | `0656942a67e22a6301c58a4b3cda27d355d4708065d087a01f3762e14d0d3cf2` | `0.054280473856209155` | human region review required |
 
-Account scope-local comparison truth is explicit in the index: manifest `15`, scoped concepts `1`, completed scoped concepts `1`, scoped pending `0`, out of scope `14`. Cumulative governed coverage is now `5 / 15`; the remaining non-Account and future-domain rasters are not reclassified as Account pending and are not filled with stale screenshots.
+Account scope-local comparison truth is explicit in the index: manifest `15`, scoped concepts `1`, completed scoped concepts `1`, scoped pending `0`, out of scope `14`. At the Plan 03 checkpoint, cumulative governed coverage was `5 / 15`; the remaining non-Account rasters were not reclassified as Account pending or filled with stale screenshots.
 
 Original-size human review opened all `23` final PNG images after the support-dock correction: 17 Account actual/state captures and six Account comparison reference/overlay/difference images. The Desktop Account Position actual keeps the Account domain, Position workspace, selected `Position / position-eth`, Context/Proof access, protection evidence, safety action, related execution/protection record table, Account truth strip, and bounded AI support in reserved shell chrome. Recorded deltas versus the immutable concept include the production surface's current two-position fixture, replacement of the richer concept chart cockpit with a bounded price-boundary/evidence composition, and production-shaped `Unavailable` facts where the concept uses denser illustrative market data. These deltas are recorded for human region review; no pixel-equivalence claim is made.
 
@@ -126,7 +218,7 @@ Task 5 does not enable a flag, cut over traffic, start Plan 04, modify backend/A
 - Historical comparison scope at that checkpoint: Foundation Plan 01 shared shell only.
 - Historical completed comparisons at that checkpoint: `2 / 15` — Desktop AI Mission shell and Mobile AI Mission shell.
 - Historical pending count at that checkpoint: `13 / 15`.
-- Historical independent verdict: **Task 8 APPROVE — 0 Critical / 0 Important / 0 Minor; visual 390/430 PASS.** The position Important was formally withdrawn after response-boundary verification. Task 8 cleared the Foundation gate before Plan 02 began; the canonical current status is the `5 / 15` completed and `10 / 15` pending coverage recorded above.
+- Historical independent verdict: **Task 8 APPROVE — 0 Critical / 0 Important / 0 Minor; visual 390/430 PASS.** The position Important was formally withdrawn after response-boundary verification. Task 8 cleared the Foundation gate before Plan 02 began; the canonical current status is the `11 / 15` completed and `4 / 15` pending coverage recorded above.
 
 ## Staged concept coverage
 
@@ -136,16 +228,16 @@ Task 5 does not enable a flag, cut over traffic, start Plan 04, modify backend/A
 | `mobile-ai-mission-home` | APP | `ai / missions` | `390x844`, `430x932` | Compared — Foundation shell and Plan 02 AI domain |
 | `desktop-ai-signals` | Desktop | `ai / intelligence` | `1440x900`, `1180x800` | Compared — Plan 02 AI domain |
 | `desktop-account-position` | Desktop | `account / positions` | `1440x900`, `1180x800` | Compared — Plan 03 Account domain |
-| `desktop-assets-relationship` | Desktop | `assets / relationships` | `1440x900`, `1180x800` | pending domain implementation |
-| `desktop-strategy-registry` | Desktop | `assets / strategies` | `1440x900`, `1180x800` | pending domain implementation |
-| `desktop-knowledge-incubator` | Desktop | `assets / knowledge` | `1440x900`, `1180x800` | pending domain implementation |
-| `desktop-capability-registry` | Desktop | `assets / capabilities` | `1440x900`, `1180x800` | pending domain implementation |
-| `desktop-review-owner-release` | Desktop | `assets / reviewRelease` | `1440x900`, `1180x800` | pending domain implementation |
+| `desktop-assets-relationship` | Desktop | `assets / relationships` | `1440x900`, `1180x800` | Compared — Plan 04 Intelligent Assets |
+| `desktop-strategy-registry` | Desktop | `assets / strategies` | `1440x900`, `1180x800` | Compared — Plan 04 Intelligent Assets |
+| `desktop-knowledge-incubator` | Desktop | `assets / knowledge` | `1440x900`, `1180x800` | Compared — Plan 04 Intelligent Assets |
+| `desktop-capability-registry` | Desktop | `assets / capabilities` | `1440x900`, `1180x800` | Compared — Plan 04 Intelligent Assets |
+| `desktop-review-owner-release` | Desktop | `assets / reviews` | `1440x900`, `1180x800` | Compared — Plan 04 Intelligent Assets |
 | `desktop-governance-boundary` | Desktop | `governance / overview` | `1440x900`, `1180x800` | pending domain implementation |
 | `desktop-governance-operations` | Desktop | `governance / tasks` | `1440x900`, `1180x800` | pending domain implementation |
 | `desktop-governance-configuration` | Desktop | `governance / configuration` | `1440x900`, `1180x800` | pending domain implementation |
 | `mobile-ai-task-approval` | APP | `ai / missions` | `390x844`, `430x932` | Compared — Plan 02 AI domain |
-| `mobile-intelligent-assets` | APP | `assets / relationships` | `390x844`, `430x932` | pending domain implementation |
+| `mobile-intelligent-assets` | APP | `assets / relationships` | `390x844`, `430x932` | Compared — Plan 04 Intelligent Assets |
 | `mobile-system-governance` | APP | `governance / tasks` | `390x844`, `430x932` | pending domain implementation |
 
 The executable manifest independently verifies all 15 source SHA-256 values and stored dimensions before any comparison. A screenshot is mapped only to the same implemented product surface; unrelated pages are never used to fill the manifest.

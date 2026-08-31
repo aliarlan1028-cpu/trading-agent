@@ -381,6 +381,7 @@ test("Root lazy-loads account UI and account CSS stays owned by that dynamic dom
   const outputs = Object.values(result.metafile.outputs);
   const dynamicImports = outputs.flatMap((output) => output.imports || []).filter((item) => item.kind === "dynamic-import");
   const accountEntryOutput = outputs.find((output) => Object.hasOwn(output.inputs || {}, "src/kordynV2/domains/account/index.jsx"));
+  const assetsEntryOutput = outputs.find((output) => Object.hasOwn(output.inputs || {}, "src/kordynV2/domains/assets/index.jsx"));
   const accountCssInput = "src/kordynV2/domains/account/account.css";
   const sharedTargets = [
     "src/kordynV2/KordynV2Root.jsx",
@@ -388,8 +389,10 @@ test("Root lazy-loads account UI and account CSS stays owned by that dynamic dom
     "src/kordynV2/styles/mobile-shell.css"
   ].map((file) => fs.readFileSync(path.join(rootDir, file), "utf8"));
 
-  assert.equal(dynamicImports.length, 2);
+  assert.equal(dynamicImports.length, 3);
   assert.ok(accountEntryOutput, "expected a distinct lazy account entry output");
+  assert.ok(assetsEntryOutput, "expected a distinct lazy intelligent-assets entry output");
+  assert.notEqual(accountEntryOutput, assetsEntryOutput);
   assert.ok(Object.hasOwn(accountEntryOutput.inputs, accountCssInput));
   assert.equal(sharedTargets.some((source) => /account\.css/.test(source)), false);
 });

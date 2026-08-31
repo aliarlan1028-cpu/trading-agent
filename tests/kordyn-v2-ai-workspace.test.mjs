@@ -350,19 +350,24 @@ test("KordynV2Root keeps AI in one lazy domain chunk with CSS isolated from Acco
   const dynamicImports = outputs.flatMap((output) => output.imports || []).filter((item) => item.kind === "dynamic-import");
   const aiCssInput = "src/kordynV2/domains/ai/ai.css";
   const accountCssInput = "src/kordynV2/domains/account/account.css";
+  const assetsCssInput = "src/kordynV2/domains/assets/assets.css";
   const aiEntryOutputs = outputs.filter((output) => Object.hasOwn(output.inputs || {}, "src/kordynV2/domains/ai/index.jsx"));
   const accountEntryOutputs = outputs.filter((output) => Object.hasOwn(output.inputs || {}, "src/kordynV2/domains/account/index.jsx"));
+  const assetsEntryOutputs = outputs.filter((output) => Object.hasOwn(output.inputs || {}, "src/kordynV2/domains/assets/index.jsx"));
   const shellCss = fs.readFileSync(path.join(rootDir, "src/kordynV2/styles/shell.css"), "utf8");
   const mobileCss = fs.readFileSync(path.join(rootDir, "src/kordynV2/styles/mobile-shell.css"), "utf8");
   const rootSource = fs.readFileSync(path.join(rootDir, "src/kordynV2/KordynV2Root.jsx"), "utf8");
 
-  assert.equal(dynamicImports.length, 2);
+  assert.equal(dynamicImports.length, 3);
   assert.equal(aiEntryOutputs.length, 1);
   assert.equal(accountEntryOutputs.length, 1);
+  assert.equal(assetsEntryOutputs.length, 1);
   assert.notEqual(aiEntryOutputs[0], accountEntryOutputs[0]);
+  assert.notEqual(aiEntryOutputs[0], assetsEntryOutputs[0]);
   assert.ok(Object.keys(result.metafile.inputs).some((input) => input.endsWith(aiCssInput)));
   assert.ok(Object.hasOwn(aiEntryOutputs[0].inputs, aiCssInput));
   assert.equal(Object.hasOwn(aiEntryOutputs[0].inputs, accountCssInput), false);
+  assert.equal(Object.hasOwn(aiEntryOutputs[0].inputs, assetsCssInput), false);
   assert.match(rootSource, /const destination = location\.domainId === "ai"/);
   assert.doesNotMatch(rootSource, /DialogSurface/);
   assert.match(rootSource, /workspaceId=\{location\.workspaceId\}/);

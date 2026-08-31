@@ -3,7 +3,11 @@ import assert from "node:assert/strict";
 import { backfillMediumTermPriceHistory, buildEventVolatilityStats, buildMediumTermAnalytics, captureEventVolatilityObservations, mediumTermPriceHistoryReady, mediumTermSymbolsForCollection, recordMediumTermSample } from "../server/mediumTermAnalytics.mjs";
 
 const FIVE = 300_000;
-const base = Date.parse("2026-08-01T00:00:00Z");
+const DAY = 86_400_000;
+// Production retains thirty days from the real clock. Keep the test epoch recent
+// so this suite cannot expire as the calendar advances while preserving every
+// relative window and event boundary asserted below.
+const base = Math.floor((Date.now() - 8 * DAY) / FIVE) * FIVE;
 
 function seedSeries(db, symbol, count, priceFn, oiFn, flowFn = () => [110, 90]) {
   for (let i = 0; i < count; i += 1) {

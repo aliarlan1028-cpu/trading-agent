@@ -1,0 +1,359 @@
+{
+  "schemaVersion": 1,
+  "runner": "tests/run-kordyn-v2-assets-browser.mjs",
+  "fixture": "tests/kordyn-v2-assets-browser.jsx",
+  "productionSourceCommit": "801a27abceb54ac8515dd6735f0f24aebfcd215c",
+  "states": [
+    {
+      "file": "state-loading--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "assets",
+      "workspaceId": "relationships",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "relationships",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": false,
+      "sha256": "3cfdf49547fb88f1cba1c93fcbfc6831607aa602dbee34da1d41ea929d17d2c1",
+      "state": "loading",
+      "structuralOnly": true
+    },
+    {
+      "file": "state-empty--1180x800.png",
+      "viewport": "1180x800",
+      "device": "desktop",
+      "domainId": "assets",
+      "workspaceId": "relationships",
+      "viewportGeometry": {
+        "width": 1180,
+        "height": 800
+      },
+      "document": {
+        "clientWidth": 1180,
+        "scrollWidth": 1180
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "relationships",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": false,
+      "sha256": "1521c181372b9aa7143c70eaac643dce63e5fce658470d700ded467bb6346076",
+      "state": "empty",
+      "structuralOnly": true
+    },
+    {
+      "file": "state-processing--390x844.png",
+      "viewport": "390x844",
+      "device": "mobile",
+      "domainId": "assets",
+      "workspaceId": "relationships",
+      "viewportGeometry": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "clientWidth": 390,
+        "scrollWidth": 390
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "relationships",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": true,
+      "sha256": "071d25766572ca6bc72a7244f846929b85e2dbea087e57cd6f81ef23979f50c6",
+      "state": "processing",
+      "structuralOnly": true
+    },
+    {
+      "file": "state-stale--430x932.png",
+      "viewport": "430x932",
+      "device": "mobile",
+      "domainId": "assets",
+      "workspaceId": "relationships",
+      "viewportGeometry": {
+        "width": 430,
+        "height": 932
+      },
+      "document": {
+        "clientWidth": 430,
+        "scrollWidth": 430
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "relationships",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": true,
+      "sha256": "2e286269caa8c502af460219a0cec510814942af9abaf5a7c5ce57f304d75bf6",
+      "state": "stale",
+      "structuralOnly": true
+    },
+    {
+      "file": "state-degraded--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "assets",
+      "workspaceId": "relationships",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "relationships",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": true,
+      "sha256": "44ba79900aac017713d7e317749d393eb0b3c741c0e67c4cf9eee553c2381106",
+      "state": "degraded",
+      "structuralOnly": true
+    },
+    {
+      "file": "state-failed--1180x800.png",
+      "viewport": "1180x800",
+      "device": "desktop",
+      "domainId": "assets",
+      "workspaceId": "relationships",
+      "viewportGeometry": {
+        "width": 1180,
+        "height": 800
+      },
+      "document": {
+        "clientWidth": 1180,
+        "scrollWidth": 1180
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "relationships",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": false,
+      "sha256": "8be242da1507ae6a3035caaec1f8f7e729d6f94d904c80df624c5b30dafca0b9",
+      "state": "failed",
+      "structuralOnly": true
+    },
+    {
+      "file": "state-forbidden--390x844.png",
+      "viewport": "390x844",
+      "device": "mobile",
+      "domainId": "assets",
+      "workspaceId": "relationships",
+      "viewportGeometry": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "clientWidth": 390,
+        "scrollWidth": 390
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "relationships",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": false,
+      "sha256": "9e0b5ecfc812fe70aefd2de4a34c448e738f1f7935d15ac2918216cd23d46ce4",
+      "state": "forbidden",
+      "structuralOnly": true
+    },
+    {
+      "file": "state-disabled--430x932.png",
+      "viewport": "430x932",
+      "device": "mobile",
+      "domainId": "assets",
+      "workspaceId": "relationships",
+      "viewportGeometry": {
+        "width": 430,
+        "height": 932
+      },
+      "document": {
+        "clientWidth": 430,
+        "scrollWidth": 430
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "relationships",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": false,
+      "sha256": "f3edebf315ea7818ee5ff3daf664cc46917b851dd1b2fca6e471f427c10d10e4",
+      "state": "disabled",
+      "structuralOnly": true
+    },
+    {
+      "file": "state-approval--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "assets",
+      "workspaceId": "relationships",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "relationships",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": false,
+      "sha256": "5f830554a2c1413d403b3abe0298326e4cf96fa78ab9797db0afce39438c5a12",
+      "state": "approval",
+      "structuralOnly": true
+    },
+    {
+      "file": "state-partial--1180x800.png",
+      "viewport": "1180x800",
+      "device": "desktop",
+      "domainId": "assets",
+      "workspaceId": "relationships",
+      "viewportGeometry": {
+        "width": 1180,
+        "height": 800
+      },
+      "document": {
+        "clientWidth": 1180,
+        "scrollWidth": 1180
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "relationships",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": true,
+      "sha256": "9350b3e7d8ba14782917b675bc779f74e4ee293f990f00632853ffb0a4676af3",
+      "state": "partial",
+      "structuralOnly": true
+    },
+    {
+      "file": "state-no-result--390x844.png",
+      "viewport": "390x844",
+      "device": "mobile",
+      "domainId": "assets",
+      "workspaceId": "relationships",
+      "viewportGeometry": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "clientWidth": 390,
+        "scrollWidth": 390
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "relationships",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": false,
+      "sha256": "9482055b8240d50bb91a531eb9e35ee8a6ea1b2b73befa5b40214802ac3ed984",
+      "state": "no-result",
+      "structuralOnly": true
+    },
+    {
+      "file": "state-long-content--430x932.png",
+      "viewport": "430x932",
+      "device": "mobile",
+      "domainId": "assets",
+      "workspaceId": "knowledge",
+      "viewportGeometry": {
+        "width": 430,
+        "height": 932
+      },
+      "document": {
+        "clientWidth": 430,
+        "scrollWidth": 430
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "knowledge",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": true,
+      "sha256": "3405047239ae82fe1e3bf959789046f42e9926eec2187abb3d2b4a219c2f0388",
+      "state": "long-content",
+      "structuralOnly": true
+    },
+    {
+      "file": "state-large-list--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "assets",
+      "workspaceId": "knowledge",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "knowledge",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": true,
+      "sha256": "1b7118404cd6ae6de2dc1294c142d4bea03a6a39ed4ce6c61e7a5463a03e5826",
+      "state": "large-list",
+      "structuralOnly": true
+    }
+  ]
+}

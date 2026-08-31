@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "identity": "desktop-knowledge-incubator--1440x900",
+  "concept": {
+    "id": "desktop-knowledge-incubator",
+    "file": ".impeccable/mocks/kordyn-v2-approved/desktop-knowledge-incubator.png",
+    "sha256": "e25ae9442a3c72f9a76966752f83c63217cbe61105271c3fb02cbeaee8de95b7",
+    "storedPixels": {
+      "width": 1586,
+      "height": 992
+    },
+    "normalizedViewport": "1440x900"
+  },
+  "actual": {
+    "file": "desktop-knowledge-incubator--1440x900.png",
+    "sha256": "6ee98a2b12b71d5b1f8bfcc12d56189a48181684199e2c916fefeeba80fe54e6",
+    "runner": "tests/run-kordyn-v2-assets-browser.mjs",
+    "fixture": "tests/kordyn-v2-assets-browser.jsx",
+    "productionSourceCommit": "801a27abceb54ac8515dd6735f0f24aebfcd215c",
+    "device": "desktop",
+    "domainId": "assets",
+    "workspaceId": "knowledge"
+  },
+  "viewport": {
+    "name": "1440x900",
+    "width": 1440,
+    "height": 900
+  },
+  "document": {
+    "clientWidth": 1440,
+    "scrollWidth": 1440
+  },
+  "documentOverflow": 0,
+  "shellGeometry": {
+    "domainId": "assets",
+    "workspaceId": "knowledge",
+    "selectedId": "run-btc-analysis",
+    "selectedType": "Agent run"
+  },
+  "diagnostics": {
+    "screenshotStructure": {
+      "variance": 0.009166372571366458,
+      "edgeDensity": 0.0223102020303535,
+      "nearFlat": false
+    },
+    "pixelDifference": {
+      "metric": 0.06467839203582668,
+      "role": "diagnostic only"
+    },
+    "contentAwareComparator": {
+      "applied": false,
+      "reason": "no fixed mobile shell threshold in Foundation Plan 01"
+    }
+  },
+  "artifacts": {
+    "normalizedReference": {
+      "file": "desktop-knowledge-incubator--1440x900--reference.png",
+      "sha256": "e1738bb06ec2cb25825992e323f7832f3bedd647e165981d68aefae2a9ae30ea"
+    },
+    "overlay50": {
+      "file": "desktop-knowledge-incubator--1440x900--overlay.png",
+      "sha256": "7808c71224919e6884f26936288eadfd217f2ea6ae0b674c2c6e91e3c6112107"
+    },
+    "absoluteDifference": {
+      "file": "desktop-knowledge-incubator--1440x900--difference.png",
+      "sha256": "681e9cfbdf196b9099fb0815fcd2e595c54a495011c55d78ee6bf1b66f3bde48"
+    }
+  },
+  "releaseVerdict": "human region review required"
+}

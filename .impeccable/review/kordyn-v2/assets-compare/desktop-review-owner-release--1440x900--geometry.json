@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "identity": "desktop-review-owner-release--1440x900",
+  "concept": {
+    "id": "desktop-review-owner-release",
+    "file": ".impeccable/mocks/kordyn-v2-approved/desktop-review-owner-release.png",
+    "sha256": "468aa2d74347e6a52ad6d931726c3afcde2bd935d94df5bf9cef933f125961c6",
+    "storedPixels": {
+      "width": 1586,
+      "height": 992
+    },
+    "normalizedViewport": "1440x900"
+  },
+  "actual": {
+    "file": "desktop-review-owner-release--1440x900.png",
+    "sha256": "c5d17cd845d4c67fe49aa64f83bacb4dfb9763ac9453f5371b375616c7154052",
+    "runner": "tests/run-kordyn-v2-assets-browser.mjs",
+    "fixture": "tests/kordyn-v2-assets-browser.jsx",
+    "productionSourceCommit": "801a27abceb54ac8515dd6735f0f24aebfcd215c",
+    "device": "desktop",
+    "domainId": "assets",
+    "workspaceId": "reviews"
+  },
+  "viewport": {
+    "name": "1440x900",
+    "width": 1440,
+    "height": 900
+  },
+  "document": {
+    "clientWidth": 1440,
+    "scrollWidth": 1440
+  },
+  "documentOverflow": 0,
+  "shellGeometry": {
+    "domainId": "assets",
+    "workspaceId": "reviews",
+    "selectedId": "run-btc-analysis",
+    "selectedType": "Agent run"
+  },
+  "diagnostics": {
+    "screenshotStructure": {
+      "variance": 0.00967458054074029,
+      "edgeDensity": 0.0218609318588505,
+      "nearFlat": false
+    },
+    "pixelDifference": {
+      "metric": 0.06870154825304607,
+      "role": "diagnostic only"
+    },
+    "contentAwareComparator": {
+      "applied": false,
+      "reason": "no fixed mobile shell threshold in Foundation Plan 01"
+    }
+  },
+  "artifacts": {
+    "normalizedReference": {
+      "file": "desktop-review-owner-release--1440x900--reference.png",
+      "sha256": "cbb13e4bf8459326b69ffd9f58fb6635c6beadfc8f01433cee88ee305691d01c"
+    },
+    "overlay50": {
+      "file": "desktop-review-owner-release--1440x900--overlay.png",
+      "sha256": "bd12cdcaf515c8d79cd196aff26f545ff691cd20b6d69d708db97644c691aae6"
+    },
+    "absoluteDifference": {
+      "file": "desktop-review-owner-release--1440x900--difference.png",
+      "sha256": "92047136ef3b793eb62d3a56b0af01a60c87ecb0f3f8eb39f977caf0daf899c4"
+    }
+  },
+  "releaseVerdict": "human region review required"
+}
