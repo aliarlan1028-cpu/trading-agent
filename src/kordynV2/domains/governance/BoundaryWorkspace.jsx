@@ -11,6 +11,7 @@ export function BoundaryWorkspace({ model = {}, actions, actionsDisabled = false
   const mandate = boundary.mandate || {};
   const incidents = list(boundary.incidents?.items);
   const operations = model.operations || {};
+  const auditRows = list(operations.audit?.records);
   const permissions = model.permissions || {};
   return (
     <section className="kordynV2GovernanceWorkspace kordynV2BoundaryWorkspace" data-kordyn-v2-governance-workspace="overview">
@@ -61,6 +62,10 @@ export function BoundaryWorkspace({ model = {}, actions, actionsDisabled = false
           <footer><button type="button" onClick={() => onNavigate("governance", "recovery")}>打开恢复工作台</button><button type="button" onClick={() => onNavigate("governance", "configuration")}>配置索引</button></footer>
         </section>
       </div>
+      <section className="kordynV2BoundaryAuditLedger" aria-label="最新审计证据">
+        <header><span><strong>审计日志</strong><small>Actor、对象、动作、结果与 Trace 保持可核验</small></span><button type="button" onClick={() => onNavigate("governance", "audit")}>查看全部 <ArrowRight size={14} /></button></header>
+        <div>{auditRows.slice(0, 5).map((row) => <button type="button" key={row.id} data-kordyn-v2-object-type="Audit log" data-kordyn-v2-object-id={row.id} onClick={() => onSelect({ id: row.id, type: "Audit log", workspaceId: "governance" })}><small>{row.createdAt || "Unavailable"}</small><strong>{row.actor || "actor unavailable"}</strong><span>{row.action || "Audit event"}</span><em>{row.status || row.result || "recorded"}</em><code>{row.traceId || row.hash || row.id}</code></button>)}{!auditRows.length && <p>当前没有已加载审计证据。</p>}</div>
+      </section>
     </section>
   );
 }

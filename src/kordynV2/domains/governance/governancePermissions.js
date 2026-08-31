@@ -10,7 +10,7 @@ export function buildGovernancePermissions(data = {}) {
   return Object.freeze({
     authenticated,
     owner,
-    readNotifications: authenticated && (allows("account.read") || !permissions.size),
+    readNotifications: authenticated && allows("account.read"),
     updateOwnProfile: authenticated,
     writeTask: allows("write:task"),
     writeEvent: allows("write:event"),
@@ -18,7 +18,8 @@ export function buildGovernancePermissions(data = {}) {
     stopTrading: allows("risk.check", "risk.kill_switch"),
     flattenAll: allows("risk.kill_switch"),
     clearKillSwitch: allows("risk.kill_switch"),
-    reconcile: allows("risk.kill_switch", "admin:system"),
+    reconcile: allows("write:exchange"),
+    writeExchange: allows("write:exchange"),
     configureSecurity: allows("admin:security"),
     approveLiveConfig: allows("approve:live_config", "admin:security"),
     writeMandate: allows("write:mandate"),
@@ -30,7 +31,7 @@ export function buildGovernancePermissions(data = {}) {
 
 export function configurationTargetAllowed(permissions = {}, target = "") {
   return ({
-    trading: permissions.approveLiveConfig === true && permissions.writeMandate === true,
+    trading: permissions.configureSecurity === true && permissions.writeMandate === true,
     risk: permissions.writeRisk === true,
     environment: permissions.configureSecurity === true,
     network: permissions.configureSecurity === true,

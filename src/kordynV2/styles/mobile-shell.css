@@ -509,8 +509,8 @@
   }
 
   .kordynV2MobileShell[data-kordyn-v2-domain="governance"] .kordynV2MobileSheet[data-kordyn-v2-mobile-sheet="support"] {
-    max-height: min(39dvh, calc(100dvh - var(--v2-mobile-nav-height) - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 12px));
-    min-height: min(280px, 39dvh);
+    max-height: min(30dvh, calc(100dvh - var(--v2-mobile-nav-height) - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 12px));
+    min-height: min(220px, 30dvh);
   }
 
   .kordynV2MobileSheetHandle {

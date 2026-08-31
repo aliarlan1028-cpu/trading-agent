@@ -71,14 +71,23 @@ export function buildConfigurationModel(input = {}) {
       effective: record(control.mandate)
     },
     risk: { rules: list(data.riskRules), checks: list(data.riskChecks) },
-    environment: record(config.environment ?? config.runtime),
-    network: record(config.network ?? config.proxy ?? config.runtime),
+    environment: record(config.runtime ?? config.environment),
+    network: {
+      httpProxySet: config.runtime?.httpProxySet === true,
+      httpsProxySet: config.runtime?.httpsProxySet === true
+    },
     backup: record(data.backupStatus ?? config.backup),
-    security: { ...record(data.security ?? config.security), secrets: configuredSecrets, masterKeyConfigured: config.secretsMasterKeySet === true },
+    security: {
+      ...record(data.security ?? config.security),
+      authRequired: config.runtime?.authRequired,
+      adminPasswordSet: config.runtime?.adminPasswordSet === true,
+      secrets: configuredSecrets,
+      masterKeyConfigured: config.secretsMasterKeySet === true
+    },
     exchange: { accounts: list(data.exchangeAccounts), keys: list(data.exchangeApiKeyMetadata) },
     eventSources: list(data.eventSources),
-    notifications: record(data.integrations ?? config.notifications),
-    models: { providers: list(data.llmModels), selected: record(config.models ?? config.llm) },
+    notifications: record(data.integrations ?? config.integrations ?? config.notifications),
+    models: { providers: list(data.llmModels), status: record(config.llm), selected: record(config.models ?? config.llm) },
     agents: list(data.agentProfiles),
     users: list(data.users),
     subscriptions: list(data.subscriptions),
