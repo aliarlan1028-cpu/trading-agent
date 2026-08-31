@@ -69,10 +69,22 @@ function preferredCapabilityKind(row) {
 function node(type, row, label) {
   const id = identity(row);
   if (!id) return null;
+  const selectionType = type === "Mission"
+    ? "Agent run"
+    : type === "Knowledge source" ? "Knowledge"
+      : type === "Strategy" && row.recordType === "product" ? "Strategy product"
+        : type;
+  const selectionId = type === "Strategy" && row.recordType === "product"
+    ? text(row.versionId, 240) || id
+    : type === "Strategy" && row.recordType === "research"
+      ? id.replace(/^native_/u, "")
+      : id;
   return {
     id: `${type}:${id}`,
     objectId: id,
     type,
+    selectionId,
+    selectionType,
     label: text(row.name, 500) || text(row.title, 500) || text(row.label, 500) || id,
     status: row.lifecycle?.stage || assetLifecycle(row).stage,
     provenance: row.provenance || assetProvenance(row),
@@ -199,7 +211,10 @@ export function buildAssetsDomainModel(input = {}) {
   const reviews = list(data.reviews).map((row) => present(row, "system-native"));
   const lessons = list(ownerLoop.lessons).map((row) => present(row, "system-native"));
   const improvements = list(ownerLoop.improvements).map((row) => present(row, "system-native"));
-  const missions = [...list(data.missions), ...list(data.aiMissions)].map((row) => present(row, "system-native"));
+  const missionRows = [...list(data.agentRuns), ...list(data.missions), ...list(data.aiMissions)]
+    .filter((row, index, rows) => rows.findIndex((candidate) => identity(candidate) === identity(row)) === index)
+    .map((row) => ({ ...row, title: text(row.title, 500) || text(row.goal, 500) || identity(row) }));
+  const missions = missionRows.map((row) => present(row, "system-native"));
 
   const relationships = buildRelationships({
     missions,

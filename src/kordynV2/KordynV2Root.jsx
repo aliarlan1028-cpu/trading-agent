@@ -17,6 +17,7 @@ const unavailable = "Unavailable";
 const EMPTY_DATA = Object.freeze({});
 const LazyAiDomain = lazy(() => import("./domains/ai/index.jsx"));
 const LazyAccountDomain = lazy(() => import("./domains/account/index.jsx"));
+const LazyAssetsDomain = lazy(() => import("./domains/assets/index.jsx"));
 const ACCOUNT_WORKSPACE_BY_OBJECT_TYPE = Object.freeze({
   Market: "market",
   Account: "account",
@@ -164,6 +165,7 @@ export function KordynV2Root({ api, lang }) {
       setLocation(targetLocation);
     }
     setSelectedCandidate({ id: selectedObject.id, type: selectedObject.type });
+    return selectedObject;
   }, [data, viewport]);
 
   const truth = useMemo(() => buildAccountTruth(data, domain.truthMode), [data, domain.truthMode]);
@@ -229,6 +231,23 @@ export function KordynV2Root({ api, lang }) {
           />
         </Suspense>
       )
+      : location.domainId === "assets"
+        ? (
+          <Suspense fallback={<div className="kordynV2AssetsDomainLoading" role="status">正在加载智能资产工作区…</div>}>
+            <LazyAssetsDomain
+              device={viewport}
+              workspaceId={location.workspaceId}
+              data={data}
+              actions={actions.assets}
+              actionsDisabled={state.kind !== "ready"}
+              truth={truth}
+              state={state}
+              selection={selection}
+              onSelect={select}
+              onNavigate={navigate}
+            />
+          </Suspense>
+        )
       : <DestinationBoundary domain={domain} workspace={workspace} location={location} state={state} />;
 
   const Shell = viewport === "mobile" ? MobileShell : DesktopShell;

@@ -1,0 +1,311 @@
+.kordynV2RelationshipWorkspace {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 14px 16px 16px;
+  display: grid;
+  grid-template-rows: 42px minmax(0, 1fr);
+  gap: 10px;
+  overflow: hidden;
+  color: var(--kordyn-v2-text);
+  background:
+    radial-gradient(circle at 68% 44%, rgba(40, 115, 214, 0.1), transparent 31%),
+    linear-gradient(180deg, rgba(4, 13, 24, 0.97), rgba(2, 8, 16, 0.99));
+}
+
+.kordynV2AssetsTitle {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.kordynV2AssetsTitle > span { min-width: 0; display: flex; align-items: baseline; gap: 13px; }
+.kordynV2AssetsTitle h1,
+.kordynV2AssetsTitle p { margin: 0; }
+.kordynV2AssetsTitle h1 { font-size: 22px; letter-spacing: -0.03em; }
+.kordynV2AssetsTitle p { overflow: hidden; color: var(--kordyn-v2-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2AssetsTitle > em {
+  min-height: 28px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--kordyn-v2-border);
+  border-radius: 7px;
+  color: var(--kordyn-v2-muted);
+  background: rgba(10, 21, 36, 0.72);
+  font-family: var(--kordyn-v2-mono);
+  font-size: 10px;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.kordynV2RelationshipWorkbench {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 168px minmax(480px, 1fr) 248px;
+  overflow: hidden;
+  border: 1px solid var(--kordyn-v2-border);
+  border-radius: 14px;
+  background: rgba(4, 12, 22, 0.72);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.26);
+}
+
+.kordynV2AssetOrigins,
+.kordynV2RelationshipSide {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #263951 transparent;
+}
+
+.kordynV2AssetOrigins {
+  padding: 12px 10px;
+  border-right: 1px solid var(--kordyn-v2-border);
+  background: rgba(4, 11, 20, 0.82);
+}
+
+.kordynV2AssetOrigins > header,
+.kordynV2AssetQueue > header {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--kordyn-v2-text-soft);
+}
+
+.kordynV2AssetOrigins > header small,
+.kordynV2AssetQueue > header small { color: var(--kordyn-v2-muted); font-family: var(--kordyn-v2-mono); }
+.kordynV2AssetOrigins > div {
+  min-height: 66px;
+  margin-top: 8px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(128, 157, 198, 0.14);
+  border-radius: 10px;
+  color: var(--kordyn-v2-cobalt-soft);
+  background: rgba(8, 20, 35, 0.62);
+}
+
+.kordynV2AssetOrigins > div[data-origin="knowledge-derived"] { color: #b582ff; }
+.kordynV2AssetOrigins > div[data-origin="imported"] { color: #59a4ff; }
+.kordynV2AssetOrigins > div[data-origin="review"] { color: var(--kordyn-v2-amber); }
+.kordynV2AssetOrigins span { min-width: 0; display: grid; gap: 4px; }
+.kordynV2AssetOrigins strong { color: var(--kordyn-v2-text-soft); font-size: 12px; }
+.kordynV2AssetOrigins small { color: var(--kordyn-v2-muted); font-size: 10px; }
+
+.kordynV2RelationshipGraph {
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  display: grid;
+  grid-template-rows: 42px minmax(0, 1fr) 30px;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.kordynV2RelationshipGraph > header,
+.kordynV2RelationshipGraph > footer {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.kordynV2RelationshipGraph > header span { min-width: 0; display: grid; gap: 2px; }
+.kordynV2RelationshipGraph > header strong { font-size: 13px; }
+.kordynV2RelationshipGraph > header small,
+.kordynV2RelationshipGraph > header em { color: var(--kordyn-v2-muted); font-size: 10px; font-style: normal; }
+.kordynV2RelationshipGraph > header em { font-family: var(--kordyn-v2-mono); }
+
+.kordynV2RelationshipMap {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid rgba(107, 144, 199, 0.12);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 72% 46%, rgba(50, 111, 255, 0.12), transparent 21%),
+    rgba(2, 9, 18, 0.62);
+}
+
+.kordynV2RelationshipMap > svg { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; overflow: visible; }
+.kordynV2RelationshipMap path { fill: none; stroke: rgba(79, 204, 173, 0.62); stroke-width: .32; vector-effect: non-scaling-stroke; }
+.kordynV2RelationshipMap path[data-relation-kind="derived-from"],
+.kordynV2RelationshipMap path[data-relation-kind="extracted-as"] { stroke: rgba(158, 111, 255, 0.67); }
+.kordynV2RelationshipMap path[data-relation-kind="reviewed-in"],
+.kordynV2RelationshipMap path[data-relation-kind="produced"] { stroke: rgba(244, 173, 86, 0.68); }
+
+.kordynV2RelationshipGroups {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(100px, 1fr));
+  align-items: start;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.kordynV2RelationshipGroups > section { min-width: 0; display: grid; gap: 7px; }
+.kordynV2RelationshipGroups > section:nth-child(4n + 2) { align-self: end; }
+.kordynV2RelationshipGroups > section > small { color: var(--kordyn-v2-muted); font-family: var(--kordyn-v2-mono); font-size: 9px; }
+.kordynV2RelationshipGroups > section > div { display: grid; gap: 7px; }
+.kordynV2RelationshipGroups button {
+  min-width: 0;
+  min-height: 48px;
+  padding: 7px 8px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  border: 1px solid rgba(78, 127, 211, 0.28);
+  border-radius: 9px;
+  color: #77a8ff;
+  background: rgba(5, 19, 38, 0.9);
+  cursor: pointer;
+  pointer-events: auto;
+  text-align: left;
+}
+
+.kordynV2RelationshipGroups [data-asset-column="knowledge"] button { border-color: rgba(162, 110, 255, 0.32); color: #bd8cff; background: rgba(27, 15, 52, 0.84); }
+.kordynV2RelationshipGroups [data-asset-column="capability"] button { border-color: rgba(32, 215, 148, 0.3); color: var(--kordyn-v2-mint); }
+.kordynV2RelationshipGroups [data-asset-column="review"] button { border-color: rgba(244, 173, 86, 0.32); color: var(--kordyn-v2-amber); background: rgba(43, 27, 11, 0.78); }
+.kordynV2RelationshipGroups button[data-selected="true"] { border-color: currentColor; box-shadow: 0 0 0 1px currentColor, 0 12px 28px rgba(0, 0, 0, 0.24); }
+.kordynV2RelationshipGroups button:hover { filter: brightness(1.14); }
+.kordynV2RelationshipGroups button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.kordynV2RelationshipGroups button span { min-width: 0; display: grid; gap: 3px; }
+.kordynV2RelationshipGroups button strong,
+.kordynV2RelationshipGroups button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2RelationshipGroups button strong { color: var(--kordyn-v2-text-soft); font-size: 10px; }
+.kordynV2RelationshipGroups button small { color: var(--kordyn-v2-muted); font-family: var(--kordyn-v2-mono); font-size: 8px; }
+
+.kordynV2RelationshipGraph > footer { justify-content: flex-start; gap: 18px; color: var(--kordyn-v2-muted); font-size: 9px; }
+.kordynV2RelationshipGraph > footer span { display: inline-flex; align-items: center; gap: 6px; }
+.kordynV2RelationshipGraph > footer i { width: 18px; height: 1px; background: var(--kordyn-v2-mint); }
+.kordynV2RelationshipGraph > footer [data-legend="knowledge"] i { background: #ad72ff; }
+.kordynV2RelationshipGraph > footer [data-legend="review"] i { background: var(--kordyn-v2-amber); }
+
+.kordynV2RelationshipSide { display: grid; grid-template-rows: minmax(154px, auto) minmax(0, 1fr); border-left: 1px solid var(--kordyn-v2-border); background: rgba(3, 10, 19, 0.84); }
+.kordynV2AssetQueue { min-width: 0; padding: 10px; border-bottom: 1px solid var(--kordyn-v2-border); }
+.kordynV2AssetQueue > button {
+  width: 100%;
+  min-width: 0;
+  min-height: 45px;
+  padding: 7px 2px;
+  display: grid;
+  grid-template-columns: 17px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-bottom: 1px solid rgba(132, 160, 196, 0.12);
+  color: var(--kordyn-v2-amber);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.kordynV2AssetQueue > button span { min-width: 0; display: grid; gap: 2px; }
+.kordynV2AssetQueue > button strong { overflow: hidden; color: var(--kordyn-v2-text-soft); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2AssetQueue > button small { overflow: hidden; color: var(--kordyn-v2-muted); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2AssetQueue > button em { font-family: var(--kordyn-v2-mono); font-size: 10px; font-style: normal; }
+.kordynV2AssetQueue > p { color: var(--kordyn-v2-muted); font-size: 10px; }
+
+.kordynV2RelationshipInspector { min-width: 0; padding: 12px; display: grid; align-content: start; gap: 10px; }
+.kordynV2RelationshipInspector.is-empty { align-content: center; color: var(--kordyn-v2-muted); }
+.kordynV2RelationshipInspector.is-empty p { margin: 6px 0 0; font-size: 11px; }
+.kordynV2RelationshipInspector > header { min-width: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.kordynV2RelationshipInspector > header span { min-width: 0; display: grid; gap: 4px; }
+.kordynV2RelationshipInspector > header small { color: var(--kordyn-v2-cobalt-soft); font-family: var(--kordyn-v2-mono); font-size: 9px; }
+.kordynV2RelationshipInspector > header strong { overflow-wrap: anywhere; color: #fff; font-size: 13px; }
+.kordynV2RelationshipInspector > header em { flex: 0 0 auto; padding: 4px 7px; border: 1px solid rgba(32, 215, 148, 0.22); border-radius: 999px; color: var(--kordyn-v2-mint); background: rgba(20, 71, 58, 0.25); font-family: var(--kordyn-v2-mono); font-size: 8px; font-style: normal; }
+.kordynV2RelationshipInspector > header em[data-asset-stage="failed"],
+.kordynV2RelationshipInspector > header em[data-asset-stage="degraded"] { border-color: rgba(255, 89, 104, 0.28); color: var(--kordyn-v2-danger); background: rgba(83, 25, 35, 0.22); }
+.kordynV2RelationshipProvenance { min-width: 0; padding: 9px; display: grid; grid-template-columns: 20px minmax(0, 1fr); align-items: center; gap: 8px; border: 1px solid rgba(32, 215, 148, 0.18); border-radius: 9px; color: var(--kordyn-v2-mint); background: rgba(13, 59, 49, 0.2); }
+.kordynV2RelationshipProvenance span { min-width: 0; display: grid; gap: 2px; }
+.kordynV2RelationshipProvenance small { color: var(--kordyn-v2-muted); font-size: 8px; }
+.kordynV2RelationshipProvenance strong { color: var(--kordyn-v2-text-soft); font-size: 10px; }
+.kordynV2RelationshipInspector dl { min-width: 0; margin: 0; display: grid; gap: 7px; }
+.kordynV2RelationshipInspector dl > div { min-width: 0; padding-bottom: 6px; border-bottom: 1px solid rgba(132, 160, 196, 0.1); }
+.kordynV2RelationshipInspector dt { color: var(--kordyn-v2-muted); font-size: 8px; }
+.kordynV2RelationshipInspector dd { margin: 3px 0 0; overflow-wrap: anywhere; color: var(--kordyn-v2-text-soft); font-family: var(--kordyn-v2-mono); font-size: 9px; }
+.kordynV2RelationshipInspector > button { min-height: 40px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid rgba(72, 124, 235, 0.38); border-radius: 9px; color: #94b8ff; background: rgba(16, 43, 91, 0.44); cursor: pointer; font-size: 10px; text-align: left; }
+.kordynV2RelationshipInspector > button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+.kordynV2AssetsEmpty { min-height: 180px; padding: 24px; display: grid; place-content: center; gap: 8px; border: 1px solid var(--kordyn-v2-border); border-radius: 14px; color: var(--kordyn-v2-text-soft); background: rgba(5, 14, 25, 0.72); text-align: center; }
+.kordynV2AssetsEmpty p { max-width: 58ch; margin: 0; color: var(--kordyn-v2-muted); font-size: 12px; line-height: 1.55; }
+
+.kordynV2AssetsMobile { min-width: 0; min-height: 100%; padding: 12px 12px 24px; display: grid; align-content: start; gap: 16px; color: var(--kordyn-v2-text); }
+.kordynV2AssetsMobile > header h2,
+.kordynV2AssetsMobile > header p { margin: 0; }
+.kordynV2AssetsMobile > header h2 { font-size: 25px; letter-spacing: -0.035em; }
+.kordynV2AssetsMobile > header p { margin-top: 6px; color: var(--kordyn-v2-muted); font-size: 13px; }
+.kordynV2MobileRelationshipThread { position: relative; min-width: 0; display: grid; gap: 7px; }
+.kordynV2MobileRelationshipThread::before { content: ""; position: absolute; top: 24px; bottom: 24px; left: 24px; width: 1px; background: linear-gradient(var(--kordyn-v2-violet), var(--kordyn-v2-cobalt), var(--kordyn-v2-mint), var(--kordyn-v2-amber)); }
+.kordynV2MobileRelationshipStep { position: relative; min-width: 0; display: grid; grid-template-columns: 49px minmax(0, 1fr); grid-template-rows: 16px auto; column-gap: 10px; }
+.kordynV2MobileRelationshipStep > i { z-index: 1; grid-column: 1; grid-row: 1 / 3; width: 49px; height: 49px; margin-top: 7px; display: grid; place-items: center; border: 1px solid rgba(52, 120, 255, 0.52); border-radius: 50%; color: var(--kordyn-v2-cobalt-soft); background: #081425; box-shadow: 0 0 24px rgba(52, 120, 255, 0.16); }
+.kordynV2MobileRelationshipStep[data-asset-tone="knowledge"] > i { border-color: rgba(171, 100, 255, 0.52); color: #bd83ff; box-shadow: 0 0 24px rgba(151, 82, 255, 0.16); }
+.kordynV2MobileRelationshipStep[data-asset-tone="capability"] > i { border-color: rgba(32, 215, 148, 0.52); color: var(--kordyn-v2-mint); }
+.kordynV2MobileRelationshipStep[data-asset-tone="review"] > i { border-color: rgba(244, 173, 86, 0.52); color: var(--kordyn-v2-amber); }
+.kordynV2MobileRelationshipStep > small { grid-column: 2; display: flex; align-items: center; gap: 3px; color: var(--kordyn-v2-cobalt-soft); font-size: 10px; }
+.kordynV2MobileRelationshipStep > button { min-width: 0; min-height: 66px; padding: 10px 10px 10px 12px; display: grid; grid-template-columns: minmax(0, 1fr) auto 18px; align-items: center; gap: 8px; border: 1px solid rgba(121, 150, 191, 0.14); border-radius: 14px; color: var(--kordyn-v2-text-soft); background: linear-gradient(90deg, rgba(10, 23, 42, 0.93), rgba(6, 15, 28, 0.78)); cursor: pointer; text-align: left; }
+.kordynV2MobileRelationshipStep > button[data-selected="true"] { border-color: rgba(72, 124, 255, 0.7); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24); }
+.kordynV2MobileRelationshipStep > button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.kordynV2MobileRelationshipStep button span { min-width: 0; display: grid; gap: 5px; }
+.kordynV2MobileRelationshipStep button em { color: var(--kordyn-v2-cobalt-soft); font-size: 11px; font-style: normal; }
+.kordynV2MobileRelationshipStep button strong { overflow: hidden; color: #fff; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2MobileRelationshipStep button b { padding: 5px 7px; border: 1px solid rgba(32, 215, 148, 0.2); border-radius: 7px; color: var(--kordyn-v2-mint); background: rgba(17, 69, 56, 0.22); font-family: var(--kordyn-v2-mono); font-size: 9px; font-weight: 600; white-space: nowrap; }
+
+.kordynV2MobileAssetQueue { min-width: 0; display: grid; gap: 7px; }
+.kordynV2MobileAssetQueue > header { min-height: 38px; display: flex; align-items: center; justify-content: space-between; }
+.kordynV2MobileAssetQueue > header small { color: var(--kordyn-v2-muted); }
+.kordynV2MobileAssetQueue > button { min-width: 0; min-height: 58px; padding: 9px 10px; display: grid; grid-template-columns: minmax(0, 1fr) auto 18px; align-items: center; gap: 8px; border: 1px solid rgba(129, 159, 201, 0.13); border-radius: 12px; color: var(--kordyn-v2-text-soft); background: rgba(7, 17, 31, 0.8); cursor: pointer; text-align: left; }
+.kordynV2MobileAssetQueue > button span { min-width: 0; display: grid; gap: 4px; }
+.kordynV2MobileAssetQueue > button strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2MobileAssetQueue > button small { overflow: hidden; color: var(--kordyn-v2-muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2MobileAssetQueue > button em { color: var(--kordyn-v2-amber); font-family: var(--kordyn-v2-mono); font-size: 11px; font-style: normal; }
+
+.kordynV2MobileAssetDetail { min-width: 0; padding: 9px 10px 12px; border: 1px solid rgba(82, 117, 178, 0.32); border-radius: 20px; background: linear-gradient(180deg, rgba(13, 28, 50, 0.97), rgba(5, 13, 25, 0.98)); box-shadow: 0 -12px 36px rgba(0, 0, 0, 0.28); }
+.kordynV2MobileAssetDetail > i { width: 44px; height: 4px; margin: 0 auto 7px; display: block; border-radius: 999px; background: rgba(182, 197, 222, 0.52); }
+.kordynV2MobileAssetDetail .kordynV2RelationshipInspector { padding: 4px 2px 0; }
+.kordynV2MobileAssetDetail .kordynV2RelationshipInspector dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.kordynV2MobileAssetDetail .kordynV2RelationshipInspector > button { min-height: 44px; }
+
+.kordynV2AssetsDomainLoading { min-height: 220px; display: grid; place-items: center; color: var(--kordyn-v2-muted); }
+
+@media (max-width: 1180px) and (min-width: 768px) {
+  .kordynV2RelationshipWorkbench { grid-template-columns: 136px minmax(430px, 1fr) 220px; }
+  .kordynV2AssetOrigins { padding-right: 7px; padding-left: 7px; }
+  .kordynV2RelationshipGraph { padding-right: 8px; padding-left: 8px; }
+  .kordynV2RelationshipGroups { gap: 7px; }
+  .kordynV2RelationshipGroups button { padding-right: 5px; padding-left: 5px; gap: 4px; }
+}
+
+@media (max-width: 430px) {
+  .kordynV2AssetsMobile { padding-right: 10px; padding-left: 10px; }
+}
+
+@media (max-width: 390px) {
+  .kordynV2AssetsMobile { padding-right: 8px; padding-left: 8px; }
+  .kordynV2MobileRelationshipStep { grid-template-columns: 45px minmax(0, 1fr); column-gap: 8px; }
+  .kordynV2MobileRelationshipThread::before { left: 22px; }
+  .kordynV2MobileRelationshipStep > i { width: 45px; height: 45px; }
+  .kordynV2MobileRelationshipStep > button { padding-right: 8px; padding-left: 10px; }
+  .kordynV2MobileRelationshipStep button b { max-width: 74px; overflow: hidden; text-overflow: ellipsis; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .kordynV2RelationshipGroups button,
+  .kordynV2MobileRelationshipStep > button { transition: border-color 160ms ease-out, filter 160ms ease-out, box-shadow 160ms ease-out; }
+}
