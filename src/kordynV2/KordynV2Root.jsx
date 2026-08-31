@@ -18,6 +18,7 @@ const EMPTY_DATA = Object.freeze({});
 const LazyAiDomain = lazy(() => import("./domains/ai/index.jsx"));
 const LazyAccountDomain = lazy(() => import("./domains/account/index.jsx"));
 const LazyAssetsDomain = lazy(() => import("./domains/assets/index.jsx"));
+const LazyGovernanceDomain = lazy(() => import("./domains/governance/index.jsx"));
 const ACCOUNT_WORKSPACE_BY_OBJECT_TYPE = Object.freeze({
   Market: "market",
   Account: "account",
@@ -239,6 +240,23 @@ export function KordynV2Root({ api, lang }) {
               workspaceId={location.workspaceId}
               data={data}
               actions={actions.assets}
+              actionsDisabled={state.kind !== "ready"}
+              truth={truth}
+              state={state}
+              selection={selection}
+              onSelect={select}
+              onNavigate={navigate}
+            />
+          </Suspense>
+        )
+      : location.domainId === "governance"
+        ? (
+          <Suspense fallback={<div className="kordynV2GovernanceDomainLoading" role="status">正在加载系统治理工作区…</div>}>
+            <LazyGovernanceDomain
+              device={viewport}
+              workspaceId={location.workspaceId}
+              data={data}
+              actions={actions.governance}
               actionsDisabled={state.kind !== "ready"}
               truth={truth}
               state={state}
