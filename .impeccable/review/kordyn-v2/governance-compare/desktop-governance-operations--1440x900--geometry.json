@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "identity": "desktop-governance-operations--1440x900",
+  "concept": {
+    "id": "desktop-governance-operations",
+    "file": ".impeccable/mocks/kordyn-v2-approved/desktop-governance-operations.png",
+    "sha256": "e0dc2e320cf6ed19f9ce0e14f983f7a0b91b06d33a1b0777f93699b0e2b67108",
+    "storedPixels": {
+      "width": 1586,
+      "height": 992
+    },
+    "normalizedViewport": "1440x900"
+  },
+  "actual": {
+    "file": "desktop-governance-operations--1440x900.png",
+    "sha256": "8ad5805321b35c28cb5b077a48d485c38a6d2c7ce88b8907e535927c631b9391",
+    "runner": "tests/run-kordyn-v2-governance-browser.mjs",
+    "fixture": "tests/kordyn-v2-governance-browser.jsx",
+    "productionSourceCommit": "007fcf40d032ca03dd9a24712a0882f937e92215",
+    "device": "desktop",
+    "domainId": "governance",
+    "workspaceId": "runs"
+  },
+  "viewport": {
+    "name": "1440x900",
+    "width": 1440,
+    "height": 900
+  },
+  "document": {
+    "clientWidth": 1440,
+    "scrollWidth": 1440
+  },
+  "documentOverflow": 0,
+  "shellGeometry": {
+    "domainId": "governance",
+    "workspaceId": "runs",
+    "selectedId": "run-btc-analysis",
+    "selectedType": "Agent run"
+  },
+  "diagnostics": {
+    "screenshotStructure": {
+      "variance": 0.008633236011704456,
+      "edgeDensity": 0.019193456508762374,
+      "nearFlat": false
+    },
+    "pixelDifference": {
+      "metric": 0.057722855644315334,
+      "role": "diagnostic only"
+    },
+    "contentAwareComparator": {
+      "applied": false,
+      "reason": "no fixed mobile shell threshold in Foundation Plan 01"
+    }
+  },
+  "artifacts": {
+    "normalizedReference": {
+      "file": "desktop-governance-operations--1440x900--reference.png",
+      "sha256": "afc5a97b736b76990f1f28e4aaf4c948a454b3dc97f479f373e4c2027d9c3388"
+    },
+    "overlay50": {
+      "file": "desktop-governance-operations--1440x900--overlay.png",
+      "sha256": "682c1823d07215217accfd008fb2b447df2b3aa6c8550a1ee3dca16043fb36db"
+    },
+    "absoluteDifference": {
+      "file": "desktop-governance-operations--1440x900--difference.png",
+      "sha256": "67fa6cb27c125eb9c447360e1dd80f8ed57fb5230e8a05475d606be01daa4d20"
+    }
+  },
+  "releaseVerdict": "human region review required"
+}

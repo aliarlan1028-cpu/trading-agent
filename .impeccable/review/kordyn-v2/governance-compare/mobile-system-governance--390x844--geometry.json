@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "identity": "mobile-system-governance--390x844",
+  "concept": {
+    "id": "mobile-system-governance",
+    "file": ".impeccable/mocks/kordyn-v2-approved/mobile-system-governance.png",
+    "sha256": "cbcfd92d83b38a856e42da689347fe71b548911a4054ce7adb53ffadf4a1a9ac",
+    "storedPixels": {
+      "width": 852,
+      "height": 1846
+    },
+    "normalizedViewport": "390x844"
+  },
+  "actual": {
+    "file": "mobile-system-governance--390x844.png",
+    "sha256": "eecaff6794cac79f10f9ca37245f70cd9ae324e3595c8702f8ed6820c62ef97e",
+    "runner": "tests/run-kordyn-v2-governance-browser.mjs",
+    "fixture": "tests/kordyn-v2-governance-browser.jsx",
+    "productionSourceCommit": "007fcf40d032ca03dd9a24712a0882f937e92215",
+    "device": "mobile",
+    "domainId": "governance",
+    "workspaceId": "runs"
+  },
+  "viewport": {
+    "name": "390x844",
+    "width": 390,
+    "height": 844
+  },
+  "document": {
+    "clientWidth": 390,
+    "scrollWidth": 390
+  },
+  "documentOverflow": 0,
+  "shellGeometry": {
+    "domainId": "governance",
+    "workspaceId": "runs",
+    "selectedId": "run-btc-analysis",
+    "selectedType": "Agent run"
+  },
+  "diagnostics": {
+    "screenshotStructure": {
+      "variance": 0.01594597434275148,
+      "edgeDensity": 0.034287872098119856,
+      "nearFlat": false
+    },
+    "pixelDifference": {
+      "metric": 0.10023953624873613,
+      "role": "diagnostic only"
+    },
+    "contentAwareComparator": {
+      "applied": false,
+      "reason": "no fixed mobile shell threshold in Foundation Plan 01"
+    }
+  },
+  "artifacts": {
+    "normalizedReference": {
+      "file": "mobile-system-governance--390x844--reference.png",
+      "sha256": "1f0f06bba1453f31e8f5583e92b209a773bb88e5f54ef5841b4de1975564c0a2"
+    },
+    "overlay50": {
+      "file": "mobile-system-governance--390x844--overlay.png",
+      "sha256": "5c258a2d58f51e97ccbb0b9f5b39d3d3006d6d3da5bb4f10908cb373d8a5383f"
+    },
+    "absoluteDifference": {
+      "file": "mobile-system-governance--390x844--difference.png",
+      "sha256": "718476cfc6982ef0cb883c41bc592c88d2cca66c8968c4184ddc3352b3075283"
+    }
+  },
+  "releaseVerdict": "human region review required"
+}
