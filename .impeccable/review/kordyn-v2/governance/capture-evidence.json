@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "runner": "tests/run-kordyn-v2-governance-browser.mjs",
   "fixture": "tests/kordyn-v2-governance-browser.jsx",
-  "productionSourceCommit": "d85e20b0d256b93e5ea0e7ab9b4b857194d41ed4",
-  "captureTestSourceCommit": "dab25ec040a1107713ffb58c065265dba3ec177a",
+  "productionSourceCommit": "946f2552dd7ff4e5fb00856ed5f5888e3b8554d2",
+  "captureTestSourceCommit": "b2f8cdb3bc41b6f5f981c9247c48cee60c5e261c",
   "captures": [
     {
       "file": "desktop-governance-boundary--1440x900.png",
@@ -28,7 +28,8 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "7b0d8d4007b7e43c74117a7744c373ba9ba2760cf8ec376c6a9b6ffe7bf0613a"
+      "sha256": "aad71dcba75b2a7637f0fa38c72274cf122c665dc859e754c64cf72300d0b546",
+      "aiSupport": "open-read-only"
     },
     {
       "file": "desktop-governance-boundary--1180x800.png",
@@ -53,7 +54,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "6e30437e4869f1e49fbdb91d7afad56c5239fee8824230778fd45b423d3b2389"
+      "sha256": "d5ec79109295f8cbccd027d028b533c6d73f09cce8fe3f42b61782fbb14dd2c1"
     },
     {
       "file": "desktop-governance-operations--1440x900.png",
@@ -78,7 +79,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "b48b4a2de121fc1cd99b0015f27a8962450a027b9da6df72671500d0becb52ea"
+      "sha256": "52c09dd532eea687eeb14e390c40b76d2e06c9255a00c878985dd62447bfd534"
     },
     {
       "file": "desktop-governance-operations--1180x800.png",
@@ -103,7 +104,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "f13c965416a50c34dae0499e3a8a86598a9904bb023cc7bcf0be7ab6b9cfae45"
+      "sha256": "e277954269e080c38ee4ae2bb00e14e05714b5951f85b289c97b321106884fda"
     },
     {
       "file": "desktop-governance-configuration--1440x900.png",
@@ -128,7 +129,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "bc91154ea81f41c3d7270dd1281ade6ccc5baf79ac3f6517680d764b4648a160"
+      "sha256": "f284de05f42927ea5552e30a3f68c9e12630dbe6e0851141ef671d9e4d31c432"
     },
     {
       "file": "desktop-governance-configuration--1180x800.png",
@@ -153,7 +154,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "928317d37f8a303b4d4c873f149dfd0f4aadd2d371ddd9551ffe2f1726faff99"
+      "sha256": "87893010eab65bfe6684f9a2cecef4de9d34632f54e1d7061c930676fad70810"
     },
     {
       "file": "desktop-governance-danger-confirm--1440x900.png",
@@ -178,9 +179,36 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "3324d291b02aa1ffe1f4aa97d09ea342fc80cd5c605d5b46d7368f6a46a1bb7d",
+      "sha256": "5ecb917b0c4c31b1e68beec379df77d9fa4fcd1e921d8ea021d41b51c6c8e3b5",
       "dangerConfirmation": "kill-switch",
       "noActionAccepted": true
+    },
+    {
+      "file": "mobile-system-governance-content--390x844.png",
+      "viewport": "390x844",
+      "device": "mobile",
+      "domainId": "governance",
+      "workspaceId": "runs",
+      "viewportGeometry": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "clientWidth": 390,
+        "scrollWidth": 390
+      },
+      "shell": {
+        "domainId": "governance",
+        "workspaceId": "runs",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "governanceCss": true,
+      "sha256": "9d9e9c96c015ea5483a2b923784499b523f45c0ce470deaa1e1e8416ee9f56e9",
+      "aiSupport": "closed",
+      "governanceContentVisible": true
     },
     {
       "file": "mobile-system-governance--390x844.png",
@@ -205,9 +233,37 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "f111eca84355baea5b826fcd9d03a4c5a51b1392b62925858ea5d5db34c6ae33",
+      "sha256": "5cbac9e6182a5f3242218c9b27f079280981aacc78324f214f5d5cbf9b9d156c",
       "aiSupport": "open-read-only",
-      "supportState": "ready"
+      "supportState": "ready",
+      "underlyingGovernanceScrollTop": 150
+    },
+    {
+      "file": "mobile-system-governance-content--430x932.png",
+      "viewport": "430x932",
+      "device": "mobile",
+      "domainId": "governance",
+      "workspaceId": "runs",
+      "viewportGeometry": {
+        "width": 430,
+        "height": 932
+      },
+      "document": {
+        "clientWidth": 430,
+        "scrollWidth": 430
+      },
+      "shell": {
+        "domainId": "governance",
+        "workspaceId": "runs",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "governanceCss": true,
+      "sha256": "7a8442bd373a7ca3eb7a3781816d7ff1c4c11160d287eec85116745d8840b99a",
+      "aiSupport": "closed",
+      "governanceContentVisible": true
     },
     {
       "file": "mobile-system-governance--430x932.png",
@@ -232,9 +288,10 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "53563b17be535f43ff6580f5a532bf75179a2b273c6fbce2dcb388f358255986",
+      "sha256": "d7e4cd13c706ce4c97d0150528111ccf46e642fc0e7d9428b3a7a4c29283c0db",
       "aiSupport": "open-read-only",
-      "supportState": "ready"
+      "supportState": "ready",
+      "underlyingGovernanceScrollTop": 150
     },
     {
       "file": "desktop-governance-event-inputs--1440x900.png",
@@ -311,7 +368,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "41f8707f6c0e9dffeda04997cbfd769882beefc41147002c1563bd11bd06b9de",
+      "sha256": "b87a2e86a7f5754c5d060a57bc36adf42103007d3ca9eacbf0bc35cf7d9d3a53",
       "supportingSurface": true
     },
     {

@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "runner": "tests/run-kordyn-v2-governance-browser.mjs",
   "fixture": "tests/kordyn-v2-governance-browser.jsx",
-  "productionSourceCommit": "d85e20b0d256b93e5ea0e7ab9b4b857194d41ed4",
-  "captureTestSourceCommit": "dab25ec040a1107713ffb58c065265dba3ec177a",
+  "productionSourceCommit": "946f2552dd7ff4e5fb00856ed5f5888e3b8554d2",
+  "captureTestSourceCommit": "b2f8cdb3bc41b6f5f981c9247c48cee60c5e261c",
   "states": [
     {
       "file": "state-loading--1440x900.png",
@@ -28,7 +28,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": false,
-      "sha256": "a82b61a9a3b90919a213515b3940525ae21cbaebc7fb43d44147dfd657efdc97",
+      "sha256": "19ebe71ae44849170bb749d7a260017ce37d5922ae0cd035954bfd867d5475ab",
       "state": "loading",
       "semanticSurface": "authoritative resource loading",
       "structuralOnly": true
@@ -56,7 +56,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "391b9bd0a2a41ccbfd8f3bda1010afe1e8816d54034d0c7d0f3e4c308189e2d2",
+      "sha256": "a4e38f60e843ef69d5b35c83c46cf8bd19e5e4b169af01d7bf2864a7dea1182c",
       "state": "empty",
       "semanticSurface": "empty Audit ledger",
       "structuralOnly": false
@@ -84,7 +84,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "d8376dd07d1ab563f7a5639c1a2b96372b2bf01f36c71167beac866de91d650e",
+      "sha256": "b877c1745568ab53b788661f5502cb2b7b44b7dda2b683139b5ed292cf4c644c",
       "state": "processing",
       "semanticSurface": "Task run awaiting server result",
       "structuralOnly": false
@@ -112,7 +112,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "7ecb0794e1091fd755714b40ce5fd9ee9c78f216c51fa0ae750bebaf519259ca",
+      "sha256": "b56c5a9ec09979389c906bcf6d580346a1ff57db07fde719d2753d3326a33cbf",
       "state": "stale",
       "semanticSurface": "last-valid Boundary facts",
       "structuralOnly": false
@@ -140,7 +140,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "9d6c8b91c81cea2b7abed2abac65fa692561aa5f0c200bdf85505f81a9ff23b7",
+      "sha256": "cab281084daf78dd2a3116da19f0becba9eb9e714246fcc9ca43809807599a53",
       "state": "degraded",
       "semanticSurface": "degraded last-valid Boundary facts",
       "structuralOnly": false
@@ -196,7 +196,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "a80b6617f5ebc5cdf6801ded632eab7e7feab427c13165e42b2375cc4798b343",
+      "sha256": "25849b392ff41c88d7a2fbdff2de9ddb2fa71a2d3622f246f767a825d35cab6d",
       "state": "forbidden",
       "semanticSurface": "forbidden live-trading configuration",
       "structuralOnly": false
@@ -224,7 +224,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "d5eb0a261bd2bc3e1dfa10e2a9ecd0ead5d513a97d581840213474f49d82b9de",
+      "sha256": "7a8442bd373a7ca3eb7a3781816d7ff1c4c11160d287eec85116745d8840b99a",
       "state": "disabled",
       "semanticSurface": "disabled Task action",
       "structuralOnly": false
@@ -286,31 +286,31 @@
       "structuralOnly": false
     },
     {
-      "file": "state-no-result--390x844.png",
-      "viewport": "390x844",
-      "device": "mobile",
+      "file": "state-no-result--1180x800.png",
+      "viewport": "1180x800",
+      "device": "desktop",
       "domainId": "governance",
-      "workspaceId": "recovery",
+      "workspaceId": "audit",
       "viewportGeometry": {
-        "width": 390,
-        "height": 844
+        "width": 1180,
+        "height": 800
       },
       "document": {
-        "clientWidth": 390,
-        "scrollWidth": 390
+        "clientWidth": 1180,
+        "scrollWidth": 1180
       },
       "shell": {
         "domainId": "governance",
-        "workspaceId": "recovery",
+        "workspaceId": "audit",
         "selectedId": "run-btc-analysis",
         "selectedType": "Agent run"
       },
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "958c941f04cea2bc3a9d156e3cf763f700c9a09f91c923ddaf4274bc8b0c9edb",
+      "sha256": "6c42c77f034c313b82b6966c11d4cea17de6f6a9380d6c77e9ea3dce3254cbdd",
       "state": "no-result",
-      "semanticSurface": "Recovery without a report",
+      "semanticSurface": "Audit filter with no matching result",
       "structuralOnly": false
     },
     {
@@ -336,7 +336,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "f46e2b9580eb0c5f15df9175b4d323c3866123028625709c5c4f91b443c213d6",
+      "sha256": "0aeb6354c7b9400fb14c411b289cd2746cdc25558302e3711eac3e2aa055f1b4",
       "state": "long-content",
       "semanticSurface": "long Audit action content",
       "structuralOnly": false
@@ -364,7 +364,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "0656f33a0e9bdbf2aca5cfcc3c96363d536b5afa3b4c71db20c82ef562daa122",
+      "sha256": "f83e4bc09fd2b17e776195192f7056376ff27b57a777d2969fea15864b8a5f6f",
       "state": "large-list",
       "semanticSurface": "large Audit ledger",
       "structuralOnly": false
