@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "runner": "tests/run-kordyn-v2-governance-browser.mjs",
   "fixture": "tests/kordyn-v2-governance-browser.jsx",
-  "productionSourceCommit": "1977ee4a03397f3fa58bd949ce68eeae1a67f88d",
-  "captureTestSourceCommit": "d69545e543880a05eddc17d0851543a48c79d9f5",
+  "productionSourceCommit": "1e97a26db9d0c9acc0af6fa686d88923a0986588",
+  "captureTestSourceCommit": "b61ea43ec402997dc99bf129d45986ad7f06bcf5",
   "captures": [
     {
       "file": "desktop-governance-boundary--1440x900.png",
@@ -28,7 +28,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "5c95d52416283b4d91b0f8f3a869cbe768e30bee851b58f89224b01d0119a37b",
+      "sha256": "e6da4d0a088e4c8fc2d4f3786dab0348b99983687d435a8edf7bb6fd1d41736b",
       "aiSupport": "open-read-only"
     },
     {
@@ -54,7 +54,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "335dcb66fbba6aec470a8a09ab5cea2c977ba705325868f48b5f395f7d25b648"
+      "sha256": "c3bb1f73bd82f118d3c837e39bf69fbac28d7234b67189a207a53fabd7574427"
     },
     {
       "file": "desktop-governance-operations--1440x900.png",
@@ -79,7 +79,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "5ee36f049cab917d4a7a4a365d70a3762d80b54f6816047b4c1ec8dc5a293bf1"
+      "sha256": "7c668fe238a288320cb24f4ab3851396d763d68b2a510b7332d42512df63687f"
     },
     {
       "file": "desktop-governance-operations--1180x800.png",
@@ -104,7 +104,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "f633776dbf9ec5cd06fa2d8dc58a3d4d5c8aed3b3c3790c96200c09374b2f6f7"
+      "sha256": "59d68773e6d9d4771b8f3a3d769d6161b22ed3fe23d0de55fbe704ea7a2e826b"
     },
     {
       "file": "desktop-governance-configuration--1440x900.png",
@@ -179,7 +179,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "9ea7c6a31acf34468ba64870ace726f58b784814a1ad5696bbbe5fc5b7ce8c67",
+      "sha256": "c57d50bed67f20d4749f2c482367a4a4318f1701b4f79f7486fc20577c17a1af",
       "dangerConfirmation": "kill-switch",
       "noActionAccepted": true
     },
@@ -233,10 +233,45 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "81e5820422f22aaba8fb286cb0f87248c0870bf42386bba19f05c979fd5c589e",
+      "sha256": "f4808d00907c77051735b4ca865b8dd8dd124697566d29d6903188e0612776b3",
       "aiSupport": "open-read-only",
       "supportState": "ready",
-      "underlyingGovernanceScrollTop": 150
+      "underlyingGovernanceScrollTop": 314,
+      "supportGeometry": {
+        "rail": {
+          "top": 216,
+          "right": 365,
+          "bottom": 268,
+          "left": 25,
+          "width": 340,
+          "height": 52
+        },
+        "degraded": {
+          "top": 281,
+          "right": 378,
+          "bottom": 441,
+          "left": 12,
+          "width": 366,
+          "height": 160
+        },
+        "danger": {
+          "top": 453,
+          "right": 378,
+          "bottom": 521,
+          "left": 12,
+          "width": 366,
+          "height": 68
+        },
+        "sheet": {
+          "top": 528.8125,
+          "right": 390,
+          "bottom": 782,
+          "left": 0,
+          "width": 390,
+          "height": 253.1875
+        },
+        "scrollTop": 314
+      }
     },
     {
       "file": "mobile-system-governance-content--430x932.png",
@@ -288,10 +323,45 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "82b2a15c1e00fb093546da6e8934ae9518c3986d574ff36377684a7352070065",
+      "sha256": "40ee0f57d0aba054bdd308ae41a5673a1fa86db03d3ff5d138bf90ef8a6bd01a",
       "aiSupport": "open-read-only",
       "supportState": "ready",
-      "underlyingGovernanceScrollTop": 150
+      "underlyingGovernanceScrollTop": 253,
+      "supportGeometry": {
+        "rail": {
+          "top": 277,
+          "right": 405,
+          "bottom": 329,
+          "left": 25,
+          "width": 380,
+          "height": 52
+        },
+        "degraded": {
+          "top": 342,
+          "right": 418,
+          "bottom": 502,
+          "left": 12,
+          "width": 406,
+          "height": 160
+        },
+        "danger": {
+          "top": 514,
+          "right": 418,
+          "bottom": 582,
+          "left": 12,
+          "width": 406,
+          "height": 68
+        },
+        "sheet": {
+          "top": 590.40625,
+          "right": 430,
+          "bottom": 870,
+          "left": 0,
+          "width": 430,
+          "height": 279.59375
+        },
+        "scrollTop": 253
+      }
     },
     {
       "file": "desktop-governance-event-inputs--1440x900.png",

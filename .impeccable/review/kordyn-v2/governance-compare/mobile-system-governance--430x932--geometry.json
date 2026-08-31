@@ -13,11 +13,11 @@
   },
   "actual": {
     "file": "mobile-system-governance--430x932.png",
-    "sha256": "82b2a15c1e00fb093546da6e8934ae9518c3986d574ff36377684a7352070065",
+    "sha256": "40ee0f57d0aba054bdd308ae41a5673a1fa86db03d3ff5d138bf90ef8a6bd01a",
     "runner": "tests/run-kordyn-v2-governance-browser.mjs",
     "fixture": "tests/kordyn-v2-governance-browser.jsx",
-    "productionSourceCommit": "1977ee4a03397f3fa58bd949ce68eeae1a67f88d",
-    "captureTestSourceCommit": "d69545e543880a05eddc17d0851543a48c79d9f5",
+    "productionSourceCommit": "1e97a26db9d0c9acc0af6fa686d88923a0986588",
+    "captureTestSourceCommit": "b61ea43ec402997dc99bf129d45986ad7f06bcf5",
     "device": "mobile",
     "domainId": "governance",
     "workspaceId": "runs"
@@ -40,12 +40,12 @@
   },
   "diagnostics": {
     "screenshotStructure": {
-      "variance": 0.008087437687976666,
-      "edgeDensity": 0.017224557463111995,
+      "variance": 0.008254407539526934,
+      "edgeDensity": 0.017788108033756026,
       "nearFlat": false
     },
     "pixelDifference": {
-      "metric": 0.09233288125111308,
+      "metric": 0.09151783506761989,
       "role": "diagnostic only"
     },
     "contentAwareComparator": {
@@ -60,11 +60,11 @@
     },
     "overlay50": {
       "file": "mobile-system-governance--430x932--overlay.png",
-      "sha256": "fa4286c8b58069267a7ec7f6e9f48a37777b8df8868ab5abf539c7851eec4871"
+      "sha256": "73ebee11d3a9bb11d1c015accc6013293eea1579a2203f62324f0b580cca9a30"
     },
     "absoluteDifference": {
       "file": "mobile-system-governance--430x932--difference.png",
-      "sha256": "5d9d1f441e75c9182808c0475356a2f444c0e40e32bf1629e329eb07b8037497"
+      "sha256": "76bc2dbbab1618f52c797349d787ca2edb03b198896fdbd636fef1eb58a9a1b0"
     }
   },
   "releaseVerdict": "human region review required"

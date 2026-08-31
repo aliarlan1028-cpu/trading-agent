@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "runner": "tests/run-kordyn-v2-governance-browser.mjs",
   "fixture": "tests/kordyn-v2-governance-browser.jsx",
-  "productionSourceCommit": "1977ee4a03397f3fa58bd949ce68eeae1a67f88d",
-  "captureTestSourceCommit": "d69545e543880a05eddc17d0851543a48c79d9f5",
+  "productionSourceCommit": "1e97a26db9d0c9acc0af6fa686d88923a0986588",
+  "captureTestSourceCommit": "b61ea43ec402997dc99bf129d45986ad7f06bcf5",
   "states": [
     {
       "file": "state-loading--1440x900.png",
@@ -28,7 +28,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": false,
-      "sha256": "795ad6727e9fa769904f22b98d203dda363e82ab1da032d5bffb07096d963ed2",
+      "sha256": "a82b61a9a3b90919a213515b3940525ae21cbaebc7fb43d44147dfd657efdc97",
       "state": "loading",
       "semanticSurface": "authoritative resource loading",
       "structuralOnly": true
@@ -84,7 +84,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "621868c156c9d04616c9ce8f17e7a4d1d654b81a31211fa0fb4ae5884a7b29c2",
+      "sha256": "fbd0712931f53f9eb70de9b3f6d2f6c801b8ad7f75bb917d4860a9a240636bf1",
       "state": "processing",
       "semanticSurface": "Task run awaiting server result",
       "structuralOnly": false
@@ -140,7 +140,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "d55506f72180a6c14684e2d0786c04b843325faba0f5589cd8b5c2b5c36f3a68",
+      "sha256": "d9634862e15bc84cdc35c2a4b57c147be48754bced30c7b9235a220dd334aa59",
       "state": "degraded",
       "semanticSurface": "degraded last-valid Boundary facts",
       "structuralOnly": false
@@ -336,7 +336,7 @@
       "noProductionWrites": true,
       "legacyProductStyles": false,
       "governanceCss": true,
-      "sha256": "73bef5fb01b0841b14461f7a0aac72d9fbaa6dfb0cea5f6d25696daae689820f",
+      "sha256": "0aeb6354c7b9400fb14c411b289cd2746cdc25558302e3711eac3e2aa055f1b4",
       "state": "long-content",
       "semanticSurface": "long Audit action content",
       "structuralOnly": false

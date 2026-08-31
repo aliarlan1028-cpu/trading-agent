@@ -16,8 +16,8 @@
     "sha256": "90614a5055654d2ecf8216678ead0330974618a6240ab415c3247082cd3f8f81",
     "runner": "tests/run-kordyn-v2-governance-browser.mjs",
     "fixture": "tests/kordyn-v2-governance-browser.jsx",
-    "productionSourceCommit": "1977ee4a03397f3fa58bd949ce68eeae1a67f88d",
-    "captureTestSourceCommit": "d69545e543880a05eddc17d0851543a48c79d9f5",
+    "productionSourceCommit": "1e97a26db9d0c9acc0af6fa686d88923a0986588",
+    "captureTestSourceCommit": "b61ea43ec402997dc99bf129d45986ad7f06bcf5",
     "device": "desktop",
     "domainId": "governance",
     "workspaceId": "configuration"
