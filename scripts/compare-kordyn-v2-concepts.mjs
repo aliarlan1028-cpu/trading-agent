@@ -32,6 +32,12 @@ const SCOPE_CONFIG = Object.freeze({
     captureKey: "accountCaptures",
     productSourceCommit: true,
     captureTestCommit: true
+  }),
+  assets: Object.freeze({
+    runner: "tests/run-kordyn-v2-assets-browser.mjs",
+    fixture: "tests/kordyn-v2-assets-browser.jsx",
+    captureKey: "assetCaptures",
+    productionCommit: true
   })
 });
 

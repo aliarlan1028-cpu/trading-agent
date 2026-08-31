@@ -118,7 +118,7 @@ export function MobileShell({
           </div>
           <div className="kordynV2MobileTitleRow">
             <h1 className="kordynV2MobileDomainTitle" data-kordyn-v2-mobile-title data-kordyn-v2-destination-title>{domain.label}</h1>
-            {location.domainId === "account" && selectedId !== "none" && <div className="kordynV2MobileEvidenceDock" aria-label="当前对象证据工具">
+            {selectedId !== "none" && <div className="kordynV2MobileEvidenceDock" aria-label="当前对象证据工具">
               <button
                 type="button"
                 data-kordyn-v2-context-trigger

@@ -775,11 +775,15 @@
 .kordynV2MobileKnowledge .kordynV2IncubationQueue { min-height: 330px; }
 .kordynV2MobileKnowledge button,
 .kordynV2MobileCapabilities button { min-height: 44px; }
+.kordynV2MobileKnowledge .kordynV2KnowledgeSources article footer button,
+.kordynV2MobileKnowledge .kordynV2IncubationQueue article footer button { min-height: 44px; }
 .kordynV2MobileCapabilityBoundary { min-height: 46px; }
 .kordynV2MobileCapabilityDetail { min-width: 0; padding: 9px 10px 12px; border: 1px solid rgba(82, 117, 178, 0.32); border-radius: 20px; background: linear-gradient(180deg, rgba(13, 28, 50, 0.97), rgba(5, 13, 25, 0.98)); box-shadow: 0 -12px 36px rgba(0, 0, 0, 0.28); }
 .kordynV2MobileCapabilityDetail > i { width: 44px; height: 4px; margin: 0 auto 7px; display: block; border-radius: 999px; background: rgba(182, 197, 222, 0.52); }
 .kordynV2MobileCapabilityDetail .kordynV2CapabilityInspector { padding: 4px 2px 0; overflow: visible; border: 0; background: transparent; box-shadow: none; }
 .kordynV2MobileCapabilityDetail .kordynV2CapabilityInspector > footer { grid-template-columns: minmax(0, 1fr); }
+.kordynV2MobileCapabilityDetail .kordynV2CapabilityInspector > footer button,
+.kordynV2MobileCapabilityDetail .kordynV2McpGrant > button { min-height: 44px; }
 
 @media (max-width: 1180px) and (min-width: 768px) {
   .kordynV2KnowledgeWorkbench { grid-template-columns: minmax(195px, .72fr) minmax(330px, 1.25fr) minmax(220px, .82fr); }
