@@ -117,6 +117,102 @@
 .kordynV2EventRiskRegistry button em { color: var(--kordyn-v2-amber); font: 8px var(--kordyn-v2-mono); font-style: normal; }
 .kordynV2EventRiskRegistry button em[data-tone="critical"] { color: var(--kordyn-v2-danger); }
 
+.kordynV2OperationsWorkspace { grid-template-rows: 42px 122px minmax(250px, 1fr) 150px; }
+.kordynV2OperationsTopology { min-width: 0; padding: 12px; display: grid; grid-template-columns: repeat(7, minmax(94px, 1fr)); align-items: center; gap: 9px; overflow: hidden; border: 1px solid var(--kordyn-v2-border); border-radius: 12px; background: rgba(6, 18, 31, .76); }
+.kordynV2OperationsTopology > div { position: relative; min-width: 0; min-height: 70px; padding: 9px; display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: center; gap: 8px; border: 1px solid rgba(32, 215, 148, .34); border-radius: 9px; color: var(--kordyn-v2-mint); background: rgba(7, 32, 34, .46); }
+.kordynV2OperationsTopology > div:not(:last-child)::after { content: ""; position: absolute; z-index: 2; top: 50%; right: -10px; width: 10px; height: 1px; background: currentColor; }
+.kordynV2OperationsTopology > div[data-service-tone="warning"] { border-color: rgba(244, 173, 86, .46); color: var(--kordyn-v2-amber); background: rgba(46, 31, 10, .46); }
+.kordynV2OperationsTopology > div[data-service-tone="critical"] { border-color: rgba(255, 89, 104, .46); color: var(--kordyn-v2-danger); background: rgba(52, 14, 22, .46); }
+.kordynV2OperationsTopology > div[data-service-tone="neutral"] { border-color: rgba(130, 144, 166, .26); color: var(--kordyn-v2-muted); background: rgba(12, 23, 38, .55); }
+.kordynV2OperationsTopology span { min-width: 0; display: grid; gap: 4px; }
+.kordynV2OperationsTopology strong, .kordynV2OperationsTopology small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2OperationsTopology strong { color: var(--kordyn-v2-text-soft); font-size: 9px; }
+.kordynV2OperationsTopology small { color: currentColor; font: 8px var(--kordyn-v2-mono); }
+.kordynV2OperationsMain { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(315px, .75fr); gap: 10px; }
+.kordynV2TaskRunEmbedded { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(250px, .75fr); gap: 10px; }
+.kordynV2TaskRegistry, .kordynV2RunLedger, .kordynV2OperationsAttention, .kordynV2OperationsEvidence, .kordynV2OperationalRegistry, .kordynV2RecoveryTruth, .kordynV2RecoveryActions, .kordynV2RecoveryQueue { min-width: 0; min-height: 0; padding: 11px; display: grid; grid-template-rows: 38px minmax(0, 1fr); overflow: hidden; border: 1px solid var(--kordyn-v2-border); border-radius: 12px; background: rgba(7, 18, 31, .78); box-shadow: 0 18px 52px rgba(0, 0, 0, .18); }
+.kordynV2TaskRegistry > header, .kordynV2RunLedger > header, .kordynV2OperationsAttention > header, .kordynV2OperationsEvidence > header, .kordynV2OperationalRegistry > header, .kordynV2RecoveryTruth > header, .kordynV2RecoveryActions > header, .kordynV2RecoveryQueue > header { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.kordynV2TaskRegistry > header span, .kordynV2RunLedger > header span, .kordynV2OperationsAttention > header span, .kordynV2OperationsEvidence > header span, .kordynV2OperationalRegistry > header span, .kordynV2RecoveryTruth > header span, .kordynV2RecoveryQueue > header span { min-width: 0; display: grid; gap: 2px; }
+.kordynV2TaskRegistry header strong, .kordynV2RunLedger header strong, .kordynV2OperationsAttention header strong, .kordynV2OperationsEvidence header strong, .kordynV2OperationalRegistry header strong, .kordynV2RecoveryTruth header strong, .kordynV2RecoveryActions header strong, .kordynV2RecoveryQueue header strong { font-size: 11px; }
+.kordynV2TaskRegistry header small, .kordynV2RunLedger header small, .kordynV2OperationsAttention header small, .kordynV2OperationsEvidence header small, .kordynV2OperationalRegistry header small, .kordynV2RecoveryTruth header small, .kordynV2RecoveryActions header small, .kordynV2RecoveryQueue header small { overflow: hidden; color: var(--kordyn-v2-muted); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2TaskRegistry header em, .kordynV2RunLedger header em, .kordynV2OperationsAttention header em, .kordynV2OperationalRegistry header em, .kordynV2RecoveryTruth header em, .kordynV2RecoveryQueue header em { color: var(--kordyn-v2-cobalt-soft); font: 9px var(--kordyn-v2-mono); font-style: normal; }
+.kordynV2TaskRegistry > div, .kordynV2RunLedger > div, .kordynV2OperationsAttention > div, .kordynV2OperationalRegistry > div, .kordynV2RecoveryQueue > div { min-height: 0; overflow-y: auto; }
+.kordynV2TaskRegistry article { min-width: 0; min-height: 57px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; border-bottom: 1px solid rgba(126, 150, 184, .1); }
+.kordynV2TaskRegistry article > button:first-child { min-width: 0; min-height: 48px; padding: 5px 2px; display: grid; grid-template-columns: minmax(0, 1fr) auto 14px; align-items: center; gap: 8px; border: 0; color: var(--kordyn-v2-text-soft); background: transparent; cursor: pointer; text-align: left; }
+.kordynV2TaskRegistry article > button:first-child span { min-width: 0; display: grid; gap: 3px; }
+.kordynV2TaskRegistry article > button:first-child strong, .kordynV2TaskRegistry article > button:first-child small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2TaskRegistry article > button:first-child strong { font-size: 9px; }
+.kordynV2TaskRegistry article > button:first-child small { color: var(--kordyn-v2-muted); font-size: 7px; }
+.kordynV2TaskRegistry article > button:first-child em { color: var(--kordyn-v2-mint); font: 8px var(--kordyn-v2-mono); font-style: normal; }
+.kordynV2TaskRegistry article[data-task-runtime="last_run_failed"] > button:first-child em { color: var(--kordyn-v2-danger); }
+.kordynV2TaskRegistry article > div { display: flex; gap: 5px; }
+.kordynV2TaskRegistry article > div button { min-height: 30px; padding: 0 7px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid rgba(72, 124, 235, .28); border-radius: 7px; color: var(--kordyn-v2-cobalt-soft); background: rgba(21, 49, 96, .28); cursor: pointer; font-size: 8px; }
+.kordynV2RunLedger > div > button, .kordynV2OperationsAttention > div > button { width: 100%; min-width: 0; min-height: 49px; padding: 6px 2px; display: grid; grid-template-columns: 9px minmax(0, 1fr) auto 14px; align-items: center; gap: 7px; border: 0; border-bottom: 1px solid rgba(126, 150, 184, .1); color: var(--kordyn-v2-text-soft); background: transparent; cursor: pointer; text-align: left; }
+.kordynV2RunLedger button > i { width: 7px; height: 7px; border-radius: 50%; background: var(--kordyn-v2-mint); }
+.kordynV2RunLedger button > i[data-tone="warning"] { background: var(--kordyn-v2-amber); }
+.kordynV2RunLedger button > i[data-tone="critical"] { background: var(--kordyn-v2-danger); }
+.kordynV2RunLedger button span, .kordynV2OperationsAttention button span { min-width: 0; display: grid; gap: 3px; }
+.kordynV2RunLedger button strong, .kordynV2RunLedger button small, .kordynV2OperationsAttention button strong, .kordynV2OperationsAttention button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2RunLedger button strong, .kordynV2OperationsAttention button strong { font-size: 9px; }
+.kordynV2RunLedger button small, .kordynV2OperationsAttention button small { color: var(--kordyn-v2-muted); font-size: 7px; }
+.kordynV2RunLedger button em, .kordynV2OperationsAttention button em { color: var(--kordyn-v2-muted); font: 8px var(--kordyn-v2-mono); font-style: normal; }
+.kordynV2OperationsAttention { grid-template-rows: 38px minmax(0, 1fr) 36px; }
+.kordynV2OperationsAttention > div > button { grid-template-columns: 18px minmax(0, 1fr) auto 14px; color: var(--kordyn-v2-amber); }
+.kordynV2OperationsAttention > div > button[data-tone="critical"] { color: var(--kordyn-v2-danger); }
+.kordynV2OperationsAttention footer { display: flex; align-items: end; }
+.kordynV2OperationsAttention footer button, .kordynV2OperationsEvidence header button { min-height: 30px; padding: 0 10px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid rgba(72, 124, 235, .28); border-radius: 7px; color: var(--kordyn-v2-cobalt-soft); background: rgba(21, 49, 96, .28); cursor: pointer; font-size: 8px; }
+.kordynV2OperationsAttention footer button { width: 100%; justify-content: center; }
+.kordynV2OperationsAttention p, .kordynV2TaskRegistry p, .kordynV2RunLedger p, .kordynV2OperationalRegistry p, .kordynV2RecoveryQueue p { color: var(--kordyn-v2-muted); font-size: 9px; }
+.kordynV2OperationsEvidence { grid-template-rows: 36px minmax(0, 1fr); }
+.kordynV2OperationsEvidence > div { min-width: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 12px; overflow: hidden; }
+.kordynV2OperationsEvidence > div > span { min-width: 0; min-height: 38px; display: grid; grid-template-columns: 74px minmax(0, 1fr) auto; align-items: center; gap: 7px; border-bottom: 1px solid rgba(126, 150, 184, .1); }
+.kordynV2OperationsEvidence > div small, .kordynV2OperationsEvidence > div em { color: var(--kordyn-v2-muted); font: 7px var(--kordyn-v2-mono); font-style: normal; }
+.kordynV2OperationsEvidence > div strong { overflow: hidden; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2OperationsEvidence > div em[data-tone="healthy"] { color: var(--kordyn-v2-mint); }
+.kordynV2OperationsEvidence > div em[data-tone="critical"] { color: var(--kordyn-v2-danger); }
+.kordynV2OperationsEvidence > div em[data-tone="warning"] { color: var(--kordyn-v2-amber); }
+
+.kordynV2TaskRunWorkspace { grid-template-rows: 42px minmax(0, 1fr); }
+.kordynV2TaskRunGrid { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.18fr) minmax(300px, .82fr); gap: 10px; }
+.kordynV2SingleRegistryWorkspace { grid-template-rows: 42px minmax(0, 1fr); }
+.kordynV2OperationalRegistry { grid-template-rows: 46px minmax(0, 1fr); }
+.kordynV2OperationalRegistry > div > button { width: 100%; min-width: 0; min-height: 62px; padding: 8px 4px; display: grid; grid-template-columns: 9px minmax(0, 1fr) auto 18px; align-items: center; gap: 9px; border: 0; border-bottom: 1px solid rgba(126, 150, 184, .11); color: var(--kordyn-v2-text-soft); background: transparent; cursor: pointer; text-align: left; }
+.kordynV2OperationalRegistry > div > button > i { width: 8px; height: 8px; border-radius: 50%; background: var(--kordyn-v2-mint); }
+.kordynV2OperationalRegistry > div > button[data-tone="critical"] > i { background: var(--kordyn-v2-danger); }
+.kordynV2OperationalRegistry > div > button[data-tone="warning"] > i { background: var(--kordyn-v2-amber); }
+.kordynV2OperationalRegistry button span { min-width: 0; display: grid; gap: 4px; }
+.kordynV2OperationalRegistry button strong, .kordynV2OperationalRegistry button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2OperationalRegistry button strong { font-size: 11px; }
+.kordynV2OperationalRegistry button small { color: var(--kordyn-v2-muted); font-size: 8px; }
+.kordynV2OperationalRegistry button em { color: var(--kordyn-v2-muted); font: 8px var(--kordyn-v2-mono); font-style: normal; }
+.kordynV2AuditIntegrity, .kordynV2MobileAuditIntegrity { display: flex; align-items: center; gap: 8px; color: var(--kordyn-v2-mint); }
+.kordynV2AuditIntegrity span, .kordynV2MobileAuditIntegrity span { display: grid; gap: 2px; }
+.kordynV2AuditIntegrity strong, .kordynV2AuditIntegrity small { font-size: 8px; }
+.kordynV2AuditIntegrity small { color: var(--kordyn-v2-muted); }
+.kordynV2AuditLedger > div > button { grid-template-columns: 126px minmax(0, 1fr) 90px 116px 18px; }
+.kordynV2AuditLedger > div > button > small, .kordynV2AuditLedger code { overflow: hidden; color: var(--kordyn-v2-muted); font: 8px var(--kordyn-v2-mono); text-overflow: ellipsis; white-space: nowrap; }
+
+.kordynV2RecoveryWorkspace { grid-template-rows: 42px minmax(180px, .7fr) minmax(190px, 1fr); }
+.kordynV2RecoveryGrid { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, .72fr) minmax(0, 1.28fr); gap: 10px; }
+.kordynV2RecoveryTruth { grid-template-rows: 42px minmax(0, 1fr) 38px; }
+.kordynV2RecoveryTruth dl { margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.kordynV2RecoveryTruth dl > div { padding: 10px; display: grid; gap: 4px; border: 1px solid rgba(126, 150, 184, .12); border-radius: 8px; background: rgba(7, 20, 34, .66); }
+.kordynV2RecoveryTruth dt { color: var(--kordyn-v2-muted); font-size: 8px; }
+.kordynV2RecoveryTruth dd { margin: 0; color: var(--kordyn-v2-text-soft); font: 15px var(--kordyn-v2-mono); }
+.kordynV2RecoveryTruth > button { min-height: 34px; display: flex; align-items: center; justify-content: space-between; border: 1px solid rgba(72, 124, 235, .28); border-radius: 7px; color: var(--kordyn-v2-cobalt-soft); background: rgba(21, 49, 96, .28); cursor: pointer; font-size: 8px; }
+.kordynV2RecoveryActions { grid-template-rows: 42px repeat(2, minmax(58px, 1fr)); }
+.kordynV2RecoveryActions > button { min-width: 0; padding: 10px; display: grid; grid-template-columns: 22px minmax(0, 1fr) 17px; align-items: center; gap: 10px; border: 0; border-top: 1px solid rgba(126, 150, 184, .11); color: var(--kordyn-v2-cobalt-soft); background: transparent; cursor: pointer; text-align: left; }
+.kordynV2RecoveryActions > button span { min-width: 0; display: grid; gap: 4px; }
+.kordynV2RecoveryActions > button strong { color: var(--kordyn-v2-text-soft); font-size: 10px; }
+.kordynV2RecoveryActions > button small { color: var(--kordyn-v2-muted); font-size: 8px; }
+.kordynV2RecoveryQueue { grid-template-rows: 42px minmax(0, 1fr); }
+.kordynV2RecoveryQueue article { min-width: 0; min-height: 58px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; border-bottom: 1px solid rgba(126, 150, 184, .11); }
+.kordynV2RecoveryQueue article > button:first-child { min-width: 0; min-height: 48px; display: grid; grid-template-columns: 20px minmax(0, 1fr) 15px; align-items: center; gap: 9px; border: 0; color: var(--kordyn-v2-danger); background: transparent; cursor: pointer; text-align: left; }
+.kordynV2RecoveryQueue article > button:first-child span { min-width: 0; display: grid; gap: 3px; }
+.kordynV2RecoveryQueue article > button:first-child strong { overflow: hidden; color: var(--kordyn-v2-text-soft); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2RecoveryQueue article > button:first-child small { color: var(--kordyn-v2-muted); font-size: 7px; }
+.kordynV2RecoveryQueue article > button:last-child { min-height: 32px; padding: 0 9px; border: 1px solid rgba(244, 173, 86, .3); border-radius: 7px; color: var(--kordyn-v2-amber); background: rgba(53, 35, 12, .34); cursor: pointer; font-size: 8px; }
+
 .kordynV2GovernanceMobile { min-width: 0; min-height: 100%; padding: 12px 12px 24px; display: grid; align-content: start; gap: 12px; color: var(--kordyn-v2-text); }
 .kordynV2GovernanceMobile > header h2, .kordynV2GovernanceMobile > header p { margin: 0; }
 .kordynV2GovernanceMobile > header h2 { font-size: 25px; letter-spacing: -.035em; }
@@ -155,15 +251,50 @@
 .kordynV2MobileGovernanceList > button strong { font-size: 13px; }
 .kordynV2MobileGovernanceList > button small { color: var(--kordyn-v2-muted); font-size: 10px; }
 .kordynV2MobileGovernanceList > button em { color: var(--kordyn-v2-amber); font: 10px var(--kordyn-v2-mono); font-style: normal; }
+.kordynV2MobileOperationsStatus, .kordynV2MobileAttention, .kordynV2MobileAuditIntegrity { border: 1px solid var(--kordyn-v2-border); border-radius: 14px; background: rgba(8, 18, 32, .86); box-shadow: 0 18px 48px rgba(0, 0, 0, .2); }
+.kordynV2MobileOperationsStatus, .kordynV2MobileAttention { padding: 12px; }
+.kordynV2MobileOperationsStatus > header, .kordynV2MobileAttention > header { min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.kordynV2MobileOperationsStatus > header span, .kordynV2MobileAttention > header span { display: grid; gap: 2px; }
+.kordynV2MobileOperationsStatus > header strong, .kordynV2MobileAttention > header strong { font-size: 15px; }
+.kordynV2MobileOperationsStatus > header small, .kordynV2MobileAttention > header small { color: var(--kordyn-v2-muted); font-size: 10px; }
+.kordynV2MobileOperationsStatus > header em { color: var(--kordyn-v2-amber); font-size: 13px; font-style: normal; }
+.kordynV2MobileOperationsStatus > div > button, .kordynV2MobileAttention > button { width: 100%; min-width: 0; min-height: 58px; padding: 8px 2px; display: grid; grid-template-columns: 24px minmax(0, 1fr) auto 17px; align-items: center; gap: 9px; border: 0; border-top: 1px solid rgba(126, 150, 184, .11); color: var(--kordyn-v2-text-soft); background: transparent; cursor: pointer; text-align: left; }
+.kordynV2MobileOperationsStatus button > i { color: var(--kordyn-v2-cobalt-soft); }
+.kordynV2MobileOperationsStatus button span, .kordynV2MobileAttention button span { min-width: 0; display: grid; gap: 3px; }
+.kordynV2MobileOperationsStatus button strong, .kordynV2MobileOperationsStatus button small, .kordynV2MobileAttention button strong, .kordynV2MobileAttention button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2MobileOperationsStatus button strong, .kordynV2MobileAttention button strong { font-size: 13px; }
+.kordynV2MobileOperationsStatus button small, .kordynV2MobileAttention button small { color: var(--kordyn-v2-muted); font-size: 10px; }
+.kordynV2MobileOperationsStatus button em { color: var(--kordyn-v2-mint); font: 10px var(--kordyn-v2-mono); font-style: normal; }
+.kordynV2MobileOperationsStatus button em[data-tone="warning"] { color: var(--kordyn-v2-amber); }
+.kordynV2MobileOperationsStatus button em[data-tone="critical"] { color: var(--kordyn-v2-danger); }
+.kordynV2MobileAttention > button { grid-template-columns: 24px minmax(0, 1fr) 17px; color: var(--kordyn-v2-amber); }
+.kordynV2MobileTask { border-top: 1px solid rgba(126, 150, 184, .11); }
+.kordynV2MobileTask > button { width: 100%; min-width: 0; min-height: 58px; padding: 8px 2px; display: grid; grid-template-columns: 9px minmax(0, 1fr) auto 17px; align-items: center; gap: 8px; border: 0; color: var(--kordyn-v2-text-soft); background: transparent; cursor: pointer; text-align: left; }
+.kordynV2MobileTask > button > i { width: 8px; height: 8px; border-radius: 50%; background: var(--kordyn-v2-mint); }
+.kordynV2MobileTask > button > i[data-tone="warning"] { background: var(--kordyn-v2-amber); }
+.kordynV2MobileTask > button > i[data-tone="critical"] { background: var(--kordyn-v2-danger); }
+.kordynV2MobileTask > button span { min-width: 0; display: grid; gap: 3px; }
+.kordynV2MobileTask > button strong, .kordynV2MobileTask > button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2MobileTask > button strong { font-size: 13px; }
+.kordynV2MobileTask > button small { color: var(--kordyn-v2-muted); font-size: 10px; }
+.kordynV2MobileTask > button em { color: var(--kordyn-v2-amber); font: 10px var(--kordyn-v2-mono); font-style: normal; }
+.kordynV2MobileTask > div { padding: 0 0 10px 17px; display: flex; gap: 8px; }
+.kordynV2MobileTask > div button { min-width: 92px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid rgba(72, 124, 235, .3); border-radius: 9px; color: var(--kordyn-v2-cobalt-soft); background: rgba(21, 49, 96, .28); }
+.kordynV2MobileAuditIntegrity { padding: 14px; }
+.kordynV2MobileAuditIntegrity strong { color: var(--kordyn-v2-mint); }
+.kordynV2MobileAuditIntegrity small { color: var(--kordyn-v2-muted); }
 
 @media (max-width: 1240px) and (min-width: 721px) {
   .kordynV2BoundaryLead { grid-template-columns: minmax(0, 1.42fr) minmax(220px, .7fr); }
   .kordynV2BoundaryDelta { grid-template-columns: minmax(100px, .7fr) 18px minmax(100px, .7fr) minmax(175px, 1fr); }
   .kordynV2ReadinessChain > div { grid-template-columns: repeat(5, minmax(70px, 1fr)); }
   .kordynV2BoundaryGrid, .kordynV2BoundaryLower { grid-template-columns: minmax(0, 1.35fr) minmax(230px, .65fr); }
+  .kordynV2OperationsTopology { grid-template-columns: repeat(4, minmax(94px, 1fr)); overflow-y: auto; }
+  .kordynV2OperationsMain { grid-template-columns: minmax(0, 1.18fr) minmax(280px, .82fr); }
+  .kordynV2TaskRunEmbedded { grid-template-columns: 1fr; overflow-y: auto; }
+  .kordynV2OperationsEvidence > div { grid-template-columns: repeat(2, 1fr); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .kordynV2GovernanceWorkspace *, .kordynV2GovernanceMobile * { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
-

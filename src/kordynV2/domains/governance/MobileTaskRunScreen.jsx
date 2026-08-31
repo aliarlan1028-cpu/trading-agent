@@ -1,0 +1,7 @@
+import { ArrowRight, CirclePause, CirclePlay } from "lucide-react";
+
+export function MobileTaskRunScreen({ model = {}, actions, actionsDisabled = false, onSelect = () => {} }) {
+  const tasks = model.operations?.tasks?.items || [];
+  return <section className="kordynV2GovernanceMobile" data-kordyn-v2-governance-mobile="runs"><header><h2>任务与运行</h2><p>任务所有权与真实结果分开显示</p></header><section className="kordynV2MobileGovernanceList"><header><span><strong>运行任务</strong><small>{tasks.length} 项</small></span></header>{tasks.map((task) => <article className="kordynV2MobileTask" key={task.id}><button type="button" data-kordyn-v2-object-type="Task" data-kordyn-v2-object-id={task.id} onClick={() => onSelect({ id: task.id, type: "Task", workspaceId: "governance" })}><i data-tone={task.runtime?.tone} /><span><strong>{task.name || task.handler}</strong><small>{task.systemManaged ? "系统托管 · System-managed" : "用户任务"}</small></span><em>{task.runtime?.code || "unknown"}</em><ArrowRight size={16} /></button><div><button type="button" disabled={actionsDisabled || task.enabled === false} onClick={() => actions?.runTask?.(task.id)}><CirclePlay size={16} />运行</button><button type="button" disabled={actionsDisabled} onClick={() => task.enabled === false ? actions?.resumeTask?.(task.id) : actions?.pauseTask?.(task.id)}><CirclePause size={16} />{task.enabled === false ? "恢复" : "暂停"}</button></div></article>)}</section></section>;
+}
+
