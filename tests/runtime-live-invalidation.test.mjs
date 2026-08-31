@@ -31,3 +31,19 @@ test("model policy changes and secret removal immediately invalidate live confir
     if (oldKey === undefined) delete process.env.DEEPSEEK_API_KEY; else process.env.DEEPSEEK_API_KEY = oldKey;
   }
 });
+
+test("runtime configuration does not persist or report an unchanged effective value", () => {
+  const previous = process.env.PORT;
+  const db = seedDatabase();
+  delete db.runtimeConfig.PORT;
+  process.env.PORT = "3000";
+  try {
+    const applied = setConfig(db, { PORT: "3000" });
+    assert.deepEqual(applied, []);
+    assert.equal(Object.hasOwn(db.runtimeConfig, "PORT"), false);
+    assert.equal(process.env.PORT, "3000");
+  } finally {
+    if (previous === undefined) delete process.env.PORT;
+    else process.env.PORT = previous;
+  }
+});

@@ -152,6 +152,11 @@ async function typeText(cdp, selector, value) {
   await cdp.send("Input.insertText", { text: value });
   await flush(cdp, 80);
 }
+async function selectValue(cdp, selector, value) {
+  const changed = await evaluate(cdp, `(() => { const node=document.querySelector(${JSON.stringify(selector)}); if (!node) return false; node.value=${JSON.stringify(value)}; node.dispatchEvent(new Event("input", { bubbles:true })); node.dispatchEvent(new Event("change", { bubbles:true })); return node.value===${JSON.stringify(value)}; })()`);
+  assert.equal(changed, true, `trusted select: ${selector}`);
+  await flush(cdp, 80);
+}
 
 async function navigatePage(cdp, baseUrl, viewport, scenario = "ready", result = "success") {
   await setViewport(cdp, viewport);
@@ -261,7 +266,11 @@ async function captureSurfaces(cdp, baseUrl) {
     for (const viewport of [viewports.desktop1440, viewports.desktop1180]) {
       await navigatePage(cdp, baseUrl, viewport);
       await navigateGovernance(cdp, viewport, workspace);
-      if (workspace === "configuration") await assertConfigurationGeometry(cdp, `${viewportName(viewport)} configuration`);
+      if (workspace === "configuration") {
+        await selectValue(cdp, '[data-kordyn-v2-config-editor="trading"] select[name="mode"]', "semi_auto");
+        await waitForExpression(cdp, 'document.querySelector(\'[data-kordyn-v2-config-editor="trading"] [data-kordyn-v2-action="apply"]\')', `${viewportName(viewport)} changed configuration`);
+        await assertConfigurationGeometry(cdp, `${viewportName(viewport)} configuration`);
+      }
       if (workspace === "overview" && viewport.width === 1440) {
         await click(cdp, "[data-kordyn-v2-ai-support-trigger]");
         await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-ai-support-panel]')", "desktop Boundary support");
@@ -467,7 +476,11 @@ async function exerciseActions(cdp, baseUrl) {
 
   await click(cdp, '[data-kordyn-v2-workspace-target="configuration"]');
   await waitForExpression(cdp, `document.querySelector(${JSON.stringify(markers.configuration)})`, "configuration action");
-  await click(cdp, '[data-kordyn-v2-config-editor="trading"] [data-kordyn-v2-action="apply"]');
+  const noChange = await evaluate(cdp, `(() => { const inner=document.querySelector('[data-kordyn-v2-config-editor="trading"] [data-kordyn-v2-config-action="save-live-trading"]'); const global=document.querySelector('.kordynV2ConfigurationGlobalActions button:last-child'); return { innerDisabled:inner?.disabled, innerAction:inner?.dataset.kordynV2Action || null, globalDisabled:global?.disabled, requests:window.__plan05GovernanceCalls.actionRequests.length }; })()`);
+  assert.deepEqual(noChange, { innerDisabled: true, innerAction: null, globalDisabled: true, requests: 3 }, "no-change configuration remains non-submittable");
+  await selectValue(cdp, '[data-kordyn-v2-config-editor="trading"] select[name="mode"]', "semi_auto");
+  await waitForExpression(cdp, 'document.querySelector(\'[data-kordyn-v2-config-editor="trading"] [data-kordyn-v2-action="apply"]\')', "configuration dirty action");
+  await click(cdp, '.kordynV2ConfigurationGlobalActions button:last-child');
   await acceptConfirm(cdp, "configuration save");
   await waitForExpression(cdp, "window.__plan05GovernanceCalls.actionResults.length === 4", "configuration result");
   await actionOutcome(cdp, "success", "configuration save");

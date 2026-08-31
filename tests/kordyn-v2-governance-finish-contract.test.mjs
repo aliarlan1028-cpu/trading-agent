@@ -13,9 +13,11 @@ const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const outFile = path.join(rootDir, "node_modules", ".cache", `kordyn-v2-governance-finish-${process.pid}.cjs`);
 require("esbuild").buildSync({
   stdin: { contents: `
-    export { ConfigurationEditorFor } from "./src/kordynV2/domains/governance/ConfigurationWorkspace.jsx";
+    export { ConfigurationEditorFor, ConfigurationWorkspace } from "./src/kordynV2/domains/governance/ConfigurationWorkspace.jsx";
+    export { OperationsWorkspace } from "./src/kordynV2/domains/governance/OperationsWorkspace.jsx";
     export { MobileOperationsScreen } from "./src/kordynV2/domains/governance/MobileOperationsScreen.jsx";
     export { MobileRecoveryScreen } from "./src/kordynV2/domains/governance/MobileRecoveryScreen.jsx";
+    export { buildChangedConfigurationPayload } from "./src/kordynV2/domains/governance/configuration/editorShared.jsx";
     export { createElement } from "react";
     export { renderToStaticMarkup } from "react-dom/server";
   `, resolveDir: rootDir, loader: "jsx" },
@@ -27,7 +29,7 @@ require("esbuild").buildSync({
   outfile: outFile,
   logLevel: "silent"
 });
-const { ConfigurationEditorFor, MobileOperationsScreen, MobileRecoveryScreen, createElement, renderToStaticMarkup } = require(outFile);
+const { ConfigurationEditorFor, ConfigurationWorkspace, OperationsWorkspace, MobileOperationsScreen, MobileRecoveryScreen, buildChangedConfigurationPayload, createElement, renderToStaticMarkup } = require(outFile);
 
 const ownerData = { user: { id: "owner-1", isOwner: true }, permissions: ["*"] };
 const viewerData = { user: { id: "viewer-1", isOwner: false }, permissions: ["account.read", "audit.read"] };
@@ -147,6 +149,58 @@ test("generic configuration editors submit only deployed runtime keys and disabl
     const html = renderToStaticMarkup(createElement(ConfigurationEditorFor, { target, model: emptyModel, actions: { saveConfig: () => {} }, actionsDisabled: false }));
     assert.match(html, /data-kordyn-v2-config-action="save-config"[^>]*disabled=""/, target);
   }
+});
+
+test("configuration changes fail closed for no-change and unavailable placeholder values", () => {
+  assert.equal(buildChangedConfigurationPayload([
+    { name: "PORT", value: "3000", initialValue: "3000" },
+    { name: "OKX_MARKET_TYPE", value: "Unavailable", initialValue: "Unavailable" }
+  ]), null);
+  assert.deepEqual(buildChangedConfigurationPayload([
+    { name: "PORT", value: "3001", initialValue: "3000" },
+    { name: "OKX_MARKET_TYPE", value: "Unavailable", initialValue: "Unavailable" },
+    { name: "IGNORED", value: "x", initialValue: "", disabled: true }
+  ]), { PORT: "3001" });
+
+  const loadedModel = {
+    trading: { mode: { selected: "full_auto", effective: "observe" }, maxNotionalUsdt: { selected: 80, effective: 50 }, mandate: {} },
+    risk: {}, environment: { port: 3000, skillSandboxImage: "sandbox:current" }, network: {}, backup: {}, security: {}, exchange: {}, eventSources: [], notifications: {}, models: {}, agents: [], users: [], subscriptions: [], account: {},
+    scopes: [], permissions: buildGovernancePermissions(ownerData), permission: { owner: true }, audit: {}
+  };
+  const environment = renderToStaticMarkup(createElement(ConfigurationEditorFor, { target: "environment", model: loadedModel, actions: { saveConfig: () => {} }, actionsDisabled: false }));
+  assert.doesNotMatch(environment, /option value="Unavailable"/);
+  assert.match(environment, /data-kordyn-v2-config-action="save-config"[^>]*disabled=""/);
+});
+
+test("desktop governance workspaces retain the approved configuration and operations topology", () => {
+  const model = {
+    scopes: [], permissions: buildGovernancePermissions(ownerData), permission: { owner: true }, audit: { total: 1, latest: { action: "config.update", status: "recorded" } },
+    trading: { mode: { selected: "full_auto", effective: "observe" }, maxNotionalUsdt: { selected: 80, effective: 50 }, mandate: { id: "mandate-1", status: "active", allowedSymbols: ["BTC-USDT-SWAP"], maxLeverage: 3 } },
+    operations: { overall: { label: "degraded", tone: "warning" }, services: [{ id: "market", tone: "healthy", labelZh: "行情输入", value: "240ms" }, { id: "inputs", tone: "warning", labelZh: "事件输入", value: "15/17" }], tasks: { items: [], recentRuns: [{ id: "run-1", taskName: "Auto Trade Cycle", status: "processing", stages: [{ id: "sense", label: "检查市场" }] }] }, attention: [{ id: "event-1", kind: "source", tone: "warning", titleZh: "事件输入部分降级" }], activity: [{ id: "audit-1", type: "audit", title: "risk_preflight", status: "passed" }], recovery: { latestReconciliation: { id: "recovery-1", status: "partial" }, reports: [] } }
+  };
+  const configuration = renderToStaticMarkup(createElement(ConfigurationWorkspace, { model, actions: {}, actionsDisabled: false }));
+  assert.match(configuration, /class="kordynV2ConfigurationGlobalActions"/);
+  assert.match(configuration, /data-kordyn-v2-config-search/);
+  assert.match(configuration, /class="kordynV2ConfigurationSettingsMatrix"/);
+  assert.match(configuration, /class="kordynV2ConfigurationCredentialBar"/);
+  const operations = renderToStaticMarkup(createElement(OperationsWorkspace, { model, actions: {}, actionsDisabled: false }));
+  assert.match(operations, /class="kordynV2OperationsTaskColumn"/);
+  assert.match(operations, /class="kordynV2OperationsAuditStream"/);
+  assert.match(operations, /class="kordynV2OperationsRecoveryColumn"/);
+  assert.match(operations, /data-kordyn-v2-recovery-comparison/);
+});
+
+test("APP governance retains the approved status rail and degraded decision hierarchy", () => {
+  const model = { operations: {
+    overall: { label: "degraded", tone: "warning" }, services: [{ id: "inputs", tone: "warning", value: "15/17" }, { id: "account", tone: "healthy", value: "320ms" }], attention: [], notifications: { critical: 1 },
+    tasks: { items: [], recentRuns: [{ id: "run-1", taskName: "Auto Trade Cycle", status: "processing" }] }
+  }, boundary: { killSwitch: false }, permissions: buildGovernancePermissions(ownerData) };
+  const html = renderToStaticMarkup(createElement(MobileOperationsScreen, { model, actions: {}, actionsDisabled: false }));
+  assert.match(html, /class="kordynV2MobileStatusSummary"/);
+  assert.match(html, /class="kordynV2MobileStatusRail"/);
+  assert.match(html, /class="kordynV2MobileDegradedDecision"/);
+  assert.match(html, /查看详情/);
+  assert.match(html, /重试/);
 });
 
 test("APP governance deep actions and rows retain 44px touch targets", () => {
