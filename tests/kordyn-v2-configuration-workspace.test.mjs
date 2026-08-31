@@ -60,7 +60,11 @@ test("selected and effective values never share one unlabeled field", () => {
 });
 
 test("forbidden configuration is explanatory and has no enabled save action", () => {
-  const forbidden = { ...model, permission: { owner: false, canEdit: false, role: "trader" } };
+  const forbidden = {
+    ...model,
+    permissions: { ...model.permissions, owner: false, approveLiveConfig: false, writeMandate: false },
+    permission: { owner: false, canEdit: false, role: "trader" }
+  };
   const html = renderToStaticMarkup(createElement(ConfigurationWorkspace, { model: forbidden, actions }));
   assert.match(html, /data-kordyn-v2-configuration-access="forbidden"/);
   assert.doesNotMatch(html, /data-kordyn-v2-action="apply"[^>]*(?<!disabled)>/);
@@ -72,4 +76,3 @@ test("mobile configuration is registry to scope to editor, not an endless settin
   assert.match(html, /data-kordyn-v2-mobile-config-view="registry"/);
   assert.doesNotMatch(html, /data-kordyn-v2-config-editor="trading"[\s\S]*data-kordyn-v2-config-editor="risk"/);
 });
-

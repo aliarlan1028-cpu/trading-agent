@@ -17,7 +17,7 @@ const pagePath = "/tests/kordyn-v2-governance-browser.html";
 const runner = "tests/run-kordyn-v2-governance-browser.mjs";
 const fixture = "tests/kordyn-v2-governance-browser.jsx";
 const productionSourceCommit = execFileSync("git", ["log", "-1", "--format=%H", "--", "src/kordynV2"], { cwd: rootDir, encoding: "utf8" }).trim();
-const captureTestSourceCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: rootDir, encoding: "utf8" }).trim();
+const captureTestSourceCommit = execFileSync("git", ["log", "-1", "--format=%H", "--", runner, fixture, "scripts/compare-kordyn-v2-concepts.mjs"], { cwd: rootDir, encoding: "utf8" }).trim();
 
 const viewports = Object.freeze({
   desktop1440: Object.freeze({ width: 1440, height: 900, device: "desktop" }),
