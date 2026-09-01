@@ -14,8 +14,12 @@ const chromeBinary = process.env.CHROME_BIN || "/Applications/Google Chrome.app/
 const pagePath = "/tests/kordyn-v2-ai-browser.html";
 const reviewRoot = path.join(rootDir, ".impeccable/review/kordyn-v2");
 const outputDir = path.resolve(rootDir, process.env.KORDYN_V2_SCREENSHOT_DIR || ".impeccable/review/kordyn-v2/ai");
-const productionSourceCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: rootDir, encoding: "utf8" }).trim();
+const runner = "tests/run-kordyn-v2-ai-browser.mjs";
+const fixture = "tests/kordyn-v2-production-fixture.js";
+const productionSourceCommit = execFileSync("git", ["log", "-1", "--format=%H", "--", "src/kordynV2"], { cwd: rootDir, encoding: "utf8" }).trim();
+const captureTestSourceCommit = execFileSync("git", ["log", "-1", "--format=%H", "--", runner, fixture, "scripts/compare-kordyn-v2-concepts.mjs"], { cwd: rootDir, encoding: "utf8" }).trim();
 assert.match(productionSourceCommit, /^[0-9a-f]{40}$/, "Task 5 capture binds an exact production source commit");
+assert.match(captureTestSourceCommit, /^[0-9a-f]{40}$/, "Task 5 capture binds exact capture-test source");
 const viewports = Object.freeze([
   Object.freeze({ width: 1440, height: 900, device: "desktop" }),
   Object.freeze({ width: 1180, height: 800, device: "desktop" }),
@@ -425,9 +429,10 @@ async function verifyStateScenarios(cdp, baseUrl) {
   }
   await writeFile(path.join(outputDir, "state-evidence.json"), `${JSON.stringify({
     schemaVersion: 1,
-    runner: "tests/run-kordyn-v2-ai-browser.mjs",
-    fixture: "tests/kordyn-v2-production-fixture.js",
+    runner,
+    fixture,
     productionSourceCommit,
+    captureTestSourceCommit,
     states: evidence
   }, null, 2)}\n`);
   return evidence.map(({ state }) => state);
@@ -527,8 +532,8 @@ async function captureApprovedSurfaces(cdp, baseUrl) {
       assert.ok(footerTrack.every((row) => row.height >= 44), `${viewport.width}: active footer actions retain accessible targets ${JSON.stringify(footerTrack)}`);
       assert.ok(footerTrack[0].right <= footerTrack[1].left, `${viewport.width}: active footer actions never overlap ${JSON.stringify(footerTrack)}`);
       if (viewport.width === 1180) {
-        const expected = [{ left: 401, width: 116, top: 625 }, { left: 743, width: 140, top: 625 }];
-        footerTrack.forEach((row, index) => Object.entries(expected[index]).forEach(([key, value]) => assert.ok(Math.abs(row[key] - value) <= (index === 0 && key === "left" ? 1 : 4), `1180: ${row.kind} ${key} follows approved action track ${JSON.stringify(footerTrack)}`)));
+        const expected = [{ left: 401, width: 116, top: 553 }, { left: 743, width: 140, top: 553 }];
+        footerTrack.forEach((row, index) => Object.entries(expected[index]).forEach(([key, value]) => assert.ok(Math.abs(row[key] - value) <= (index === 0 && key === "left" ? 1 : 4), `1180: ${row.kind} ${key} follows the shell-docked action track ${JSON.stringify(footerTrack)}`)));
       } else {
         assert.ok(footerTrack[0].left < footerTrack[1].left && footerTrack[1].right < viewport.width, `1440: active footer ordering does not regress ${JSON.stringify(footerTrack)}`);
       }

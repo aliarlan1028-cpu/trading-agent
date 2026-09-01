@@ -16,7 +16,10 @@ const chromeBinary = process.env.CHROME_BIN || "/Applications/Google Chrome.app/
 const pagePath = "/tests/kordyn-v2-assets-browser.html";
 const runner = "tests/run-kordyn-v2-assets-browser.mjs";
 const fixture = "tests/kordyn-v2-assets-browser.jsx";
-const productionSourceCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: rootDir, encoding: "utf8" }).trim();
+const productionSourceCommit = execFileSync("git", ["log", "-1", "--format=%H", "--", "src/kordynV2"], { cwd: rootDir, encoding: "utf8" }).trim();
+const captureTestSourceCommit = execFileSync("git", ["log", "-1", "--format=%H", "--", runner, fixture, "scripts/compare-kordyn-v2-concepts.mjs"], { cwd: rootDir, encoding: "utf8" }).trim();
+assert.match(productionSourceCommit, /^[0-9a-f]{40}$/, "asset capture binds exact product source");
+assert.match(captureTestSourceCommit, /^[0-9a-f]{40}$/, "asset capture binds exact capture-test source");
 
 const viewports = Object.freeze({
   desktop1440: Object.freeze({ width: 1440, height: 900, device: "desktop" }),
@@ -375,10 +378,10 @@ try {
   const styles = await styleOwnership(cdp);
   assert.equal(styles.assetsCss, true);
   assert.equal(styles.legacyProductStyles, false);
-  const evidence = { schemaVersion: 1, runner, fixture, productionSourceCommit, captures, interactions, actionResults, styleOwnership: styles };
+  const evidence = { schemaVersion: 1, runner, fixture, productionSourceCommit, captureTestSourceCommit, captures, interactions, actionResults, styleOwnership: styles };
   await writeFile(path.join(outputDir, "capture-evidence.json"), `${JSON.stringify(evidence, null, 2)}\n`);
-  await writeFile(path.join(outputDir, "state-evidence.json"), `${JSON.stringify({ schemaVersion: 1, runner, fixture, productionSourceCommit, states }, null, 2)}\n`);
-  process.stdout.write(`${JSON.stringify({ productionSourceCommit, captures: captures.length, states: states.length, interactions: interactions.length, actionModes: actionResults.length, assetsCss: true, legacyProductStyles: false, outputDir: path.relative(rootDir, outputDir) }, null, 2)}\n`);
+  await writeFile(path.join(outputDir, "state-evidence.json"), `${JSON.stringify({ schemaVersion: 1, runner, fixture, productionSourceCommit, captureTestSourceCommit, states }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ productionSourceCommit, captureTestSourceCommit, captures: captures.length, states: states.length, interactions: interactions.length, actionModes: actionResults.length, assetsCss: true, legacyProductStyles: false, outputDir: path.relative(rootDir, outputDir) }, null, 2)}\n`);
 } finally {
   cdp?.close();
   await Promise.allSettled([stop(chrome), stop(vite)]);

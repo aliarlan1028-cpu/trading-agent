@@ -24,7 +24,8 @@ const SCOPE_CONFIG = Object.freeze({
     runner: "tests/run-kordyn-v2-ai-browser.mjs",
     fixture: "tests/kordyn-v2-production-fixture.js",
     captureKey: "aiCaptures",
-    productionCommit: true
+    productionCommit: true,
+    captureTestCommit: true
   }),
   account: Object.freeze({
     runner: "tests/run-kordyn-v2-account-browser.mjs",
@@ -37,7 +38,8 @@ const SCOPE_CONFIG = Object.freeze({
     runner: "tests/run-kordyn-v2-assets-browser.mjs",
     fixture: "tests/kordyn-v2-assets-browser.jsx",
     captureKey: "assetCaptures",
-    productionCommit: true
+    productionCommit: true,
+    captureTestCommit: true
   }),
   governance: Object.freeze({
     runner: "tests/run-kordyn-v2-governance-browser.mjs",
