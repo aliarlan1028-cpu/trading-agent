@@ -1,0 +1,973 @@
+{
+  "schemaVersion": 1,
+  "runner": "tests/run-kordyn-v2-governance-browser.mjs",
+  "fixture": "tests/kordyn-v2-governance-browser.jsx",
+  "productionSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+  "captureTestSourceCommit": "4214862dc105995a4e8935d75ff1dc89653ace67",
+  "captures": [
+    {
+      "file": "desktop-governance-boundary--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "governance",
+      "workspaceId": "overview",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440
+      },
+      "shell": {
+        "domainId": "governance",
+        "workspaceId": "overview",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "governanceCss": true,
+      "sha256": "b8f1d28bd2752de1ce070856845496c68b706748dab9fa8e7a00621e4af215c8",
+      "aiSupport": "open-read-only"
+    },
+    {
+      "file": "desktop-governance-boundary--1180x800.png",
+      "viewport": "1180x800",
+      "device": "desktop",
+      "domainId": "governance",
+      "workspaceId": "overview",
+      "viewportGeometry": {
+        "width": 1180,
+        "height": 800
+      },
+      "document": {
+        "clientWidth": 1180,
+        "scrollWidth": 1180
+      },
+      "shell": {
+        "domainId": "governance",
+        "workspaceId": "overview",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "governanceCss": true,
+      "sha256": "477bd5415ffdbcece45a5ee56b986bd0e0047c683290d428453ed4d9ccc13ff4"
+    },
+    {
+      "file": "desktop-governance-operations--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "governance",
+      "workspaceId": "runs",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440
+      },
+      "shell": {
+        "domainId": "governance",
+        "workspaceId": "runs",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "governanceCss": true,
+      "sha256": "d8f3bf2099f985a0545f631a65d7b5d809ab5c6f6be05a3757bf38cfd3193027"
+    },
+    {
+      "file": "desktop-governance-operations--1180x800.png",
+      "viewport": "1180x800",
+      "device": "desktop",
+      "domainId": "governance",
+      "workspaceId": "runs",
+      "viewportGeometry": {
+        "width": 1180,
+        "height": 800
+      },
+      "document": {
+        "clientWidth": 1180,
+        "scrollWidth": 1180
+      },
+      "shell": {
+        "domainId": "governance",
+        "workspaceId": "runs",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "governanceCss": true,
+      "sha256": "a85ada4b70e26da797044a9fe27c44003d0a7fadd2054ea1706de773d0e865ac"
+    },
+    {
+      "file": "desktop-governance-configuration--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "governance",
+      "workspaceId": "configuration",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440
+      },
+      "shell": {
+        "domainId": "governance",
+        "workspaceId": "configuration",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "governanceCss": true,
+      "sha256": "90614a5055654d2ecf8216678ead0330974618a6240ab415c3247082cd3f8f81"
+    },
+    {
+      "file": "desktop-governance-configuration--1180x800.png",
+      "viewport": "1180x800",
+      "device": "desktop",
+      "domainId": "governance",
+      "workspaceId": "configuration",
+      "viewportGeometry": {
+        "width": 1180,
+        "height": 800
+      },
+      "document": {
+        "clientWidth": 1180,
+        "scrollWidth": 1180
+      },
+      "shell": {
+        "domainId": "governance",
+        "workspaceId": "configuration",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "governanceCss": true,
+      "sha256": "fd054fcbee5af1d2a6b25f487ba92352a88b65ce127681912ddcd9a3482ccf37"
+    },
+    {
+      "file": "desktop-governance-danger-confirm--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "governance",
+      "workspaceId": "overview",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440
+      },
+      "shell": {
+        "domainId": "governance",
+        "workspaceId": "overview",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "governanceCss": true,
+      "sha256": "50798fcc288e2fc0d646fb8daba80d5c47e3de3fb097bacbd9c5d41a368b42e8",
+      "dangerConfirmation": "kill-switch",
+      "noActionAccepted": true
+    },
+    {
+      "file": "mobile-system-governance-content--390x844.png",
+      "viewport": "390x844",
+      "device": "mobile",
+      "domainId": "governance",
+      "workspaceId": "runs",
+      "viewportGeometry": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "clientWidth": 390,
+        "scrollWidth": 390
+      },
+      "shell": {
+        "domainId": "governance",
+        "workspaceId": "runs",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "governanceCss": true,
+      "sha256": "c0556520e9a370c326b7c628bba3a3d062dd172ecabe6cf1428e9621addd963e",
+      "aiSupport": "closed",
+      "governanceContentVisible": true
+    },
+    {
+      "file": "mobile-system-governance--390x844.png",
+      "viewport": "390x844",
+      "device": "mobile",
+      "domainId": "governance",
+      "workspaceId": "runs",
+      "viewportGeometry": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "clientWidth": 390,
+        "scrollWidth": 390
+      },
+      "shell": {
+        "domainId": "governance",
+        "workspaceId": "runs",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "governanceCss": true,
+      "sha256": "f4808d00907c77051735b4ca865b8dd8dd124697566d29d6903188e0612776b3",
+      "aiSupport": "open-read-only",
+      "supportState": "ready",
+      "underlyingGovernanceScrollTop": 314,
+      "supportGeometry": {
+        "rail": {
+          "top": 216,
+          "right": 365,
+          "bottom": 268,
+          "left": 25,
+          "width": 340,
+          "height": 52
+        },
+        "degraded": {
+          "top": 281,
+          "right": 378,
+          "bottom": 441,
+          "left": 12,
+          "width": 366,
+          "height": 160
+        },
+        "danger": {
+          "top": 453,
+          "right": 378,
+          "bottom": 521,
+          "left": 12,
+          "width": 366,
+          "height": 68
+        },
+        "sheet": {
+          "top": 528.8125,
+          "right": 390,
+          "bottom": 782,
+          "left": 0,
+          "width": 390,
+          "height": 253.1875
+        },
+        "scrollTop": 314
+      }
+    },
+    {
+      "file": "mobile-system-governance-content--430x932.png",
+      "viewport": "430x932",
+      "device": "mobile",
+      "domainId": "governance",
+      "workspaceId": "runs",
+      "viewportGeometry": {
+        "width": 430,
+        "height": 932
+      },
+      "document": {
+        "clientWidth": 430,
+        "scrollWidth": 430
+      },
+      "shell": {
+        "domainId": "governance",
+        "workspaceId": "runs",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "governanceCss": true,
+      "sha256": "0195d324710fb05ef7af12f69ceda9c5a0b39ba9c006fb79bf39c0c1fb699a34",
+      "aiSupport": "closed",
+      "governanceContentVisible": true
+    },
+    {
+      "file": "mobile-system-governance--430x932.png",
+      "viewport": "430x932",
+      "device": "mobile",
+      "domainId": "governance",
+      "workspaceId": "runs",
+      "viewportGeometry": {
+        "width": 430,
+        "height": 932
+      },
+      "document": {
+        "clientWidth": 430,
+        "scrollWidth": 430
+      },
+      "shell": {
+        "domainId": "governance",
+        "workspaceId": "runs",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "governanceCss": true,
+      "sha256": "40ee0f57d0aba054bdd308ae41a5673a1fa86db03d3ff5d138bf90ef8a6bd01a",
+      "aiSupport": "open-read-only",
+      "supportState": "ready",
+      "underlyingGovernanceScrollTop": 253,
+      "supportGeometry": {
+        "rail": {
+          "top": 277,
+          "right": 405,
+          "bottom": 329,
+          "left": 25,
+          "width": 380,
+          "height": 52
+        },
+        "degraded": {
+          "top": 342,
+          "right": 418,
+          "bottom": 502,
+          "left": 12,
+          "width": 406,
+          "height": 160
+        },
+        "danger": {
+          "top": 514,
+          "right": 418,
+          "bottom": 582,
+          "left": 12,
+          "width": 406,
+          "height": 68
+        },
+        "sheet": {
+          "top": 590.40625,
+          "right": 430,
+          "bottom": 870,
+          "left": 0,
+          "width": 430,
+          "height": 279.59375
+        },
+        "scrollTop": 253
+      }
+    },
+    {
+      "file": "desktop-governance-event-inputs--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "governance",
+      "workspaceId": "event-inputs",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440
+      },
+      "shell": {
+        "domainId": "governance",
+        "workspaceId": "event-inputs",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "governanceCss": true,
+      "sha256": "d1f5a2477a5b44e7601559dbfeb1c8fdd34d8b31d9e8172715b04d06e43c9384",
+      "supportingSurface": true
+    },
+    {
+      "file": "desktop-governance-notifications--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "governance",
+      "workspaceId": "notifications",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440
+      },
+      "shell": {
+        "domainId": "governance",
+        "workspaceId": "notifications",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "governanceCss": true,
+      "sha256": "299570940f48684163e82ced322558f745f94b03b032a50e23aa2157daf9223d",
+      "supportingSurface": true
+    },
+    {
+      "file": "desktop-governance-audit--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "governance",
+      "workspaceId": "audit",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440
+      },
+      "shell": {
+        "domainId": "governance",
+        "workspaceId": "audit",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "governanceCss": true,
+      "sha256": "b87a2e86a7f5754c5d060a57bc36adf42103007d3ca9eacbf0bc35cf7d9d3a53",
+      "supportingSurface": true
+    },
+    {
+      "file": "desktop-governance-recovery--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "governance",
+      "workspaceId": "recovery",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440
+      },
+      "shell": {
+        "domainId": "governance",
+        "workspaceId": "recovery",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "governanceCss": true,
+      "sha256": "b754bdd12a4f85ba38e8ee385dd69bc5e400745ba554dab7eeae7d1364dcf6ca",
+      "supportingSurface": true
+    }
+  ],
+  "interactions": [
+    {
+      "label": "Mandate",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "root": {
+        "id": "mandate-core-17",
+        "type": "Mandate",
+        "workspace": "overview"
+      },
+      "context": "Mandate / mandate-core-17",
+      "proof": "Mandate / mandate-core-17"
+    },
+    {
+      "label": "Risk incident",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "root": {
+        "id": "risk-incident-16",
+        "type": "Risk incident",
+        "workspace": "overview"
+      },
+      "context": "Risk incident / risk-incident-16",
+      "proof": "Risk incident / risk-incident-16"
+    },
+    {
+      "label": "Event",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "root": {
+        "id": "event-window-fomc",
+        "type": "Event",
+        "workspace": "event-inputs"
+      },
+      "context": "Event / event-window-fomc",
+      "proof": "Event / event-window-fomc"
+    },
+    {
+      "label": "Task",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "root": {
+        "id": "task-governance-patrol",
+        "type": "Task",
+        "workspace": "runs"
+      },
+      "context": "Task / task-governance-patrol",
+      "proof": "Task / task-governance-patrol"
+    },
+    {
+      "label": "Agent run",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "root": {
+        "id": "job-run-patrol-42",
+        "type": "Agent run",
+        "workspace": "runs"
+      },
+      "context": "Agent run / job-run-patrol-42",
+      "proof": "Agent run / job-run-patrol-42"
+    },
+    {
+      "label": "Notification",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "root": {
+        "id": "notification-risk-12",
+        "type": "Notification",
+        "workspace": "notifications"
+      },
+      "context": "Notification / notification-risk-12",
+      "proof": "Notification / notification-risk-12"
+    },
+    {
+      "label": "Audit log",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "root": {
+        "id": "audit-mode-33",
+        "type": "Audit log",
+        "workspace": "audit"
+      },
+      "context": "Audit log / audit-mode-33",
+      "proof": "Audit log / audit-mode-33"
+    },
+    {
+      "label": "Recovery",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "root": {
+        "id": "recovery-report-28",
+        "type": "Recovery",
+        "workspace": "recovery"
+      },
+      "context": "Recovery / recovery-report-28",
+      "proof": "Recovery / recovery-report-28"
+    },
+    {
+      "label": "Configuration record",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "root": {
+        "id": "event-source-fed",
+        "type": "Event source",
+        "workspace": "configuration"
+      },
+      "context": "Event source / event-source-fed",
+      "proof": "Event source / event-source-fed"
+    },
+    {
+      "label": "APP Task",
+      "viewport": "390x844",
+      "device": "mobile",
+      "root": {
+        "id": "task-governance-patrol",
+        "type": "Task",
+        "workspace": "runs"
+      },
+      "context": "Task / task-governance-patrol",
+      "proof": "Task / task-governance-patrol"
+    },
+    {
+      "label": "APP Agent run",
+      "viewport": "390x844",
+      "device": "mobile",
+      "root": {
+        "id": "job-run-patrol-42",
+        "type": "Agent run",
+        "workspace": "runs"
+      },
+      "context": "Agent run / job-run-patrol-42",
+      "proof": "Agent run / job-run-patrol-42"
+    },
+    {
+      "label": "APP Recovery",
+      "viewport": "390x844",
+      "device": "mobile",
+      "root": {
+        "id": "recovery-report-28",
+        "type": "Recovery",
+        "workspace": "recovery"
+      },
+      "context": "Recovery / recovery-report-28",
+      "proof": "Recovery / recovery-report-28"
+    }
+  ],
+  "navigation": [
+    {
+      "viewport": "390x844",
+      "workspace": "overview",
+      "count": 4,
+      "targets": [
+        "overview",
+        "runs",
+        "audit",
+        "configuration"
+      ],
+      "active": 1,
+      "duplicate": 0,
+      "overflow": 0
+    },
+    {
+      "viewport": "390x844",
+      "workspace": "runs",
+      "count": 4,
+      "targets": [
+        "overview",
+        "runs",
+        "audit",
+        "configuration"
+      ],
+      "active": 1,
+      "duplicate": 0,
+      "overflow": 0
+    },
+    {
+      "viewport": "390x844",
+      "workspace": "audit",
+      "count": 4,
+      "targets": [
+        "overview",
+        "runs",
+        "audit",
+        "configuration"
+      ],
+      "active": 1,
+      "duplicate": 0,
+      "overflow": 0
+    },
+    {
+      "viewport": "390x844",
+      "workspace": "configuration",
+      "count": 4,
+      "targets": [
+        "overview",
+        "runs",
+        "audit",
+        "configuration"
+      ],
+      "active": 1,
+      "duplicate": 0,
+      "overflow": 0
+    },
+    {
+      "viewport": "390x844",
+      "workspace": "event-inputs",
+      "flow": true,
+      "active": "overview"
+    },
+    {
+      "viewport": "390x844",
+      "workspace": "notifications",
+      "flow": true,
+      "active": "runs"
+    },
+    {
+      "viewport": "390x844",
+      "workspace": "recovery",
+      "flow": true,
+      "active": "runs"
+    },
+    {
+      "viewport": "430x932",
+      "workspace": "overview",
+      "count": 4,
+      "targets": [
+        "overview",
+        "runs",
+        "audit",
+        "configuration"
+      ],
+      "active": 1,
+      "duplicate": 0,
+      "overflow": 0
+    },
+    {
+      "viewport": "430x932",
+      "workspace": "runs",
+      "count": 4,
+      "targets": [
+        "overview",
+        "runs",
+        "audit",
+        "configuration"
+      ],
+      "active": 1,
+      "duplicate": 0,
+      "overflow": 0
+    },
+    {
+      "viewport": "430x932",
+      "workspace": "audit",
+      "count": 4,
+      "targets": [
+        "overview",
+        "runs",
+        "audit",
+        "configuration"
+      ],
+      "active": 1,
+      "duplicate": 0,
+      "overflow": 0
+    },
+    {
+      "viewport": "430x932",
+      "workspace": "configuration",
+      "count": 4,
+      "targets": [
+        "overview",
+        "runs",
+        "audit",
+        "configuration"
+      ],
+      "active": 1,
+      "duplicate": 0,
+      "overflow": 0
+    },
+    {
+      "viewport": "430x932",
+      "workspace": "event-inputs",
+      "flow": true,
+      "active": "overview"
+    },
+    {
+      "viewport": "430x932",
+      "workspace": "notifications",
+      "flow": true,
+      "active": "runs"
+    },
+    {
+      "viewport": "430x932",
+      "workspace": "recovery",
+      "flow": true,
+      "active": "runs"
+    }
+  ],
+  "actionResults": [
+    {
+      "mode": "failure",
+      "processing": {
+        "state": "processing",
+        "action": "runTask",
+        "text": "运行任务等待服务端权威结果，不提前显示成功。"
+      },
+      "outcome": {
+        "state": "failed",
+        "action": "runTask",
+        "text": "运行任务服务端未接受该动作；当前有效状态保持不变。"
+      },
+      "ledger": {
+        "actionRequests": [
+          {
+            "endpoint": "/api/tasks/task-governance-patrol/run",
+            "payload": {},
+            "method": "POST",
+            "resultMode": "failure"
+          }
+        ],
+        "actionResults": [
+          {
+            "endpoint": "/api/tasks/task-governance-patrol/run",
+            "result": {
+              "ok": false,
+              "status": "failed",
+              "error": "authoritative_governance_rejection",
+              "endpoint": "/api/tasks/task-governance-patrol/run"
+            }
+          }
+        ],
+        "authorityWrites": 1
+      }
+    },
+    {
+      "mode": "partial",
+      "processing": {
+        "state": "processing",
+        "action": "runTask",
+        "text": "运行任务等待服务端权威结果，不提前显示成功。"
+      },
+      "outcome": {
+        "state": "partial",
+        "action": "runTask",
+        "text": "运行任务服务端只完成了部分影响；失败项仍保留待处理。"
+      },
+      "ledger": {
+        "actionRequests": [
+          {
+            "endpoint": "/api/tasks/task-governance-patrol/run",
+            "payload": {},
+            "method": "POST",
+            "resultMode": "partial"
+          }
+        ],
+        "actionResults": [
+          {
+            "endpoint": "/api/tasks/task-governance-patrol/run",
+            "result": {
+              "ok": false,
+              "status": "partial",
+              "completed": [
+                "snapshot_refreshed"
+              ],
+              "failed": [
+                "order_difference_open"
+              ],
+              "endpoint": "/api/tasks/task-governance-patrol/run"
+            }
+          }
+        ],
+        "authorityWrites": 1
+      }
+    },
+    {
+      "mode": "success",
+      "processing": {
+        "state": "processing",
+        "action": "runTask",
+        "text": "运行任务等待服务端权威结果，不提前显示成功。"
+      },
+      "outcome": {
+        "state": "success",
+        "action": "runTask",
+        "text": "运行任务服务端已接受并返回成功结果。"
+      },
+      "ledger": {
+        "actionRequests": [
+          {
+            "endpoint": "/api/tasks/task-governance-patrol/run",
+            "payload": {},
+            "method": "POST",
+            "resultMode": "success"
+          }
+        ],
+        "actionResults": [
+          {
+            "endpoint": "/api/tasks/task-governance-patrol/run",
+            "result": {
+              "run": {
+                "id": "server--api-tasks-task-governance-patrol-run",
+                "status": "accepted"
+              },
+              "message": "task action accepted"
+            }
+          }
+        ],
+        "authorityWrites": 1
+      }
+    },
+    {
+      "mode": "deployed-actions",
+      "ledger": {
+        "actionRequests": [
+          {
+            "endpoint": "/api/notifications/read",
+            "payload": {},
+            "method": "POST",
+            "resultMode": "success"
+          },
+          {
+            "endpoint": "/api/reconciler/run",
+            "payload": {
+              "mode": "manual_ui"
+            },
+            "method": "POST",
+            "resultMode": "success"
+          },
+          {
+            "endpoint": "/api/scheduler/recover",
+            "payload": {},
+            "method": "POST",
+            "resultMode": "success"
+          },
+          {
+            "endpoint": "/api/config/live-trading",
+            "payload": {
+              "requestedMode": "semi_auto",
+              "acknowledged": false,
+              "maxNotionalUsdt": 3000
+            },
+            "method": "POST",
+            "resultMode": "success"
+          }
+        ],
+        "actionResults": [
+          {
+            "endpoint": "/api/notifications/read",
+            "result": {
+              "notification": {
+                "deliveryStatus": "delivered"
+              },
+              "message": "notification request completed"
+            }
+          },
+          {
+            "endpoint": "/api/reconciler/run",
+            "result": {
+              "message": "governance action completed",
+              "result": {
+                "id": "server--api-reconciler-run"
+              }
+            }
+          },
+          {
+            "endpoint": "/api/scheduler/recover",
+            "result": {
+              "message": "governance action completed",
+              "result": {
+                "id": "server--api-scheduler-recover"
+              }
+            }
+          },
+          {
+            "endpoint": "/api/config/live-trading",
+            "result": {
+              "message": "live trading target applied",
+              "applied": [
+                "LIVE_TRADING_MODE",
+                "LIVE_TRADING_MAX_NOTIONAL_USDT"
+              ]
+            }
+          }
+        ],
+        "authorityWrites": 4
+      }
+    }
+  ],
+  "styleOwnership": {
+    "governanceCss": true,
+    "legacyProductStyles": false,
+    "owners": [
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/domains/ai/ai.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/domains/ai/ai.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/domains/governance/governance.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/domains/governance/governance.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/styles/mobile-shell.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/styles/mobile-shell.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/styles/shell.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/styles/shell.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/styles/tokens.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/styles/tokens.css"
+    ]
+  }
+}

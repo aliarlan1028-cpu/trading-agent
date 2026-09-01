@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "identity": "mobile-ai-mission-home--430x932",
+  "concept": {
+    "id": "mobile-ai-mission-home",
+    "file": ".impeccable/mocks/kordyn-v2-approved/mobile-ai-mission-home.png",
+    "sha256": "6e0eda474f6658ff9dbfcbc6b18d4503203a78ddb30e38aa22b0760c1c902c9b",
+    "storedPixels": {
+      "width": 853,
+      "height": 1844
+    },
+    "normalizedViewport": "430x932"
+  },
+  "actual": {
+    "file": "mobile-ai-mission-home--430x932.png",
+    "sha256": "f2da3db05cd2ed9241ecc5a7664d37fae6bb951d02cc24ae48d5f9f995e549c3",
+    "runner": "tests/run-kordyn-v2-ai-browser.mjs",
+    "fixture": "tests/kordyn-v2-production-fixture.js",
+    "productionSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+    "captureTestSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+    "device": "mobile",
+    "domainId": "ai",
+    "workspaceId": "missions"
+  },
+  "viewport": {
+    "name": "430x932",
+    "width": 430,
+    "height": 932
+  },
+  "document": {
+    "clientWidth": 430,
+    "scrollWidth": 430
+  },
+  "documentOverflow": 0,
+  "shellGeometry": {
+    "left": 0,
+    "top": 0,
+    "width": 430,
+    "height": 932
+  },
+  "diagnostics": {
+    "screenshotStructure": {
+      "variance": 0.01973557055814112,
+      "edgeDensity": 0.04166850155137309,
+      "nearFlat": false
+    },
+    "pixelDifference": {
+      "metric": 0.07643552739990098,
+      "role": "diagnostic only"
+    },
+    "contentAwareComparator": {
+      "applied": false,
+      "reason": "no fixed mobile shell threshold in Foundation Plan 01"
+    }
+  },
+  "artifacts": {
+    "normalizedReference": {
+      "file": "mobile-ai-mission-home--430x932--reference.png",
+      "sha256": "f3e8a97d69a54a9754c92b89fcba0c39821e7e88fbcd2ca37f24b2ece86d2049"
+    },
+    "overlay50": {
+      "file": "mobile-ai-mission-home--430x932--overlay.png",
+      "sha256": "a30a8324749e2ad2b37458bc56f0068cac584a203fca25d6575b6be1f03d3d63"
+    },
+    "absoluteDifference": {
+      "file": "mobile-ai-mission-home--430x932--difference.png",
+      "sha256": "67734e324fc2a99a7b95763f61e40848df00d0c8aa10a13792cabb013f7fc6dc"
+    }
+  },
+  "releaseVerdict": "human region review required"
+}

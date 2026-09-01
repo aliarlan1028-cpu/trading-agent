@@ -1,0 +1,718 @@
+{
+  "schemaVersion": 1,
+  "runner": "tests/run-kordyn-v2-assets-browser.mjs",
+  "fixture": "tests/kordyn-v2-assets-browser.jsx",
+  "productionSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+  "captureTestSourceCommit": "4214862dc105995a4e8935d75ff1dc89653ace67",
+  "captures": [
+    {
+      "file": "desktop-assets-relationship--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "assets",
+      "workspaceId": "relationships",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "relationships",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": true,
+      "sha256": "3346d78db66bd315d22b196280b75b77ec81c62b477f8d7f01e46d1f26f25840"
+    },
+    {
+      "file": "desktop-assets-relationship--1180x800.png",
+      "viewport": "1180x800",
+      "device": "desktop",
+      "domainId": "assets",
+      "workspaceId": "relationships",
+      "viewportGeometry": {
+        "width": 1180,
+        "height": 800
+      },
+      "document": {
+        "clientWidth": 1180,
+        "scrollWidth": 1180
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "relationships",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": true,
+      "sha256": "d465984659ccadf9626613c8b2a3d8aeca9dd43e4ae42535aff4302a59e266a9"
+    },
+    {
+      "file": "desktop-strategy-registry--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "assets",
+      "workspaceId": "strategies",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "strategies",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": true,
+      "sha256": "5cd87e30ed8c48969238f4e48ce13a8fb9e32aad1748cde3577d524745050710"
+    },
+    {
+      "file": "desktop-strategy-registry--1180x800.png",
+      "viewport": "1180x800",
+      "device": "desktop",
+      "domainId": "assets",
+      "workspaceId": "strategies",
+      "viewportGeometry": {
+        "width": 1180,
+        "height": 800
+      },
+      "document": {
+        "clientWidth": 1180,
+        "scrollWidth": 1180
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "strategies",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": true,
+      "sha256": "a9fbc0d805ffd6d29c53a8387da6050c28fd3c0ae4e89de8d2798d2a8cec9c3b"
+    },
+    {
+      "file": "desktop-knowledge-incubator--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "assets",
+      "workspaceId": "knowledge",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "knowledge",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": true,
+      "sha256": "6ee98a2b12b71d5b1f8bfcc12d56189a48181684199e2c916fefeeba80fe54e6"
+    },
+    {
+      "file": "desktop-knowledge-incubator--1180x800.png",
+      "viewport": "1180x800",
+      "device": "desktop",
+      "domainId": "assets",
+      "workspaceId": "knowledge",
+      "viewportGeometry": {
+        "width": 1180,
+        "height": 800
+      },
+      "document": {
+        "clientWidth": 1180,
+        "scrollWidth": 1180
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "knowledge",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": true,
+      "sha256": "fd912cc7e302c5a18378feb42c8b3014becb6d8e0b78a0f80fff80657fbee09b"
+    },
+    {
+      "file": "desktop-capability-registry--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "assets",
+      "workspaceId": "capabilities",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "capabilities",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": true,
+      "sha256": "248e91b64c73c38ddcfd18876398deb2cab78521b9304fc990adb8e13020ed6c"
+    },
+    {
+      "file": "desktop-capability-registry--1180x800.png",
+      "viewport": "1180x800",
+      "device": "desktop",
+      "domainId": "assets",
+      "workspaceId": "capabilities",
+      "viewportGeometry": {
+        "width": 1180,
+        "height": 800
+      },
+      "document": {
+        "clientWidth": 1180,
+        "scrollWidth": 1180
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "capabilities",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": true,
+      "sha256": "ccf74dd828f1676a23349310133ec147f26efeaf065b8d9052e789a51e159be0"
+    },
+    {
+      "file": "desktop-review-owner-release--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "assets",
+      "workspaceId": "reviews",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "reviews",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": true,
+      "sha256": "c5d17cd845d4c67fe49aa64f83bacb4dfb9763ac9453f5371b375616c7154052"
+    },
+    {
+      "file": "desktop-review-owner-release--1180x800.png",
+      "viewport": "1180x800",
+      "device": "desktop",
+      "domainId": "assets",
+      "workspaceId": "reviews",
+      "viewportGeometry": {
+        "width": 1180,
+        "height": 800
+      },
+      "document": {
+        "clientWidth": 1180,
+        "scrollWidth": 1180
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "reviews",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": true,
+      "sha256": "7a555845a48350b2bc3ac13e13c56e90915d493df18109367630a1d738422a21"
+    },
+    {
+      "file": "mobile-intelligent-assets--390x844.png",
+      "viewport": "390x844",
+      "device": "mobile",
+      "domainId": "assets",
+      "workspaceId": "relationships",
+      "viewportGeometry": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "clientWidth": 390,
+        "scrollWidth": 390
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "relationships",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": true,
+      "sha256": "994afaebf189c9d5ff1b0e78e70c6fbbcaf3d929ad608c25ac9337c9ecc76285"
+    },
+    {
+      "file": "mobile-intelligent-assets--430x932.png",
+      "viewport": "430x932",
+      "device": "mobile",
+      "domainId": "assets",
+      "workspaceId": "relationships",
+      "viewportGeometry": {
+        "width": 430,
+        "height": 932
+      },
+      "document": {
+        "clientWidth": 430,
+        "scrollWidth": 430
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "relationships",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": true,
+      "sha256": "b97cdbfe51cece8c40000f161181bad3810c6f60345f1d11b885fd789469da97"
+    },
+    {
+      "file": "mobile-knowledge--390x844.png",
+      "viewport": "390x844",
+      "device": "mobile",
+      "domainId": "assets",
+      "workspaceId": "knowledge",
+      "viewportGeometry": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "clientWidth": 390,
+        "scrollWidth": 390
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "knowledge",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": true,
+      "sha256": "bb4405b84be0d0f858b3058c0d3370aed9b19c3822c22781f68c606cb88f3656",
+      "structuralOnly": true
+    },
+    {
+      "file": "mobile-knowledge--430x932.png",
+      "viewport": "430x932",
+      "device": "mobile",
+      "domainId": "assets",
+      "workspaceId": "knowledge",
+      "viewportGeometry": {
+        "width": 430,
+        "height": 932
+      },
+      "document": {
+        "clientWidth": 430,
+        "scrollWidth": 430
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "knowledge",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": true,
+      "sha256": "d1743d959d2e04128387824c760a2b0afb1da754c4c126771c38cc84b62bcdc3",
+      "structuralOnly": true
+    },
+    {
+      "file": "mobile-capabilities--390x844.png",
+      "viewport": "390x844",
+      "device": "mobile",
+      "domainId": "assets",
+      "workspaceId": "capabilities",
+      "viewportGeometry": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "clientWidth": 390,
+        "scrollWidth": 390
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "capabilities",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": true,
+      "sha256": "1300b6d43c01894584a0320d6baa33c9a10d484a3b4f11982070511677c4e13b",
+      "structuralOnly": true
+    },
+    {
+      "file": "mobile-capabilities--430x932.png",
+      "viewport": "430x932",
+      "device": "mobile",
+      "domainId": "assets",
+      "workspaceId": "capabilities",
+      "viewportGeometry": {
+        "width": 430,
+        "height": 932
+      },
+      "document": {
+        "clientWidth": 430,
+        "scrollWidth": 430
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "capabilities",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": true,
+      "sha256": "99322c483125e46b1462489af53bbd2fa36084bf4472766d3d142ff1ea6dee2a",
+      "structuralOnly": true
+    },
+    {
+      "file": "mobile-reviews--390x844.png",
+      "viewport": "390x844",
+      "device": "mobile",
+      "domainId": "assets",
+      "workspaceId": "reviews",
+      "viewportGeometry": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "clientWidth": 390,
+        "scrollWidth": 390
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "reviews",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": true,
+      "sha256": "34c3bbb6239686c6eddcba2427994df7b6ccf058db617b67a163482c398bd5a3",
+      "structuralOnly": true
+    },
+    {
+      "file": "mobile-reviews--430x932.png",
+      "viewport": "430x932",
+      "device": "mobile",
+      "domainId": "assets",
+      "workspaceId": "reviews",
+      "viewportGeometry": {
+        "width": 430,
+        "height": 932
+      },
+      "document": {
+        "clientWidth": 430,
+        "scrollWidth": 430
+      },
+      "shell": {
+        "domainId": "assets",
+        "workspaceId": "reviews",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false,
+      "assetsCss": true,
+      "sha256": "55669ef7cb085c45983481b78d7fe29858008aa9371ed790d495291e805e48c3",
+      "structuralOnly": true
+    }
+  ],
+  "interactions": [
+    {
+      "label": "Knowledge source",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "root": {
+        "id": "source-market-microstructure",
+        "type": "Knowledge",
+        "workspace": "knowledge"
+      },
+      "context": "Knowledge / source-market-microstructure",
+      "proof": "Knowledge / source-market-microstructure"
+    },
+    {
+      "label": "Evidence",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "root": {
+        "id": "evidence-depth-84",
+        "type": "Evidence",
+        "workspace": "knowledge"
+      },
+      "context": "Evidence / evidence-depth-84",
+      "proof": "Evidence / evidence-depth-84"
+    },
+    {
+      "label": "Strategy product",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "root": {
+        "id": "breakout@3.4",
+        "type": "Strategy product",
+        "workspace": "strategies"
+      },
+      "context": "Strategy product / breakout@3.4",
+      "proof": "Strategy product / breakout@3.4"
+    },
+    {
+      "label": "Capability",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "root": {
+        "id": "native-risk-preflight",
+        "type": "Capability",
+        "workspace": "capabilities"
+      },
+      "context": "Capability / native-risk-preflight",
+      "proof": "Capability / native-risk-preflight"
+    },
+    {
+      "label": "Review",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "root": {
+        "id": "review-btc-assets",
+        "type": "Review",
+        "workspace": "reviews"
+      },
+      "context": "Review / review-btc-assets",
+      "proof": "Review / review-btc-assets"
+    },
+    {
+      "label": "Owner candidate",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "root": {
+        "id": "owner-capability-18",
+        "type": "Owner candidate",
+        "workspace": "reviews"
+      },
+      "context": "Owner candidate / owner-capability-18",
+      "proof": "Owner candidate / owner-capability-18"
+    },
+    {
+      "label": "Validation run",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "root": {
+        "id": "paper-owner-18",
+        "type": "Paper run",
+        "workspace": "reviews"
+      },
+      "context": "Paper run / paper-owner-18",
+      "proof": "Paper run / paper-owner-18"
+    },
+    {
+      "label": "APP Strategy product",
+      "viewport": "390x844",
+      "device": "mobile",
+      "root": {
+        "id": "breakout@3.4",
+        "type": "Strategy product",
+        "workspace": "relationships"
+      },
+      "context": "Strategy product / breakout@3.4",
+      "proof": "Strategy product / breakout@3.4"
+    }
+  ],
+  "actionResults": [
+    {
+      "mode": "failure",
+      "ledger": {
+        "actionRequests": [
+          {
+            "endpoint": "/api/knowledge/convert",
+            "payload": {
+              "sourceId": "source-market-microstructure"
+            },
+            "method": "POST",
+            "resultMode": "failure"
+          },
+          {
+            "endpoint": "/api/review/improvements/owner-candidate-35/action",
+            "payload": {
+              "version": "v3.5",
+              "action": "accept"
+            },
+            "method": "POST",
+            "resultMode": "failure"
+          }
+        ],
+        "actionResults": [
+          {
+            "endpoint": "/api/knowledge/convert",
+            "result": {
+              "ok": false,
+              "error": "source_conversion_failed"
+            }
+          },
+          {
+            "endpoint": "/api/review/improvements/owner-candidate-35/action",
+            "result": {
+              "ok": false,
+              "error": "owner_transition_rejected"
+            }
+          }
+        ],
+        "authorityWrites": 2
+      }
+    },
+    {
+      "mode": "partial",
+      "ledger": {
+        "actionRequests": [
+          {
+            "endpoint": "/api/knowledge/convert",
+            "payload": {
+              "sourceId": "source-market-microstructure"
+            },
+            "method": "POST",
+            "resultMode": "partial"
+          },
+          {
+            "endpoint": "/api/review/improvements/owner-candidate-35/action",
+            "payload": {
+              "version": "v3.5",
+              "action": "accept"
+            },
+            "method": "POST",
+            "resultMode": "partial"
+          }
+        ],
+        "actionResults": [
+          {
+            "endpoint": "/api/knowledge/convert",
+            "result": {
+              "ok": false,
+              "status": "partial",
+              "completed": [
+                "candidate_saved"
+              ],
+              "failed": [
+                "validation_deferred"
+              ]
+            }
+          },
+          {
+            "endpoint": "/api/review/improvements/owner-candidate-35/action",
+            "result": {
+              "ok": false,
+              "status": "partial",
+              "completed": [
+                "candidate_saved"
+              ],
+              "failed": [
+                "validation_deferred"
+              ]
+            }
+          }
+        ],
+        "authorityWrites": 2
+      }
+    },
+    {
+      "mode": "success",
+      "ledger": {
+        "actionRequests": [
+          {
+            "endpoint": "/api/knowledge/convert",
+            "payload": {
+              "sourceId": "source-market-microstructure"
+            },
+            "method": "POST",
+            "resultMode": "success"
+          },
+          {
+            "endpoint": "/api/review/improvements/owner-candidate-35/action",
+            "payload": {
+              "version": "v3.5",
+              "action": "accept"
+            },
+            "method": "POST",
+            "resultMode": "success"
+          }
+        ],
+        "actionResults": [
+          {
+            "endpoint": "/api/knowledge/convert",
+            "result": {
+              "ok": true,
+              "status": "accepted",
+              "id": "candidate-server"
+            }
+          },
+          {
+            "endpoint": "/api/review/improvements/owner-candidate-35/action",
+            "result": {
+              "ok": true,
+              "status": "accepted",
+              "id": "owner-server-transition"
+            }
+          }
+        ],
+        "authorityWrites": 2
+      }
+    }
+  ],
+  "styleOwnership": {
+    "assetsCss": true,
+    "legacyProductStyles": false,
+    "owners": [
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/domains/ai/ai.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/domains/ai/ai.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/domains/assets/assets.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/domains/assets/assets.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/styles/mobile-shell.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/styles/mobile-shell.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/styles/shell.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/styles/shell.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/styles/tokens.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/styles/tokens.css"
+    ]
+  }
+}

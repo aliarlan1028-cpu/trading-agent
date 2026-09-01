@@ -1,0 +1,386 @@
+{
+  "schemaVersion": 1,
+  "scope": "assets",
+  "sourceManifest": "docs/kordyn-v2-approved-concept-manifest.md",
+  "captureEvidence": ".impeccable/review/kordyn-v2/final/screens/assets/capture-evidence.json",
+  "productionSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+  "captureTestSourceCommit": "4214862dc105995a4e8935d75ff1dc89653ace67",
+  "outputRoot": ".impeccable/review/kordyn-v2/final/compare/assets",
+  "counts": {
+    "concepts": 6,
+    "completedConcepts": 6,
+    "pendingConcepts": 0,
+    "comparisons": 12,
+    "artifacts": 49
+  },
+  "scopeCounts": {
+    "manifestConcepts": 15,
+    "scopedConcepts": 6,
+    "completedScopedConcepts": 6,
+    "pendingScopedConcepts": 0,
+    "outOfScopeConcepts": 9
+  },
+  "completed": [
+    "desktop-assets-relationship",
+    "desktop-strategy-registry",
+    "desktop-knowledge-incubator",
+    "desktop-capability-registry",
+    "desktop-review-owner-release",
+    "mobile-intelligent-assets"
+  ],
+  "pending": [],
+  "scopedPending": [],
+  "outOfScope": [
+    {
+      "id": "desktop-ai-mission-control",
+      "status": "implemented foundation shell"
+    },
+    {
+      "id": "desktop-ai-signals",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "desktop-account-position",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "desktop-governance-boundary",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "desktop-governance-operations",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "desktop-governance-configuration",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "mobile-ai-mission-home",
+      "status": "implemented foundation shell"
+    },
+    {
+      "id": "mobile-ai-task-approval",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "mobile-system-governance",
+      "status": "pending domain implementation"
+    }
+  ],
+  "comparisons": [
+    {
+      "identity": "desktop-assets-relationship--1440x900",
+      "conceptId": "desktop-assets-relationship",
+      "viewport": "1440x900",
+      "actual": "desktop-assets-relationship--1440x900.png",
+      "artifacts": {
+        "normalizedReference": {
+          "file": "desktop-assets-relationship--1440x900--reference.png",
+          "sha256": "93b1202822c27569fe9c18712867467143e3f4a8891ec1b9fa5b88c01c094366"
+        },
+        "overlay50": {
+          "file": "desktop-assets-relationship--1440x900--overlay.png",
+          "sha256": "632974e26f2886a7397309f8942e71181d5c4f2c62b17052584f58de293c9945"
+        },
+        "absoluteDifference": {
+          "file": "desktop-assets-relationship--1440x900--difference.png",
+          "sha256": "8a39a108f1a8bca81badf9ed17e441a7853c627819590a985807f4e9c7058c43"
+        },
+        "geometry": {
+          "file": "desktop-assets-relationship--1440x900--geometry.json",
+          "sha256": "792a56a65d319f14e15c4c6376c24cdea8d85b546e71c53925ab86fa5b38adfa"
+        }
+      },
+      "pixelDifference": 0.07633033769063181,
+      "releaseVerdict": "human region review required"
+    },
+    {
+      "identity": "desktop-assets-relationship--1180x800",
+      "conceptId": "desktop-assets-relationship",
+      "viewport": "1180x800",
+      "actual": "desktop-assets-relationship--1180x800.png",
+      "artifacts": {
+        "normalizedReference": {
+          "file": "desktop-assets-relationship--1180x800--reference.png",
+          "sha256": "1c9b556663aa1cc486ef4f36730d5465f18ac766228e0ea8e369baf4889517ff"
+        },
+        "overlay50": {
+          "file": "desktop-assets-relationship--1180x800--overlay.png",
+          "sha256": "a7fe79b313c5ef35b9b01984cdafcf6dd3ec7b64f8a9fed2f3c87dff69804d61"
+        },
+        "absoluteDifference": {
+          "file": "desktop-assets-relationship--1180x800--difference.png",
+          "sha256": "266f7b11b50a440dabf8d0bba08368e49e06d66163e7bff8f03ebe327f089b70"
+        },
+        "geometry": {
+          "file": "desktop-assets-relationship--1180x800--geometry.json",
+          "sha256": "cafa96258996c0de1f65d62600e5f5d58899ea1fbced5999eba99aa1b87be295"
+        }
+      },
+      "pixelDifference": 0.07960723939293231,
+      "releaseVerdict": "human region review required"
+    },
+    {
+      "identity": "desktop-strategy-registry--1440x900",
+      "conceptId": "desktop-strategy-registry",
+      "viewport": "1440x900",
+      "actual": "desktop-strategy-registry--1440x900.png",
+      "artifacts": {
+        "normalizedReference": {
+          "file": "desktop-strategy-registry--1440x900--reference.png",
+          "sha256": "60afbcc4c3824f03d20a136818cdfdd378b4683adf943a66823a5266f1c78127"
+        },
+        "overlay50": {
+          "file": "desktop-strategy-registry--1440x900--overlay.png",
+          "sha256": "78e6e79a638e7872d75e4ccb00f60f4e9b55437ba1acc53702bebdfce9e2621d"
+        },
+        "absoluteDifference": {
+          "file": "desktop-strategy-registry--1440x900--difference.png",
+          "sha256": "cabf463a9314a831eda1be3652d1338c560cdd3355746eadb0a2630ebc9658a0"
+        },
+        "geometry": {
+          "file": "desktop-strategy-registry--1440x900--geometry.json",
+          "sha256": "a5e7062ffd5aad3acfda9f74e7e64c8f57d59edb1f475bee5a1cff9eeeee3972"
+        }
+      },
+      "pixelDifference": 0.06030232691842169,
+      "releaseVerdict": "human region review required"
+    },
+    {
+      "identity": "desktop-strategy-registry--1180x800",
+      "conceptId": "desktop-strategy-registry",
+      "viewport": "1180x800",
+      "actual": "desktop-strategy-registry--1180x800.png",
+      "artifacts": {
+        "normalizedReference": {
+          "file": "desktop-strategy-registry--1180x800--reference.png",
+          "sha256": "d0bb382565ad34bdc7b66c42cca7ca62acf75dfa785fef8b33fe99ab2c2695ed"
+        },
+        "overlay50": {
+          "file": "desktop-strategy-registry--1180x800--overlay.png",
+          "sha256": "96c652439658addd76b375e22a0c3a3c96e870b5b5556b5e8203ac68da97183b"
+        },
+        "absoluteDifference": {
+          "file": "desktop-strategy-registry--1180x800--difference.png",
+          "sha256": "59081fc992cf071f8a192c59fa6f9e2fd93e4022ad1d896c2893473c2d837503"
+        },
+        "geometry": {
+          "file": "desktop-strategy-registry--1180x800--geometry.json",
+          "sha256": "4043a22e20be8afa3cd7b65b9659d48694dbbb9b47fb1e5511d14b3c011d7046"
+        }
+      },
+      "pixelDifference": 0.0625796471696023,
+      "releaseVerdict": "human region review required"
+    },
+    {
+      "identity": "desktop-knowledge-incubator--1440x900",
+      "conceptId": "desktop-knowledge-incubator",
+      "viewport": "1440x900",
+      "actual": "desktop-knowledge-incubator--1440x900.png",
+      "artifacts": {
+        "normalizedReference": {
+          "file": "desktop-knowledge-incubator--1440x900--reference.png",
+          "sha256": "e1738bb06ec2cb25825992e323f7832f3bedd647e165981d68aefae2a9ae30ea"
+        },
+        "overlay50": {
+          "file": "desktop-knowledge-incubator--1440x900--overlay.png",
+          "sha256": "7808c71224919e6884f26936288eadfd217f2ea6ae0b674c2c6e91e3c6112107"
+        },
+        "absoluteDifference": {
+          "file": "desktop-knowledge-incubator--1440x900--difference.png",
+          "sha256": "681e9cfbdf196b9099fb0815fcd2e595c54a495011c55d78ee6bf1b66f3bde48"
+        },
+        "geometry": {
+          "file": "desktop-knowledge-incubator--1440x900--geometry.json",
+          "sha256": "b4c73ee208c12cba2923752d359d4fa9151cfed19497747077cb3484401c632e"
+        }
+      },
+      "pixelDifference": 0.06467839203582668,
+      "releaseVerdict": "human region review required"
+    },
+    {
+      "identity": "desktop-knowledge-incubator--1180x800",
+      "conceptId": "desktop-knowledge-incubator",
+      "viewport": "1180x800",
+      "actual": "desktop-knowledge-incubator--1180x800.png",
+      "artifacts": {
+        "normalizedReference": {
+          "file": "desktop-knowledge-incubator--1180x800--reference.png",
+          "sha256": "66ed560e2d534956dddc189e33563fc614ca364d744fab79d2cccb89257e47cc"
+        },
+        "overlay50": {
+          "file": "desktop-knowledge-incubator--1180x800--overlay.png",
+          "sha256": "2c656e97cfdc9599a5c3288f6a1e0fcb944e473c9c71ba2ac71dfd60ab1a52e4"
+        },
+        "absoluteDifference": {
+          "file": "desktop-knowledge-incubator--1180x800--difference.png",
+          "sha256": "611bb97bb29703908ef2defb00ee3b0adfec34b2157ab6220fcc7aa5b438a1a6"
+        },
+        "geometry": {
+          "file": "desktop-knowledge-incubator--1180x800--geometry.json",
+          "sha256": "382bb01da8819c460e722aeedefb8ab8c7dabd00c43e30d72fe570e02e6e860c"
+        }
+      },
+      "pixelDifference": 0.06817352525756065,
+      "releaseVerdict": "human region review required"
+    },
+    {
+      "identity": "desktop-capability-registry--1440x900",
+      "conceptId": "desktop-capability-registry",
+      "viewport": "1440x900",
+      "actual": "desktop-capability-registry--1440x900.png",
+      "artifacts": {
+        "normalizedReference": {
+          "file": "desktop-capability-registry--1440x900--reference.png",
+          "sha256": "3204ce75d093150cf74b8b646f75f973cf627e2946bdb475185e61576c9f08e4"
+        },
+        "overlay50": {
+          "file": "desktop-capability-registry--1440x900--overlay.png",
+          "sha256": "8c1e463e113c8c44922c528876fe0f553c0f229b45604da89ccf658465c10c87"
+        },
+        "absoluteDifference": {
+          "file": "desktop-capability-registry--1440x900--difference.png",
+          "sha256": "87301aa074de6dac000af923aaae1c3a8386ca705ad9c395caa3820d1dbb1070"
+        },
+        "geometry": {
+          "file": "desktop-capability-registry--1440x900--geometry.json",
+          "sha256": "792ed150ecf6ee430a02f9ec21d3cad931a652236056c126c90d3c7c2b05ba80"
+        }
+      },
+      "pixelDifference": 0.06220726418139272,
+      "releaseVerdict": "human region review required"
+    },
+    {
+      "identity": "desktop-capability-registry--1180x800",
+      "conceptId": "desktop-capability-registry",
+      "viewport": "1180x800",
+      "actual": "desktop-capability-registry--1180x800.png",
+      "artifacts": {
+        "normalizedReference": {
+          "file": "desktop-capability-registry--1180x800--reference.png",
+          "sha256": "739d601824996d97960df0966ceacd8e566118f98128cc6658c130ed552a13ce"
+        },
+        "overlay50": {
+          "file": "desktop-capability-registry--1180x800--overlay.png",
+          "sha256": "26847afbbb5478946561811423ac38ba32d5fe68fed37f65dc2a0b02c3b0ee21"
+        },
+        "absoluteDifference": {
+          "file": "desktop-capability-registry--1180x800--difference.png",
+          "sha256": "3471df5884199dbadfbf267b2ddaafcef8d46556fb86edf91346ace449aee9a9"
+        },
+        "geometry": {
+          "file": "desktop-capability-registry--1180x800--geometry.json",
+          "sha256": "993557cc1712ac98144c427c4501e66392d624789caa1efd26321653c81fcd70"
+        }
+      },
+      "pixelDifference": 0.064550329566855,
+      "releaseVerdict": "human region review required"
+    },
+    {
+      "identity": "desktop-review-owner-release--1440x900",
+      "conceptId": "desktop-review-owner-release",
+      "viewport": "1440x900",
+      "actual": "desktop-review-owner-release--1440x900.png",
+      "artifacts": {
+        "normalizedReference": {
+          "file": "desktop-review-owner-release--1440x900--reference.png",
+          "sha256": "cbb13e4bf8459326b69ffd9f58fb6635c6beadfc8f01433cee88ee305691d01c"
+        },
+        "overlay50": {
+          "file": "desktop-review-owner-release--1440x900--overlay.png",
+          "sha256": "bd12cdcaf515c8d79cd196aff26f545ff691cd20b6d69d708db97644c691aae6"
+        },
+        "absoluteDifference": {
+          "file": "desktop-review-owner-release--1440x900--difference.png",
+          "sha256": "92047136ef3b793eb62d3a56b0af01a60c87ecb0f3f8eb39f977caf0daf899c4"
+        },
+        "geometry": {
+          "file": "desktop-review-owner-release--1440x900--geometry.json",
+          "sha256": "cccaf1f6b4696464d97b5b6d587069b41178b106eb5d7d601031d89c77ce2b91"
+        }
+      },
+      "pixelDifference": 0.06870154825304607,
+      "releaseVerdict": "human region review required"
+    },
+    {
+      "identity": "desktop-review-owner-release--1180x800",
+      "conceptId": "desktop-review-owner-release",
+      "viewport": "1180x800",
+      "actual": "desktop-review-owner-release--1180x800.png",
+      "artifacts": {
+        "normalizedReference": {
+          "file": "desktop-review-owner-release--1180x800--reference.png",
+          "sha256": "9c42b07bfcbd01d99874de6e98b5327b8c25710f70148e161f6ab80467a2b835"
+        },
+        "overlay50": {
+          "file": "desktop-review-owner-release--1180x800--overlay.png",
+          "sha256": "a46b375fde478c3251a7d810522e9ea1e8e257191ba1ece493a3d77bac4c00f9"
+        },
+        "absoluteDifference": {
+          "file": "desktop-review-owner-release--1180x800--difference.png",
+          "sha256": "d25ae81c7de2428ac2aa8b4ca63ba32fe8eaaef052a89c2a36bf026412ac18dd"
+        },
+        "geometry": {
+          "file": "desktop-review-owner-release--1180x800--geometry.json",
+          "sha256": "03ad52aabd91873409810c7fa17f620c0cca40655f54753c9b949c0f64fa1ec4"
+        }
+      },
+      "pixelDifference": 0.07261913703334441,
+      "releaseVerdict": "human region review required"
+    },
+    {
+      "identity": "mobile-intelligent-assets--390x844",
+      "conceptId": "mobile-intelligent-assets",
+      "viewport": "390x844",
+      "actual": "mobile-intelligent-assets--390x844.png",
+      "artifacts": {
+        "normalizedReference": {
+          "file": "mobile-intelligent-assets--390x844--reference.png",
+          "sha256": "ef715be493b5a51928acbc795344374324b050853d7c118db5f6a4a317f08bed"
+        },
+        "overlay50": {
+          "file": "mobile-intelligent-assets--390x844--overlay.png",
+          "sha256": "d6d899035e9514a5ebbe065445af1f492f76f101959cb35d03ef7e2ed77bcf25"
+        },
+        "absoluteDifference": {
+          "file": "mobile-intelligent-assets--390x844--difference.png",
+          "sha256": "1b393a6c36606c73097e1ddbd778a1b835557c3843682e6159b21cf3c05a73b0"
+        },
+        "geometry": {
+          "file": "mobile-intelligent-assets--390x844--geometry.json",
+          "sha256": "463074778492de8522e09d4238acc5119c94e8dc632f5e36ce63891761f650c7"
+        }
+      },
+      "pixelDifference": 0.08612044761194468,
+      "releaseVerdict": "human region review required"
+    },
+    {
+      "identity": "mobile-intelligent-assets--430x932",
+      "conceptId": "mobile-intelligent-assets",
+      "viewport": "430x932",
+      "actual": "mobile-intelligent-assets--430x932.png",
+      "artifacts": {
+        "normalizedReference": {
+          "file": "mobile-intelligent-assets--430x932--reference.png",
+          "sha256": "22c5a9b49e82f1057e2658e9745363386767ad2f2fef155039c5764e2c5b64c3"
+        },
+        "overlay50": {
+          "file": "mobile-intelligent-assets--430x932--overlay.png",
+          "sha256": "b668e45548b2510b4592f15d5dc78d6d8a0ff333adcaa3dcbb361d1d909f99c6"
+        },
+        "absoluteDifference": {
+          "file": "mobile-intelligent-assets--430x932--difference.png",
+          "sha256": "d6b73148f9fe4a31045e6dc874100b210ca920b8bb5ecb9835338a3e5abe107b"
+        },
+        "geometry": {
+          "file": "mobile-intelligent-assets--430x932--geometry.json",
+          "sha256": "da107d790eba4c449db7d27b7f18aa5eac57e21914a4fb4b0eb9e8284918c17b"
+        }
+      },
+      "pixelDifference": 0.08546195887943625,
+      "releaseVerdict": "human region review required"
+    }
+  ],
+  "releaseVerdict": "human region review required"
+}

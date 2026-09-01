@@ -1,0 +1,228 @@
+{
+  "schemaVersion": 1,
+  "runner": "tests/run-kordyn-v2-ai-browser.mjs",
+  "fixture": "tests/kordyn-v2-production-fixture.js",
+  "productionSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+  "captureTestSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+  "representativeAgentRunFixtures": [
+    {
+      "id": "run-btc-analysis-fixture",
+      "stage": "analysis",
+      "authority": "Task 5 production-shaped fixture"
+    },
+    {
+      "id": "run-eth-monitor",
+      "stage": "monitoring",
+      "authority": "Task 5 production-shaped fixture"
+    },
+    {
+      "id": "run-sol-approval",
+      "stage": "approval",
+      "authority": "Task 5 production-shaped fixture"
+    },
+    {
+      "id": "run-eth-executing-fixture",
+      "stage": "executing",
+      "authority": "Task 5 production-shaped fixture"
+    },
+    {
+      "id": "run-eth-completed-fixture",
+      "stage": "completed",
+      "authority": "Task 5 production-shaped fixture"
+    }
+  ],
+  "captures": [
+    {
+      "file": "desktop-ai-mission-control--1180x800.png",
+      "viewport": "1180x800",
+      "device": "desktop",
+      "domainId": "ai",
+      "workspaceId": "missions",
+      "sha256": "3978a1e6aa6ca33afa9497c7533414584275ce06ce937e3934334d2f5c153250",
+      "viewportGeometry": {
+        "width": 1180,
+        "height": 800
+      },
+      "document": {
+        "clientWidth": 1180,
+        "scrollWidth": 1180
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "width": 1180,
+        "height": 800
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false
+    },
+    {
+      "file": "desktop-ai-mission-control--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "ai",
+      "workspaceId": "missions",
+      "sha256": "5a9d57096f9fc52ec11c1a4f4bc0e0e6b48042242ba25b3e17396b296c29d086",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "width": 1440,
+        "height": 900
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false
+    },
+    {
+      "file": "desktop-ai-signals--1180x800.png",
+      "viewport": "1180x800",
+      "device": "desktop",
+      "domainId": "ai",
+      "workspaceId": "intelligence",
+      "sha256": "87e978dbf508f91bf7bfd2f1781a2242055784f5ad99577f4e14e992f99e9fd5",
+      "viewportGeometry": {
+        "width": 1180,
+        "height": 800
+      },
+      "document": {
+        "clientWidth": 1180,
+        "scrollWidth": 1180
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "width": 1180,
+        "height": 800
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false
+    },
+    {
+      "file": "desktop-ai-signals--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "ai",
+      "workspaceId": "intelligence",
+      "sha256": "b467f2fb226b4da4aaa61e88b0802664a0079d4598c828b1fea2a3aed93bac40",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "width": 1440,
+        "height": 900
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false
+    },
+    {
+      "file": "mobile-ai-mission-home--390x844.png",
+      "viewport": "390x844",
+      "device": "mobile",
+      "domainId": "ai",
+      "workspaceId": "missions",
+      "sha256": "bea59ac44764a6fc9a3f96be278f490c92098e23c9977a64e12bac035048f884",
+      "viewportGeometry": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "clientWidth": 390,
+        "scrollWidth": 390
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "width": 390,
+        "height": 844
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false
+    },
+    {
+      "file": "mobile-ai-mission-home--430x932.png",
+      "viewport": "430x932",
+      "device": "mobile",
+      "domainId": "ai",
+      "workspaceId": "missions",
+      "sha256": "f2da3db05cd2ed9241ecc5a7664d37fae6bb951d02cc24ae48d5f9f995e549c3",
+      "viewportGeometry": {
+        "width": 430,
+        "height": 932
+      },
+      "document": {
+        "clientWidth": 430,
+        "scrollWidth": 430
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "width": 430,
+        "height": 932
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false
+    },
+    {
+      "file": "mobile-ai-task-approval--390x844.png",
+      "viewport": "390x844",
+      "device": "mobile",
+      "domainId": "ai",
+      "workspaceId": "missions",
+      "sha256": "fc4e7b84e8713bb11ebfaddd9a0e36d21e2d9549fd7edd73b4fc9e8bdca31ea5",
+      "viewportGeometry": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "clientWidth": 390,
+        "scrollWidth": 390
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "width": 390,
+        "height": 844
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false
+    },
+    {
+      "file": "mobile-ai-task-approval--430x932.png",
+      "viewport": "430x932",
+      "device": "mobile",
+      "domainId": "ai",
+      "workspaceId": "missions",
+      "sha256": "282f5abfde4be39bd85dd699ebd1eacac47eb97b1768066bf2185222a27b2ac2",
+      "viewportGeometry": {
+        "width": 430,
+        "height": 932
+      },
+      "document": {
+        "clientWidth": 430,
+        "scrollWidth": 430
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "width": 430,
+        "height": 932
+      },
+      "noProductionWrites": true,
+      "legacyProductStyles": false
+    }
+  ]
+}

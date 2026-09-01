@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "identity": "desktop-assets-relationship--1440x900",
+  "concept": {
+    "id": "desktop-assets-relationship",
+    "file": ".impeccable/mocks/kordyn-v2-approved/desktop-assets-relationship.png",
+    "sha256": "3e3678da9efdd9f14b024f9a727dfb2fc629efe2672322db4f3b08d340569f34",
+    "storedPixels": {
+      "width": 1586,
+      "height": 992
+    },
+    "normalizedViewport": "1440x900"
+  },
+  "actual": {
+    "file": "desktop-assets-relationship--1440x900.png",
+    "sha256": "3346d78db66bd315d22b196280b75b77ec81c62b477f8d7f01e46d1f26f25840",
+    "runner": "tests/run-kordyn-v2-assets-browser.mjs",
+    "fixture": "tests/kordyn-v2-assets-browser.jsx",
+    "productionSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+    "captureTestSourceCommit": "4214862dc105995a4e8935d75ff1dc89653ace67",
+    "device": "desktop",
+    "domainId": "assets",
+    "workspaceId": "relationships"
+  },
+  "viewport": {
+    "name": "1440x900",
+    "width": 1440,
+    "height": 900
+  },
+  "document": {
+    "clientWidth": 1440,
+    "scrollWidth": 1440
+  },
+  "documentOverflow": 0,
+  "shellGeometry": {
+    "domainId": "assets",
+    "workspaceId": "relationships",
+    "selectedId": "run-btc-analysis",
+    "selectedType": "Agent run"
+  },
+  "diagnostics": {
+    "screenshotStructure": {
+      "variance": 0.011704682931347096,
+      "edgeDensity": 0.028079238440359946,
+      "nearFlat": false
+    },
+    "pixelDifference": {
+      "metric": 0.07633033769063181,
+      "role": "diagnostic only"
+    },
+    "contentAwareComparator": {
+      "applied": false,
+      "reason": "no fixed mobile shell threshold in Foundation Plan 01"
+    }
+  },
+  "artifacts": {
+    "normalizedReference": {
+      "file": "desktop-assets-relationship--1440x900--reference.png",
+      "sha256": "93b1202822c27569fe9c18712867467143e3f4a8891ec1b9fa5b88c01c094366"
+    },
+    "overlay50": {
+      "file": "desktop-assets-relationship--1440x900--overlay.png",
+      "sha256": "632974e26f2886a7397309f8942e71181d5c4f2c62b17052584f58de293c9945"
+    },
+    "absoluteDifference": {
+      "file": "desktop-assets-relationship--1440x900--difference.png",
+      "sha256": "8a39a108f1a8bca81badf9ed17e441a7853c627819590a985807f4e9c7058c43"
+    }
+  },
+  "releaseVerdict": "human region review required"
+}

@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "identity": "mobile-ai-task-approval--390x844",
+  "concept": {
+    "id": "mobile-ai-task-approval",
+    "file": ".impeccable/mocks/kordyn-v2-approved/mobile-ai-task-approval.png",
+    "sha256": "341997877d9cf8cbae27b6f2f31c5cb79b546927a3e5b3ac3d9efea5c11f0778",
+    "storedPixels": {
+      "width": 853,
+      "height": 1844
+    },
+    "normalizedViewport": "390x844"
+  },
+  "actual": {
+    "file": "mobile-ai-task-approval--390x844.png",
+    "sha256": "fc4e7b84e8713bb11ebfaddd9a0e36d21e2d9549fd7edd73b4fc9e8bdca31ea5",
+    "runner": "tests/run-kordyn-v2-ai-browser.mjs",
+    "fixture": "tests/kordyn-v2-production-fixture.js",
+    "productionSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+    "captureTestSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+    "device": "mobile",
+    "domainId": "ai",
+    "workspaceId": "missions"
+  },
+  "viewport": {
+    "name": "390x844",
+    "width": 390,
+    "height": 844
+  },
+  "document": {
+    "clientWidth": 390,
+    "scrollWidth": 390
+  },
+  "documentOverflow": 0,
+  "shellGeometry": {
+    "left": 0,
+    "top": 0,
+    "width": 390,
+    "height": 844
+  },
+  "diagnostics": {
+    "screenshotStructure": {
+      "variance": 0.02549172083832983,
+      "edgeDensity": 0.04069894537441433,
+      "nearFlat": false
+    },
+    "pixelDifference": {
+      "metric": 0.08449304905256953,
+      "role": "diagnostic only"
+    },
+    "contentAwareComparator": {
+      "applied": false,
+      "reason": "no fixed mobile shell threshold in Foundation Plan 01"
+    }
+  },
+  "artifacts": {
+    "normalizedReference": {
+      "file": "mobile-ai-task-approval--390x844--reference.png",
+      "sha256": "4671f10bf5f04cbc095300a0e12d4a727489b9904d90d7a23b55e23e46462b64"
+    },
+    "overlay50": {
+      "file": "mobile-ai-task-approval--390x844--overlay.png",
+      "sha256": "69de3e16e5d64c98d853cd33ce6fd5775711da50c6a3373bd1fca6e1f612c1b3"
+    },
+    "absoluteDifference": {
+      "file": "mobile-ai-task-approval--390x844--difference.png",
+      "sha256": "c143a492ccf462f10b513105b59ab69d40fe37ca4f67b9d5ccb25e6d1e5fb988"
+    }
+  },
+  "releaseVerdict": "human region review required"
+}

@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "identity": "desktop-strategy-registry--1440x900",
+  "concept": {
+    "id": "desktop-strategy-registry",
+    "file": ".impeccable/mocks/kordyn-v2-approved/desktop-strategy-registry.png",
+    "sha256": "3712c52e241df44c31348a139da2803677674ac7d1e4a72433bc07377bf5fc85",
+    "storedPixels": {
+      "width": 1586,
+      "height": 992
+    },
+    "normalizedViewport": "1440x900"
+  },
+  "actual": {
+    "file": "desktop-strategy-registry--1440x900.png",
+    "sha256": "5cd87e30ed8c48969238f4e48ce13a8fb9e32aad1748cde3577d524745050710",
+    "runner": "tests/run-kordyn-v2-assets-browser.mjs",
+    "fixture": "tests/kordyn-v2-assets-browser.jsx",
+    "productionSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+    "captureTestSourceCommit": "4214862dc105995a4e8935d75ff1dc89653ace67",
+    "device": "desktop",
+    "domainId": "assets",
+    "workspaceId": "strategies"
+  },
+  "viewport": {
+    "name": "1440x900",
+    "width": 1440,
+    "height": 900
+  },
+  "document": {
+    "clientWidth": 1440,
+    "scrollWidth": 1440
+  },
+  "documentOverflow": 0,
+  "shellGeometry": {
+    "domainId": "assets",
+    "workspaceId": "strategies",
+    "selectedId": "run-btc-analysis",
+    "selectedType": "Agent run"
+  },
+  "diagnostics": {
+    "screenshotStructure": {
+      "variance": 0.00899807494444904,
+      "edgeDensity": 0.019912596468157545,
+      "nearFlat": false
+    },
+    "pixelDifference": {
+      "metric": 0.06030232691842169,
+      "role": "diagnostic only"
+    },
+    "contentAwareComparator": {
+      "applied": false,
+      "reason": "no fixed mobile shell threshold in Foundation Plan 01"
+    }
+  },
+  "artifacts": {
+    "normalizedReference": {
+      "file": "desktop-strategy-registry--1440x900--reference.png",
+      "sha256": "60afbcc4c3824f03d20a136818cdfdd378b4683adf943a66823a5266f1c78127"
+    },
+    "overlay50": {
+      "file": "desktop-strategy-registry--1440x900--overlay.png",
+      "sha256": "78e6e79a638e7872d75e4ccb00f60f4e9b55437ba1acc53702bebdfce9e2621d"
+    },
+    "absoluteDifference": {
+      "file": "desktop-strategy-registry--1440x900--difference.png",
+      "sha256": "cabf463a9314a831eda1be3652d1338c560cdd3355746eadb0a2630ebc9658a0"
+    }
+  },
+  "releaseVerdict": "human region review required"
+}

@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "identity": "desktop-knowledge-incubator--1180x800",
+  "concept": {
+    "id": "desktop-knowledge-incubator",
+    "file": ".impeccable/mocks/kordyn-v2-approved/desktop-knowledge-incubator.png",
+    "sha256": "e25ae9442a3c72f9a76966752f83c63217cbe61105271c3fb02cbeaee8de95b7",
+    "storedPixels": {
+      "width": 1586,
+      "height": 992
+    },
+    "normalizedViewport": "1180x800"
+  },
+  "actual": {
+    "file": "desktop-knowledge-incubator--1180x800.png",
+    "sha256": "fd912cc7e302c5a18378feb42c8b3014becb6d8e0b78a0f80fff80657fbee09b",
+    "runner": "tests/run-kordyn-v2-assets-browser.mjs",
+    "fixture": "tests/kordyn-v2-assets-browser.jsx",
+    "productionSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+    "captureTestSourceCommit": "4214862dc105995a4e8935d75ff1dc89653ace67",
+    "device": "desktop",
+    "domainId": "assets",
+    "workspaceId": "knowledge"
+  },
+  "viewport": {
+    "name": "1180x800",
+    "width": 1180,
+    "height": 800
+  },
+  "document": {
+    "clientWidth": 1180,
+    "scrollWidth": 1180
+  },
+  "documentOverflow": 0,
+  "shellGeometry": {
+    "domainId": "assets",
+    "workspaceId": "knowledge",
+    "selectedId": "run-btc-analysis",
+    "selectedType": "Agent run"
+  },
+  "diagnostics": {
+    "screenshotStructure": {
+      "variance": 0.011179805867764311,
+      "edgeDensity": 0.02748816883798704,
+      "nearFlat": false
+    },
+    "pixelDifference": {
+      "metric": 0.06817352525756065,
+      "role": "diagnostic only"
+    },
+    "contentAwareComparator": {
+      "applied": false,
+      "reason": "no fixed mobile shell threshold in Foundation Plan 01"
+    }
+  },
+  "artifacts": {
+    "normalizedReference": {
+      "file": "desktop-knowledge-incubator--1180x800--reference.png",
+      "sha256": "66ed560e2d534956dddc189e33563fc614ca364d744fab79d2cccb89257e47cc"
+    },
+    "overlay50": {
+      "file": "desktop-knowledge-incubator--1180x800--overlay.png",
+      "sha256": "2c656e97cfdc9599a5c3288f6a1e0fcb944e473c9c71ba2ac71dfd60ab1a52e4"
+    },
+    "absoluteDifference": {
+      "file": "desktop-knowledge-incubator--1180x800--difference.png",
+      "sha256": "611bb97bb29703908ef2defb00ee3b0adfec34b2157ab6220fcc7aa5b438a1a6"
+    }
+  },
+  "releaseVerdict": "human region review required"
+}

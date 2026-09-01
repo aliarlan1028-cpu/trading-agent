@@ -1,0 +1,1303 @@
+{
+  "schemaVersion": 1,
+  "runner": "tests/run-kordyn-v2-account-browser.mjs",
+  "fixture": "tests/kordyn-v2-account-browser.jsx",
+  "productSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+  "captureTestSourceCommit": "e3eb0b3c216eafe9a63ed6b40ec998f693ba50a2",
+  "captures": [
+    {
+      "file": "desktop-account-position--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "account",
+      "workspaceId": "positions",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440,
+        "clientHeight": 900,
+        "scrollHeight": 900
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "right": 1440,
+        "bottom": 900,
+        "width": 1440,
+        "height": 900,
+        "domainId": "account",
+        "workspaceId": "positions",
+        "selectedId": "position-eth",
+        "selectedType": "Position"
+      },
+      "noProductionWrites": true,
+      "actionRequestsAtCapture": 0,
+      "legacyProductStyles": false,
+      "accountCss": true,
+      "sha256": "7eff9bfd8c1001b23861f9dccc6fb89620da9f01e14669dc1bb873b1a5c1b871",
+      "priceBoundaryGeometry": {
+        "entry": {
+          "left": 1027.8359375,
+          "top": 445,
+          "right": 1071.1953125,
+          "bottom": 485,
+          "width": 43.359375,
+          "height": 40
+        },
+        "mark": {
+          "left": 1046.7109375,
+          "top": 493,
+          "right": 1090.0703125,
+          "bottom": 533,
+          "width": 43.359375,
+          "height": 40
+        },
+        "overlaps": false
+      },
+      "supportIsolation": {
+        "start": {
+          "phase": "start",
+          "viewport": [
+            1440,
+            900
+          ],
+          "support": {
+            "left": 1184,
+            "top": 837.5,
+            "right": 1422,
+            "bottom": 891.5,
+            "width": 238,
+            "height": 54
+          },
+          "dock": {
+            "left": 156,
+            "top": 828,
+            "right": 1440,
+            "bottom": 900,
+            "width": 1284,
+            "height": 72
+          },
+          "canvas": {
+            "left": 156,
+            "top": 120,
+            "right": 1440,
+            "bottom": 828,
+            "width": 1284,
+            "height": 708
+          },
+          "dockCanvasOverlap": 0,
+          "candidateCount": 41,
+          "intersections": [],
+          "hitFailures": [],
+          "supportHitTestable": true,
+          "scroll": {
+            "top": 0,
+            "height": 708,
+            "clientHeight": 708
+          }
+        },
+        "end": {
+          "phase": "end",
+          "viewport": [
+            1440,
+            900
+          ],
+          "support": {
+            "left": 1184,
+            "top": 837.5,
+            "right": 1422,
+            "bottom": 891.5,
+            "width": 238,
+            "height": 54
+          },
+          "dock": {
+            "left": 156,
+            "top": 828,
+            "right": 1440,
+            "bottom": 900,
+            "width": 1284,
+            "height": 72
+          },
+          "canvas": {
+            "left": 156,
+            "top": 120,
+            "right": 1440,
+            "bottom": 828,
+            "width": 1284,
+            "height": 708
+          },
+          "dockCanvasOverlap": 0,
+          "candidateCount": 41,
+          "intersections": [],
+          "hitFailures": [],
+          "supportHitTestable": true,
+          "scroll": {
+            "top": 0,
+            "height": 708,
+            "clientHeight": 708
+          }
+        }
+      }
+    },
+    {
+      "file": "desktop-account-position--1180x800.png",
+      "viewport": "1180x800",
+      "device": "desktop",
+      "domainId": "account",
+      "workspaceId": "positions",
+      "viewportGeometry": {
+        "width": 1180,
+        "height": 800
+      },
+      "document": {
+        "clientWidth": 1180,
+        "scrollWidth": 1180,
+        "clientHeight": 800,
+        "scrollHeight": 800
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "right": 1180,
+        "bottom": 800,
+        "width": 1180,
+        "height": 800,
+        "domainId": "account",
+        "workspaceId": "positions",
+        "selectedId": "position-eth",
+        "selectedType": "Position"
+      },
+      "noProductionWrites": true,
+      "actionRequestsAtCapture": 0,
+      "legacyProductStyles": false,
+      "accountCss": true,
+      "sha256": "0656942a67e22a6301c58a4b3cda27d355d4708065d087a01f3762e14d0d3cf2",
+      "priceBoundaryGeometry": {
+        "entry": {
+          "left": 826.3828125,
+          "top": 505,
+          "right": 869.7421875,
+          "bottom": 545,
+          "width": 43.359375,
+          "height": 40
+        },
+        "mark": {
+          "left": 840.3515625,
+          "top": 553,
+          "right": 883.7109375,
+          "bottom": 593,
+          "width": 43.359375,
+          "height": 40
+        },
+        "overlaps": false
+      },
+      "supportIsolation": {
+        "start": {
+          "phase": "start",
+          "viewport": [
+            1180,
+            800
+          ],
+          "support": {
+            "left": 971,
+            "top": 741.5,
+            "right": 1166,
+            "bottom": 787.5,
+            "width": 195,
+            "height": 46
+          },
+          "dock": {
+            "left": 140,
+            "top": 728,
+            "right": 1180,
+            "bottom": 800,
+            "width": 1040,
+            "height": 72
+          },
+          "canvas": {
+            "left": 140,
+            "top": 112,
+            "right": 1180,
+            "bottom": 728,
+            "width": 1040,
+            "height": 616
+          },
+          "dockCanvasOverlap": 0,
+          "candidateCount": 38,
+          "intersections": [],
+          "hitFailures": [],
+          "supportHitTestable": true,
+          "scroll": {
+            "top": 0,
+            "height": 616,
+            "clientHeight": 616
+          }
+        },
+        "end": {
+          "phase": "end",
+          "viewport": [
+            1180,
+            800
+          ],
+          "support": {
+            "left": 971,
+            "top": 741.5,
+            "right": 1166,
+            "bottom": 787.5,
+            "width": 195,
+            "height": 46
+          },
+          "dock": {
+            "left": 140,
+            "top": 728,
+            "right": 1180,
+            "bottom": 800,
+            "width": 1040,
+            "height": 72
+          },
+          "canvas": {
+            "left": 140,
+            "top": 112,
+            "right": 1180,
+            "bottom": 728,
+            "width": 1040,
+            "height": 616
+          },
+          "dockCanvasOverlap": 0,
+          "candidateCount": 38,
+          "intersections": [],
+          "hitFailures": [],
+          "supportHitTestable": true,
+          "scroll": {
+            "top": 0,
+            "height": 616,
+            "clientHeight": 616
+          }
+        }
+      }
+    },
+    {
+      "file": "mobile-account-position--390x844.png",
+      "viewport": "390x844",
+      "device": "mobile",
+      "domainId": "account",
+      "workspaceId": "positions",
+      "viewportGeometry": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "clientHeight": 844,
+        "scrollHeight": 844
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "right": 390,
+        "bottom": 844,
+        "width": 390,
+        "height": 844,
+        "domainId": "account",
+        "workspaceId": "positions",
+        "selectedId": "position-eth",
+        "selectedType": "Position"
+      },
+      "noProductionWrites": true,
+      "actionRequestsAtCapture": 0,
+      "legacyProductStyles": false,
+      "accountCss": true,
+      "sha256": "eaef45dcd2dfbf088462337af26e64eff49d48ee16f94c1ad085051987d0885e",
+      "structuralOnly": true,
+      "labelGeometry": {
+        "layout": {
+          "detail": {
+            "left": 9,
+            "top": 346,
+            "right": 381,
+            "bottom": 1573.390625,
+            "width": 372,
+            "height": 1227.390625
+          },
+          "truth": {
+            "left": 9,
+            "top": 346,
+            "right": 381,
+            "bottom": 967,
+            "width": 372,
+            "height": 621
+          },
+          "inspector": {
+            "left": 9,
+            "top": 979,
+            "right": 381,
+            "bottom": 1573.390625,
+            "width": 372,
+            "height": 594.390625
+          }
+        },
+        "symbol": {
+          "text": "ETH/USDT",
+          "width": 79.171875,
+          "height": 20,
+          "clientWidth": 79,
+          "scrollWidth": 79,
+          "lineHeight": 20.4,
+          "lines": 1,
+          "overflowWrap": "normal",
+          "wordBreak": "keep-all",
+          "whiteSpace": "nowrap"
+        },
+        "ownership": {
+          "text": "手动 / 外部",
+          "width": 73.671875,
+          "height": 14,
+          "clientWidth": 74,
+          "scrollWidth": 74,
+          "lineHeight": 12,
+          "lines": 1,
+          "overflowWrap": "normal",
+          "wordBreak": "keep-all",
+          "whiteSpace": "nowrap"
+        },
+        "source": {
+          "text": "exchange_rest",
+          "width": 147,
+          "height": 10,
+          "clientWidth": 147,
+          "scrollWidth": 147,
+          "lineHeight": 10.799999999999999,
+          "lines": 1,
+          "overflowWrap": "normal",
+          "wordBreak": "keep-all",
+          "whiteSpace": "nowrap"
+        },
+        "entry": {
+          "text": "3,420.50",
+          "width": 147.5,
+          "height": 14,
+          "clientWidth": 148,
+          "scrollWidth": 148,
+          "lineHeight": 14.399999999999999,
+          "lines": 1,
+          "overflowWrap": "normal",
+          "wordBreak": "keep-all",
+          "whiteSpace": "nowrap"
+        },
+        "mark": {
+          "text": "3,468.20",
+          "width": 147.5,
+          "height": 14,
+          "clientWidth": 148,
+          "scrollWidth": 148,
+          "lineHeight": 14.399999999999999,
+          "lines": 1,
+          "overflowWrap": "normal",
+          "wordBreak": "keep-all",
+          "whiteSpace": "nowrap"
+        },
+        "inspectorSource": {
+          "text": "exchange_rest",
+          "width": 167,
+          "height": 10,
+          "clientWidth": 167,
+          "scrollWidth": 167,
+          "lineHeight": 10.799999999999999,
+          "lines": 1,
+          "overflowWrap": "normal",
+          "wordBreak": "keep-all",
+          "whiteSpace": "nowrap"
+        },
+        "inspectorOwnership": {
+          "text": "手动 / 外部",
+          "width": 167,
+          "height": 13,
+          "clientWidth": 167,
+          "scrollWidth": 167,
+          "lineHeight": 10.799999999999999,
+          "lines": 1,
+          "overflowWrap": "normal",
+          "wordBreak": "keep-all",
+          "whiteSpace": "nowrap"
+        },
+        "protectionReason": {
+          "text": "ownership_not_managed",
+          "width": 91.90625,
+          "height": 11,
+          "clientWidth": 92,
+          "scrollWidth": 92,
+          "lineHeight": 9.6,
+          "lines": 1,
+          "overflowWrap": "normal",
+          "wordBreak": "keep-all",
+          "whiteSpace": "nowrap"
+        }
+      },
+      "supportIsolation": {
+        "start": {
+          "phase": "start",
+          "viewport": [
+            390,
+            844
+          ],
+          "support": {
+            "left": 324,
+            "top": 720.5,
+            "right": 380,
+            "bottom": 776.5,
+            "width": 56,
+            "height": 56
+          },
+          "dock": {
+            "left": 0,
+            "top": 714,
+            "right": 390,
+            "bottom": 782,
+            "width": 390,
+            "height": 68
+          },
+          "canvas": {
+            "left": 0,
+            "top": 275,
+            "right": 390,
+            "bottom": 714,
+            "width": 390,
+            "height": 439
+          },
+          "dockCanvasOverlap": 0,
+          "candidateCount": 8,
+          "intersections": [],
+          "hitFailures": [],
+          "supportHitTestable": true,
+          "scroll": {
+            "top": 0,
+            "height": 1322,
+            "clientHeight": 439
+          }
+        },
+        "end": {
+          "phase": "end",
+          "viewport": [
+            390,
+            844
+          ],
+          "support": {
+            "left": 324,
+            "top": 720.5,
+            "right": 380,
+            "bottom": 776.5,
+            "width": 56,
+            "height": 56
+          },
+          "dock": {
+            "left": 0,
+            "top": 714,
+            "right": 390,
+            "bottom": 782,
+            "width": 390,
+            "height": 68
+          },
+          "canvas": {
+            "left": 0,
+            "top": 275,
+            "right": 390,
+            "bottom": 714,
+            "width": 390,
+            "height": 439
+          },
+          "dockCanvasOverlap": 0,
+          "candidateCount": 7,
+          "intersections": [],
+          "hitFailures": [],
+          "supportHitTestable": true,
+          "scroll": {
+            "top": 883,
+            "height": 1322,
+            "clientHeight": 439
+          }
+        }
+      }
+    },
+    {
+      "file": "mobile-account-detail--430x932.png",
+      "viewport": "430x932",
+      "device": "mobile",
+      "domainId": "account",
+      "workspaceId": "account",
+      "viewportGeometry": {
+        "width": 430,
+        "height": 932
+      },
+      "document": {
+        "clientWidth": 430,
+        "scrollWidth": 430,
+        "clientHeight": 932,
+        "scrollHeight": 932
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "right": 430,
+        "bottom": 932,
+        "width": 430,
+        "height": 932,
+        "domainId": "account",
+        "workspaceId": "account",
+        "selectedId": "ex-okx-main",
+        "selectedType": "Account"
+      },
+      "noProductionWrites": true,
+      "actionRequestsAtCapture": 0,
+      "legacyProductStyles": false,
+      "accountCss": true,
+      "sha256": "ff06d5a9b947730f36aad590b2a512356014283e36a38162053d31cd5535b64c",
+      "structuralOnly": true,
+      "supportIsolation": {
+        "start": {
+          "phase": "start",
+          "viewport": [
+            430,
+            932
+          ],
+          "support": {
+            "left": 364,
+            "top": 808.5,
+            "right": 420,
+            "bottom": 864.5,
+            "width": 56,
+            "height": 56
+          },
+          "dock": {
+            "left": 0,
+            "top": 802,
+            "right": 430,
+            "bottom": 870,
+            "width": 430,
+            "height": 68
+          },
+          "canvas": {
+            "left": 0,
+            "top": 275,
+            "right": 430,
+            "bottom": 802,
+            "width": 430,
+            "height": 527
+          },
+          "dockCanvasOverlap": 0,
+          "candidateCount": 7,
+          "intersections": [],
+          "hitFailures": [],
+          "supportHitTestable": true,
+          "scroll": {
+            "top": 0,
+            "height": 611,
+            "clientHeight": 527
+          }
+        },
+        "end": {
+          "phase": "end",
+          "viewport": [
+            430,
+            932
+          ],
+          "support": {
+            "left": 364,
+            "top": 808.5,
+            "right": 420,
+            "bottom": 864.5,
+            "width": 56,
+            "height": 56
+          },
+          "dock": {
+            "left": 0,
+            "top": 802,
+            "right": 430,
+            "bottom": 870,
+            "width": 430,
+            "height": 68
+          },
+          "canvas": {
+            "left": 0,
+            "top": 275,
+            "right": 430,
+            "bottom": 802,
+            "width": 430,
+            "height": 527
+          },
+          "dockCanvasOverlap": 0,
+          "candidateCount": 7,
+          "intersections": [],
+          "hitFailures": [],
+          "supportHitTestable": true,
+          "scroll": {
+            "top": 84,
+            "height": 611,
+            "clientHeight": 527
+          }
+        }
+      }
+    }
+  ],
+  "interactions": [
+    {
+      "label": "Market",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "id": "BTC/USDT",
+      "type": "Market",
+      "workspace": "market",
+      "root": {
+        "id": "BTC/USDT",
+        "type": "Market",
+        "workspace": "market"
+      },
+      "context": {
+        "viewport": "1440x900",
+        "root": {
+          "id": "BTC/USDT",
+          "type": "Market"
+        },
+        "visibleIdentity": "Market / BTC/USDT",
+        "tab": "context",
+        "closeMethod": "Escape",
+        "focusReturned": true
+      },
+      "proof": {
+        "viewport": "1440x900",
+        "root": {
+          "id": "BTC/USDT",
+          "type": "Market"
+        },
+        "visibleIdentity": "Market / BTC/USDT",
+        "tab": "proof",
+        "closeMethod": "close-button",
+        "focusReturned": true
+      }
+    },
+    {
+      "label": "Account",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "id": "ex-okx-main",
+      "type": "Account",
+      "workspace": "account",
+      "root": {
+        "id": "ex-okx-main",
+        "type": "Account",
+        "workspace": "account"
+      },
+      "context": {
+        "viewport": "1440x900",
+        "root": {
+          "id": "ex-okx-main",
+          "type": "Account"
+        },
+        "visibleIdentity": "Account / ex-okx-main",
+        "tab": "context",
+        "closeMethod": "Escape",
+        "focusReturned": true
+      },
+      "proof": {
+        "viewport": "1440x900",
+        "root": {
+          "id": "ex-okx-main",
+          "type": "Account"
+        },
+        "visibleIdentity": "Account / ex-okx-main",
+        "tab": "proof",
+        "closeMethod": "close-button",
+        "focusReturned": true
+      }
+    },
+    {
+      "label": "Position",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "id": "position-eth",
+      "type": "Position",
+      "workspace": "positions",
+      "root": {
+        "id": "position-eth",
+        "type": "Position",
+        "workspace": "positions"
+      },
+      "context": {
+        "viewport": "1440x900",
+        "root": {
+          "id": "position-eth",
+          "type": "Position"
+        },
+        "visibleIdentity": "Position / position-eth",
+        "tab": "context",
+        "closeMethod": "Escape",
+        "focusReturned": true
+      },
+      "proof": {
+        "viewport": "1440x900",
+        "root": {
+          "id": "position-eth",
+          "type": "Position"
+        },
+        "visibleIdentity": "Position / position-eth",
+        "tab": "proof",
+        "closeMethod": "close-button",
+        "focusReturned": true
+      }
+    },
+    {
+      "label": "Trade plan",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "id": "plan-btc-task5",
+      "type": "Trade plan",
+      "workspace": "plans",
+      "root": {
+        "id": "plan-btc-task5",
+        "type": "Trade plan",
+        "workspace": "plans"
+      },
+      "context": {
+        "viewport": "1440x900",
+        "root": {
+          "id": "plan-btc-task5",
+          "type": "Trade plan"
+        },
+        "visibleIdentity": "Trade plan / plan-btc-task5",
+        "tab": "context",
+        "closeMethod": "Escape",
+        "focusReturned": true
+      },
+      "proof": {
+        "viewport": "1440x900",
+        "root": {
+          "id": "plan-btc-task5",
+          "type": "Trade plan"
+        },
+        "visibleIdentity": "Trade plan / plan-btc-task5",
+        "tab": "proof",
+        "closeMethod": "close-button",
+        "focusReturned": true
+      }
+    },
+    {
+      "label": "Execution",
+      "viewport": "1180x800",
+      "device": "desktop",
+      "id": "execution-btc",
+      "type": "Execution",
+      "workspace": "orders",
+      "root": {
+        "id": "execution-btc",
+        "type": "Execution",
+        "workspace": "orders"
+      },
+      "context": {
+        "viewport": "1180x800",
+        "root": {
+          "id": "execution-btc",
+          "type": "Execution"
+        },
+        "visibleIdentity": "Execution / execution-btc",
+        "tab": "context",
+        "closeMethod": "Escape",
+        "focusReturned": true
+      },
+      "proof": {
+        "viewport": "1180x800",
+        "root": {
+          "id": "execution-btc",
+          "type": "Execution"
+        },
+        "visibleIdentity": "Execution / execution-btc",
+        "tab": "proof",
+        "closeMethod": "close-button",
+        "focusReturned": true
+      }
+    },
+    {
+      "label": "Order",
+      "viewport": "1180x800",
+      "device": "desktop",
+      "id": "order-btc-task5",
+      "type": "Order",
+      "workspace": "orders",
+      "root": {
+        "id": "order-btc-task5",
+        "type": "Order",
+        "workspace": "orders"
+      },
+      "context": {
+        "viewport": "1180x800",
+        "root": {
+          "id": "order-btc-task5",
+          "type": "Order"
+        },
+        "visibleIdentity": "Order / order-btc-task5",
+        "tab": "context",
+        "closeMethod": "Escape",
+        "focusReturned": true
+      },
+      "proof": {
+        "viewport": "1180x800",
+        "root": {
+          "id": "order-btc-task5",
+          "type": "Order"
+        },
+        "visibleIdentity": "Order / order-btc-task5",
+        "tab": "proof",
+        "closeMethod": "close-button",
+        "focusReturned": true
+      }
+    },
+    {
+      "label": "Fill",
+      "viewport": "1180x800",
+      "device": "desktop",
+      "id": "fill-btc-task5",
+      "type": "Fill",
+      "workspace": "fills",
+      "root": {
+        "id": "fill-btc-task5",
+        "type": "Fill",
+        "workspace": "fills"
+      },
+      "context": {
+        "viewport": "1180x800",
+        "root": {
+          "id": "fill-btc-task5",
+          "type": "Fill"
+        },
+        "visibleIdentity": "Fill / fill-btc-task5",
+        "tab": "context",
+        "closeMethod": "Escape",
+        "focusReturned": true
+      },
+      "proof": {
+        "viewport": "1180x800",
+        "root": {
+          "id": "fill-btc-task5",
+          "type": "Fill"
+        },
+        "visibleIdentity": "Fill / fill-btc-task5",
+        "tab": "proof",
+        "closeMethod": "close-button",
+        "focusReturned": true
+      }
+    },
+    {
+      "label": "Closed trade",
+      "viewport": "1180x800",
+      "device": "desktop",
+      "id": "closed:execution-btc",
+      "type": "Closed trade",
+      "workspace": "fills",
+      "root": {
+        "id": "closed:execution-btc",
+        "type": "Closed trade",
+        "workspace": "fills"
+      },
+      "context": {
+        "viewport": "1180x800",
+        "root": {
+          "id": "closed:execution-btc",
+          "type": "Closed trade"
+        },
+        "visibleIdentity": "Closed trade / closed:execution-btc",
+        "tab": "context",
+        "closeMethod": "Escape",
+        "focusReturned": true
+      },
+      "proof": {
+        "viewport": "1180x800",
+        "root": {
+          "id": "closed:execution-btc",
+          "type": "Closed trade"
+        },
+        "visibleIdentity": "Closed trade / closed:execution-btc",
+        "tab": "proof",
+        "closeMethod": "close-button",
+        "focusReturned": true
+      }
+    },
+    {
+      "label": "Review",
+      "viewport": "1180x800",
+      "device": "desktop",
+      "id": "review-btc-task5",
+      "type": "Review",
+      "workspace": "fills",
+      "root": {
+        "id": "review-btc-task5",
+        "type": "Review",
+        "workspace": "fills"
+      },
+      "context": {
+        "viewport": "1180x800",
+        "root": {
+          "id": "review-btc-task5",
+          "type": "Review"
+        },
+        "visibleIdentity": "Review / review-btc-task5",
+        "tab": "context",
+        "closeMethod": "Escape",
+        "focusReturned": true
+      },
+      "proof": {
+        "viewport": "1180x800",
+        "root": {
+          "id": "review-btc-task5",
+          "type": "Review"
+        },
+        "visibleIdentity": "Review / review-btc-task5",
+        "tab": "proof",
+        "closeMethod": "close-button",
+        "focusReturned": true
+      }
+    },
+    {
+      "label": "Mobile Position",
+      "viewport": "390x844",
+      "device": "mobile",
+      "id": "position-eth",
+      "type": "Position",
+      "workspace": "positions",
+      "root": {
+        "id": "position-eth",
+        "type": "Position",
+        "workspace": "positions"
+      },
+      "context": {
+        "viewport": "390x844",
+        "root": {
+          "id": "position-eth",
+          "type": "Position"
+        },
+        "visibleIdentity": "Position / position-eth",
+        "tab": "context",
+        "closeMethod": "Escape",
+        "focusReturned": true
+      },
+      "proof": {
+        "viewport": "390x844",
+        "root": {
+          "id": "position-eth",
+          "type": "Position"
+        },
+        "visibleIdentity": "Position / position-eth",
+        "tab": "proof",
+        "closeMethod": "close-button",
+        "focusReturned": true
+      }
+    },
+    {
+      "label": "Mobile Trade plan",
+      "viewport": "430x932",
+      "device": "mobile",
+      "id": "plan-btc-task5",
+      "type": "Trade plan",
+      "workspace": "plans",
+      "root": {
+        "id": "plan-btc-task5",
+        "type": "Trade plan",
+        "workspace": "plans"
+      },
+      "context": {
+        "viewport": "430x932",
+        "root": {
+          "id": "plan-btc-task5",
+          "type": "Trade plan"
+        },
+        "visibleIdentity": "Trade plan / plan-btc-task5",
+        "tab": "context",
+        "closeMethod": "Escape",
+        "focusReturned": true
+      },
+      "proof": {
+        "viewport": "430x932",
+        "root": {
+          "id": "plan-btc-task5",
+          "type": "Trade plan"
+        },
+        "visibleIdentity": "Trade plan / plan-btc-task5",
+        "tab": "proof",
+        "closeMethod": "close-button",
+        "focusReturned": true
+      }
+    }
+  ],
+  "adverseInteractions": [
+    {
+      "label": "Desktop missing Execution",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "candidate": {
+        "id": "execution-missing",
+        "type": "Execution"
+      },
+      "before": {
+        "id": "plan-orphan-task5",
+        "type": "Trade plan",
+        "workspace": "plans"
+      },
+      "after": {
+        "id": "plan-orphan-task5",
+        "type": "Trade plan",
+        "workspace": "plans"
+      },
+      "failClosed": true
+    },
+    {
+      "label": "Mobile missing Execution",
+      "viewport": "430x932",
+      "device": "mobile",
+      "candidate": {
+        "id": "execution-missing",
+        "type": "Execution"
+      },
+      "before": {
+        "id": "plan-orphan-task5",
+        "type": "Trade plan",
+        "workspace": "plans"
+      },
+      "after": {
+        "id": "plan-orphan-task5",
+        "type": "Trade plan",
+        "workspace": "plans"
+      },
+      "failClosed": true
+    }
+  ],
+  "actionLedgers": [
+    {
+      "phase": "desktop-1440",
+      "ledger": {
+        "actionRequests": [
+          {
+            "endpoint": "/api/reconciler/run",
+            "payload": {
+              "mode": "manual_ui"
+            },
+            "method": "POST"
+          },
+          {
+            "endpoint": "/api/execution-orders/execution-eth/close",
+            "payload": {
+              "reason": "manual_ui",
+              "intent": "close_position",
+              "expectedStatus": "protecting"
+            },
+            "method": "POST"
+          },
+          {
+            "endpoint": "/api/execution-orders/poll",
+            "payload": {},
+            "method": "POST"
+          },
+          {
+            "endpoint": "/api/trade-plans/plan-btc-task5/approve",
+            "payload": {},
+            "method": "POST"
+          }
+        ],
+        "actionResults": [
+          {
+            "endpoint": "/api/reconciler/run",
+            "result": {
+              "ok": false,
+              "status": "partial",
+              "completed": [
+                "orders"
+              ],
+              "failed": [
+                "funding"
+              ],
+              "message": "partial reconciliation"
+            }
+          },
+          {
+            "endpoint": "/api/execution-orders/execution-eth/close",
+            "result": {
+              "ok": false,
+              "error": "position_refresh_required",
+              "httpStatus": 409
+            }
+          },
+          {
+            "endpoint": "/api/execution-orders/poll",
+            "result": {
+              "ok": false,
+              "polled": true
+            }
+          },
+          {
+            "endpoint": "/api/trade-plans/plan-btc-task5/approve",
+            "result": {
+              "ok": false,
+              "error": "execution_not_submitted",
+              "plan": {
+                "id": "plan-btc-task5",
+                "status": "approved"
+              },
+              "approvalGranted": true,
+              "executionSubmitted": false,
+              "execution": {
+                "status": "risk_recheck_failed",
+                "reason": "capacity_changed"
+              },
+              "message": "approval consumed, order not submitted"
+            }
+          }
+        ],
+        "authorityWrites": 4,
+        "downloads": []
+      }
+    },
+    {
+      "phase": "desktop-1180",
+      "ledger": {
+        "actionRequests": [],
+        "actionResults": [],
+        "authorityWrites": 0,
+        "downloads": [
+          {
+            "endpoint": "/api/posters/trades/execution-btc",
+            "filename": "closed-trade-execution-btc.png"
+          }
+        ]
+      }
+    },
+    {
+      "phase": "mobile-390",
+      "ledger": {
+        "actionRequests": [],
+        "actionResults": [],
+        "authorityWrites": 0,
+        "downloads": []
+      }
+    },
+    {
+      "phase": "mobile-430",
+      "ledger": {
+        "actionRequests": [],
+        "actionResults": [],
+        "authorityWrites": 0,
+        "downloads": []
+      }
+    }
+  ],
+  "actionLedger": {
+    "actionRequests": [
+      {
+        "endpoint": "/api/reconciler/run",
+        "payload": {
+          "mode": "manual_ui"
+        },
+        "method": "POST",
+        "phase": "desktop-1440"
+      },
+      {
+        "endpoint": "/api/execution-orders/execution-eth/close",
+        "payload": {
+          "reason": "manual_ui",
+          "intent": "close_position",
+          "expectedStatus": "protecting"
+        },
+        "method": "POST",
+        "phase": "desktop-1440"
+      },
+      {
+        "endpoint": "/api/execution-orders/poll",
+        "payload": {},
+        "method": "POST",
+        "phase": "desktop-1440"
+      },
+      {
+        "endpoint": "/api/trade-plans/plan-btc-task5/approve",
+        "payload": {},
+        "method": "POST",
+        "phase": "desktop-1440"
+      }
+    ],
+    "actionResults": [
+      {
+        "endpoint": "/api/reconciler/run",
+        "result": {
+          "ok": false,
+          "status": "partial",
+          "completed": [
+            "orders"
+          ],
+          "failed": [
+            "funding"
+          ],
+          "message": "partial reconciliation"
+        },
+        "phase": "desktop-1440"
+      },
+      {
+        "endpoint": "/api/execution-orders/execution-eth/close",
+        "result": {
+          "ok": false,
+          "error": "position_refresh_required",
+          "httpStatus": 409
+        },
+        "phase": "desktop-1440"
+      },
+      {
+        "endpoint": "/api/execution-orders/poll",
+        "result": {
+          "ok": false,
+          "polled": true
+        },
+        "phase": "desktop-1440"
+      },
+      {
+        "endpoint": "/api/trade-plans/plan-btc-task5/approve",
+        "result": {
+          "ok": false,
+          "error": "execution_not_submitted",
+          "plan": {
+            "id": "plan-btc-task5",
+            "status": "approved"
+          },
+          "approvalGranted": true,
+          "executionSubmitted": false,
+          "execution": {
+            "status": "risk_recheck_failed",
+            "reason": "capacity_changed"
+          },
+          "message": "approval consumed, order not submitted"
+        },
+        "phase": "desktop-1440"
+      }
+    ],
+    "authorityWrites": 4,
+    "downloads": [
+      {
+        "endpoint": "/api/posters/trades/execution-btc",
+        "filename": "closed-trade-execution-btc.png",
+        "phase": "desktop-1180"
+      }
+    ]
+  },
+  "styleOwnership": {
+    "accountCss": true,
+    "legacyProductStyles": false,
+    "owners": [
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/domains/account/account.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/domains/account/account.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/domains/ai/ai.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/domains/ai/ai.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/styles/mobile-shell.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/styles/mobile-shell.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/styles/shell.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/styles/shell.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/styles/tokens.css",
+      "/Users/ely/Desktop/Trading Agent/.worktrees/kordyn-v2-rebuild/src/kordynV2/styles/tokens.css"
+    ]
+  }
+}

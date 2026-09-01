@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "identity": "desktop-ai-signals--1180x800",
+  "concept": {
+    "id": "desktop-ai-signals",
+    "file": ".impeccable/mocks/kordyn-v2-approved/desktop-ai-signals.png",
+    "sha256": "beec4a413a6c1c174ea25fed47c862163415a9d577771feace2a80c715e2b283",
+    "storedPixels": {
+      "width": 1586,
+      "height": 992
+    },
+    "normalizedViewport": "1180x800"
+  },
+  "actual": {
+    "file": "desktop-ai-signals--1180x800.png",
+    "sha256": "87e978dbf508f91bf7bfd2f1781a2242055784f5ad99577f4e14e992f99e9fd5",
+    "runner": "tests/run-kordyn-v2-ai-browser.mjs",
+    "fixture": "tests/kordyn-v2-production-fixture.js",
+    "productionSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+    "captureTestSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+    "device": "desktop",
+    "domainId": "ai",
+    "workspaceId": "intelligence"
+  },
+  "viewport": {
+    "name": "1180x800",
+    "width": 1180,
+    "height": 800
+  },
+  "document": {
+    "clientWidth": 1180,
+    "scrollWidth": 1180
+  },
+  "documentOverflow": 0,
+  "shellGeometry": {
+    "left": 0,
+    "top": 0,
+    "width": 1180,
+    "height": 800
+  },
+  "diagnostics": {
+    "screenshotStructure": {
+      "variance": 0.014380982120590477,
+      "edgeDensity": 0.03359151286092545,
+      "nearFlat": false
+    },
+    "pixelDifference": {
+      "metric": 0.06740728508917691,
+      "role": "diagnostic only"
+    },
+    "contentAwareComparator": {
+      "applied": false,
+      "reason": "no fixed mobile shell threshold in Foundation Plan 01"
+    }
+  },
+  "artifacts": {
+    "normalizedReference": {
+      "file": "desktop-ai-signals--1180x800--reference.png",
+      "sha256": "5f943990684e66e4d3c563ccffd8f548e970d103ab0f940e7724845eef0f405e"
+    },
+    "overlay50": {
+      "file": "desktop-ai-signals--1180x800--overlay.png",
+      "sha256": "e438086761d62e6dadb096cf299ef83906a0479208c5086547c1fc6fa67696f4"
+    },
+    "absoluteDifference": {
+      "file": "desktop-ai-signals--1180x800--difference.png",
+      "sha256": "e621bc0a73f6431b9c910f09d6a6ea634372d1172f5e5dce8af4ed9a6ec07065"
+    }
+  },
+  "releaseVerdict": "human region review required"
+}

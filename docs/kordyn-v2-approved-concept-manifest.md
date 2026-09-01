@@ -51,3 +51,13 @@
 `AI 交易员 / 账户交易 / 智能资产 / 系统治理`
 
 No authenticated `Today`, `More`, Smart Forms, or DAO Governance destination may appear in the rebuilt navigation.
+
+## Plan 06 final validation ledger
+
+- Final production source: `c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9`.
+- Final evidence root: `.impeccable/review/kordyn-v2/final/`.
+- Final contact sheet: `82 / 82` valid images, `1800x7804`, no broken image and no pending label; PNG SHA-256 `6728a59ec8adec7c377f9d5f1216e53976ad2326e20bfac68ac210ca0ac94aa3`.
+- Governed comparison coverage: `15 / 15` concepts across `30` Desktop/APP viewport comparisons.
+- Final review status: every comparator intentionally remains machine-labelled `human region review required`; the original-size bounded region review and Impeccable finish review record `ship` without claiming pixel equivalence.
+
+Truthful adaptations remain permitted only where this manifest already allows them: real production-shaped data in place of invented raster copy, explicit `Unavailable` for absent facts, responsive reflow at `1180x800` and `430x932`, and accessible interaction geometry. The approved topology, hierarchy, navigation, density, material language, object/evidence grammar, and action ordering remain binding.

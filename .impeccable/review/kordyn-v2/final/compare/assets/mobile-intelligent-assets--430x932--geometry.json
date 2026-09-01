@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "identity": "mobile-intelligent-assets--430x932",
+  "concept": {
+    "id": "mobile-intelligent-assets",
+    "file": ".impeccable/mocks/kordyn-v2-approved/mobile-intelligent-assets.png",
+    "sha256": "6a2785438be0ebc43a522cd31d0c4f9253930467ee83d5c73b367eaa4375d1db",
+    "storedPixels": {
+      "width": 853,
+      "height": 1844
+    },
+    "normalizedViewport": "430x932"
+  },
+  "actual": {
+    "file": "mobile-intelligent-assets--430x932.png",
+    "sha256": "b97cdbfe51cece8c40000f161181bad3810c6f60345f1d11b885fd789469da97",
+    "runner": "tests/run-kordyn-v2-assets-browser.mjs",
+    "fixture": "tests/kordyn-v2-assets-browser.jsx",
+    "productionSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+    "captureTestSourceCommit": "4214862dc105995a4e8935d75ff1dc89653ace67",
+    "device": "mobile",
+    "domainId": "assets",
+    "workspaceId": "relationships"
+  },
+  "viewport": {
+    "name": "430x932",
+    "width": 430,
+    "height": 932
+  },
+  "document": {
+    "clientWidth": 430,
+    "scrollWidth": 430
+  },
+  "documentOverflow": 0,
+  "shellGeometry": {
+    "domainId": "assets",
+    "workspaceId": "relationships",
+    "selectedId": "run-btc-analysis",
+    "selectedType": "Agent run"
+  },
+  "diagnostics": {
+    "screenshotStructure": {
+      "variance": 0.018609356554100842,
+      "edgeDensity": 0.036410636599295505,
+      "nearFlat": false
+    },
+    "pixelDifference": {
+      "metric": 0.08546195887943625,
+      "role": "diagnostic only"
+    },
+    "contentAwareComparator": {
+      "applied": false,
+      "reason": "no fixed mobile shell threshold in Foundation Plan 01"
+    }
+  },
+  "artifacts": {
+    "normalizedReference": {
+      "file": "mobile-intelligent-assets--430x932--reference.png",
+      "sha256": "22c5a9b49e82f1057e2658e9745363386767ad2f2fef155039c5764e2c5b64c3"
+    },
+    "overlay50": {
+      "file": "mobile-intelligent-assets--430x932--overlay.png",
+      "sha256": "b668e45548b2510b4592f15d5dc78d6d8a0ff333adcaa3dcbb361d1d909f99c6"
+    },
+    "absoluteDifference": {
+      "file": "mobile-intelligent-assets--430x932--difference.png",
+      "sha256": "d6b73148f9fe4a31045e6dc874100b210ca920b8bb5ecb9835338a3e5abe107b"
+    }
+  },
+  "releaseVerdict": "human region review required"
+}

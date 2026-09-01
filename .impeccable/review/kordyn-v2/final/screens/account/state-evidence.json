@@ -1,0 +1,1136 @@
+{
+  "schemaVersion": 1,
+  "runner": "tests/run-kordyn-v2-account-browser.mjs",
+  "fixture": "tests/kordyn-v2-account-browser.jsx",
+  "productSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+  "captureTestSourceCommit": "e3eb0b3c216eafe9a63ed6b40ec998f693ba50a2",
+  "states": [
+    {
+      "file": "state-loading--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "account",
+      "workspaceId": "market",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440,
+        "clientHeight": 900,
+        "scrollHeight": 900
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "right": 1440,
+        "bottom": 900,
+        "width": 1440,
+        "height": 900,
+        "domainId": "account",
+        "workspaceId": "market",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "actionRequestsAtCapture": 0,
+      "legacyProductStyles": false,
+      "accountCss": false,
+      "sha256": "fc9ff4986e55c9092918730c860d485d823e72c6ec8db03db53ffeada74df7bc",
+      "state": "loading",
+      "retainsFacts": false,
+      "geometry": {
+        "innerWidth": 1440,
+        "document": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440
+        },
+        "body": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440
+        },
+        "shell": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440
+        },
+        "canvas": null,
+        "offenders": []
+      }
+    },
+    {
+      "file": "state-empty--390x844.png",
+      "viewport": "390x844",
+      "device": "mobile",
+      "domainId": "account",
+      "workspaceId": "market",
+      "viewportGeometry": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "clientHeight": 844,
+        "scrollHeight": 844
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "right": 390,
+        "bottom": 844,
+        "width": 390,
+        "height": 844,
+        "domainId": "account",
+        "workspaceId": "market",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "actionRequestsAtCapture": 0,
+      "legacyProductStyles": false,
+      "accountCss": false,
+      "sha256": "8a44e37ed5637d99c206b522c2f6740702d35088cd4f34e38324e19fbff1219b",
+      "state": "empty",
+      "retainsFacts": false,
+      "geometry": {
+        "innerWidth": 390,
+        "document": {
+          "clientWidth": 390,
+          "scrollWidth": 390
+        },
+        "body": {
+          "clientWidth": 390,
+          "scrollWidth": 390
+        },
+        "shell": {
+          "clientWidth": 390,
+          "scrollWidth": 390
+        },
+        "canvas": null,
+        "offenders": []
+      }
+    },
+    {
+      "file": "state-processing--1180x800.png",
+      "viewport": "1180x800",
+      "device": "desktop",
+      "domainId": "account",
+      "workspaceId": "plans",
+      "viewportGeometry": {
+        "width": 1180,
+        "height": 800
+      },
+      "document": {
+        "clientWidth": 1180,
+        "scrollWidth": 1180,
+        "clientHeight": 800,
+        "scrollHeight": 800
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "right": 1180,
+        "bottom": 800,
+        "width": 1180,
+        "height": 800,
+        "domainId": "account",
+        "workspaceId": "plans",
+        "selectedId": "plan-btc-task5",
+        "selectedType": "Trade plan"
+      },
+      "noProductionWrites": true,
+      "actionRequestsAtCapture": 0,
+      "legacyProductStyles": false,
+      "accountCss": true,
+      "sha256": "251c8d9c68872aa1d73f17c201d2d8f73baf38758bc04cb125eec5e94b82d4e0",
+      "state": "processing",
+      "processingEvidence": {
+        "actionState": "processing",
+        "statusText": "正在等待服务端结果…",
+        "confirmationOpen": true,
+        "terminalSuccessAbsent": true,
+        "authorityWrites": 0,
+        "approveRequests": 0
+      },
+      "geometry": {
+        "innerWidth": 1180,
+        "document": {
+          "clientWidth": 1180,
+          "scrollWidth": 1180
+        },
+        "body": {
+          "clientWidth": 1180,
+          "scrollWidth": 1180
+        },
+        "shell": {
+          "clientWidth": 1180,
+          "scrollWidth": 1180
+        },
+        "canvas": {
+          "clientWidth": 1040,
+          "scrollWidth": 1040
+        },
+        "offenders": []
+      }
+    },
+    {
+      "file": "state-stale--390x844.png",
+      "viewport": "390x844",
+      "device": "mobile",
+      "domainId": "account",
+      "workspaceId": "positions",
+      "viewportGeometry": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "clientHeight": 844,
+        "scrollHeight": 844
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "right": 390,
+        "bottom": 844,
+        "width": 390,
+        "height": 844,
+        "domainId": "account",
+        "workspaceId": "positions",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "actionRequestsAtCapture": 0,
+      "legacyProductStyles": false,
+      "accountCss": true,
+      "sha256": "5c57a5ae0a59cb0206e39a9f9e132d605fa7b0d16a60fc4231ce6f58bab24b24",
+      "state": "stale",
+      "retainsFacts": true,
+      "supportIsolation": {
+        "start": {
+          "phase": "start",
+          "viewport": [
+            390,
+            844
+          ],
+          "support": {
+            "left": 324,
+            "top": 720.5,
+            "right": 380,
+            "bottom": 776.5,
+            "width": 56,
+            "height": 56
+          },
+          "dock": {
+            "left": 0,
+            "top": 714,
+            "right": 390,
+            "bottom": 782,
+            "width": 390,
+            "height": 68
+          },
+          "canvas": {
+            "left": 0,
+            "top": 377,
+            "right": 390,
+            "bottom": 714,
+            "width": 390,
+            "height": 337
+          },
+          "dockCanvasOverlap": 0,
+          "candidateCount": 2,
+          "intersections": [],
+          "hitFailures": [],
+          "supportHitTestable": true,
+          "scroll": {
+            "top": 0,
+            "height": 541,
+            "clientHeight": 439
+          }
+        },
+        "end": {
+          "phase": "end",
+          "viewport": [
+            390,
+            844
+          ],
+          "support": {
+            "left": 324,
+            "top": 720.5,
+            "right": 380,
+            "bottom": 776.5,
+            "width": 56,
+            "height": 56
+          },
+          "dock": {
+            "left": 0,
+            "top": 714,
+            "right": 390,
+            "bottom": 782,
+            "width": 390,
+            "height": 68
+          },
+          "canvas": {
+            "left": 0,
+            "top": 275,
+            "right": 390,
+            "bottom": 714,
+            "width": 390,
+            "height": 439
+          },
+          "dockCanvasOverlap": 0,
+          "candidateCount": 2,
+          "intersections": [],
+          "hitFailures": [],
+          "supportHitTestable": true,
+          "scroll": {
+            "top": 102,
+            "height": 541,
+            "clientHeight": 439
+          }
+        }
+      },
+      "geometry": {
+        "innerWidth": 390,
+        "document": {
+          "clientWidth": 390,
+          "scrollWidth": 390
+        },
+        "body": {
+          "clientWidth": 390,
+          "scrollWidth": 390
+        },
+        "shell": {
+          "clientWidth": 390,
+          "scrollWidth": 390
+        },
+        "canvas": {
+          "clientWidth": 390,
+          "scrollWidth": 390
+        },
+        "offenders": []
+      }
+    },
+    {
+      "file": "state-degraded--430x932.png",
+      "viewport": "430x932",
+      "device": "mobile",
+      "domainId": "account",
+      "workspaceId": "account",
+      "viewportGeometry": {
+        "width": 430,
+        "height": 932
+      },
+      "document": {
+        "clientWidth": 430,
+        "scrollWidth": 430,
+        "clientHeight": 932,
+        "scrollHeight": 932
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "right": 430,
+        "bottom": 932,
+        "width": 430,
+        "height": 932,
+        "domainId": "account",
+        "workspaceId": "account",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "actionRequestsAtCapture": 0,
+      "legacyProductStyles": false,
+      "accountCss": true,
+      "sha256": "e7c6de80c076950e608b9c73d6bfee5c48e48d28ea8432bb418fe76701c40dcc",
+      "state": "degraded",
+      "retainsFacts": true,
+      "supportIsolation": {
+        "start": {
+          "phase": "start",
+          "viewport": [
+            430,
+            932
+          ],
+          "support": {
+            "left": 364,
+            "top": 808.5,
+            "right": 420,
+            "bottom": 864.5,
+            "width": 56,
+            "height": 56
+          },
+          "dock": {
+            "left": 0,
+            "top": 802,
+            "right": 430,
+            "bottom": 870,
+            "width": 430,
+            "height": 68
+          },
+          "canvas": {
+            "left": 0,
+            "top": 377,
+            "right": 430,
+            "bottom": 802,
+            "width": 430,
+            "height": 425
+          },
+          "dockCanvasOverlap": 0,
+          "candidateCount": 6,
+          "intersections": [],
+          "hitFailures": [],
+          "supportHitTestable": true,
+          "scroll": {
+            "top": 0,
+            "height": 713,
+            "clientHeight": 527
+          }
+        },
+        "end": {
+          "phase": "end",
+          "viewport": [
+            430,
+            932
+          ],
+          "support": {
+            "left": 364,
+            "top": 808.5,
+            "right": 420,
+            "bottom": 864.5,
+            "width": 56,
+            "height": 56
+          },
+          "dock": {
+            "left": 0,
+            "top": 802,
+            "right": 430,
+            "bottom": 870,
+            "width": 430,
+            "height": 68
+          },
+          "canvas": {
+            "left": 0,
+            "top": 275,
+            "right": 430,
+            "bottom": 802,
+            "width": 430,
+            "height": 527
+          },
+          "dockCanvasOverlap": 0,
+          "candidateCount": 7,
+          "intersections": [],
+          "hitFailures": [],
+          "supportHitTestable": true,
+          "scroll": {
+            "top": 186,
+            "height": 713,
+            "clientHeight": 527
+          }
+        }
+      },
+      "geometry": {
+        "innerWidth": 430,
+        "document": {
+          "clientWidth": 430,
+          "scrollWidth": 430
+        },
+        "body": {
+          "clientWidth": 430,
+          "scrollWidth": 430
+        },
+        "shell": {
+          "clientWidth": 430,
+          "scrollWidth": 430
+        },
+        "canvas": {
+          "clientWidth": 430,
+          "scrollWidth": 430
+        },
+        "offenders": []
+      }
+    },
+    {
+      "file": "state-failed--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "account",
+      "workspaceId": "market",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440,
+        "clientHeight": 900,
+        "scrollHeight": 900
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "right": 1440,
+        "bottom": 900,
+        "width": 1440,
+        "height": 900,
+        "domainId": "account",
+        "workspaceId": "market",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "actionRequestsAtCapture": 0,
+      "legacyProductStyles": false,
+      "accountCss": false,
+      "sha256": "5579b1d19dcfc45a6c3a6dbacf340bb19fb35547356e26dc9a363718ac4a21c2",
+      "state": "failed",
+      "retainsFacts": false,
+      "geometry": {
+        "innerWidth": 1440,
+        "document": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440
+        },
+        "body": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440
+        },
+        "shell": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440
+        },
+        "canvas": null,
+        "offenders": []
+      }
+    },
+    {
+      "file": "state-forbidden--390x844.png",
+      "viewport": "390x844",
+      "device": "mobile",
+      "domainId": "account",
+      "workspaceId": "account",
+      "viewportGeometry": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "clientHeight": 844,
+        "scrollHeight": 844
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "right": 390,
+        "bottom": 844,
+        "width": 390,
+        "height": 844,
+        "domainId": "account",
+        "workspaceId": "account",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "actionRequestsAtCapture": 0,
+      "legacyProductStyles": false,
+      "accountCss": false,
+      "sha256": "367bd61ee1adc11352776b103a2d7932ec10cca642826069c768ebcd627207c4",
+      "state": "forbidden",
+      "retainsFacts": false,
+      "geometry": {
+        "innerWidth": 390,
+        "document": {
+          "clientWidth": 390,
+          "scrollWidth": 390
+        },
+        "body": {
+          "clientWidth": 390,
+          "scrollWidth": 390
+        },
+        "shell": {
+          "clientWidth": 390,
+          "scrollWidth": 390
+        },
+        "canvas": null,
+        "offenders": []
+      }
+    },
+    {
+      "file": "state-disabled--1180x800.png",
+      "viewport": "1180x800",
+      "device": "desktop",
+      "domainId": "account",
+      "workspaceId": "orders",
+      "viewportGeometry": {
+        "width": 1180,
+        "height": 800
+      },
+      "document": {
+        "clientWidth": 1180,
+        "scrollWidth": 1180,
+        "clientHeight": 800,
+        "scrollHeight": 800
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "right": 1180,
+        "bottom": 800,
+        "width": 1180,
+        "height": 800,
+        "domainId": "account",
+        "workspaceId": "orders",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "actionRequestsAtCapture": 0,
+      "legacyProductStyles": false,
+      "accountCss": false,
+      "sha256": "6906e2f6be8ea19b047cb58d03d60eb54736ba2e55e47cbba73701291635cf09",
+      "state": "disabled",
+      "retainsFacts": false,
+      "geometry": {
+        "innerWidth": 1180,
+        "document": {
+          "clientWidth": 1180,
+          "scrollWidth": 1180
+        },
+        "body": {
+          "clientWidth": 1180,
+          "scrollWidth": 1180
+        },
+        "shell": {
+          "clientWidth": 1180,
+          "scrollWidth": 1180
+        },
+        "canvas": null,
+        "offenders": []
+      }
+    },
+    {
+      "file": "state-approval--430x932.png",
+      "viewport": "430x932",
+      "device": "mobile",
+      "domainId": "account",
+      "workspaceId": "plans",
+      "viewportGeometry": {
+        "width": 430,
+        "height": 932
+      },
+      "document": {
+        "clientWidth": 430,
+        "scrollWidth": 430,
+        "clientHeight": 932,
+        "scrollHeight": 932
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "right": 430,
+        "bottom": 932,
+        "width": 430,
+        "height": 932,
+        "domainId": "account",
+        "workspaceId": "plans",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "actionRequestsAtCapture": 0,
+      "legacyProductStyles": false,
+      "accountCss": false,
+      "sha256": "58f3f4c837c0246fbac908a87cd650f597eefce1acd5463ac4c80b59f825a483",
+      "state": "approval",
+      "retainsFacts": false,
+      "geometry": {
+        "innerWidth": 430,
+        "document": {
+          "clientWidth": 430,
+          "scrollWidth": 430
+        },
+        "body": {
+          "clientWidth": 430,
+          "scrollWidth": 430
+        },
+        "shell": {
+          "clientWidth": 430,
+          "scrollWidth": 430
+        },
+        "canvas": null,
+        "offenders": []
+      }
+    },
+    {
+      "file": "state-partial--1440x900.png",
+      "viewport": "1440x900",
+      "device": "desktop",
+      "domainId": "account",
+      "workspaceId": "plans",
+      "viewportGeometry": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440,
+        "clientHeight": 900,
+        "scrollHeight": 900
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "right": 1440,
+        "bottom": 900,
+        "width": 1440,
+        "height": 900,
+        "domainId": "account",
+        "workspaceId": "plans",
+        "selectedId": "plan-btc-task5",
+        "selectedType": "Trade plan"
+      },
+      "noProductionWrites": true,
+      "actionRequestsAtCapture": 1,
+      "legacyProductStyles": false,
+      "accountCss": true,
+      "sha256": "aee91354e2ac35bf3f969598d98819e99731d6364ff03385599c2eb7a5683b6e",
+      "state": "partial",
+      "partialEvidence": {
+        "actionState": "partial",
+        "statusText": "授权已消费，但订单未提交。",
+        "request": {
+          "endpoint": "/api/trade-plans/plan-btc-task5/approve",
+          "payload": {},
+          "method": "POST"
+        },
+        "result": {
+          "ok": false,
+          "error": "execution_not_submitted",
+          "plan": {
+            "id": "plan-btc-task5",
+            "status": "approved"
+          },
+          "approvalGranted": true,
+          "executionSubmitted": false,
+          "execution": {
+            "status": "risk_recheck_failed",
+            "reason": "capacity_changed"
+          },
+          "message": "approval consumed, order not submitted"
+        },
+        "completedEffects": [
+          "approval consumed"
+        ],
+        "failedEffects": [
+          "capacity_changed"
+        ],
+        "executionSubmitted": false,
+        "authorityWrites": 1,
+        "approveRequests": 1
+      },
+      "fixtureAuthorityWrite": true,
+      "geometry": {
+        "innerWidth": 1440,
+        "document": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440
+        },
+        "body": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440
+        },
+        "shell": {
+          "clientWidth": 1440,
+          "scrollWidth": 1440
+        },
+        "canvas": {
+          "clientWidth": 1284,
+          "scrollWidth": 1284
+        },
+        "offenders": []
+      }
+    },
+    {
+      "file": "state-no-result--390x844.png",
+      "viewport": "390x844",
+      "device": "mobile",
+      "domainId": "account",
+      "workspaceId": "fills",
+      "viewportGeometry": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "clientHeight": 844,
+        "scrollHeight": 844
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "right": 390,
+        "bottom": 844,
+        "width": 390,
+        "height": 844,
+        "domainId": "account",
+        "workspaceId": "fills",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "actionRequestsAtCapture": 0,
+      "legacyProductStyles": false,
+      "accountCss": false,
+      "sha256": "d9bd49effb586eefb264014dcd7b54449c1a7979e8e1d1012b1de054c3a79b0f",
+      "state": "no-result",
+      "retainsFacts": false,
+      "geometry": {
+        "innerWidth": 390,
+        "document": {
+          "clientWidth": 390,
+          "scrollWidth": 390
+        },
+        "body": {
+          "clientWidth": 390,
+          "scrollWidth": 390
+        },
+        "shell": {
+          "clientWidth": 390,
+          "scrollWidth": 390
+        },
+        "canvas": null,
+        "offenders": []
+      }
+    },
+    {
+      "file": "state-long-content--390x844.png",
+      "viewport": "390x844",
+      "device": "mobile",
+      "domainId": "account",
+      "workspaceId": "fills",
+      "viewportGeometry": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "clientHeight": 844,
+        "scrollHeight": 844
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "right": 390,
+        "bottom": 844,
+        "width": 390,
+        "height": 844,
+        "domainId": "account",
+        "workspaceId": "fills",
+        "selectedId": "closed:execution-btc",
+        "selectedType": "Closed trade"
+      },
+      "noProductionWrites": true,
+      "actionRequestsAtCapture": 0,
+      "legacyProductStyles": false,
+      "accountCss": true,
+      "sha256": "a8113c64dae64b11898a2114995373dbb35f26287039c552d2fc4cc94064ee54",
+      "state": "long-content",
+      "retainsFacts": false,
+      "supportIsolation": {
+        "start": {
+          "phase": "start",
+          "viewport": [
+            390,
+            844
+          ],
+          "support": {
+            "left": 324,
+            "top": 720.5,
+            "right": 380,
+            "bottom": 776.5,
+            "width": 56,
+            "height": 56
+          },
+          "dock": {
+            "left": 0,
+            "top": 714,
+            "right": 390,
+            "bottom": 782,
+            "width": 390,
+            "height": 68
+          },
+          "canvas": {
+            "left": 0,
+            "top": 275,
+            "right": 390,
+            "bottom": 714,
+            "width": 390,
+            "height": 439
+          },
+          "dockCanvasOverlap": 0,
+          "candidateCount": 6,
+          "intersections": [],
+          "hitFailures": [],
+          "supportHitTestable": true,
+          "scroll": {
+            "top": 0,
+            "height": 2079,
+            "clientHeight": 439
+          }
+        },
+        "end": {
+          "phase": "end",
+          "viewport": [
+            390,
+            844
+          ],
+          "support": {
+            "left": 324,
+            "top": 720.5,
+            "right": 380,
+            "bottom": 776.5,
+            "width": 56,
+            "height": 56
+          },
+          "dock": {
+            "left": 0,
+            "top": 714,
+            "right": 390,
+            "bottom": 782,
+            "width": 390,
+            "height": 68
+          },
+          "canvas": {
+            "left": 0,
+            "top": 275,
+            "right": 390,
+            "bottom": 713.84375,
+            "width": 390,
+            "height": 438.84375
+          },
+          "dockCanvasOverlap": 0,
+          "candidateCount": 7,
+          "intersections": [],
+          "hitFailures": [],
+          "supportHitTestable": true,
+          "scroll": {
+            "top": 1640,
+            "height": 2079,
+            "clientHeight": 439
+          }
+        }
+      },
+      "geometry": {
+        "innerWidth": 390,
+        "document": {
+          "clientWidth": 390,
+          "scrollWidth": 390
+        },
+        "body": {
+          "clientWidth": 390,
+          "scrollWidth": 390
+        },
+        "shell": {
+          "clientWidth": 390,
+          "scrollWidth": 390
+        },
+        "canvas": {
+          "clientWidth": 390,
+          "scrollWidth": 390
+        },
+        "offenders": []
+      }
+    },
+    {
+      "file": "state-large-list--430x932.png",
+      "viewport": "430x932",
+      "device": "mobile",
+      "domainId": "account",
+      "workspaceId": "market",
+      "viewportGeometry": {
+        "width": 430,
+        "height": 932
+      },
+      "document": {
+        "clientWidth": 430,
+        "scrollWidth": 430,
+        "clientHeight": 932,
+        "scrollHeight": 932
+      },
+      "shell": {
+        "left": 0,
+        "top": 0,
+        "right": 430,
+        "bottom": 932,
+        "width": 430,
+        "height": 932,
+        "domainId": "account",
+        "workspaceId": "market",
+        "selectedId": "run-btc-analysis",
+        "selectedType": "Agent run"
+      },
+      "noProductionWrites": true,
+      "actionRequestsAtCapture": 0,
+      "legacyProductStyles": false,
+      "accountCss": true,
+      "sha256": "b7fc4999272cb8395de3437b5ba4f2393827d1ce9aeb83e055826f68147484d4",
+      "state": "large-list",
+      "retainsFacts": false,
+      "largeListEvidence": {
+        "shownCount": 180,
+        "sourceCount": 180,
+        "firstId": "ASSET1/USDT",
+        "lastId": "ASSET180/USDT",
+        "complete": true
+      },
+      "supportIsolation": {
+        "start": {
+          "phase": "start",
+          "viewport": [
+            430,
+            932
+          ],
+          "support": {
+            "left": 364,
+            "top": 808.5,
+            "right": 420,
+            "bottom": 864.5,
+            "width": 56,
+            "height": 56
+          },
+          "dock": {
+            "left": 0,
+            "top": 802,
+            "right": 430,
+            "bottom": 870,
+            "width": 430,
+            "height": 68
+          },
+          "canvas": {
+            "left": 0,
+            "top": 275,
+            "right": 430,
+            "bottom": 802,
+            "width": 430,
+            "height": 527
+          },
+          "dockCanvasOverlap": 0,
+          "candidateCount": 12,
+          "intersections": [],
+          "hitFailures": [],
+          "supportHitTestable": true,
+          "scroll": {
+            "top": 0,
+            "height": 12836,
+            "clientHeight": 527
+          }
+        },
+        "end": {
+          "phase": "end",
+          "viewport": [
+            430,
+            932
+          ],
+          "support": {
+            "left": 364,
+            "top": 808.5,
+            "right": 420,
+            "bottom": 864.5,
+            "width": 56,
+            "height": 56
+          },
+          "dock": {
+            "left": 0,
+            "top": 802,
+            "right": 430,
+            "bottom": 870,
+            "width": 430,
+            "height": 68
+          },
+          "canvas": {
+            "left": 0,
+            "top": 275,
+            "right": 430,
+            "bottom": 802,
+            "width": 430,
+            "height": 527
+          },
+          "dockCanvasOverlap": 0,
+          "candidateCount": 13,
+          "intersections": [],
+          "hitFailures": [],
+          "supportHitTestable": true,
+          "scroll": {
+            "top": 12309,
+            "height": 12836,
+            "clientHeight": 527
+          }
+        },
+        "asset7": {
+          "row": {
+            "left": 20,
+            "top": 503,
+            "right": 410,
+            "bottom": 573,
+            "width": 390,
+            "height": 70
+          },
+          "object": {
+            "left": 20,
+            "top": 503,
+            "right": 366,
+            "bottom": 572,
+            "width": 346,
+            "height": 69
+          },
+          "watch": {
+            "left": 366,
+            "top": 515.5,
+            "right": 410,
+            "bottom": 559.5,
+            "width": 44,
+            "height": 44
+          },
+          "canvas": {
+            "left": 0,
+            "top": 275,
+            "right": 430,
+            "bottom": 802,
+            "width": 430,
+            "height": 527
+          },
+          "objectHitTestable": true,
+          "watchHitTestable": true,
+          "fullyInsideCanvas": true
+        }
+      },
+      "geometry": {
+        "innerWidth": 430,
+        "document": {
+          "clientWidth": 430,
+          "scrollWidth": 430
+        },
+        "body": {
+          "clientWidth": 430,
+          "scrollWidth": 430
+        },
+        "shell": {
+          "clientWidth": 430,
+          "scrollWidth": 430
+        },
+        "canvas": {
+          "clientWidth": 430,
+          "scrollWidth": 430
+        },
+        "offenders": []
+      }
+    }
+  ]
+}

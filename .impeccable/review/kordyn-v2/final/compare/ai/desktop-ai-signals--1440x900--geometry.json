@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "identity": "desktop-ai-signals--1440x900",
+  "concept": {
+    "id": "desktop-ai-signals",
+    "file": ".impeccable/mocks/kordyn-v2-approved/desktop-ai-signals.png",
+    "sha256": "beec4a413a6c1c174ea25fed47c862163415a9d577771feace2a80c715e2b283",
+    "storedPixels": {
+      "width": 1586,
+      "height": 992
+    },
+    "normalizedViewport": "1440x900"
+  },
+  "actual": {
+    "file": "desktop-ai-signals--1440x900.png",
+    "sha256": "b467f2fb226b4da4aaa61e88b0802664a0079d4598c828b1fea2a3aed93bac40",
+    "runner": "tests/run-kordyn-v2-ai-browser.mjs",
+    "fixture": "tests/kordyn-v2-production-fixture.js",
+    "productionSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+    "captureTestSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+    "device": "desktop",
+    "domainId": "ai",
+    "workspaceId": "intelligence"
+  },
+  "viewport": {
+    "name": "1440x900",
+    "width": 1440,
+    "height": 900
+  },
+  "document": {
+    "clientWidth": 1440,
+    "scrollWidth": 1440
+  },
+  "documentOverflow": 0,
+  "shellGeometry": {
+    "left": 0,
+    "top": 0,
+    "width": 1440,
+    "height": 900
+  },
+  "diagnostics": {
+    "screenshotStructure": {
+      "variance": 0.011751131335088266,
+      "edgeDensity": 0.027282812224083207,
+      "nearFlat": false
+    },
+    "pixelDifference": {
+      "metric": 0.06226698942951667,
+      "role": "diagnostic only"
+    },
+    "contentAwareComparator": {
+      "applied": false,
+      "reason": "no fixed mobile shell threshold in Foundation Plan 01"
+    }
+  },
+  "artifacts": {
+    "normalizedReference": {
+      "file": "desktop-ai-signals--1440x900--reference.png",
+      "sha256": "fb2a7503bf9ab88d97c26c079026df5bde954a3d98b9625a021ca0aa45dafb32"
+    },
+    "overlay50": {
+      "file": "desktop-ai-signals--1440x900--overlay.png",
+      "sha256": "0d5128b7cf7d38cbf2c560a2c78c5a3cbeb978e2a8c186f902323bb838e15a73"
+    },
+    "absoluteDifference": {
+      "file": "desktop-ai-signals--1440x900--difference.png",
+      "sha256": "0fbdfe547ba89529c5f6b2ca7204310dbbf629c0e164cec8b69ef810bc316692"
+    }
+  },
+  "releaseVerdict": "human region review required"
+}

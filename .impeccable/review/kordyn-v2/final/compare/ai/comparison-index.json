@@ -1,0 +1,288 @@
+{
+  "schemaVersion": 1,
+  "scope": "ai",
+  "sourceManifest": "docs/kordyn-v2-approved-concept-manifest.md",
+  "captureEvidence": ".impeccable/review/kordyn-v2/final/screens/ai/capture-evidence.json",
+  "productionSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+  "captureTestSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+  "outputRoot": ".impeccable/review/kordyn-v2/final/compare/ai",
+  "counts": {
+    "concepts": 4,
+    "completedConcepts": 4,
+    "pendingConcepts": 0,
+    "comparisons": 8,
+    "artifacts": 33
+  },
+  "scopeCounts": {
+    "manifestConcepts": 15,
+    "scopedConcepts": 4,
+    "completedScopedConcepts": 4,
+    "pendingScopedConcepts": 0,
+    "outOfScopeConcepts": 11
+  },
+  "completed": [
+    "desktop-ai-mission-control",
+    "desktop-ai-signals",
+    "mobile-ai-mission-home",
+    "mobile-ai-task-approval"
+  ],
+  "pending": [],
+  "scopedPending": [],
+  "outOfScope": [
+    {
+      "id": "desktop-account-position",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "desktop-assets-relationship",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "desktop-strategy-registry",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "desktop-knowledge-incubator",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "desktop-capability-registry",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "desktop-review-owner-release",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "desktop-governance-boundary",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "desktop-governance-operations",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "desktop-governance-configuration",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "mobile-intelligent-assets",
+      "status": "pending domain implementation"
+    },
+    {
+      "id": "mobile-system-governance",
+      "status": "pending domain implementation"
+    }
+  ],
+  "comparisons": [
+    {
+      "identity": "desktop-ai-mission-control--1440x900",
+      "conceptId": "desktop-ai-mission-control",
+      "viewport": "1440x900",
+      "actual": "desktop-ai-mission-control--1440x900.png",
+      "artifacts": {
+        "normalizedReference": {
+          "file": "desktop-ai-mission-control--1440x900--reference.png",
+          "sha256": "193a520e8e696cc0c46eab1a8e71ffeecaa9fe38891aaa2a6b18f94b674a9775"
+        },
+        "overlay50": {
+          "file": "desktop-ai-mission-control--1440x900--overlay.png",
+          "sha256": "a1c12c76276456579a3e8033ab8c2aad66ab32f964db5033f6bf62f24a4cc9f4"
+        },
+        "absoluteDifference": {
+          "file": "desktop-ai-mission-control--1440x900--difference.png",
+          "sha256": "ea35673debd9c8bc182bce3ebf0faea878edd922a921f5ec9c4bb8beebf117a7"
+        },
+        "geometry": {
+          "file": "desktop-ai-mission-control--1440x900--geometry.json",
+          "sha256": "a8b0387c14d1cf1f66e07bd7ee5c3ae4dc15c2b3a3caa2d64fc966d984339dea"
+        }
+      },
+      "pixelDifference": 0.055577104010328414,
+      "releaseVerdict": "human region review required"
+    },
+    {
+      "identity": "desktop-ai-mission-control--1180x800",
+      "conceptId": "desktop-ai-mission-control",
+      "viewport": "1180x800",
+      "actual": "desktop-ai-mission-control--1180x800.png",
+      "artifacts": {
+        "normalizedReference": {
+          "file": "desktop-ai-mission-control--1180x800--reference.png",
+          "sha256": "2d7c30866a5992a36763d0c389fd81965a450a27551929cdf61e7055c5aa5031"
+        },
+        "overlay50": {
+          "file": "desktop-ai-mission-control--1180x800--overlay.png",
+          "sha256": "978a6acfb6ce504ef2e32cd15e69c0221c29e2fdbdf0b7b60be52b993b492b07"
+        },
+        "absoluteDifference": {
+          "file": "desktop-ai-mission-control--1180x800--difference.png",
+          "sha256": "90664c23bde8e6e13b733403192f6ee7cf655e34536698b12c1baee57c41fa5b"
+        },
+        "geometry": {
+          "file": "desktop-ai-mission-control--1180x800--geometry.json",
+          "sha256": "8c62baaa777f3acd32c6c044fe9211d6a5f8fd47063494e30a1a34defee3122f"
+        }
+      },
+      "pixelDifference": 0.06415088207599424,
+      "releaseVerdict": "human region review required"
+    },
+    {
+      "identity": "desktop-ai-signals--1440x900",
+      "conceptId": "desktop-ai-signals",
+      "viewport": "1440x900",
+      "actual": "desktop-ai-signals--1440x900.png",
+      "artifacts": {
+        "normalizedReference": {
+          "file": "desktop-ai-signals--1440x900--reference.png",
+          "sha256": "fb2a7503bf9ab88d97c26c079026df5bde954a3d98b9625a021ca0aa45dafb32"
+        },
+        "overlay50": {
+          "file": "desktop-ai-signals--1440x900--overlay.png",
+          "sha256": "0d5128b7cf7d38cbf2c560a2c78c5a3cbeb978e2a8c186f902323bb838e15a73"
+        },
+        "absoluteDifference": {
+          "file": "desktop-ai-signals--1440x900--difference.png",
+          "sha256": "0fbdfe547ba89529c5f6b2ca7204310dbbf629c0e164cec8b69ef810bc316692"
+        },
+        "geometry": {
+          "file": "desktop-ai-signals--1440x900--geometry.json",
+          "sha256": "994739219e1255fb20721f58c8fbd24ca459f26d364653dd4750fa6d95767ded"
+        }
+      },
+      "pixelDifference": 0.06226698942951667,
+      "releaseVerdict": "human region review required"
+    },
+    {
+      "identity": "desktop-ai-signals--1180x800",
+      "conceptId": "desktop-ai-signals",
+      "viewport": "1180x800",
+      "actual": "desktop-ai-signals--1180x800.png",
+      "artifacts": {
+        "normalizedReference": {
+          "file": "desktop-ai-signals--1180x800--reference.png",
+          "sha256": "5f943990684e66e4d3c563ccffd8f548e970d103ab0f940e7724845eef0f405e"
+        },
+        "overlay50": {
+          "file": "desktop-ai-signals--1180x800--overlay.png",
+          "sha256": "e438086761d62e6dadb096cf299ef83906a0479208c5086547c1fc6fa67696f4"
+        },
+        "absoluteDifference": {
+          "file": "desktop-ai-signals--1180x800--difference.png",
+          "sha256": "e621bc0a73f6431b9c910f09d6a6ea634372d1172f5e5dce8af4ed9a6ec07065"
+        },
+        "geometry": {
+          "file": "desktop-ai-signals--1180x800--geometry.json",
+          "sha256": "23b5341be2840d7916503b89276d199720d0d5de78e5132ba85a09efc05ac9c6"
+        }
+      },
+      "pixelDifference": 0.06740728508917691,
+      "releaseVerdict": "human region review required"
+    },
+    {
+      "identity": "mobile-ai-mission-home--390x844",
+      "conceptId": "mobile-ai-mission-home",
+      "viewport": "390x844",
+      "actual": "mobile-ai-mission-home--390x844.png",
+      "artifacts": {
+        "normalizedReference": {
+          "file": "mobile-ai-mission-home--390x844--reference.png",
+          "sha256": "2d2c24912b9843d1de183dbb66ebbbc9fd39c928874558c918eb51e406d6faff"
+        },
+        "overlay50": {
+          "file": "mobile-ai-mission-home--390x844--overlay.png",
+          "sha256": "1cb78df1ad437fd25f08107a052ac504ea398673cdf3c47e331f586b4c0bea79"
+        },
+        "absoluteDifference": {
+          "file": "mobile-ai-mission-home--390x844--difference.png",
+          "sha256": "125034bd5fa72a8661735a52fe0de1ee51d7b64973a897c67f700443059fde9c"
+        },
+        "geometry": {
+          "file": "mobile-ai-mission-home--390x844--geometry.json",
+          "sha256": "3e0020eb469d68d351d13192258f21cb630931aee42ea48aaa8586b4458b391a"
+        }
+      },
+      "pixelDifference": 0.08035781712531086,
+      "releaseVerdict": "human region review required"
+    },
+    {
+      "identity": "mobile-ai-mission-home--430x932",
+      "conceptId": "mobile-ai-mission-home",
+      "viewport": "430x932",
+      "actual": "mobile-ai-mission-home--430x932.png",
+      "artifacts": {
+        "normalizedReference": {
+          "file": "mobile-ai-mission-home--430x932--reference.png",
+          "sha256": "f3e8a97d69a54a9754c92b89fcba0c39821e7e88fbcd2ca37f24b2ece86d2049"
+        },
+        "overlay50": {
+          "file": "mobile-ai-mission-home--430x932--overlay.png",
+          "sha256": "a30a8324749e2ad2b37458bc56f0068cac584a203fca25d6575b6be1f03d3d63"
+        },
+        "absoluteDifference": {
+          "file": "mobile-ai-mission-home--430x932--difference.png",
+          "sha256": "67734e324fc2a99a7b95763f61e40848df00d0c8aa10a13792cabb013f7fc6dc"
+        },
+        "geometry": {
+          "file": "mobile-ai-mission-home--430x932--geometry.json",
+          "sha256": "b0d309d6769d779f43ae87143dd82e0aeda679f0a6dcbe3b5bcb8e22aa0e906d"
+        }
+      },
+      "pixelDifference": 0.07643552739990098,
+      "releaseVerdict": "human region review required"
+    },
+    {
+      "identity": "mobile-ai-task-approval--390x844",
+      "conceptId": "mobile-ai-task-approval",
+      "viewport": "390x844",
+      "actual": "mobile-ai-task-approval--390x844.png",
+      "artifacts": {
+        "normalizedReference": {
+          "file": "mobile-ai-task-approval--390x844--reference.png",
+          "sha256": "4671f10bf5f04cbc095300a0e12d4a727489b9904d90d7a23b55e23e46462b64"
+        },
+        "overlay50": {
+          "file": "mobile-ai-task-approval--390x844--overlay.png",
+          "sha256": "69de3e16e5d64c98d853cd33ce6fd5775711da50c6a3373bd1fca6e1f612c1b3"
+        },
+        "absoluteDifference": {
+          "file": "mobile-ai-task-approval--390x844--difference.png",
+          "sha256": "c143a492ccf462f10b513105b59ab69d40fe37ca4f67b9d5ccb25e6d1e5fb988"
+        },
+        "geometry": {
+          "file": "mobile-ai-task-approval--390x844--geometry.json",
+          "sha256": "6c067e0ee0c6ebb23774f638388af4ab009e98ca5818795cd67154092728969b"
+        }
+      },
+      "pixelDifference": 0.08449304905256953,
+      "releaseVerdict": "human region review required"
+    },
+    {
+      "identity": "mobile-ai-task-approval--430x932",
+      "conceptId": "mobile-ai-task-approval",
+      "viewport": "430x932",
+      "actual": "mobile-ai-task-approval--430x932.png",
+      "artifacts": {
+        "normalizedReference": {
+          "file": "mobile-ai-task-approval--430x932--reference.png",
+          "sha256": "1cbbb1a1a22d69fb805677fa85950156a5d379eb960aa9654c6bbd0a2ebc9a69"
+        },
+        "overlay50": {
+          "file": "mobile-ai-task-approval--430x932--overlay.png",
+          "sha256": "db3ac5f7b4453a2544349137a8b1b96599b45c1e77823b1e2f98c318cdff9b9c"
+        },
+        "absoluteDifference": {
+          "file": "mobile-ai-task-approval--430x932--difference.png",
+          "sha256": "d5221d077cf3c5fb8783a9cf2d917a9c80f8648708ac58a470205038f0dd046c"
+        },
+        "geometry": {
+          "file": "mobile-ai-task-approval--430x932--geometry.json",
+          "sha256": "af3e342f045b2963a563f4a18e6848cbbc551d4a39ae31236dc064b8bece288d"
+        }
+      },
+      "pixelDifference": 0.0852454617272933,
+      "releaseVerdict": "human region review required"
+    }
+  ],
+  "releaseVerdict": "human region review required"
+}

@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "identity": "desktop-governance-configuration--1180x800",
+  "concept": {
+    "id": "desktop-governance-configuration",
+    "file": ".impeccable/mocks/kordyn-v2-approved/desktop-governance-configuration.png",
+    "sha256": "9498438347d6097d0591161ad4c08538e8c2fe9a68ef4316ead6c6169991b58d",
+    "storedPixels": {
+      "width": 1586,
+      "height": 992
+    },
+    "normalizedViewport": "1180x800"
+  },
+  "actual": {
+    "file": "desktop-governance-configuration--1180x800.png",
+    "sha256": "fd054fcbee5af1d2a6b25f487ba92352a88b65ce127681912ddcd9a3482ccf37",
+    "runner": "tests/run-kordyn-v2-governance-browser.mjs",
+    "fixture": "tests/kordyn-v2-governance-browser.jsx",
+    "productionSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+    "captureTestSourceCommit": "4214862dc105995a4e8935d75ff1dc89653ace67",
+    "device": "desktop",
+    "domainId": "governance",
+    "workspaceId": "configuration"
+  },
+  "viewport": {
+    "name": "1180x800",
+    "width": 1180,
+    "height": 800
+  },
+  "document": {
+    "clientWidth": 1180,
+    "scrollWidth": 1180
+  },
+  "documentOverflow": 0,
+  "shellGeometry": {
+    "domainId": "governance",
+    "workspaceId": "configuration",
+    "selectedId": "run-btc-analysis",
+    "selectedType": "Agent run"
+  },
+  "diagnostics": {
+    "screenshotStructure": {
+      "variance": 0.012643942771225875,
+      "edgeDensity": 0.026957085508471302,
+      "nearFlat": false
+    },
+    "pixelDifference": {
+      "metric": 0.07092329539160297,
+      "role": "diagnostic only"
+    },
+    "contentAwareComparator": {
+      "applied": false,
+      "reason": "no fixed mobile shell threshold in Foundation Plan 01"
+    }
+  },
+  "artifacts": {
+    "normalizedReference": {
+      "file": "desktop-governance-configuration--1180x800--reference.png",
+      "sha256": "007ce886fa1eb09ce5c41fa5efbd8c82507c441278c96c975cd2993ee8c35034"
+    },
+    "overlay50": {
+      "file": "desktop-governance-configuration--1180x800--overlay.png",
+      "sha256": "b07c0204b01444bcb9b48588b5337879c20e9d1ebb7fecf18eac694b21f7f314"
+    },
+    "absoluteDifference": {
+      "file": "desktop-governance-configuration--1180x800--difference.png",
+      "sha256": "97fe806aab73f698d62521a93dc1dd0e3b8cd1c17fb3f6b1cefebe63567fb837"
+    }
+  },
+  "releaseVerdict": "human region review required"
+}

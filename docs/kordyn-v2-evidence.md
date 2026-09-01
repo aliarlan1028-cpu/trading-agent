@@ -2,6 +2,8 @@
 
 ## Current governed comparison status
 
+- Final Plan 06 production source: `c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9`.
+- Final Plan 06 contact sheet: `.impeccable/review/kordyn-v2/final/contact-sheet.png`, SHA-256 `6728a59ec8adec7c377f9d5f1216e53976ad2326e20bfac68ac210ca0ac94aa3`, `82 / 82` valid images at `1800x7804`.
 - Current Account product source: `3057bcd90496af2992afebe6eb7858f7cf3c9b97`.
 - Current Account capture-test source: `e3eb0b3c216eafe9a63ed6b40ec998f693ba50a2`.
 - Current Account detector-record commit: `8e300e461402674090f8a7f46e98b2bb4032eb2f`.
@@ -14,6 +16,41 @@
 - Completed governed concept comparisons: `15 / 15`.
 - Pending domain implementation: `0 / 15`.
 - Current Plan 05 Task 5 verdict: Governance scope comparator reports `4` scoped concepts / `4` completed / `0` scoped pending / `8` viewport comparisons. Its machine verdict remains `human region review required`; original-size region review is recorded below and no pixel-equivalence claim is made.
+
+## Plan 06 convergence checkpoint — Task 4 final visual evidence
+
+All final screenshots were recaptured after the Signals inspector reading-order correction in production commit `c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9`. Earlier Plan 06 captures against `7f475cc` are superseded and are not final evidence. The correction is protected by a real Chrome geometry contract at both Desktop widths: evidence copy ends at least four CSS pixels before inspector actions, and every action remains within the inspector. The retained RED measured a real overlap at `1440px` (`description bottom 505.59375`, `actions top 465`); the final runner passes at both `1440x900` and `1180x800`.
+
+### Final capture provenance
+
+| Scope | Surface captures | Required states | Production source | Capture-test source | Capture sidecar SHA-256 |
+| --- | ---: | ---: | --- | --- | --- |
+| AI 交易员 | `8` | `13 / 13` | `c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9` | `c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9` | `67bdc01c0945d4f361f0dbbb7a42428b30cf52cfd7b6ffc88b7a5357d9928acc` |
+| 账户交易 | `4` | `13 / 13` | `c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9` | `e3eb0b3c216eafe9a63ed6b40ec998f693ba50a2` | `3923c9bd9bd2c7369c3c4029a9463f5ca5422c5c4aee21b40b3ec5ebd99e0672` |
+| 智能资产 | `18` | `13 / 13` | `c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9` | `4214862dc105995a4e8935d75ff1dc89653ace67` | `aa9596800e097065df731622f7ffc9f479cf5393d5b11f2c491306f8328824ca` |
+| 系统治理 | `15` | `13 / 13` | `c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9` | `4214862dc105995a4e8935d75ff1dc89653ace67` | `0711b7903e1b823e460b25ec04df609c9b194aacffc1ed8178ea8cf3af31369a` |
+| Shared overlays | `9` | n/a | `c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9` | `4214862dc105995a4e8935d75ff1dc89653ace67` | `f65b360850ecf07f73edd9d62d048700c0fa64d24f71ead4a714387a0badcf55` |
+
+The overlay batch covers Desktop and APP Context, Proof, and read-only AI support, plus Desktop approval, ordinary confirmation, and danger confirmation. All runners mount the real V2 production root through credential-free production-shaped fixtures, report zero production writes, and reject legacy authenticated styles.
+
+### Final governed comparisons
+
+| Scope | Concepts | Viewport comparisons | Artifacts | Comparison index SHA-256 |
+| --- | ---: | ---: | ---: | --- |
+| AI 交易员 | `4 / 4` | `8` | `33` | `0b4c60c5629cf64c3cb27022f7b5e5cc247f9612b749c570ac30cd6af6feaed0` |
+| 账户交易 | `1 / 1` | `2` | `9` | `533443036f2c2e0768c47b9f1a45b14771258203aa0f42b350c0c65b900b24f6` |
+| 智能资产 | `6 / 6` | `12` | `49` | `cc81390505617ebb2f258ae5954b6c9f358c3c9710dcf5fc6b6cae4b814c9ee3` |
+| 系统治理 | `4 / 4` | `8` | `33` | `090b5c36214a2b2608776534553843472f2e22ca6988264da7ecaf77d76d4b5f` |
+
+The combined result is `15 / 15` approved concepts and `30` immutable viewport comparisons. The machine comparator intentionally retains `human region review required`; it does not convert pixel distance into a fidelity verdict.
+
+### Contact sheet and bounded human review
+
+`scripts/render-kordyn-v2-contact-sheet.mjs` validates every referenced image in a real Chrome page before writing the final PNG. The final result is `imageCount: 82`, `broken: []`, `pendingText: false`, `1800x7804`. The sheet contains each approved reference, production primary, overlay primary, and responsive production adaptation, all nine shared overlay/authority surfaces, and all thirteen required state semantics.
+
+Original-size review covered every primary Desktop and APP concept, the medium Desktop adaptations, Context/Proof/AI support, approval and both confirmation classes, plus representative loading, failed, forbidden, stale, degraded, long-content, and large-list states. Region-by-region review retained the approved navigation, truth hierarchy, registry/canvas/inspector topology, action order, dark Web3 material language, and device-specific composition. Missing authoritative fields remain `Unavailable`; responsive reflow and production-shaped data are recorded as truthful adaptations rather than pixel equivalence.
+
+Impeccable mechanical detection over `src/kordynV2` returned `[]`. The final finish review was performed inline because this task did not authorize a new reviewer agent. Its disposition is `ship`: persistence is backed by `PRODUCT.md`, the user-approved immutable manifest, all `82` valid captures and source sidecars; fidelity has no missing or contradicted salient region; the browser product has no unused target device class; material fixes are empty; the compact truth rail, canonical object/evidence grammar, read-only AI support boundary, and distinct approval/danger layers must not be diluted.
 
 ## Plan 06 convergence checkpoint — Task 3 route performance
 

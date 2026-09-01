@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "identity": "desktop-account-position--1180x800",
+  "concept": {
+    "id": "desktop-account-position",
+    "file": ".impeccable/mocks/kordyn-v2-approved/desktop-account-position.png",
+    "sha256": "38d6a875aa1cd26af0ef19510fe993255c572d97468ad9a940d734c92acfd148",
+    "storedPixels": {
+      "width": 1586,
+      "height": 992
+    },
+    "normalizedViewport": "1180x800"
+  },
+  "actual": {
+    "file": "desktop-account-position--1180x800.png",
+    "sha256": "0656942a67e22a6301c58a4b3cda27d355d4708065d087a01f3762e14d0d3cf2",
+    "runner": "tests/run-kordyn-v2-account-browser.mjs",
+    "fixture": "tests/kordyn-v2-account-browser.jsx",
+    "productSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+    "captureTestSourceCommit": "e3eb0b3c216eafe9a63ed6b40ec998f693ba50a2",
+    "device": "desktop",
+    "domainId": "account",
+    "workspaceId": "positions"
+  },
+  "viewport": {
+    "name": "1180x800",
+    "width": 1180,
+    "height": 800
+  },
+  "document": {
+    "clientWidth": 1180,
+    "scrollWidth": 1180,
+    "clientHeight": 800,
+    "scrollHeight": 800
+  },
+  "documentOverflow": 0,
+  "shellGeometry": {
+    "left": 0,
+    "top": 0,
+    "right": 1180,
+    "bottom": 800,
+    "width": 1180,
+    "height": 800,
+    "domainId": "account",
+    "workspaceId": "positions",
+    "selectedId": "position-eth",
+    "selectedType": "Position"
+  },
+  "diagnostics": {
+    "screenshotStructure": {
+      "variance": 0.0102226187570596,
+      "edgeDensity": 0.022389454581780176,
+      "nearFlat": false
+    },
+    "pixelDifference": {
+      "metric": 0.054280473856209155,
+      "role": "diagnostic only"
+    },
+    "contentAwareComparator": {
+      "applied": false,
+      "reason": "no fixed mobile shell threshold in Foundation Plan 01"
+    }
+  },
+  "artifacts": {
+    "normalizedReference": {
+      "file": "desktop-account-position--1180x800--reference.png",
+      "sha256": "29793712d0e1e75d4affcae1ccc1752a75e0256f3fe3f964be93e641932b6b31"
+    },
+    "overlay50": {
+      "file": "desktop-account-position--1180x800--overlay.png",
+      "sha256": "8e567db614d1b04efbba02cece5f755c1a70995170223d928cef7192631c645c"
+    },
+    "absoluteDifference": {
+      "file": "desktop-account-position--1180x800--difference.png",
+      "sha256": "dbc3d800eb8f9124b75e8aac11e145ed6866cbc7a279d88b96749f5ac7d2128e"
+    }
+  },
+  "releaseVerdict": "human region review required"
+}
