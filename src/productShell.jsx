@@ -9,6 +9,11 @@ const text = (value, fallback = "—") => value == null || value === "" ? fallba
 const unavailable = "Unavailable";
 const firstValue = (...values) => values.find((value) => value != null && value !== "");
 const asList = (value) => Array.isArray(value) ? value : [];
+const featureViewLabels = Object.freeze({
+  patrol: Object.freeze(["自主巡检", "Autonomous patrol"]),
+  poster: Object.freeze(["分析海报", "Analysis poster"]),
+  events: Object.freeze(["事件日历", "Event calendar"])
+});
 
 export const canonicalPositionIdentity = (row = {}) => firstValue(row.id, row.positionId, row.instId, row.symbol);
 
@@ -295,7 +300,11 @@ export function buildShellSearchIndex(data = {}) {
   for (const definition of ROUTE_DEFINITIONS) {
     const alias = definition.aliases.find((item) => !item.includes("*")) || definition.aliases[0];
     const workspace = WORKSPACES[definition.workspace] || CONFIGURATION_WORKSPACE;
-    rows.push(searchRow(data, "Feature", alias, alias, `${workspace.labelEn} / ${definition.view}`, {
+    const viewLabels = featureViewLabels[definition.view];
+    const featureTitle = viewLabels
+      ? `${workspace.label} / ${viewLabels[0]} · ${workspace.labelEn} / ${viewLabels[1]}`
+      : `${workspace.label} / ${definition.view} · ${workspace.labelEn} / ${definition.view}`;
+    rows.push(searchRow(data, "Feature", alias, alias, featureTitle, {
       status: "available", source: "Product route registry", permission: unavailable, nextAction: `Open ${alias}`
     }, workspace.id, definition.desktop.section));
   }
@@ -645,7 +654,7 @@ export function buildCommandFacts(data = {}) {
   };
 }
 
-export function CommandRail({ data = {}, onNavigate = () => {}, onSelect = () => {} }) {
+export function CommandRail({ data = {}, onNavigate = () => {}, onSelect = () => {}, variant = "default" }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -691,10 +700,13 @@ export function CommandRail({ data = {}, onNavigate = () => {}, onSelect = () =>
     });
     setActiveIndex(next.activeIndex);
   };
-  return <section className="commandRail" data-shell-role="command-rail" aria-label={t("全局命令栏", "Global command rail")}>
+  const placeholder = variant === "august15"
+    ? t("搜索市场、交易对、知识或功能", "Search markets, pairs, knowledge, or features")
+    : t("搜索真实对象或功能 ⌘K", "Search objects or features ⌘K");
+  return <section className="commandRail" data-shell-role="command-rail" data-command-variant={variant} aria-label={t("全局命令栏", "Global command rail")}>
     <div className="commandRail__brand"><img src="/kordyn-logo.svg" alt=""/><span><b>KORDYN</b><small>{text(data.user?.tenantName || data.user?.organization, unavailable)}</small></span></div>
     <div className="commandRail__search" ref={rootRef}>
-      <Search aria-hidden="true"/><input ref={inputRef} role="combobox" aria-expanded={open} aria-controls="shell-search-results" aria-activedescendant={results[activeIndex] ? shellSearchResultDomId(results[activeIndex]) : undefined} value={query} placeholder={t("搜索真实对象或功能 ⌘K", "Search objects or features ⌘K")} onFocus={() => setOpen(true)} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); setSelectionFeedback(""); setOpen(true); }} onKeyDown={onKeyDown}/>
+      <Search aria-hidden="true"/><input ref={inputRef} role="combobox" aria-expanded={open} aria-controls="shell-search-results" aria-activedescendant={results[activeIndex] ? shellSearchResultDomId(results[activeIndex]) : undefined} value={query} placeholder={placeholder} onFocus={() => setOpen(true)} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); setSelectionFeedback(""); setOpen(true); }} onKeyDown={onKeyDown}/>
       {query && <button type="button" aria-label={t("清空搜索", "Clear search")} onClick={() => { setQuery(""); setSelectionFeedback(""); inputRef.current?.focus(); }}><X/></button>}
       {open && query && <div className="commandRail__results" id="shell-search-results" role="listbox">
         {results.length ? results.map((row, indexValue) => { const unavailableResult = shellSearchResultUnavailable(row); return <button id={shellSearchResultDomId(row)} type="button" role="option" aria-selected={activeIndex === indexValue} aria-disabled={unavailableResult || undefined} data-shell-result-state={unavailableResult ? "unavailable" : "available"} data-shell-object-id={row.type === "Feature" ? undefined : row.id} data-shell-object-type={row.type === "Feature" ? undefined : row.type} className={`${activeIndex === indexValue ? "active " : ""}${unavailableResult ? "unavailable" : ""}`.trim()} key={shellSearchResultKey(row)} onPointerEnter={() => setActiveIndex(indexValue)} onClick={() => select(row)}><small>{row.type}</small><span><b>{row.title}</b><code>{row.id}</code></span><em>{unavailableResult ? t("不可用", "Unavailable") : row.status}</em></button>; }) : <p role="status">{t("没有匹配的已加载对象或功能。", "No loaded object or feature matches.")}</p>}

@@ -21,21 +21,33 @@ test("legacy cutover loads the August 15 classic visual bundle without later she
 
 test("desktop legacy presentation restores the classic five-domain shell", () => {
   const main = read("../src/main.jsx");
+  const shell = read("../src/productShell.jsx");
 
   assert.match(main, /data-classic-shell="desktop"/);
   assert.match(main, /function ClassicSidebar/);
+  assert.match(main, /function August15AppTopbar/);
+  assert.match(main, /data-august15-topbar="true"/);
   for (const id of ["chat", "cockpit", "researchCenter", "riskCenter", "operationsCenter", "systemSettings"]) {
     assert.match(main, new RegExp(`(?:id:|active ===) ["']${id}["']`));
   }
   assert.match(main, /<ClassicSidebar active=\{active\} setActive=\{navigate\}/);
-  assert.match(main, /<CommandRail data=\{data\} onNavigate=\{setActive\} onSelect=\{onObjectSelect\}/);
+  assert.match(main, /<CommandRail[^>]+variant="august15"/);
+  assert.match(shell, /variant === "august15"[\s\S]*?搜索市场、交易对、知识或功能/);
   assert.match(main, /onObjectSelect=\{setSelectedShellObject\}/);
+  const august15Topbar = main.match(/function August15AppTopbar[\s\S]*?\n\}/)?.[0] || "";
+  assert.match(august15Topbar, /autonomyPill/);
+  assert.match(august15Topbar, /killButton/);
+  assert.doesNotMatch(august15Topbar, /topEmergencyActions|runtimeStatePill/);
   assert.doesNotMatch(main.match(/data-classic-shell="desktop"[\s\S]*?data-classic-shell-end/)?.[0] || "", /ZeroBaseDesktopShell/);
 });
 
 test("classic shell keeps all post-OpenRouter workspaces instead of reverting product capability", () => {
   const main = read("../src/main.jsx");
   const workspaces = read("../src/workspacePages.jsx");
+  const concepts = read("../src/conceptPages.jsx");
+  const chat = read("../src/chat.jsx");
+  const architecture = read("../src/productArchitecture.js");
+  const zeroBase = read("../src/zeroBaseArchitecture.js");
 
   assert.match(main, /<AiTraderCenter[^>]+classic/);
   assert.match(main, /<TradingCenter[^>]+classic/);
@@ -46,9 +58,20 @@ test("classic shell keeps all post-OpenRouter workspaces instead of reverting pr
   for (const capability of ["patrol", "poster", "events", "account", "protection", "reviews", "owner", "recovery"]) {
     assert.match(workspaces, new RegExp(`["']${capability}["']`));
   }
+  assert.match(workspaces, /AUGUST15_AI_PRIMARY_TABS/);
+  for (const primary of ["dialog", "intel", "watch"]) assert.match(workspaces, new RegExp(`AUGUST15_AI_PRIMARY_TABS[\\s\\S]*?["']${primary}["']`));
+  assert.match(workspaces, /classic[^\n]+AUGUST15_AI_PRIMARY_TABS/);
+  assert.match(workspaces, /<AiDialogConcept[^>]+classic=\{classic\}/);
+  assert.match(concepts, /<ChatPage[^>]+classic=\{classic\}/);
+  assert.match(chat, /classic && !mobile && !archiveSurface[\s\S]*?agRunBadge/);
+  assert.match(chat, /classic && !mobile && !archiveSurface[\s\S]*?agLaunchBtn/);
+  assert.match(architecture, /aliases: \["chat:patrol", "patrol"\][\s\S]*?tab: "patrol"/);
+  assert.match(architecture, /aliases: \["chat:poster", "poster"\][\s\S]*?tab: "poster"/);
+  assert.match(zeroBase, /view\("patrol", "自主巡检", "Autonomous patrol", "chat:patrol"\)/);
+  assert.match(zeroBase, /view\("poster", "分析海报", "Analysis poster", "chat:poster"\)/);
 });
 
-test("mobile legacy presentation uses the current capability component inside the classic visual host", () => {
+test("mobile legacy presentation restores the August 15 chrome and moves later tools into More", () => {
   const main = read("../src/main.jsx");
   const mobile = read("../src/mobile.jsx");
 
@@ -59,4 +82,10 @@ test("mobile legacy presentation uses the current capability component inside th
   assert.match(mobile, /ClassicMobileHeader/);
   assert.match(mobile, /ClassicMobileTabbar/);
   assert.match(mobile, /ClassicNavDrawer/);
+  assert.match(mobile, /classicDrawerShellTools/);
+  assert.match(mobile, /"ai:dialog": \[t\("AI 交易员", "AI Trader"\), "ALPHA-01"\]/);
+  assert.match(mobile, /className=\{`mRunBadge/);
+  const classicReturn = mobile.match(/if \(classic\) return[\s\S]*?\n  return <ZeroBaseMobileShell/)?.[0] || "";
+  assert.doesNotMatch(classicReturn, /<MobileShellTools[^>]+\/>\s*\n\s*<ClassicMobileTabbar/);
+  assert.match(classicReturn, /shellTools=\{<MobileShellTools/);
 });

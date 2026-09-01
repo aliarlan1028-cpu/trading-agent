@@ -200,13 +200,35 @@ try {
       }
     }
   } else {
+    await waitForExpression(cdp, `document.querySelector('.agLaunchBtn') && document.querySelectorAll('[aria-label="AI 交易员 子页面"] button').length === 3`, "classic August 15 AI workspace ready", 30_000);
+    const august15Desktop = await evaluate(cdp, `(() => ({
+      topbar:Boolean(document.querySelector('[data-august15-topbar="true"]')),
+      searchWidth:Math.round(document.querySelector('.appTopbar .commandRail')?.getBoundingClientRect().width||0),
+      primaryTabs:[...document.querySelectorAll('[aria-label="AI 交易员 子页面"] button')].map((node)=>node.textContent.trim()),
+      laterRuntimePill:Boolean(document.querySelector('.runtimeStatePill')),
+      laterEmergencyActions:Boolean(document.querySelector('.topEmergencyActions')),
+      runBadge:Boolean(document.querySelector('.agRunBadge')),
+      launchAction:Boolean(document.querySelector('.agLaunchBtn'))
+    }))()`);
+    assert.deepEqual(august15Desktop.primaryTabs, ["对话", "情报", "盯盘"], `classic desktop exposes the August 15 AI tab set: ${JSON.stringify(august15Desktop)}`);
+    assert.equal(august15Desktop.topbar, true, "classic desktop mounts the August 15 topbar");
+    assert.equal(august15Desktop.searchWidth, 340, "classic desktop restores the August 15 search geometry");
+    assert.equal(august15Desktop.laterRuntimePill, false, "classic desktop omits the later two-state runtime pill");
+    assert.equal(august15Desktop.laterEmergencyActions, false, "classic desktop omits the later emergency-action cluster");
+    assert.equal(august15Desktop.runBadge, true, "classic desktop restores the AI runtime badge");
+    assert.equal(august15Desktop.launchAction, true, "classic desktop restores the AI autonomy primary action");
     await click(cdp, '.appTopbar .commandRail__search input');
     await cdp.send("Input.insertText", { text: "Research" });
     await waitForExpression(cdp, `document.querySelector('.appTopbar .commandRail__results [data-shell-result-state="available"]')`, "classic real object and feature search results");
     const availableResults = await evaluate(cdp, `document.querySelectorAll('.appTopbar .commandRail__results [data-shell-result-state="available"]').length`);
     await click(cdp, '.appTopbar .commandRail__results [data-shell-result-state="available"]');
     await waitForExpression(cdp, `document.querySelector('[data-classic-shell="desktop"]')?.dataset.classicView === "researchCenter"`, "classic search result navigation");
-    objectSearch = { query: "Research", availableResults, destination: "researchCenter" };
+    await click(cdp, '.appTopbar .commandRail__search input');
+    await cdp.send("Input.insertText", { text: "自主巡检" });
+    await waitForExpression(cdp, `[...document.querySelectorAll('.appTopbar .commandRail__results [data-shell-result-state="available"]')].some((node)=>node.textContent.includes('自主巡检'))`, "classic hidden patrol feature search result");
+    await click(cdp, '.appTopbar .commandRail__results [data-shell-result-state="available"]');
+    await waitForExpression(cdp, `document.querySelector('[data-ai-surface="patrol"]')`, "classic hidden patrol feature navigation");
+    objectSearch = { query: "Research", availableResults, destination: "researchCenter", hiddenFeature: "patrol" };
     for (const viewId of ["chat", "cockpit", "researchCenter", "riskCenter", "operationsCenter", "systemSettings"]) {
       await click(cdp, `[data-classic-target="${viewId}"]`);
       await waitForExpression(cdp, `(() => {
@@ -222,6 +244,30 @@ try {
     });
     await cdp.send("Page.reload", { ignoreCache: true });
     await waitForExpression(cdp, `document.querySelector('[data-classic-mobile-shell="true"]')`, "classic actual authenticated mobile shell", 30_000);
+    const august15Mobile = await evaluate(cdp, `(() => ({
+      title:document.querySelector('.classicMobileHeader .mHeaderMid strong')?.textContent.trim(),
+      code:document.querySelector('.classicMobileHeader .mHeaderMid small')?.textContent.trim(),
+      tabs:[...document.querySelectorAll('.classicMobileTabbar button')].map((node)=>node.textContent.trim()),
+      persistentTools:Boolean(document.querySelector('.classicMobileShell > .mShellTools')),
+      overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth
+    }))()`);
+    assert.equal(august15Mobile.title, "AI 交易员", `classic mobile restores the August 15 trader title: ${JSON.stringify(august15Mobile)}`);
+    assert.equal(august15Mobile.code, "ALPHA-01", "classic mobile restores the August 15 trader code");
+    assert.deepEqual(august15Mobile.tabs, ["交易员", "盯盘", "市场", "风控", "更多"], "classic mobile restores the August 15 five-entry tab bar");
+    assert.equal(august15Mobile.persistentTools, false, "classic mobile removes the later persistent Objects/Context/Trace row");
+    assert.ok(august15Mobile.overflow <= 1, `classic mobile initial shell has no overflow: ${JSON.stringify(august15Mobile)}`);
+    await click(cdp, ".classicMobileHeader .mMenuBtn");
+    await waitForExpression(cdp, `(() => {
+      const drawer=document.querySelector('.classicNavDrawer');
+      const tools=document.querySelector('.classicDrawerShellTools .mShellTools');
+      if (!drawer || !tools) return false;
+      const rect=drawer.getBoundingClientRect();
+      return rect.width>0 && rect.height>0 && rect.left>=-1;
+    })()`, "later shell tools remain available inside visible More drawer");
+    const drawerTouchMin = await evaluate(cdp, `Math.min(...[...document.querySelectorAll('.classicNavDrawer button')].map((node)=>node.getBoundingClientRect().height))`);
+    assert.ok(drawerTouchMin >= 44, `classic mobile drawer touch targets stay at least 44px: ${drawerTouchMin}`);
+    await click(cdp, '.classicNavDrawer [data-classic-mobile-family-target="ai"][data-classic-mobile-view-target="dialog"]');
+    await waitForExpression(cdp, `!document.querySelector('.classicNavDrawer')`, "classic mobile drawer closes");
     for (const [familyId, viewId, expectedRoute] of [
       ["ai", "patrol", "chat"],
       ["portfolio", "positions", "cockpit"],

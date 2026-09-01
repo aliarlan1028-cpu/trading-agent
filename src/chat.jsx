@@ -39,7 +39,7 @@ import {
   X
 } from "lucide-react";
 
-import { apiUrl, displayMoney, displayPrice, displayPct, formatDateTime, formatTime, humanize, localizeText, marginUsage, authHeaders, smartMoneyBias, statusTone, StatusBadge, SymbolChips } from "./lib.jsx";
+import { apiUrl, automationPresentation, displayMoney, displayPrice, displayPct, formatDateTime, formatTime, humanize, localizeText, marginUsage, authHeaders, smartMoneyBias, statusTone, StatusBadge, SymbolChips } from "./lib.jsx";
 import { t } from "./i18n.js";
 import { SITE_URL, SITE_QR } from "./siteQr.js";
 import { hasFiniteNumber } from "./viewData.js";
@@ -1531,7 +1531,7 @@ export function PosterModal({ content, meta, onClose }) {
   );
 }
 
-export function ChatPage({ data, action, ui, concept = false, mobile = false, surface = "dialog" }) {
+export function ChatPage({ data, action, ui, concept = false, mobile = false, surface = "dialog", classic = false }) {
   const [messages, setMessages] = useState([]);
   const [posterMsg, setPosterMsg] = useState(null); // 当前要生成海报的 AI 消息
   const [sessions, setSessions] = useState([]);
@@ -1547,6 +1547,8 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false, su
   const messageLoadVersion = useRef(0);
   const surfaceMode = ["patrol", "poster"].includes(surface) ? surface : "dialog";
   const archiveSurface = surfaceMode !== "dialog";
+  const runtime = automationPresentation(data);
+  const autonomyEnabled = data.system?.autonomyEnabled === true;
   // 输入框自动长高:随内容增高到 160px 上限,超过再内部滚动——不再卡在 1 行看不全打的字。
   useEffect(() => {
     const el = inputRef.current;
@@ -1729,6 +1731,8 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false, su
             <button className={view === "chat" ? "on" : ""} title={t("对话", "Chat")} onClick={() => setView("chat")}><MessageSquare size={13} /></button>
             <button className={view === "intel" ? "on" : ""} title={t("情报", "Intel")} onClick={() => setView("intel")}><Radar size={13} /></button>
           </div>}
+          {classic && !mobile && !archiveSurface && <span className={`agRunBadge ${runtime.tone}`}><span />{runtime.label}</span>}
+          {classic && !mobile && !archiveSurface && <button className="agLaunchBtn" onClick={() => action("/api/system/autonomy", { enabled: !autonomyEnabled })}><Rocket size={14}/>{autonomyEnabled ? t("暂停自主", "Pause autonomy") : t("启动自主交易", "Start autonomous trading")}</button>}
           {mobile && view === "chat" && !archiveSurface && <button className="agMobileIconBtn" onClick={newSession} aria-label={t("新建对话", "New chat")}><Plus size={17} /></button>}
           {mobile && view === "chat" && !archiveSurface && <button className="agMobileIconBtn" onClick={() => setShowHistory(true)} aria-label={t("对话历史", "Chat history")}><Clock3 size={17} />{sessions.length > 0 && <b>{sessions.length}</b>}</button>}
         </div>

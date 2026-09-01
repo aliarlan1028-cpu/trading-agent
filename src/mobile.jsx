@@ -2025,12 +2025,21 @@ const classicMobileGroups = [
 function ClassicMobileHeader({ familyId, viewId, runtime, reconnecting, onMenu, onOpenSafety, onBack }) {
   const group = classicMobileGroups.find((item) => item.id === familyId) || classicMobileGroups[0];
   const item = group.items.find((row) => row[0] === viewId);
+  const august15Primary = {
+    "ai:dialog": [t("AI 交易员", "AI Trader"), "ALPHA-01"],
+    "ai:watch": [t("实时盯盘", "Live Watch"), "WATCH · LIVE"],
+    "portfolio:overview": [t("市场与账户", "Market & Account"), "MARKET · ACCOUNT"],
+    "guard:posture": [t("风控中心", "Risk Control"), "RISK · CONTROL"]
+  }[`${familyId}:${viewId}`];
+  const title = august15Primary?.[0] || (item ? t(item[1], item[2]) : t(group.label[0], group.label[1]));
+  const code = august15Primary?.[1] || `${group.id.toUpperCase()} · ${String(viewId || "HOME").toUpperCase()}`;
+  const runtimeOn = runtime?.tone === "ok";
   return <header className="mHeader2 classicMobileHeader" data-shell-role="mobile-command">
     <button type="button" className="mMenuBtn" onClick={onMenu} aria-label={t("打开菜单", "Open menu")}><Menu size={20}/></button>
-    <div className="mHeaderMid"><strong>{item ? t(item[1], item[2]) : t(group.label[0], group.label[1])}</strong><small className="mono">{group.id.toUpperCase()} · {String(viewId || "HOME").toUpperCase()}</small></div>
+    <div className="mHeaderMid"><strong>{title}</strong><small className="mono">{code}</small></div>
     <div className="mHeaderRight">{onBack
       ? <button type="button" className="mBack" onClick={onBack} aria-label={t("返回", "Back")}><ChevronLeft size={19}/></button>
-      : <button type="button" className={`mRuntimeButton ${runtime?.tone || "neutral"}`} onClick={onOpenSafety} title={runtime?.detail}><span/><div><small>{t("当前状态", "RUNTIME")}</small><b>{reconnecting ? t("重连中", "Reconnecting") : runtime?.label || "Unavailable"}</b></div><ChevronDown/></button>}
+      : <button type="button" className={`mRunBadge ${runtimeOn ? "on" : "off"}`} onClick={onOpenSafety} title={runtime?.detail}><span className="pulseDot"/>{reconnecting ? t("重连中", "Reconnecting") : runtime?.label || "Unavailable"}</button>}
     </div>
   </header>;
 }
@@ -2046,11 +2055,12 @@ function ClassicMobileTabbar({ familyId, route, onOpenFamily, onMore }) {
   </nav>;
 }
 
-function ClassicNavDrawer({ open, familyId, viewId, onOpenFamily, onOpenSettings, onClose, lang, switchLang }) {
+function ClassicNavDrawer({ open, familyId, viewId, onOpenFamily, onOpenSettings, onClose, lang, switchLang, shellTools = null }) {
   if (!open) return null;
   return <div className="mDrawerOverlay" onClick={onClose}><aside className="mDrawer classicNavDrawer" onClick={(event) => event.stopPropagation()}>
     <div className="mDrawerBrand"><span className="mDrawerLogo"><img src="/kordyn-logo.svg" alt="KORDYN"/></span><div className="mDrawerBrandText"><b>KORDYN</b><small>AI · DIGITAL ASSET</small></div></div>
     {switchLang && <div className="mLangBar"><Globe2 size={14}/><div className="mLangSeg" role="group" aria-label={t("切换语言", "Switch language")}><button className={lang === "zh" ? "on" : ""} onClick={() => switchLang("zh")}>中文</button><button className={lang === "en" ? "on" : ""} onClick={() => switchLang("en")}>English</button></div></div>}
+    {shellTools && <div className="classicDrawerShellTools"><small>{t("对象与证据", "Objects & evidence")}</small>{shellTools}</div>}
     <div className="mDrawerTitle"><b>{t("全部工作区", "All workspaces")}</b><small>{t("当前能力完整保留", "All current capabilities retained")}</small></div>
     <div className="mDrawerNav">{classicMobileGroups.map((group) => { const Icon = group.icon; return <section className="classicDrawerGroup" key={group.id}><header><Icon size={16}/><b>{t(group.label[0], group.label[1])}</b></header>{group.items.map(([id, zh, en]) => { const active = familyId === group.id && viewId === id; return <button type="button" key={id} data-classic-mobile-family-target={group.id} data-classic-mobile-view-target={id} className={`mDrawerItem ${active ? "active" : ""}`} aria-current={active ? "page" : undefined} onClick={() => { onOpenFamily(group.id, id); onClose(); }}><span><b>{t(zh, en)}</b><small>{group.id.toUpperCase()} · {id.toUpperCase()}</small></span><ChevronRight size={15}/></button>; })}</section>; })}</div>
     <div className="mDrawerFoot"><button type="button" className="mDrawerSettings" onClick={() => { onOpenSettings(); onClose(); }}><Settings size={19}/><span><b>{t("系统设置", "Settings")}</b><small>{t("账户、交易、模型与服务配置", "Account, trading, model, and services")}</small></span><ChevronRight size={15}/></button></div>
@@ -2205,9 +2215,8 @@ export function MobileApp({ api, lang, switchLang, classic = false }) {
   if (classic) return <div className="mShell2 classicMobileShell" data-classic-mobile-shell="true" data-classic-mobile-family={activeFamilyId} data-classic-mobile-view={activeFamilyView} data-shell-route={route} data-shell-subpage={subPage || "none"}>
     <ClassicMobileHeader familyId={activeFamilyId} viewId={activeFamilyView} runtime={runtime} reconnecting={Boolean(connectionError)} onMenu={() => setDrawer(true)} onOpenSafety={() => setSafetyOpen(true)} onBack={subPage ? () => setSubPage("") : null}/>
     {route === "chat" && activeFamilyView === "dialog" ? <main className="mMain2 mMainChat">{content}</main> : <PullToRefresh className="mMain2" onRefresh={refresh}>{content}</PullToRefresh>}
-    <MobileShellTools data={data} workspaceId={activeProductWorkspace} selectedObject={selectedShellObject} onSelect={setSelectedShellObject} onNavigate={navigate}/>
     <ClassicMobileTabbar familyId={activeFamilyId} route={route} onOpenFamily={openFamily} onMore={() => setDrawer(true)}/>
-    <ClassicNavDrawer open={drawer} familyId={activeFamilyId} viewId={activeFamilyView} onOpenFamily={openFamily} onOpenSettings={() => navigate("systemSettings")} onClose={() => setDrawer(false)} lang={lang} switchLang={switchLang}/>
+    <ClassicNavDrawer open={drawer} familyId={activeFamilyId} viewId={activeFamilyView} onOpenFamily={openFamily} onOpenSettings={() => navigate("systemSettings")} onClose={() => setDrawer(false)} lang={lang} switchLang={switchLang} shellTools={<MobileShellTools data={data} workspaceId={activeProductWorkspace} selectedObject={selectedShellObject} onSelect={setSelectedShellObject} onNavigate={navigate}/>}/>
     {overlays}
   </div>;
   return <ZeroBaseMobileShell

@@ -19,11 +19,11 @@ export const ZERO_BASE_FAMILIES = Object.freeze([
     id: "ai", code: "01", label: "AI 交易员", labelEn: "AI Trader", group: "core", defaultView: "dialog",
     views: [
       view("dialog", "对话", "Conversation", "chat"),
-      view("patrol", "自主巡检", "Autonomous patrol", "chat"),
+      view("patrol", "自主巡检", "Autonomous patrol", "chat:patrol"),
       view("intelligence", "情报", "Intelligence", "intelligence"),
       view("watch", "盯盘", "Watch", "watch"),
       view("events", "事件日历", "Event calendar", "eventsTasks:events"),
-      view("poster", "分析海报", "Analysis poster", "chat")
+      view("poster", "分析海报", "Analysis poster", "chat:poster")
     ]
   }),
   family({

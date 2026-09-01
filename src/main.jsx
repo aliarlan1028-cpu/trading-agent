@@ -131,7 +131,7 @@ function useIsMobileViewport() {
   return mobile;
 }
 
-function AppTopbar({ data, setActive, onObjectSelect, notify, action, lang, switchLang }) {
+function August15AppTopbar({ data, setActive, onObjectSelect, notify, action, lang, switchLang }) {
   const [killConfirm, setKillConfirm] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
@@ -148,19 +148,19 @@ function AppTopbar({ data, setActive, onObjectSelect, notify, action, lang, swit
     }
   };
   return (
-    <header className="appTopbar" data-shell-role="desktop-command">
-      <CommandRail data={data} onNavigate={setActive} onSelect={onObjectSelect} />
+    <header className="appTopbar august15Topbar" data-august15-topbar="true" data-shell-role="desktop-command">
+      <CommandRail variant="august15" data={data} onNavigate={setActive} onSelect={onObjectSelect} />
       <div className="topbarStatusGroup">
         <ExchangePill name="OKX" tone="okx" account={okx} onClick={() => setActive("systemSettings:exchange")} />
-        <button type="button" className={`runtimeStatePill ${runtime.tone}`} onClick={()=>setRuntimeOpen((open)=>!open)} title={runtime.detail} aria-expanded={runtimeOpen} aria-haspopup="dialog">
-          <span />
-          <div><small>{t("执行方式", "MODE")}</small><b>{runtime.targetLabel}</b></div>
-          <i />
-          <div><small>{t("当前状态", "NOW")}</small><b>{runtime.label}</b></div>
-        </button>
+      </div>
+      <div className="topbarActions">
+        <div className="august15RuntimeControl">
+          <button type="button" className={`autonomyPill ${runtime.tone}`} onClick={()=>setRuntimeOpen((open)=>!open)} title={runtime.detail} aria-expanded={runtimeOpen} aria-haspopup="dialog">
+            <span />{runtime.label}
+          </button>
         {runtimeOpen && <>
           <div className="runtimeStatusBackdrop" onClick={()=>setRuntimeOpen(false)} />
-          <section className="runtimeStatusPopover" role="dialog" aria-label={t("当前运行状态", "Current runtime status")}>
+          <section className="runtimeStatusPopover august15RuntimePopover" role="dialog" aria-label={t("当前运行状态", "Current runtime status")}>
             <header>
               <div><small>{t("当前实际状态", "EFFECTIVE NOW")}</small><b>{runtime.label}</b></div>
               <span className={`runtimeStatusTone ${runtime.tone}`}>{runtime.entryPolicy}</span>
@@ -172,15 +172,12 @@ function AppTopbar({ data, setActive, onObjectSelect, notify, action, lang, swit
               <span><b>{runtime.recoveryLabel}</b><small>{runtime.primaryBlocker || t("当前没有阻止新开仓的系统原因。", "No system reason is blocking new entries.")}</small></span>
             </div>
             {runtime.blockerDetails.length > 0 && <div className="runtimeStatusReasons"><small>{t("当前限制原因与恢复方式", "BLOCKERS & RECOVERY")}</small><div>{runtime.blockerDetails.map((item, index)=><article key={item.code || `${item.label}-${index}`}><b>{localizeText(item.label || item)}</b>{item.detail && <p>{localizeText(item.detail)}</p>}{item.recovery && <small><RefreshCw/>{localizeText(item.recovery)}</small>}</article>)}</div></div>}
+            <button type="button" className="runtimeStatusDanger" onClick={flattenAll}><Target size={14}/>{t("全部平仓", "Flatten all positions")}</button>
             <button type="button" className="runtimeStatusLink" onClick={()=>{setRuntimeOpen(false);setActive("riskMandate");}}>{t("查看长期执行目标与权限", "View saved execution target and permissions")}<ChevronRight size={14}/></button>
           </section>
         </>}
-      </div>
-      <div className="topEmergencyActions" aria-label={t("运行控制", "Runtime controls")}>
-        <button type="button" className="danger" onClick={flattenAll} title={t("按市价关闭全部持仓", "Close all positions at market")}><Target/><span>{t("全部平仓", "Flatten")}</span></button>
-        <button type="button" className={`danger ${stopped ? "active" : ""}`} onClick={() => setKillConfirm(true)} title={stopped?t("申请解除紧急停止", "Request clearing the emergency stop"):t("立即阻止所有新交易", "Immediately block all new trades")}><Zap/><span>{stopped?t("解除停止", "Clear stop"):t("紧急停止", "Stop")}</span></button>
-      </div>
-      <div className="topbarActions">
+        </div>
+        <button type="button" className={`killButton ${stopped ? "active" : ""}`} onClick={() => setKillConfirm(true)} title={stopped?t("申请解除紧急停止", "Request clearing the emergency stop"):t("立即阻止所有新交易", "Immediately block all new trades")}><Zap size={15}/>{stopped?t("解除停止", "Clear stop"):t("紧急停止", "Stop")}</button>
         <button className="bellButton" title={t("通知", "Notifications")} aria-label={t("通知", "Notifications")} onClick={() => { setActive("operationsCenter:notifications"); if (unread) action("/api/notifications/read", {}); }}>
           <Bell size={18} />
           {unread > 0 && <b>{unread}</b>}
@@ -446,7 +443,7 @@ function App() {
     <AppFrame authenticated><div className="appShell" data-classic-shell="desktop" data-classic-view={active} key={lang}>
       <ClassicSidebar active={active} setActive={navigate} />
       <main className="mainArea">
-        <AppTopbar data={data} setActive={navigate} onObjectSelect={setSelectedShellObject} notify={notify} action={action} lang={lang} switchLang={switchLang} />
+        <August15AppTopbar data={data} setActive={navigate} onObjectSelect={setSelectedShellObject} notify={notify} action={action} lang={lang} switchLang={switchLang} />
         <div className={active === "chat" ? "content contentChat" : "content"}>
           <Suspense fallback={<PageSkeleton />}>{content}</Suspense>
         </div>

@@ -303,8 +303,8 @@ function BarRows({ rows }) {
   return <div className="cp2Bars">{rows.map((row) => <div key={row.label}><span>{row.label}</span><i><b style={{ width: `${Math.max(4, Math.abs(num(row.value)) / max * 100)}%` }}/></i><em>{row.display ?? row.value}</em></div>)}</div>;
 }
 
-export function AiDialogConcept({ data, action, ui, surface = "dialog" }) {
-  return <ChatPage data={data} action={action} ui={ui} concept surface={surface}/>;
+export function AiDialogConcept({ data, action, ui, surface = "dialog", classic = false }) {
+  return <ChatPage data={data} action={action} ui={ui} concept surface={surface} classic={classic}/>;
 }
 
 export function IntelligenceConcept({ data, action, ui }) {

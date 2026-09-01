@@ -64,6 +64,8 @@ const route = ({ aliases, workspace, view, migration = "retain", desktop, mobile
 
 export const ROUTE_DEFINITIONS = Object.freeze([
   route({ aliases: ["chat", "today"], workspace: "ai", view: "dialog", desktop: { section: "chat", tab: "dialog" }, mobile: { route: "chat", section: "chat" } }),
+  route({ aliases: ["chat:patrol", "patrol"], workspace: "ai", view: "patrol", migration: "retain", desktop: { section: "chat", tab: "patrol" }, mobile: { route: "chat", section: "chat" } }),
+  route({ aliases: ["chat:poster", "poster"], workspace: "ai", view: "poster", migration: "retain", desktop: { section: "chat", tab: "poster" }, mobile: { route: "chat", section: "chat" } }),
   route({ aliases: ["chat:intelligence", "intelligence"], workspace: "ai", view: "intelligence", desktop: { section: "chat", tab: "intel" }, mobile: { route: "intelligence", section: "operationsCenter" } }),
   route({ aliases: ["watch"], workspace: "ai", view: "watch", desktop: { section: "chat", tab: "watch" }, mobile: { route: "watch", section: "chat" } }),
   route({ aliases: ["eventsTasks", "eventsTasks:events"], workspace: "ai", view: "events", migration: "retain", desktop: { section: "chat", tab: "events" }, mobile: { route: "eventsTasks", section: "operationsCenter" } }),

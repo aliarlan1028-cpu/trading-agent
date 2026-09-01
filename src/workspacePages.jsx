@@ -19,6 +19,7 @@ const TABS = {
   risk: [["posture", "风险态势", "Risk Posture"], ["events", "事件风险", "Event Risk"], ["mandate", "生效边界", "Effective Boundaries"], ["rules", "规则监控", "Rule Monitor"]],
   ops: [["overview", "运行值班台", "Command"], ["tasks", "任务与运行", "Tasks & Runs"], ["recovery", "对账与恢复", "Recovery"], ["audit", "审计证据", "Audit"], ["notifications", "通知收件箱", "Inbox"]]
 };
+const AUGUST15_AI_PRIMARY_TABS = TABS.ai.filter(([id]) => ["dialog", "intel", "watch"].includes(id));
 
 const PRODUCT_WORKSPACES = {
   trade: {
@@ -141,9 +142,10 @@ export function AiTraderCenter({ data, action, ui, initialTab = "dialog", classi
   useEffect(() => { if (tab === "events") ui.ensureSection?.("operationsCenter", { background: true }); }, [tab]);
   const activeWatches = (data.watchTriggers || []).filter((item) => item.status === "active").length;
   const mandate = (data.mandates || []).find((item) => ["active", "running"].includes(item.status));
+  const tabs = classic ? [...AUGUST15_AI_PRIMARY_TABS, ...(AUGUST15_AI_PRIMARY_TABS.some(([id]) => id === tab) ? [] : TABS.ai.filter(([id]) => id === tab))] : TABS.ai;
   const extra = tab === "dialog" ? <div className="aiTopCluster"><ChatKpiStrip data={data} bar/><div className="aiTopLinks"><button onClick={()=>ui.setActive("riskMandate")}><ShieldCheck/>{t("交易限制", "Trading limits")}<b>{mandate?.maxOrderNotionalUsdt ? `${mandate.maxOrderNotionalUsdt} U` : "—"}</b></button><button onClick={()=>setTab("watch")}><Eye/>{t("实时盯盘", "Live watch")}<b>{activeWatches}</b></button></div></div> : null;
-  const page = ["dialog", "patrol", "poster"].includes(tab) ? <AiDialogConcept data={data} action={action} ui={ui} surface={tab}/> : tab === "intel" ? <IntelligenceConcept data={data} action={action} ui={ui}/> : tab === "watch" ? <WatchMonitorConcept data={data} action={action} ui={ui}/> : <EventsConcept data={data} action={action} ui={ui}/>;
-  return <CenterShell classic={classic} title={t("AI 交易员","AI Trader")} subtitle="" tabs={TABS.ai} active={tab} onChange={setTab} inlineTabs tabsExtra={extra}>{page}</CenterShell>;
+  const page = ["dialog", "patrol", "poster"].includes(tab) ? <AiDialogConcept data={data} action={action} ui={ui} surface={tab} classic={classic}/> : tab === "intel" ? <IntelligenceConcept data={data} action={action} ui={ui}/> : tab === "watch" ? <WatchMonitorConcept data={data} action={action} ui={ui}/> : <EventsConcept data={data} action={action} ui={ui}/>;
+  return <CenterShell classic={classic} title={t("AI 交易员","AI Trader")} subtitle="" tabs={tabs} active={tab} onChange={setTab} inlineTabs tabsExtra={extra}>{page}</CenterShell>;
 }
 
 export function TradingCenter({ data, action, ui, initialTab = "overview", classic = false }) {

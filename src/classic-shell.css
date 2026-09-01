@@ -84,6 +84,37 @@
   color: #1e1b16;
 }
 
+.classicDrawerShellTools {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 8px;
+}
+
+.classicDrawerShellTools > small {
+  padding: 0 4px;
+  color: #7d7466;
+  font-size: 10px;
+}
+
+.classicDrawerShellTools .mShellTools {
+  position: static;
+  height: 52px;
+  overflow: hidden;
+  border: 1px solid #e1d9cc;
+  border-radius: 10px;
+  background: #f4f1eb;
+  box-shadow: none;
+}
+
+.classicDrawerShellTools .mShellToolButton {
+  min-width: 0;
+  min-height: 50px;
+}
+
+.classicNavDrawer button {
+  min-height: 44px;
+}
+
 .classicMobileShell :is(.mCard, .mNativeSection, .mMetricCell, .mSectionCard, .mResearchMapHero, .mResearchMapSection, .mResearchMapQueue, .mOwnerHero, .mOwnerList) {
   border-color: #d9d2c6;
   border-radius: 12px;
@@ -96,16 +127,144 @@
   background: #f7e9de;
 }
 
+.classicMobileHeader .mRunBadge {
+  position: relative;
+  isolation: isolate;
+  max-width: 126px;
+  min-height: 44px;
+  height: 44px;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.classicMobileHeader .mRunBadge::before {
+  position: absolute;
+  z-index: -1;
+  inset: 7px 0;
+  border-radius: 8px;
+  background: #f1eadf;
+  content: "";
+}
+
+.classicMobileHeader .mRunBadge.on::before {
+  background: #e6f1ea;
+}
+
+.classicMobileHeader {
+  min-height: 61px;
+  padding: calc(8px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px))) 16px 8px;
+}
+
+.classicMobileHeader .mHeaderMid strong {
+  font: 700 17px "Space Grotesk", "Public Sans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.classicMobileHeader .mHeaderMid small {
+  color: #8a8172;
+  font: 500 11px "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+/* Restore the August 15 mobile trader truth strip. Later product styling
+ * promoted this row to a dark global truth band; the approved baseline kept
+ * it as a quiet, local four-cell summary below the header. */
+.classicMobileShell .mChatStatus.kTruthBand {
+  height: 53px;
+  min-height: 53px;
+  background: #fbf9f5;
+  border: 0;
+  border-bottom: 1px solid #ede7db;
+  overflow: hidden;
+}
+
+.classicMobileShell .mChatStatus.kTruthBand > .mChatStatCell {
+  gap: 2px;
+  min-height: 0;
+  border-right: 1px solid #ede7db;
+}
+
+.classicMobileShell .mChatStatus.kTruthBand > .mChatStatCell:last-child {
+  border-right: 0;
+}
+
+.classicMobileShell .mChatStatus.kTruthBand .mChatStatCell > span {
+  color: #a89e8a;
+  font: 700 8px "Space Grotesk", "Public Sans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.classicMobileShell .mChatStatus.kTruthBand .mChatStatCell > b {
+  overflow: hidden;
+  color: #1e1b16;
+  font: 700 13px "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.classicMobileShell .mChatStatus.kTruthBand .mChatStatCell > b.pos {
+  color: var(--pos);
+}
+
+.classicMobileShell .mChatStatus.kTruthBand .mChatStatCell > b.neg {
+  color: var(--neg);
+}
+
 [data-classic-shell="desktop"] .appTopbar {
   background: rgba(244, 241, 235, .9);
   border-bottom-color: #e5dfd3;
 }
 
+[data-classic-shell="desktop"] .august15Topbar .topbarStatusGroup {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+}
+
+[data-classic-shell="desktop"] .august15Topbar .topbarActions {
+  margin-left: auto;
+}
+
+[data-classic-shell="desktop"] .august15RuntimeControl {
+  position: relative;
+}
+
+[data-classic-shell="desktop"] .august15RuntimePopover {
+  right: 0;
+  left: auto;
+}
+
+[data-classic-shell="desktop"] .august15RuntimePopover::before {
+  right: 56px;
+  left: auto;
+}
+
+[data-classic-shell="desktop"] .runtimeStatusDanger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  border: 1px solid #eecfc3;
+  border-radius: 8px;
+  background: #fff;
+  color: #b23b23;
+  font: 650 10px var(--font-ui);
+  cursor: pointer;
+}
+
+[data-classic-shell="desktop"] .runtimeStatusDanger:hover {
+  background: #fbeae5;
+}
+
 [data-classic-shell="desktop"] .appTopbar > .commandRail {
   position: static;
   z-index: auto;
-  flex: 1 1 320px;
+  flex: 0 1 340px;
   min-width: 180px;
+  width: 340px;
   height: 36px;
   border: 1px solid #ddd6ca;
   border-radius: 7px;
