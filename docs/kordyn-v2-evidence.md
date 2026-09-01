@@ -52,6 +52,28 @@ Original-size review covered every primary Desktop and APP concept, the medium D
 
 Impeccable mechanical detection over `src/kordynV2` returned `[]`. The final finish review was performed inline because this task did not authorize a new reviewer agent. Its disposition is `ship`: persistence is backed by `PRODUCT.md`, the user-approved immutable manifest, all `82` valid captures and source sidecars; fidelity has no missing or contradicted salient region; the browser product has no unused target device class; material fixes are empty; the compact truth rail, canonical object/evidence grammar, read-only AI support boundary, and distinct approval/danger layers must not be diluted.
 
+## Plan 06 convergence checkpoint — Task 5 production and rollback gate
+
+The cutover remains presentation-only. `src/kordynV2/cutover.js` records one immutable deployed action-route contract for both presenters, including the existing AI, Account, Intelligent Assets, Governance, configuration, execution, review, recovery, export, and protected-risk boundaries. The contract is explicit about HTTP methods so a route that silently changed from `POST` to `PATCH` would not pass. At this checkpoint the default is still `legacy`; the production default changes only in the separate Task 6 cutover commit.
+
+`tests/run-kordyn-v2-production-gates.mjs` owns its complete environment: it allocates localhost ports, creates one trusted temporary data root, starts the real `server/index.mjs` with test isolation and no credentials, starts the actual Vite app as V2, stops only Vite, restarts the presentation as legacy against the same backend/data root, then stops both services and removes only the owned temporary root. `tests/run-kordyn-v2-production-browser.mjs` drives trusted Chrome clicks through the real authenticated `App` shell; it does not mount a component fixture and it does not import production-shaped browser fixtures.
+
+### Fresh rollback result
+
+- V2 actual production shell: all `23 / 23` registered workspaces reached by trusted domain/workspace clicks; document overflow `0`.
+- Legacy rollback shell: six representative product families reached by trusted clicks; document overflow `0`.
+- Persistent authority marker: V2 wrote `LINK/USDT` through the deployed `POST /api/watchlist`; after only the presentation restarted, legacy read the same marker from the same backend.
+- Backend identity remained `core_v1 / plan06-production-gate / user_local_admin` across both presentations.
+- Read/failure/permission semantics remained unchanged: core and Operations reads `200`, invalid watchlist input `400`, system-managed Task definition deletion `403`.
+- Public bootstrap fingerprint matched across both presentations: `aa9431060eaf40ec69248e557015383cea4aeae31a64b2aa841078bb08ca48c9`.
+- Auth fail-closed fingerprint matched across both presentations: `4dc283a6bdc23fc9447e61a5ae680dad28cede170846166aa77a65bde397e678`.
+- Authenticated CSS was mutually exclusive in the fresh run: V2 style owners `5`, legacy product style owners `0`; rollback style owners `10`, V2 style owners `0`. The gate requires positive ownership for the selected presentation and exact zero for the inactive presentation rather than relying on a fixed dev-server style-node count.
+- Rollback/cutover focused tests: `6 / 6`, exit `0`.
+- Self-contained real production/rollback gate: exit `0`; both browser phases passed and temporary data/services were cleaned.
+- Scoped ESLint and `git diff --check`: exit `0` before Task 5 commit.
+
+This gate mutates only its disposable test database. It does not use production credentials, secrets, accounts, trading state, or endpoints outside localhost. No API, database, permission, auth, execution, or risk implementation changes are part of Task 5.
+
 ## Plan 06 convergence checkpoint — Task 3 route performance
 
 The route-level performance gate now measures the complete authenticated AI experience plus every finished domain from a fresh isolated Vite production build. It resolves both source-named and Vite-coalesced dynamic entries fail-closed, rejects legacy authenticated styles in every V2 closure, and verifies that its temporary build neither reads through nor mutates checked-in `dist` or `src`.
