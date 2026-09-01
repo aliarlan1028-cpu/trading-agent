@@ -13,10 +13,10 @@
   },
   "actual": {
     "file": "desktop-ai-signals--1180x800.png",
-    "sha256": "87e978dbf508f91bf7bfd2f1781a2242055784f5ad99577f4e14e992f99e9fd5",
+    "sha256": "23887ebb23d803195342bd950d3063373d96cb6145fba8c04ed38860e7b8626b",
     "runner": "tests/run-kordyn-v2-ai-browser.mjs",
     "fixture": "tests/kordyn-v2-production-fixture.js",
-    "productionSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+    "productionSourceCommit": "0509ee41a170e850f459ae9acdab4cef1ab07473",
     "captureTestSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
     "device": "desktop",
     "domainId": "ai",
@@ -40,12 +40,12 @@
   },
   "diagnostics": {
     "screenshotStructure": {
-      "variance": 0.014380982120590477,
-      "edgeDensity": 0.03359151286092545,
+      "variance": 0.014383873978615189,
+      "edgeDensity": 0.03361899936687607,
       "nearFlat": false
     },
     "pixelDifference": {
-      "metric": 0.06740728508917691,
+      "metric": 0.06742469535836934,
       "role": "diagnostic only"
     },
     "contentAwareComparator": {
@@ -60,11 +60,11 @@
     },
     "overlay50": {
       "file": "desktop-ai-signals--1180x800--overlay.png",
-      "sha256": "e438086761d62e6dadb096cf299ef83906a0479208c5086547c1fc6fa67696f4"
+      "sha256": "1cdb50b6697f0a2fe377fdf5d38d05b7671e8227995943118b3e1d54b167170b"
     },
     "absoluteDifference": {
       "file": "desktop-ai-signals--1180x800--difference.png",
-      "sha256": "e621bc0a73f6431b9c910f09d6a6ea634372d1172f5e5dce8af4ed9a6ec07065"
+      "sha256": "86d2dd69d63f4c34b8f3ac0afd5542acd3ef22b4635ed73098bb1b249dedab8f"
     }
   },
   "releaseVerdict": "human region review required"

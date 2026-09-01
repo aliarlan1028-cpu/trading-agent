@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "runner": "tests/run-kordyn-v2-ai-browser.mjs",
   "fixture": "tests/kordyn-v2-production-fixture.js",
-  "productionSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+  "productionSourceCommit": "0509ee41a170e850f459ae9acdab4cef1ab07473",
   "captureTestSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
   "representativeAgentRunFixtures": [
     {
@@ -38,7 +38,7 @@
       "device": "desktop",
       "domainId": "ai",
       "workspaceId": "missions",
-      "sha256": "3978a1e6aa6ca33afa9497c7533414584275ce06ce937e3934334d2f5c153250",
+      "sha256": "cef286583a6914dd5037f5afac2f672dbe5e201cf69468bbfb0180710e279bb9",
       "viewportGeometry": {
         "width": 1180,
         "height": 800
@@ -62,7 +62,7 @@
       "device": "desktop",
       "domainId": "ai",
       "workspaceId": "missions",
-      "sha256": "5a9d57096f9fc52ec11c1a4f4bc0e0e6b48042242ba25b3e17396b296c29d086",
+      "sha256": "fe387950c17452524ff00099879b0f1b4259f3608ecc723ea444b20e075c3e6f",
       "viewportGeometry": {
         "width": 1440,
         "height": 900
@@ -86,7 +86,7 @@
       "device": "desktop",
       "domainId": "ai",
       "workspaceId": "intelligence",
-      "sha256": "87e978dbf508f91bf7bfd2f1781a2242055784f5ad99577f4e14e992f99e9fd5",
+      "sha256": "23887ebb23d803195342bd950d3063373d96cb6145fba8c04ed38860e7b8626b",
       "viewportGeometry": {
         "width": 1180,
         "height": 800
@@ -134,7 +134,7 @@
       "device": "mobile",
       "domainId": "ai",
       "workspaceId": "missions",
-      "sha256": "bea59ac44764a6fc9a3f96be278f490c92098e23c9977a64e12bac035048f884",
+      "sha256": "90c06e2fd1a9c07ae650c66baede5d9766214e880a5dd78f1f6791904726c67f",
       "viewportGeometry": {
         "width": 390,
         "height": 844
@@ -158,7 +158,7 @@
       "device": "mobile",
       "domainId": "ai",
       "workspaceId": "missions",
-      "sha256": "f2da3db05cd2ed9241ecc5a7664d37fae6bb951d02cc24ae48d5f9f995e549c3",
+      "sha256": "21b2b784b5fdec394d22f8899fc5bfdf17a36a7468cf58e6aa6f248649163207",
       "viewportGeometry": {
         "width": 430,
         "height": 932
@@ -182,7 +182,7 @@
       "device": "mobile",
       "domainId": "ai",
       "workspaceId": "missions",
-      "sha256": "fc4e7b84e8713bb11ebfaddd9a0e36d21e2d9549fd7edd73b4fc9e8bdca31ea5",
+      "sha256": "2e6b73c1e8ecfb182fcbaf7876aa8ac32326325715eec7758e2512bcbb22ce5d",
       "viewportGeometry": {
         "width": 390,
         "height": 844
@@ -206,7 +206,7 @@
       "device": "mobile",
       "domainId": "ai",
       "workspaceId": "missions",
-      "sha256": "282f5abfde4be39bd85dd699ebd1eacac47eb97b1768066bf2185222a27b2ac2",
+      "sha256": "369eb72cd5ad3d0191611922e2d4e96bb18caf5e6f6e5ebdd3d5a3ca4b965f3f",
       "viewportGeometry": {
         "width": 430,
         "height": 932

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "runner": "tests/run-kordyn-v2-final-overlays-browser.mjs",
   "fixture": "tests/kordyn-v2-accessibility-browser.jsx",
-  "productionSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+  "productionSourceCommit": "0509ee41a170e850f459ae9acdab4cef1ab07473",
   "captureTestSourceCommit": "4214862dc105995a4e8935d75ff1dc89653ace67",
   "captures": [
     {

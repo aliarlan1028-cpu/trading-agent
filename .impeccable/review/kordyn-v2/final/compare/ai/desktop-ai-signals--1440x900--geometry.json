@@ -16,7 +16,7 @@
     "sha256": "b467f2fb226b4da4aaa61e88b0802664a0079d4598c828b1fea2a3aed93bac40",
     "runner": "tests/run-kordyn-v2-ai-browser.mjs",
     "fixture": "tests/kordyn-v2-production-fixture.js",
-    "productionSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+    "productionSourceCommit": "0509ee41a170e850f459ae9acdab4cef1ab07473",
     "captureTestSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
     "device": "desktop",
     "domainId": "ai",

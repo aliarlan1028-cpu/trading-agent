@@ -3,7 +3,7 @@
   "scope": "ai",
   "sourceManifest": "docs/kordyn-v2-approved-concept-manifest.md",
   "captureEvidence": ".impeccable/review/kordyn-v2/final/screens/ai/capture-evidence.json",
-  "productionSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+  "productionSourceCommit": "0509ee41a170e850f459ae9acdab4cef1ab07473",
   "captureTestSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
   "outputRoot": ".impeccable/review/kordyn-v2/final/compare/ai",
   "counts": {
@@ -87,18 +87,18 @@
         },
         "overlay50": {
           "file": "desktop-ai-mission-control--1440x900--overlay.png",
-          "sha256": "a1c12c76276456579a3e8033ab8c2aad66ab32f964db5033f6bf62f24a4cc9f4"
+          "sha256": "64c4ba7b8866048aae3bbc5044702f83f5363939974542247802fc68a0d9ddef"
         },
         "absoluteDifference": {
           "file": "desktop-ai-mission-control--1440x900--difference.png",
-          "sha256": "ea35673debd9c8bc182bce3ebf0faea878edd922a921f5ec9c4bb8beebf117a7"
+          "sha256": "f77b8e7ecc2ffcdaa2feb668140b5d09c0bf71d60546b322cd089eaeac7d79bf"
         },
         "geometry": {
           "file": "desktop-ai-mission-control--1440x900--geometry.json",
-          "sha256": "a8b0387c14d1cf1f66e07bd7ee5c3ae4dc15c2b3a3caa2d64fc966d984339dea"
+          "sha256": "a79beb4ee23cd00716df97cf2ef8120a436cffb9a5b00355cdb7193ceb546a0d"
         }
       },
-      "pixelDifference": 0.055577104010328414,
+      "pixelDifference": 0.05557712014847091,
       "releaseVerdict": "human region review required"
     },
     {
@@ -113,18 +113,18 @@
         },
         "overlay50": {
           "file": "desktop-ai-mission-control--1180x800--overlay.png",
-          "sha256": "978a6acfb6ce504ef2e32cd15e69c0221c29e2fdbdf0b7b60be52b993b492b07"
+          "sha256": "1627a09654b6a2c49967d3cce597aa415cc05784002f1b703e68078a6e20b323"
         },
         "absoluteDifference": {
           "file": "desktop-ai-mission-control--1180x800--difference.png",
-          "sha256": "90664c23bde8e6e13b733403192f6ee7cf655e34536698b12c1baee57c41fa5b"
+          "sha256": "58b1ab9e455497aa73e05a8e5ea9f1bc8018a3f4666426f8ecae148daeb556cf"
         },
         "geometry": {
           "file": "desktop-ai-mission-control--1180x800--geometry.json",
-          "sha256": "8c62baaa777f3acd32c6c044fe9211d6a5f8fd47063494e30a1a34defee3122f"
+          "sha256": "10b599d42b384a8945810831b6b6928aeb58a6e0d134806f8196bf0db4011c23"
         }
       },
-      "pixelDifference": 0.06415088207599424,
+      "pixelDifference": 0.06417683754292677,
       "releaseVerdict": "human region review required"
     },
     {
@@ -147,7 +147,7 @@
         },
         "geometry": {
           "file": "desktop-ai-signals--1440x900--geometry.json",
-          "sha256": "994739219e1255fb20721f58c8fbd24ca459f26d364653dd4750fa6d95767ded"
+          "sha256": "c34d3c643aa3331fe7c63451651a4ae5ea70c5c05a913651a8fd2c73143e810d"
         }
       },
       "pixelDifference": 0.06226698942951667,
@@ -165,18 +165,18 @@
         },
         "overlay50": {
           "file": "desktop-ai-signals--1180x800--overlay.png",
-          "sha256": "e438086761d62e6dadb096cf299ef83906a0479208c5086547c1fc6fa67696f4"
+          "sha256": "1cdb50b6697f0a2fe377fdf5d38d05b7671e8227995943118b3e1d54b167170b"
         },
         "absoluteDifference": {
           "file": "desktop-ai-signals--1180x800--difference.png",
-          "sha256": "e621bc0a73f6431b9c910f09d6a6ea634372d1172f5e5dce8af4ed9a6ec07065"
+          "sha256": "86d2dd69d63f4c34b8f3ac0afd5542acd3ef22b4635ed73098bb1b249dedab8f"
         },
         "geometry": {
           "file": "desktop-ai-signals--1180x800--geometry.json",
-          "sha256": "23b5341be2840d7916503b89276d199720d0d5de78e5132ba85a09efc05ac9c6"
+          "sha256": "cb3fb6ee71f187766c5a571312d95cc60fd51dd91f4f2b9b3eedd0df816e7871"
         }
       },
-      "pixelDifference": 0.06740728508917691,
+      "pixelDifference": 0.06742469535836934,
       "releaseVerdict": "human region review required"
     },
     {
@@ -191,18 +191,18 @@
         },
         "overlay50": {
           "file": "mobile-ai-mission-home--390x844--overlay.png",
-          "sha256": "1cb78df1ad437fd25f08107a052ac504ea398673cdf3c47e331f586b4c0bea79"
+          "sha256": "847e2caf7bd103caa346ce7379916f230c2cbd527a38c1dc00c9c385af74b195"
         },
         "absoluteDifference": {
           "file": "mobile-ai-mission-home--390x844--difference.png",
-          "sha256": "125034bd5fa72a8661735a52fe0de1ee51d7b64973a897c67f700443059fde9c"
+          "sha256": "2fd8785ddff64e483ac0de5f52bc97e0511d1701eca7f5c57af3d42d758c5ba5"
         },
         "geometry": {
           "file": "mobile-ai-mission-home--390x844--geometry.json",
-          "sha256": "3e0020eb469d68d351d13192258f21cb630931aee42ea48aaa8586b4458b391a"
+          "sha256": "e33b7010e310394a7e009af6ef8544561e6a286fc69d3df87d3c76f361ec2ed4"
         }
       },
-      "pixelDifference": 0.08035781712531086,
+      "pixelDifference": 0.08087741265745169,
       "releaseVerdict": "human region review required"
     },
     {
@@ -217,18 +217,18 @@
         },
         "overlay50": {
           "file": "mobile-ai-mission-home--430x932--overlay.png",
-          "sha256": "a30a8324749e2ad2b37458bc56f0068cac584a203fca25d6575b6be1f03d3d63"
+          "sha256": "e487e0fc6ea5cc65d7b11d8fb290caaa1036b7ea5858f8eaf3bebc2f93a62948"
         },
         "absoluteDifference": {
           "file": "mobile-ai-mission-home--430x932--difference.png",
-          "sha256": "67734e324fc2a99a7b95763f61e40848df00d0c8aa10a13792cabb013f7fc6dc"
+          "sha256": "fbe6e4a1ca986cebce1a758ee0ab93d4a8f76a7e93a3484f07b1d0491bdb9081"
         },
         "geometry": {
           "file": "mobile-ai-mission-home--430x932--geometry.json",
-          "sha256": "b0d309d6769d779f43ae87143dd82e0aeda679f0a6dcbe3b5bcb8e22aa0e906d"
+          "sha256": "070607d83e3a051adb47143a237d5600e3f186f705cc53e23402f3f191049f59"
         }
       },
-      "pixelDifference": 0.07643552739990098,
+      "pixelDifference": 0.07679335732696112,
       "releaseVerdict": "human region review required"
     },
     {
@@ -243,18 +243,18 @@
         },
         "overlay50": {
           "file": "mobile-ai-task-approval--390x844--overlay.png",
-          "sha256": "69de3e16e5d64c98d853cd33ce6fd5775711da50c6a3373bd1fca6e1f612c1b3"
+          "sha256": "5a1f7bd8cd99e5e20cafaaced2583cd9454a13ded99b716034622e6f4a380c47"
         },
         "absoluteDifference": {
           "file": "mobile-ai-task-approval--390x844--difference.png",
-          "sha256": "c143a492ccf462f10b513105b59ab69d40fe37ca4f67b9d5ccb25e6d1e5fb988"
+          "sha256": "2b8b6a490b993b49bad7c5f98b83110f42a0160665c3e9e2397e2f6db7fbe828"
         },
         "geometry": {
           "file": "mobile-ai-task-approval--390x844--geometry.json",
-          "sha256": "6c067e0ee0c6ebb23774f638388af4ab009e98ca5818795cd67154092728969b"
+          "sha256": "e9d703fbd682036e55e1a76123d31a5df5c00e93797c329b3f9c10186ba0f928"
         }
       },
-      "pixelDifference": 0.08449304905256953,
+      "pixelDifference": 0.0848996177237047,
       "releaseVerdict": "human region review required"
     },
     {
@@ -269,18 +269,18 @@
         },
         "overlay50": {
           "file": "mobile-ai-task-approval--430x932--overlay.png",
-          "sha256": "db3ac5f7b4453a2544349137a8b1b96599b45c1e77823b1e2f98c318cdff9b9c"
+          "sha256": "a040d47a67ca2eef06d34c856fd7f34b1572d26e4c513a8417998911a2f7676d"
         },
         "absoluteDifference": {
           "file": "mobile-ai-task-approval--430x932--difference.png",
-          "sha256": "d5221d077cf3c5fb8783a9cf2d917a9c80f8648708ac58a470205038f0dd046c"
+          "sha256": "e51ea478d20aa125a6f86e97e529eb34127a33444c13de2b837d163874a06d38"
         },
         "geometry": {
           "file": "mobile-ai-task-approval--430x932--geometry.json",
-          "sha256": "af3e342f045b2963a563f4a18e6848cbbc551d4a39ae31236dc064b8bece288d"
+          "sha256": "790e1ceb8a17ac1004ef8842c774b9b0e488630cddc8043bf75fc0baef9fae13"
         }
       },
-      "pixelDifference": 0.0852454617272933,
+      "pixelDifference": 0.08557757907035456,
       "releaseVerdict": "human region review required"
     }
   ],

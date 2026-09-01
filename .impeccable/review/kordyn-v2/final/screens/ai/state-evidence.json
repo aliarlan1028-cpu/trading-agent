@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "runner": "tests/run-kordyn-v2-ai-browser.mjs",
   "fixture": "tests/kordyn-v2-production-fixture.js",
-  "productionSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+  "productionSourceCommit": "0509ee41a170e850f459ae9acdab4cef1ab07473",
   "captureTestSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
   "states": [
     {
@@ -12,7 +12,7 @@
       "device": "desktop",
       "domainId": "ai",
       "workspaceId": "missions",
-      "sha256": "436b26fb2ae1a427388fe18c055baea3f8ed2619c5cdd590f746a1d085f772e8",
+      "sha256": "3c7f472627e268737c51e1626693b6705acfa0c086f8f1fe076a3125d70aab13",
       "viewportGeometry": {
         "width": 1440,
         "height": 900
@@ -62,7 +62,7 @@
       "device": "desktop",
       "domainId": "ai",
       "workspaceId": "missions",
-      "sha256": "2d6f51e34657044ade517f10e82ed9df3edf22478000a6abe13c9e6f4d7518e2",
+      "sha256": "f3add99bfb55cee55bf662460fd224f75ff7cd4b007327dd2f1109e0cac4a4a3",
       "viewportGeometry": {
         "width": 1180,
         "height": 800
@@ -87,7 +87,7 @@
       "device": "mobile",
       "domainId": "ai",
       "workspaceId": "missions",
-      "sha256": "9de6545d24525c80395b19a114c29414d727e843ac82b4a3d79107ca1c2401ef",
+      "sha256": "ee3ad891fdbf559de8f30e335a0294a656b0c2e28656c9e400faaed90aa58c40",
       "viewportGeometry": {
         "width": 390,
         "height": 844
@@ -112,7 +112,7 @@
       "device": "mobile",
       "domainId": "ai",
       "workspaceId": "missions",
-      "sha256": "97ab5ff694236d469ac4f51309e7ffb21ccf26c72e425609683b05fb774ea2ff",
+      "sha256": "85f290fca2edf8430f7ac3a3c50e4f9295e1d6fa321147b7ee2d46e4590c1b37",
       "viewportGeometry": {
         "width": 430,
         "height": 932
@@ -287,7 +287,7 @@
       "device": "mobile",
       "domainId": "ai",
       "workspaceId": "missions",
-      "sha256": "365b459b96cc2f97b71c0dbc51ee9eafbdd31cdaa7dd12fc46118fd037b36625",
+      "sha256": "37f45dfee255584a8ab536a2a9e33db9bd92e2895cadb377ea9b94a7805b85bf",
       "viewportGeometry": {
         "width": 390,
         "height": 844
@@ -312,7 +312,7 @@
       "device": "mobile",
       "domainId": "ai",
       "workspaceId": "missions",
-      "sha256": "440312b2492f6c381f8b75f94da80a18975a110e68dd1f9add242eeb39ae6559",
+      "sha256": "d32d8db26c7244118f6fdce0bae5d5f3cb8bd8174500b637ea0e363156563425",
       "viewportGeometry": {
         "width": 430,
         "height": 932

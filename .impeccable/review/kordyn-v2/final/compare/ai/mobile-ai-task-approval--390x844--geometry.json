@@ -13,10 +13,10 @@
   },
   "actual": {
     "file": "mobile-ai-task-approval--390x844.png",
-    "sha256": "fc4e7b84e8713bb11ebfaddd9a0e36d21e2d9549fd7edd73b4fc9e8bdca31ea5",
+    "sha256": "2e6b73c1e8ecfb182fcbaf7876aa8ac32326325715eec7758e2512bcbb22ce5d",
     "runner": "tests/run-kordyn-v2-ai-browser.mjs",
     "fixture": "tests/kordyn-v2-production-fixture.js",
-    "productionSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
+    "productionSourceCommit": "0509ee41a170e850f459ae9acdab4cef1ab07473",
     "captureTestSourceCommit": "c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9",
     "device": "mobile",
     "domainId": "ai",
@@ -40,12 +40,12 @@
   },
   "diagnostics": {
     "screenshotStructure": {
-      "variance": 0.02549172083832983,
-      "edgeDensity": 0.04069894537441433,
+      "variance": 0.025730472490681545,
+      "edgeDensity": 0.042181126185799826,
       "nearFlat": false
     },
     "pixelDifference": {
-      "metric": 0.08449304905256953,
+      "metric": 0.0848996177237047,
       "role": "diagnostic only"
     },
     "contentAwareComparator": {
@@ -60,11 +60,11 @@
     },
     "overlay50": {
       "file": "mobile-ai-task-approval--390x844--overlay.png",
-      "sha256": "69de3e16e5d64c98d853cd33ce6fd5775711da50c6a3373bd1fca6e1f612c1b3"
+      "sha256": "5a1f7bd8cd99e5e20cafaaced2583cd9454a13ded99b716034622e6f4a380c47"
     },
     "absoluteDifference": {
       "file": "mobile-ai-task-approval--390x844--difference.png",
-      "sha256": "c143a492ccf462f10b513105b59ab69d40fe37ca4f67b9d5ccb25e6d1e5fb988"
+      "sha256": "2b8b6a490b993b49bad7c5f98b83110f42a0160665c3e9e2397e2f6db7fbe828"
     }
   },
   "releaseVerdict": "human region review required"
