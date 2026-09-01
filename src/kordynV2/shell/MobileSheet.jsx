@@ -167,7 +167,7 @@ export function MobileSheet({ panel, selection, supportContext, initialEvidenceT
               </dl>
             ) : <p className="kordynV2MobileEvidenceUnavailable">{unavailable}</p>
             ) : evidenceTab === "context" ? (
-            <dl className="kordynV2MobileContextFacts">
+            <dl className="kordynV2MobileContextFacts" data-kordyn-v2-context-id={selectedId} data-kordyn-v2-context-type={safeText(selection?.object?.type)}>
               {CONTEXT_FIELDS.map(([label, key]) => (
                 <div key={key}>
                   <dt>{label}</dt>
@@ -176,7 +176,7 @@ export function MobileSheet({ panel, selection, supportContext, initialEvidenceT
               ))}
             </dl>
             ) : (
-            <div className="kordynV2MobileProofContent">
+            <div className="kordynV2MobileProofContent" data-kordyn-v2-proof-id={selectedId} data-kordyn-v2-proof-type={safeText(selection?.object?.type)}>
               {details.length > 0 && <dl className="kordynV2MobileDecisionFacts" data-kordyn-v2-proof-details>
                 {details.map(([label, value], index) => <div key={`${label}-${index}`}><dt>{label}</dt><dd>{value}</dd></div>)}
               </dl>}

@@ -12,7 +12,7 @@ export function RecoveryWorkspace({ model = {}, actions, actionsDisabled = false
         <section className="kordynV2RecoveryTruth" data-kordyn-v2-object-type="Recovery" data-kordyn-v2-object-id={recoveryId}>
           <header><span><strong>最新对账</strong><small>{report?.createdAt || "尚未运行"}</small></span><em>{report?.status || "unavailable"}</em></header>
           <dl><div><dt>差异</dt><dd>{recovery.differences?.length || 0}</dd></div><div><dt>未知执行</dt><dd>{recovery.unknownOrders?.length || 0}</dd></div><div><dt>开放事件</dt><dd>{recovery.openIncidents?.length || 0}</dd></div></dl>
-          <button type="button" onClick={() => onSelect({ id: recoveryId, type: "Recovery", workspaceId: "governance" })}>查看恢复证据 <ArrowRight size={15} /></button>
+          <button type="button" data-kordyn-v2-object-type="Recovery" data-kordyn-v2-object-id={recoveryId} onClick={() => onSelect({ id: recoveryId, type: "Recovery", workspaceId: "governance" })}>查看恢复证据 <ArrowRight size={15} /></button>
         </section>
         <section className="kordynV2RecoveryActions"><header><strong>可执行恢复</strong><small>每个结果由服务端确认</small></header><button type="button" disabled={actionsDisabled || permissions.reconcile !== true} onClick={() => actions?.reconcile?.()}><RefreshCw size={18} /><span><strong>运行对账</strong><small>拉取最新快照并核对持仓、订单与成交</small></span><ArrowRight size={16} /></button><button type="button" disabled={actionsDisabled || permissions.writeTask !== true || !recovery.needsSchedulerRecovery} onClick={() => actions?.recoverScheduler?.()}><RotateCcw size={18} /><span><strong>恢复任务调度</strong><small>重建调度状态并验证租约</small></span><ArrowRight size={16} /></button></section>
       </div>

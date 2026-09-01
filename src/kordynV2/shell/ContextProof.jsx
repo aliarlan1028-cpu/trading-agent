@@ -145,7 +145,7 @@ export function ContextProof({ selection, request }) {
             </header>
             <p className="kordynV2OverlayIdentity">{safeText(activeSelection?.object?.type)} / {selectedId}</p>
             {panel === "context" ? (
-              <dl className="kordynV2ContextFacts">
+              <dl className="kordynV2ContextFacts" data-kordyn-v2-context-id={selectedId} data-kordyn-v2-context-type={safeText(activeSelection?.object?.type)}>
                 {CONTEXT_FIELDS.map(([label, key]) => (
                   <div key={key}>
                     <dt>{label}</dt>
@@ -154,7 +154,7 @@ export function ContextProof({ selection, request }) {
                 ))}
               </dl>
             ) : (
-              <div className="kordynV2ProofContent">
+              <div className="kordynV2ProofContent" data-kordyn-v2-proof-id={selectedId} data-kordyn-v2-proof-type={safeText(activeSelection?.object?.type)}>
                 {activeDetails.length > 0 && <dl className="kordynV2ProofDetails" data-kordyn-v2-proof-details>
                   {activeDetails.map(([label, value], index) => <div key={`${label}-${index}`}><dt>{label}</dt><dd>{value}</dd></div>)}
                 </dl>}

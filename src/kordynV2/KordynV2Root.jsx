@@ -154,7 +154,7 @@ export function KordynV2Root({ api, lang }) {
 
   const select = useCallback((candidate) => {
     const nextSelection = createV2Selection({ data, candidate });
-    if (!nextSelection) return;
+    if (!nextSelection) return null;
     const selectedObject = nextSelection.object;
     const targetLocation = accountLocationForSelection({
       ...candidate,

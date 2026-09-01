@@ -15,11 +15,15 @@ export function StrategyRegistry({ rows = [], selectedId = "", onSelect = () => 
         <span>策略产品</span><span>来源</span><span>当前版本</span><span>适用范围</span><span>验证阶段</span><span>运行状态</span>
       </header>
       <div role="rowgroup">
-        {rows.map((row, index) => <button
+        {rows.map((row, index) => {
+          const candidate = strategySelectionCandidate(row);
+          return <button
           type="button"
           role="row"
           key={row.id}
           data-kordyn-v2-strategy-id={row.id}
+          data-kordyn-v2-object-id={candidate.id}
+          data-kordyn-v2-object-type={candidate.type}
           data-provenance={row.provenance?.kind || "unknown"}
           data-selected={row.id === selectedId}
           onClick={() => onSelect(row)}
@@ -31,7 +35,8 @@ export function StrategyRegistry({ rows = [], selectedId = "", onSelect = () => 
           <b role="cell" data-stage={row.lifecycle?.stage}>{text(row.evidenceStatus || row.lifecycle?.stage)}</b>
           <span role="cell" data-status={row.lifecycle?.stage}>{text(row.status)}</span>
           <ChevronRight size={15} aria-hidden="true" />
-        </button>)}
+        </button>;
+        })}
         {!rows.length && <p role="status">暂无正式策略 · No registered strategies</p>}
       </div>
       <footer><span>共 {rows.length} 条策略</span><small>正式 Registry 不包含尚未毕业的知识候选</small></footer>

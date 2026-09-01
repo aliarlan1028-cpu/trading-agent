@@ -9,7 +9,7 @@ export function KnowledgeEvidenceInspector({ evidence = [], selectedId = "", sou
     <section className="kordynV2KnowledgeEvidence">
       <header><span><strong>原文证据</strong><small>引用保持来源与页码</small></span><em>{evidence.length}</em></header>
       <div className="kordynV2KnowledgeEvidenceBody">
-        <nav aria-label="证据列表">{evidence.map((row) => <button type="button" key={row.id} data-kordyn-v2-evidence-id={row.id} data-selected={row.id === selected?.id} onClick={() => onSelect(row)}><BookOpen size={13} aria-hidden="true" /><span><strong>{text(row.text).slice(0, 64)}</strong><small>{text(row.page ? `p.${row.page}` : row.location)}</small></span></button>)}</nav>
+        <nav aria-label="证据列表">{evidence.map((row) => <button type="button" key={row.id} data-kordyn-v2-evidence-id={row.id} data-kordyn-v2-object-id={row.id} data-kordyn-v2-object-type="Evidence" data-selected={row.id === selected?.id} onClick={() => onSelect(row)}><BookOpen size={13} aria-hidden="true" /><span><strong>{text(row.text).slice(0, 64)}</strong><small>{text(row.page ? `p.${row.page}` : row.location)}</small></span></button>)}</nav>
         <article>{selected ? <>
           <dl><div><dt>来源</dt><dd>{text(source?.title || selected.sourceId)}</dd></div><div><dt>页码</dt><dd>{text(selected.page)}</dd></div><div><dt>证据类型</dt><dd>{text(selected.type || "source_excerpt")}</dd></div></dl>
           <blockquote><Quote size={16} aria-hidden="true" />{text(selected.text || selected.content)}</blockquote>

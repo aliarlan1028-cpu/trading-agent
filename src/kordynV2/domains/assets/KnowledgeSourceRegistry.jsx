@@ -12,7 +12,7 @@ export function KnowledgeSourceRegistry({ sources = [], selectedId = "", actions
           const Icon = iconFor(source.type);
           const failed = source.lifecycle?.stage === "failed";
           return <article key={source.id} data-kordyn-v2-knowledge-source={source.id} data-source-stage={source.lifecycle?.stage} data-selected={source.id === selectedId}>
-            <button type="button" className="kordynV2KnowledgeSourceSelect" onClick={() => onSelect(source)}>
+            <button type="button" className="kordynV2KnowledgeSourceSelect" data-kordyn-v2-object-id={source.id} data-kordyn-v2-object-type="Knowledge" onClick={() => onSelect(source)}>
               <Icon size={20} aria-hidden="true" /><span><strong>{text(source.title || source.name)}</strong><small>{text(source.type)} · {text(source.lifecycle?.label)}</small></span><ChevronRight size={16} aria-hidden="true" />
             </button>
             <dl><div><dt>更新时间</dt><dd>{text(source.updatedAt || source.createdAt)}</dd></div><div><dt>解析版本</dt><dd>{text(source.parserVersion)}</dd></div></dl>
