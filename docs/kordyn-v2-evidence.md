@@ -2,16 +2,10 @@
 
 ## Current governed comparison status
 
-- Final Plan 06 production source: `c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9`.
-- Final Plan 06 contact sheet: `.impeccable/review/kordyn-v2/final/contact-sheet.png`, SHA-256 `6728a59ec8adec7c377f9d5f1216e53976ad2326e20bfac68ac210ca0ac94aa3`, `82 / 82` valid images at `1800x7804`.
-- Current Account product source: `3057bcd90496af2992afebe6eb7858f7cf3c9b97`.
-- Current Account capture-test source: `e3eb0b3c216eafe9a63ed6b40ec998f693ba50a2`.
-- Current Account detector-record commit: `8e300e461402674090f8a7f46e98b2bb4032eb2f`.
-- Current Account evidence commit: `414ab7d343606b501781ebcc0639ae20c6a5c788`.
-- Current Intelligent Assets product/capture source: `801a27abceb54ac8515dd6735f0f24aebfcd215c`.
-- Current Governance product source: `1e97a26db9d0c9acc0af6fa686d88923a0986588`.
-- Current Governance capture-test source: `b61ea43ec402997dc99bf129d45986ad7f06bcf5`.
-- Current Governance evidence commit: `d5da55772d43ab4c30f88602262f6d8ef5107bc0`.
+- Final Plan 06 production/cutover source: `0509ee41a170e850f459ae9acdab4cef1ab07473`.
+- Final Plan 06 evidence commit: `6803afa447444d6f5db4e8668d9ea0f13908eb8a`.
+- Final Plan 06 contact sheet: `.impeccable/review/kordyn-v2/final/contact-sheet.png`, SHA-256 `c24175355363d468b35d9a5718831d62be2cc8b558e2459728d5adb4cd457409`, `82 / 82` valid images at `1800x7804`.
+- AI and shared-overlay evidence was freshly recaptured against `0509ee4`; Account, Intelligent Assets, and Governance retain their still-valid base batch against `c2d0939`, with capture-test sources `e3eb0b3` and `4214862` recorded per sidecar. A valid retained image is not described as a fresh cutover capture.
 - Current comparison scope: Foundation Plan 01 shared shell plus completed Plan 02 AI, Plan 03 Account Position, Plan 04 Intelligent Assets, and Plan 05 System Governance domains.
 - Completed governed concept comparisons: `15 / 15`.
 - Pending domain implementation: `0 / 15`.
@@ -19,17 +13,17 @@
 
 ## Plan 06 convergence checkpoint — Task 4 final visual evidence
 
-All final screenshots were recaptured after the Signals inspector reading-order correction in production commit `c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9`. Earlier Plan 06 captures against `7f475cc` are superseded and are not final evidence. The correction is protected by a real Chrome geometry contract at both Desktop widths: evidence copy ends at least four CSS pixels before inspector actions, and every action remains within the inspector. The retained RED measured a real overlap at `1440px` (`description bottom 505.59375`, `actions top 465`); the final runner passes at both `1440x900` and `1180x800`.
+The base final screenshot batch was captured after the Signals inspector reading-order correction in production commit `c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9`; earlier Plan 06 captures against `7f475cc` are superseded. After the final responsive Mission correction and V2 default switch, AI and shared-overlay evidence was freshly recaptured against `0509ee41a170e850f459ae9acdab4cef1ab07473`. Account, Intelligent Assets, and Governance pixels were not falsely relabelled: their unchanged base captures remain bound to `c2d0939` and their exact capture-test commits. The Signals correction is protected by a real Chrome geometry contract at both Desktop widths, and the final Mission shell gate records runtime/Evidence separation of `27px` at `1440x900` and `22px` at `1180x800`.
 
 ### Final capture provenance
 
 | Scope | Surface captures | Required states | Production source | Capture-test source | Capture sidecar SHA-256 |
 | --- | ---: | ---: | --- | --- | --- |
-| AI 交易员 | `8` | `13 / 13` | `c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9` | `c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9` | `67bdc01c0945d4f361f0dbbb7a42428b30cf52cfd7b6ffc88b7a5357d9928acc` |
+| AI 交易员 | `8` | `13 / 13` | `0509ee41a170e850f459ae9acdab4cef1ab07473` | `c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9` | `ee7fd25bc581fe6922708f28970b3b67fe8b3c0bf6ac50f9888ffa1b3d5ac1ce` |
 | 账户交易 | `4` | `13 / 13` | `c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9` | `e3eb0b3c216eafe9a63ed6b40ec998f693ba50a2` | `3923c9bd9bd2c7369c3c4029a9463f5ca5422c5c4aee21b40b3ec5ebd99e0672` |
 | 智能资产 | `18` | `13 / 13` | `c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9` | `4214862dc105995a4e8935d75ff1dc89653ace67` | `aa9596800e097065df731622f7ffc9f479cf5393d5b11f2c491306f8328824ca` |
 | 系统治理 | `15` | `13 / 13` | `c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9` | `4214862dc105995a4e8935d75ff1dc89653ace67` | `0711b7903e1b823e460b25ec04df609c9b194aacffc1ed8178ea8cf3af31369a` |
-| Shared overlays | `9` | n/a | `c2d0939765a815c15b3f8bbc7b1d8eca5c03c8a9` | `4214862dc105995a4e8935d75ff1dc89653ace67` | `f65b360850ecf07f73edd9d62d048700c0fa64d24f71ead4a714387a0badcf55` |
+| Shared overlays | `9` | n/a | `0509ee41a170e850f459ae9acdab4cef1ab07473` | `4214862dc105995a4e8935d75ff1dc89653ace67` | `7faf3ed6456986b0083f43eb7cd79b1b1ddf515ecafce872e6d2c1fdaa3fde02` |
 
 The overlay batch covers Desktop and APP Context, Proof, and read-only AI support, plus Desktop approval, ordinary confirmation, and danger confirmation. All runners mount the real V2 production root through credential-free production-shaped fixtures, report zero production writes, and reject legacy authenticated styles.
 
@@ -37,7 +31,7 @@ The overlay batch covers Desktop and APP Context, Proof, and read-only AI suppor
 
 | Scope | Concepts | Viewport comparisons | Artifacts | Comparison index SHA-256 |
 | --- | ---: | ---: | ---: | --- |
-| AI 交易员 | `4 / 4` | `8` | `33` | `0b4c60c5629cf64c3cb27022f7b5e5cc247f9612b749c570ac30cd6af6feaed0` |
+| AI 交易员 | `4 / 4` | `8` | `33` | `fb12eeb86104ffbc548f78decb4bebd1876749a44dd0f6e27febab1b8558e890` |
 | 账户交易 | `1 / 1` | `2` | `9` | `533443036f2c2e0768c47b9f1a45b14771258203aa0f42b350c0c65b900b24f6` |
 | 智能资产 | `6 / 6` | `12` | `49` | `cc81390505617ebb2f258ae5954b6c9f358c3c9710dcf5fc6b6cae4b814c9ee3` |
 | 系统治理 | `4 / 4` | `8` | `33` | `090b5c36214a2b2608776534553843472f2e22ca6988264da7ecaf77d76d4b5f` |
@@ -52,9 +46,24 @@ Original-size review covered every primary Desktop and APP concept, the medium D
 
 Impeccable mechanical detection over `src/kordynV2` returned `[]`. The final finish review was performed inline because this task did not authorize a new reviewer agent. Its disposition is `ship`: persistence is backed by `PRODUCT.md`, the user-approved immutable manifest, all `82` valid captures and source sidecars; fidelity has no missing or contradicted salient region; the browser product has no unused target device class; material fixes are empty; the compact truth rail, canonical object/evidence grammar, read-only AI support boundary, and distinct approval/danger layers must not be diluted.
 
+## Plan 06 final release checkpoint — Task 6
+
+- Default presentation commit: `0509ee41a170e850f459ae9acdab4cef1ab07473`; `DEFAULT_KORDYN_UI_VERSION` is `v2`.
+- Explicit rollback remains `VITE_KORDYN_UI_VERSION=legacy`; invalid explicit values remain fail-closed to legacy.
+- Final visual evidence commit: `6803afa447444d6f5db4e8668d9ea0f13908eb8a`.
+- Capability convergence: `66 / 66`; canonical Desktop selection `28 / 28`; APP representative selection `4 / 4`; every accepted selection updates Shell, Context, and Proof identity together.
+- Fresh focused tests: `196 / 196`; fresh full suite: `2214 / 2214`; lint and production build: exit `0`, `1796` modules transformed.
+- Real Chrome shell: Desktop `1440x900` and `1180x800`, APP `390x844` and `430x932`; four global destinations, three focus checks, zero overflow, APP touch targets `44px`, all thirteen state semantics.
+- Domain master gates: AI `8` captures and `13 / 13` states; Account `4` and `13 / 13`; Assets `18` and `13 / 13`; Governance `15` and `13 / 13`. All reject legacy authenticated styles.
+- Accessibility: six focus traps at every target viewport, zero overflow, `200 / 200` large-list rows, reduced-motion state feedback visible.
+- Runtime performance: initial AI `499ms`; Account `203ms`; Assets `115ms`; deferred Strategy `39ms`; Governance `171ms`; inactive-domain requests `0`; legacy requests `0`; V2 long tasks above `200ms` `0`.
+- Production/rollback gate: V2 `23 / 23` workspaces; legacy `6` representative families; shared backend identity `core_v1 / plan06-production-gate / user_local_admin`; `LINK/USDT` persists across presentation restart; invalid input `400`; forbidden action `403`; CSS ownership V2 `5/0`, legacy `0/10`; overflow `0`.
+- Final contact sheet: `82 / 82`, `broken: []`, `pendingText: false`, `1800x7804`; original-size visual review found no title/Evidence overlap, mobile sheet collision, clipping, or missing image.
+- Read-only release review: inline due to the no-new-subagent constraint; `Critical 0 / Important 0 / Minor 0`. This is intentionally not described as an independent reviewer result.
+
 ## Plan 06 convergence checkpoint — Task 5 production and rollback gate
 
-The cutover remains presentation-only. `src/kordynV2/cutover.js` records one immutable deployed action-route contract for both presenters, including the existing AI, Account, Intelligent Assets, Governance, configuration, execution, review, recovery, export, and protected-risk boundaries. The contract is explicit about HTTP methods so a route that silently changed from `POST` to `PATCH` would not pass. At this checkpoint the default is still `legacy`; the production default changes only in the separate Task 6 cutover commit.
+The cutover remains presentation-only. `src/kordynV2/cutover.js` records one immutable deployed action-route contract for both presenters, including the existing AI, Account, Intelligent Assets, Governance, configuration, execution, review, recovery, export, and protected-risk boundaries. The contract is explicit about HTTP methods so a route that silently changed from `POST` to `PATCH` would not pass. At the historical Task 5 checkpoint the default was still `legacy`; Task 6 changed only that default in the isolated `0509ee4` commit.
 
 `tests/run-kordyn-v2-production-gates.mjs` owns its complete environment: it allocates localhost ports, creates one trusted temporary data root, starts the real `server/index.mjs` with test isolation and no credentials, starts the actual Vite app as V2, stops only Vite, restarts the presentation as legacy against the same backend/data root, then stops both services and removes only the owned temporary root. `tests/run-kordyn-v2-production-browser.mjs` drives trusted Chrome clicks through the real authenticated `App` shell; it does not mount a component fixture and it does not import production-shaped browser fixtures.
 
@@ -171,7 +180,7 @@ Original-size review opened all eight core actuals and their overlay comparisons
 - Focused Governance/model/action/workspace/state/finish/performance/runtime tests: `59 / 59`, exit `0`.
 - Canonical Governance browser gate: exit `0`; product source `1e97a26db9d0c9acc0af6fa686d88923a0986588`; capture-test source `b61ea43ec402997dc99bf129d45986ad7f06bcf5`; captures `15`; states `13`; navigation checks `14`; interactions `12`; action modes `4`; Governance CSS `true`; legacy authenticated CSS `false`; APP support-boundary geometry passes at both widths.
 - Governance comparator: exit `0`; scoped concepts `4 / 4 / 0`, viewport comparisons `8`, artifacts `33`; machine verdict `human region review required`; the original-size human region review above records the release decision without claiming pixel equivalence.
-- The prior Plan 05 Impeccable detector output predates product source `1e97a26` and is historical; it is not used as current finish evidence. Current release judgment uses the fresh browser captures, comparison artifacts, original-size human review, and independent finish review.
+- The prior Plan 05 Impeccable detector output predates product source `1e97a26` and is historical; it is not used as current finish evidence. The Plan 05 judgment used its then-current captures and independent finish review; the Plan 06 release judgment is the explicitly labelled inline review recorded above.
 - Full repository test suite: `2153 / 2153`, exit `0`.
 - ESLint: exit `0`.
 - Isolated performance build: exit `0`; public CSS `15,304 / 40,000`; public JS `383,019 / 450,000`; AI shell CSS `56,117 / 180,000`; Account domain CSS `114,876 / 120,000`; Governance domain CSS `119,436 / 120,000`; Governance domain JS `600,889 / 650,000`. V2 routes do not load legacy product styles; checked-in `dist` and source remain unchanged.

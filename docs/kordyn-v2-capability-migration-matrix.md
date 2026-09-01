@@ -5,7 +5,8 @@
 - Authoritative capability list: `src/productCoverage.js`.
 - Consolidated implementation registry: `src/kordynV2/architecture/capabilitySurfaces.js`, merged from the four domain-owned registries with duplicate rejection.
 - Canonical product-language object map: `src/kordynV2/architecture/objectContracts.js`; aliases such as Mission → Agent run, Plan → Trade plan, Knowledge source → Knowledge, Risk rule → Risk check, and Recovery record → Recovery are explicit rather than inferred.
-- Verified on 2026-09-01: `66/66` capabilities and `28/28` required object contracts. The final source hash is recorded by the Task 1 commit rather than predeclared from an uncommitted working tree.
+- Verified on 2026-09-01 against final production source `0509ee41a170e850f459ae9acdab4cef1ab07473`: `66/66` capabilities and `28/28` required Desktop object contracts. APP real-click coverage exercises one canonical object in each of the four product domains (`4/4`).
+- Final evidence commit: `6803afa447444d6f5db4e8668d9ea0f13908eb8a`; final report: `docs/kordyn-v2-release-report.md`.
 - Distribution: AI `8`, account/trading `11`, intelligent assets `18`, risk/boundaries `6`, operations `8`, configuration `15`.
 - This matrix changes information architecture and presentation only. Existing API, permission, action, state, object identity, execution, risk, audit, and recovery semantics remain authoritative.
 
@@ -91,3 +92,10 @@ Implementation must keep this matrix at exactly `66` rows unless `src/productCov
 - Desktop evidence: `28/28` product-language object contracts were exercised through actual V2 buttons at `1440×900`; after every click the Shell, Context, and Proof identities matched.
 - APP evidence: actual V2 Mission, Market, Strategy product, and Task rows covered AI、账户交易、智能资产、系统治理 at `390×844` and `430×932`, with matching Shell, Context sheet, and Proof sheet identity.
 - The browser gate uses production-shaped fixtures with production components and local read-only action stubs. It does not call the selection helper directly and does not claim the fixture is live account data.
+
+## Plan 06 release status
+
+- `DEFAULT_KORDYN_UI_VERSION` is `v2` at `0509ee41a170e850f459ae9acdab4cef1ab07473`.
+- Explicit `VITE_KORDYN_UI_VERSION=legacy` rollback remains tested and recoverable; invalid explicit values fail closed to legacy.
+- The self-contained production gate reaches all `23/23` V2 workspaces and six legacy families against the same isolated real backend. Public/auth fingerprints, persisted marker identity, permission failures, and API method/path contracts remain unchanged.
+- Fresh focused tests pass `196/196`; the complete suite passes `2214/2214`; final visual evidence contains `82/82` valid images at `1800x7804`.
