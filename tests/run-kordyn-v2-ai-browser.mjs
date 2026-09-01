@@ -559,9 +559,10 @@ async function captureApprovedSurfaces(cdp, baseUrl) {
   assert.equal(evidence.length, 8, "exactly four approved AI concepts across eight immutable captures");
   await writeFile(path.join(outputDir, "capture-evidence.json"), `${JSON.stringify({
     schemaVersion: 1,
-    runner: "tests/run-kordyn-v2-ai-browser.mjs",
-    fixture: "tests/kordyn-v2-production-fixture.js",
+    runner,
+    fixture,
     productionSourceCommit,
+    captureTestSourceCommit,
     representativeAgentRunFixtures: [
       { id: "run-btc-analysis-fixture", stage: "analysis", authority: "Task 5 production-shaped fixture" },
       { id: "run-eth-monitor", stage: "monitoring", authority: "Task 5 production-shaped fixture" },
