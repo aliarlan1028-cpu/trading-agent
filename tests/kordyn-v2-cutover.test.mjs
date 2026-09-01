@@ -4,7 +4,7 @@ import test from "node:test";
 import { DEFAULT_KORDYN_UI_VERSION, resolveKordynUiVersion } from "../src/kordynV2/cutover.js";
 
 test("production cutover is build-configured and preview override is fail closed", () => {
-  assert.equal(DEFAULT_KORDYN_UI_VERSION, "legacy");
+  assert.equal(DEFAULT_KORDYN_UI_VERSION, "v2");
   assert.equal(resolveKordynUiVersion({ PROD: true, VITE_KORDYN_UI_VERSION: "v2" }, null), "v2");
   assert.equal(resolveKordynUiVersion({ PROD: true, VITE_KORDYN_UI_VERSION: "legacy" }, { getItem: () => "v2" }), "legacy");
   assert.equal(resolveKordynUiVersion({ DEV: true }, { getItem: () => "v2" }), "v2");
@@ -19,7 +19,7 @@ test("inaccessible global preview storage fails closed", () => {
   });
   try {
     assert.equal(resolveKordynUiVersion({ PROD: true, VITE_KORDYN_UI_VERSION: "v2" }), "v2");
-    assert.equal(resolveKordynUiVersion({ DEV: true }), "legacy");
+    assert.equal(resolveKordynUiVersion({ DEV: true }), "v2");
   } finally {
     if (descriptor) Object.defineProperty(globalThis, "sessionStorage", descriptor);
     else delete globalThis.sessionStorage;
@@ -28,7 +28,7 @@ test("inaccessible global preview storage fails closed", () => {
 
 test("throwing preview reads retain the configured fail-closed version", () => {
   const storage = { getItem() { throw new Error("storage read denied"); } };
-  assert.equal(resolveKordynUiVersion({ DEV: true }, storage), "legacy");
+  assert.equal(resolveKordynUiVersion({ DEV: true }, storage), "v2");
   assert.equal(resolveKordynUiVersion({ DEV: true, VITE_KORDYN_UI_VERSION: "v2" }, storage), "v2");
 });
 
