@@ -226,7 +226,7 @@ test("manifest graph ownership reports public, V2 shell, and legacy assets witho
   assert.deepEqual(report.budgets, {
     publicCss: { actual: 20_000, limit: 40_000, pass: true },
     publicJs: { actual: 300_000, limit: 450_000, pass: true },
-    aiShellCss: { actual: 170_000, limit: 180_000, pass: true },
+    aiShellCss: { actual: 150_000, limit: 180_000, pass: true },
     accountDomainCss: { actual: 48_000, limit: 120_000, pass: true },
     assetsDomainCss: { actual: 51_000, limit: 120_000, pass: true },
     governanceDomainCss: { actual: 62_000, limit: 120_000, pass: true },

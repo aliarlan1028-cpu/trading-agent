@@ -41,7 +41,7 @@ test("motion and touch behavior are bounded", () => {
 });
 
 test("retained zero-base CSS keeps its cascade while the approved classic bundle owns production", () => {
-  assert.match(main, /import\("\.\/classicStyles\.js"\)/);
+  assert.match(main, /import\("\.\/aug15\/App\.jsx"\)/);
   assert.doesNotMatch(main, /import\("\.\/productStyles\.js"\)/);
   const foundation = productStyles.indexOf('import "./product-foundation.css"');
   const zeroBase = productStyles.indexOf('import "./zero-base-system.css"');

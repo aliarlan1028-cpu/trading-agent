@@ -59,7 +59,7 @@ function resolveV2Entry(manifest, publicEntry) {
     if (error?.message === "ambiguous_ai_entry") throw new Error("ambiguous_v2_entry");
     throw error;
   }
-  const candidates = publicDynamic.filter((key) => {
+  const candidates = [...new Set(publicDynamic.filter((key) => {
     const row = manifest[key];
     return row?.isDynamicEntry === true
       && validOwnedCss(row)
@@ -67,9 +67,27 @@ function resolveV2Entry(manifest, publicEntry) {
       && row.dynamicImports.length > 0
       && row.dynamicImports.includes(aiEntry)
       && validOwnedCss(manifest[aiEntry]);
-  });
+  }))];
   if (candidates.length === 0) throw new Error("missing_v2_entry");
   if (candidates.length !== 1) throw new Error("ambiguous_v2_entry");
+  return candidates[0];
+}
+
+function resolveLegacyEntry(manifest, publicEntry) {
+  const exactSources = ["src/aug15/App.jsx", "src/classicStyles.js"];
+  const exact = Object.entries(manifest).filter(([key, row]) => exactSources.includes(key) || exactSources.includes(row?.src));
+  if (exact.length > 1) throw new Error("ambiguous_legacy_entry");
+  if (exact.length === 1) return exact[0][0];
+  const publicDynamic = manifest[publicEntry]?.dynamicImports;
+  if (!Array.isArray(publicDynamic)) throw new Error("invalid_public_dynamic_imports");
+  const candidates = [...new Set(publicDynamic.filter((key) => {
+    const row = manifest[key];
+    const children = Array.isArray(row?.dynamicImports) ? row.dynamicImports : [];
+    const ownsAugust15Child = children.some((child) => child.startsWith("src/aug15/") || manifest[child]?.src?.startsWith("src/aug15/"));
+    return row?.isDynamicEntry === true && row?.name === "App" && validOwnedCss(row) && ownsAugust15Child;
+  }))];
+  if (candidates.length === 0) throw new Error("missing_legacy_entry");
+  if (candidates.length !== 1) throw new Error("ambiguous_legacy_entry");
   return candidates[0];
 }
 
@@ -188,12 +206,20 @@ function summarize(entry, assets, assetStats, extra = {}) {
   };
 }
 
+function incrementalCssSize(assets, publicAssets, assetStats) {
+  let raw = 0;
+  for (const file of assets.css) {
+    if (!publicAssets.css.has(file)) raw += sizeOf(assetStats, file, "raw");
+  }
+  return raw;
+}
+
 export function analyzeV2BuildManifest({ manifest: manifestInput, assetStats: assetStatsInput } = {}) {
   const manifest = record(manifestInput, "manifest");
   const assetStats = record(assetStatsInput, "asset_stats");
   const publicEntry = uniquePublicEntry(manifest);
   const v2Entry = resolveV2Entry(manifest, publicEntry);
-  const legacyEntry = uniqueEntry(manifest, "src/classicStyles.js", "legacy");
+  const legacyEntry = resolveLegacyEntry(manifest, publicEntry);
   const domainEntries = resolveDomainEntries(manifest, v2Entry);
   const aiEntry = domainEntries.ai;
   const accountEntry = domainEntries.account;
@@ -227,7 +253,11 @@ export function analyzeV2BuildManifest({ manifest: manifestInput, assetStats: as
   const accountAssets = assetsForClosure(manifest, accountClosure);
   const assetsDomainAssets = assetsForClosure(manifest, assetsClosure);
   const governanceAssets = assetsForClosure(manifest, governanceClosure);
-  const forbiddenLegacyCss = [...aiShellAssets.css].filter((file) => legacyAssets.css.has(file)).sort();
+  // The public entry stylesheet is intentionally shared by both authenticated
+  // branches. Only CSS owned exclusively by the historical authenticated
+  // branch is forbidden in the V2 graph.
+  const legacyPrivateCss = new Set([...legacyAssets.css].filter((file) => !publicAssets.css.has(file)));
+  const forbiddenLegacyCss = [...aiShellAssets.css].filter((file) => legacyPrivateCss.has(file)).sort();
   if (forbiddenLegacyCss.length > 0) {
     throw new Error(`v2_loads_legacy_css:${forbiddenLegacyCss.join(",")}`);
   }
@@ -238,7 +268,7 @@ export function analyzeV2BuildManifest({ manifest: manifestInput, assetStats: as
     ["governance", governanceEntry, governanceAssets]
   ];
   const domainCss = Object.fromEntries(domainDefinitions.map(([domainId, , domainAssets]) => {
-    const forbidden = [...domainAssets.css].filter((file) => legacyAssets.css.has(file)).sort();
+    const forbidden = [...domainAssets.css].filter((file) => legacyPrivateCss.has(file)).sort();
     if (forbidden.length > 0) throw new Error(`${domainId}_loads_legacy_css:${forbidden.join(",")}`);
     return [domainId, {
       forbidden,
@@ -276,6 +306,12 @@ export function analyzeV2BuildManifest({ manifest: manifestInput, assetStats: as
     forbiddenLegacyCss: domainCss.governance.forbidden,
     sharedShellCss: domainCss.governance.shared
   });
+  // Route CSS budgets measure additional authenticated bytes. The public entry
+  // has already loaded before either authenticated branch is selected.
+  const aiShellIncrementalCss = incrementalCssSize(aiShellAssets, publicAssets, assetStats);
+  const accountDomainIncrementalCss = incrementalCssSize(accountAssets, publicAssets, assetStats);
+  const assetsDomainIncrementalCss = incrementalCssSize(assetsDomainAssets, publicAssets, assetStats);
+  const governanceDomainIncrementalCss = incrementalCssSize(governanceAssets, publicAssets, assetStats);
   return {
     public: publicReport,
     routes: { aiShell, legacy, aiDomain, accountDomain, assetsDomain, governanceDomain },
@@ -291,24 +327,24 @@ export function analyzeV2BuildManifest({ manifest: manifestInput, assetStats: as
         pass: publicReport.js < KORDYN_V2_PERFORMANCE_BUDGETS.publicJs
       },
       aiShellCss: {
-        actual: aiShell.css,
+        actual: aiShellIncrementalCss,
         limit: KORDYN_V2_PERFORMANCE_BUDGETS.aiShellCss,
-        pass: aiShell.css < KORDYN_V2_PERFORMANCE_BUDGETS.aiShellCss
+        pass: aiShellIncrementalCss < KORDYN_V2_PERFORMANCE_BUDGETS.aiShellCss
       },
       accountDomainCss: {
-        actual: accountDomain.css,
+        actual: accountDomainIncrementalCss,
         limit: KORDYN_V2_PERFORMANCE_BUDGETS.accountDomainCss,
-        pass: accountDomain.css < KORDYN_V2_PERFORMANCE_BUDGETS.accountDomainCss
+        pass: accountDomainIncrementalCss < KORDYN_V2_PERFORMANCE_BUDGETS.accountDomainCss
       },
       assetsDomainCss: {
-        actual: assetsDomain.css,
+        actual: assetsDomainIncrementalCss,
         limit: KORDYN_V2_PERFORMANCE_BUDGETS.assetsDomainCss,
-        pass: assetsDomain.css < KORDYN_V2_PERFORMANCE_BUDGETS.assetsDomainCss
+        pass: assetsDomainIncrementalCss < KORDYN_V2_PERFORMANCE_BUDGETS.assetsDomainCss
       },
       governanceDomainCss: {
-        actual: governanceDomain.css,
+        actual: governanceDomainIncrementalCss,
         limit: KORDYN_V2_PERFORMANCE_BUDGETS.governanceDomainCss,
-        pass: governanceDomain.css < KORDYN_V2_PERFORMANCE_BUDGETS.governanceDomainCss
+        pass: governanceDomainIncrementalCss < KORDYN_V2_PERFORMANCE_BUDGETS.governanceDomainCss
       },
       governanceDomainJs: {
         actual: governanceDomain.js,

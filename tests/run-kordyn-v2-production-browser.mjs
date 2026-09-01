@@ -259,40 +259,27 @@ try {
     await click(cdp, ".classicMobileHeader .mMenuBtn");
     await waitForExpression(cdp, `(() => {
       const drawer=document.querySelector('.classicNavDrawer');
-      const tools=document.querySelector('.classicDrawerShellTools .mShellTools');
-      if (!drawer || !tools) return false;
+      if (!drawer) return false;
       const rect=drawer.getBoundingClientRect();
       return rect.width>0 && rect.height>0 && rect.left>=-1;
-    })()`, "later shell tools remain available inside visible More drawer");
+    })()`, "August 15 More drawer is visible");
     const drawerTouchMin = await evaluate(cdp, `Math.min(...[...document.querySelectorAll('.classicNavDrawer button')].map((node)=>node.getBoundingClientRect().height))`);
     assert.ok(drawerTouchMin >= 44, `classic mobile drawer touch targets stay at least 44px: ${drawerTouchMin}`);
-    await click(cdp, '.classicNavDrawer [data-classic-mobile-family-target="ai"][data-classic-mobile-view-target="dialog"]');
-    await waitForExpression(cdp, `!document.querySelector('.classicNavDrawer')`, "classic mobile drawer closes");
-    for (const [familyId, viewId, expectedRoute] of [
-      ["ai", "patrol", "chat"],
-      ["portfolio", "positions", "cockpit"],
-      ["strategy", "catalog", "strategyLib"],
-      ["guard", "events", "riskHub"],
-      ["operations", "tasks", "auditSystem"]
-    ]) {
-      await click(cdp, ".classicMobileHeader .mMenuBtn");
-      await waitForExpression(cdp, `(() => {
-        const drawer=document.querySelector('.classicNavDrawer');
-        if (!drawer) return false;
-        const rect=drawer.getBoundingClientRect();
-        return rect.width>0 && rect.height>0 && rect.left>=-1;
-      })()`, "classic mobile drawer visible after transition");
-      await click(cdp, `.classicNavDrawer [data-classic-mobile-family-target="${familyId}"][data-classic-mobile-view-target="${viewId}"]`);
-      await waitForExpression(cdp, `(() => {
-        const root=document.querySelector('[data-classic-mobile-shell="true"]');
-        return root?.dataset.classicMobileFamily===${JSON.stringify(familyId)}
-          && root?.dataset.classicMobileView===${JSON.stringify(viewId)}
-          && root?.dataset.shellRoute===${JSON.stringify(expectedRoute)};
-      })()`, `classic mobile ${familyId}/${viewId}`);
+    await click(cdp, '.classicNavDrawer [data-classic-mobile-family-target="strategy"][data-classic-mobile-view-target="catalog"]');
+    await waitForExpression(cdp, `document.querySelector('[data-classic-mobile-shell="true"]')?.dataset.shellRoute === "strategyLib"`, "classic mobile strategy registry");
+    mobileVisited.push("strategy/catalog");
+    for (const [tabIndex, familyId, expectedRoute] of [[0, "ai", "chat"], [2, "portfolio", "cockpit"], [3, "guard", "riskHub"]]) {
+      await click(cdp, `.classicMobileTabbar button:nth-child(${tabIndex + 1})`);
+      await waitForExpression(cdp, `(() => { const root=document.querySelector('[data-classic-mobile-shell="true"]'); return root?.dataset.classicMobileFamily===${JSON.stringify(familyId)} && root?.dataset.shellRoute===${JSON.stringify(expectedRoute)}; })()`, `classic mobile ${familyId}`);
       const geometry = await evaluate(cdp, "({client:document.documentElement.clientWidth,scroll:document.documentElement.scrollWidth})");
-      assert.ok(geometry.scroll <= geometry.client + 1, `classic mobile ${familyId}/${viewId} has no document overflow: ${JSON.stringify(geometry)}`);
-      mobileVisited.push(`${familyId}/${viewId}`);
+      assert.ok(geometry.scroll <= geometry.client + 1, `classic mobile ${familyId} has no document overflow: ${JSON.stringify(geometry)}`);
+      mobileVisited.push(`${familyId}/${expectedRoute}`);
     }
+    await click(cdp, ".classicMobileHeader .mMenuBtn");
+    await waitForExpression(cdp, `(() => { const drawer=document.querySelector('.classicNavDrawer'); if(!drawer)return false; const rect=drawer.getBoundingClientRect(); return rect.width>0&&rect.height>0&&rect.left>=-1; })()`, "classic mobile More drawer reopens");
+    await click(cdp, '.classicNavDrawer [data-classic-mobile-family-target="operations"][data-classic-mobile-view-target="events"]');
+    await waitForExpression(cdp, `document.querySelector('[data-classic-mobile-shell="true"]')?.dataset.shellRoute === "eventsTasks"`, "classic mobile operations events and tasks");
+    mobileVisited.push("operations/events");
   }
 
   const core = await apiRequest(cdp, "/api/bootstrap/core");

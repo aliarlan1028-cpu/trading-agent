@@ -14,7 +14,8 @@ test("the retained zero-base workbench stays scoped while the approved classic r
   assert.match(shell, /className="zbWorkbench"/);
   assert.match(shell, /data-zero-base-workbench=\{activeFamily\.id\}/);
   assert.match(shell, /data-zero-base-workbench-view=\{currentView\?\.id/);
-  assert.match(main, /import\("\.\/classicStyles\.js"\)/);
+  assert.match(main, /import\("\.\/aug15\/App\.jsx"\)/);
+  assert.match(main, /August15AuthenticatedShell/);
   assert.doesNotMatch(main, /import\("\.\/productStyles\.js"\)/);
   assert.match(productStyles, /zero-base-workbenches\.css/);
 });

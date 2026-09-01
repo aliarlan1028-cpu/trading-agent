@@ -9,7 +9,7 @@ const performanceRunner = readFileSync(new URL("./run-zero-base-performance-buil
 test("public and auth entry no longer statically download the authenticated product stylesheet", () => {
   assert.match(main, /import "\.\/entry\.css"/);
   assert.doesNotMatch(main, /import "\.\/styles\.css"|import "\.\/product-foundation\.css"|import "\.\/zero-base-system\.css"|import "\.\/zero-base-workbenches\.css"/);
-  assert.match(main, /import\("\.\/classicStyles\.js"\)/);
+  assert.match(main, /import\("\.\/aug15\/App\.jsx"\)/);
 });
 
 test("authenticated product styles remain one explicit lazy boundary", () => {

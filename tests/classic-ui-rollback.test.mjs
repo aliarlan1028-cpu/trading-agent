@@ -6,17 +6,19 @@ const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 
 test("legacy cutover loads the August 15 classic visual bundle without later shell CSS", () => {
   const main = read("../src/main.jsx");
-  const styles = read("../src/classicStyles.js");
+  const app = read("../src/aug15/App.jsx");
+  const workspaces = read("../src/aug15/workspacePages.jsx");
+  const concepts = read("../src/aug15/conceptPages.jsx");
 
-  assert.match(main, /import\("\.\/classicStyles\.js"\)/);
-  assert.match(styles, /import "\.\/styles\.css"/);
-  assert.match(styles, /import "\.\/product-foundation\.css"/);
-  assert.match(styles, /import "\.\/workspace\.css"/);
-  assert.match(styles, /import "\.\/workspace-additions\.css"/);
-  assert.match(styles, /import "\.\/conceptPages\.css"/);
-  assert.match(styles, /import "\.\/conceptSettings\.css"/);
-  assert.match(styles, /CLASSIC_VISUAL_SOURCE = "7c8978427865a9d500a072780af0ec68cf6a9537"/);
-  assert.doesNotMatch(styles, /product-system|zero-base|kordynV2/);
+  assert.match(main, /import\("\.\/aug15\/App\.jsx"\)/);
+  assert.match(main, /<August15AuthenticatedShell/);
+  assert.match(app, /import "\.\/styles\.css"/);
+  assert.match(workspaces, /import "\.\/workspace\.css"/);
+  assert.match(workspaces, /import "\.\/workspace-additions\.css"/);
+  assert.match(concepts, /import "\.\/conceptPages\.css"/);
+  assert.match(concepts, /import "\.\/conceptSettings\.css"/);
+  assert.match(app, /AUGUST15_VISUAL_SOURCE = "7c8978427865a9d500a072780af0ec68cf6a9537"/);
+  assert.doesNotMatch(app, /product-system|zero-base|kordynV2/);
 });
 
 test("desktop legacy presentation restores the classic five-domain shell", () => {

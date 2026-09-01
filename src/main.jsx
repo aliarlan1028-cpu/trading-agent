@@ -38,6 +38,7 @@ const ResearchCenter = lazyNamed(() => import("./workspacePages.jsx"), "Research
 const RiskCenter = lazyNamed(() => import("./workspacePages.jsx"), "RiskCenter");
 const OperationsCenter = lazyNamed(() => import("./workspacePages.jsx"), "OperationsCenter");
 const SettingsConcept = lazyNamed(() => import("./workspacePages.jsx"), "SettingsConcept");
+const August15AuthenticatedShell = lazyNamed(() => import("./aug15/App.jsx"), "August15AuthenticatedShell");
 const kordynV2StyleNodes = new Set();
 const loadKordynV2Root = async () => {
   const existingStyleNodes = new Set(document.head.querySelectorAll('link[rel="stylesheet"], style'));
@@ -363,7 +364,7 @@ function App() {
     if (uiVersion !== "legacy" || authRequired || loading || productStylesState === "ready") return undefined;
     let current = true;
     setProductStylesState("loading");
-    import("./classicStyles.js")
+    import("./aug15/App.jsx")
       .then(() => { if (current) setProductStylesState("ready"); })
       .catch(() => { if (current) setProductStylesState("failed"); });
     return () => { current = false; };
@@ -434,6 +435,13 @@ function App() {
       </Suspense></AuthenticatedV2Boundary></AppFrame>;
   }
 
+  if (uiVersion === "legacy") return <AppFrame authenticated><Suspense fallback={<AuthenticatedV2BootState />}><August15AuthenticatedShell
+    api={{ data, action, toast, busy, notify, download, refresh, ensureSection, connectionError, isNativeApp }}
+    lang={lang}
+    switchLang={switchLang}
+  /></Suspense></AppFrame>;
+
+  /* Retained rollback bridge below remains source-compatible for emergency diagnostics. */
   if (isNativeApp || isMobileViewport) {
     // key={lang}:切换语言时整树 remount,让 mobile.jsx 里的 t() 立即全量重渲染(同桌面外壳)。
     return <AppFrame authenticated><div className="classicMobileHost" data-classic-shell="mobile"><MobileApp key={lang} classic lang={lang} switchLang={switchLang} api={{ data, action, toast, busy, notify, download, refresh, ensureSection, connectionError }} /></div></AppFrame>;
