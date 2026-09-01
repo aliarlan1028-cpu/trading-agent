@@ -1439,4 +1439,9 @@ body:has(.kordynV2Root) .cfmBtn:focus-visible {
     animation-duration: 0.01ms;
     animation-iteration-count: 1;
   }
+
+  .kordynV2Root .kordynV2StatePanel .is-spinning {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
 }

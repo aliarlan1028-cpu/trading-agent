@@ -161,6 +161,23 @@ export function AiSupport({ context, onNavigate, presentation = "desktop" }) {
     queueMicrotask(() => triggerRef.current?.focus());
   };
 
+  const onDialogKeyDown = (event) => {
+    if (event.key !== "Tab") return;
+    const focusable = [...panelRef.current.querySelectorAll(
+      'button:not([disabled]), [href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )].filter((node) => node.getAttribute("aria-hidden") !== "true");
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && (document.activeElement === first || !panelRef.current.contains(document.activeElement))) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (document.activeElement === last || !panelRef.current.contains(document.activeElement))) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
   return (
     <div className="kordynV2AiSupport" data-kordyn-v2-ai-support>
       {open && (
@@ -170,6 +187,7 @@ export function AiSupport({ context, onNavigate, presentation = "desktop" }) {
           data-kordyn-v2-ai-support-panel
           role="dialog"
           aria-labelledby="kordyn-v2-ai-support-title"
+          onKeyDown={onDialogKeyDown}
         >
           <header>
             <span><Bot size={18} aria-hidden="true" /><strong id="kordyn-v2-ai-support-title">AI 客服 · 只读助理</strong></span>
