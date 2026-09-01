@@ -767,7 +767,7 @@
   }
 
   .kordynV2AiWorkspaceTitle {
-    padding-right: 150px;
+    padding-right: 184px;
   }
 
   .kordynV2AiMissionWorkbench {
@@ -1018,7 +1018,7 @@
   .kordynV2AiMissionProgress.is-compact small {
     max-width: 62px;
     overflow: hidden;
-    font-size: 8px;
+    font-size: 9px;
     line-height: 1.1;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1228,7 +1228,7 @@
   .kordynV2AiMobileAttention > article strong,
   .kordynV2AiMobileAttention > article small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .kordynV2AiMobileAttention > article strong { font-size: 11px; }
-  .kordynV2AiMobileAttention > article small { color: var(--kordyn-v2-muted); font-size: 8px; }
+  .kordynV2AiMobileAttention > article small { color: var(--kordyn-v2-muted); font-size: 9px; }
   .kordynV2AiMobileAttention > article > button:last-child { min-width: 44px; min-height: 44px; display: grid; place-items: center; border: 1px solid rgba(52, 120, 255, 0.45); border-radius: 8px; color: var(--kordyn-v2-cobalt-soft); background: rgba(52, 120, 255, 0.1); }
 
   .kordynV2AiMobileAttention > p,

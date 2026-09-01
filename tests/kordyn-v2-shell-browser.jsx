@@ -88,7 +88,7 @@ const data = parseJsonResponseText(fixtureJson);
 const refreshedData = ["evidence-refresh", "evidence-refresh-null"].includes(scenario)
   ? parseJsonResponseText(KORDYN_V2_EVIDENCE_REFRESH_NEXT_FIXTURE_JSON)
   : null;
-const calls = { actions: 0, actionRequests: [], sections: [] };
+const calls = { actions: 0, reads: 0, actionRequests: [], sections: [] };
 
 window.__kordynV2BrowserCalls = calls;
 window.__kordynV2BrowserScenario = scenario;
@@ -99,9 +99,10 @@ function BrowserHarness() {
   const [browserData, setBrowserData] = useState(data);
   const api = useMemo(() => ({
     data: browserData,
-    action: async (endpoint, payload) => {
-      calls.actions += 1;
-      calls.actionRequests.push({ endpoint, payload });
+    action: async (endpoint, payload, method = "POST") => {
+      if (method === "GET") calls.reads += 1;
+      else calls.actions += 1;
+      calls.actionRequests.push({ endpoint, payload, method });
       await new Promise((resolve) => setTimeout(resolve, 80));
       if (endpoint === "/api/agent/memory") return { id: "memory-browser-1", stored: true };
       if (endpoint === "/api/event-sources/refresh") return { status: "partial", attempted: 3, succeeded: 2, failed: 1, ingested: 4, reason: "one_source_failed" };
