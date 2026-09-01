@@ -15,6 +15,38 @@
 - Pending domain implementation: `0 / 15`.
 - Current Plan 05 Task 5 verdict: Governance scope comparator reports `4` scoped concepts / `4` completed / `0` scoped pending / `8` viewport comparisons. Its machine verdict remains `human region review required`; original-size region review is recorded below and no pixel-equivalence claim is made.
 
+## Plan 06 convergence checkpoint — Task 3 route performance
+
+The route-level performance gate now measures the complete authenticated AI experience plus every finished domain from a fresh isolated Vite production build. It resolves both source-named and Vite-coalesced dynamic entries fail-closed, rejects legacy authenticated styles in every V2 closure, and verifies that its temporary build neither reads through nor mutates checked-in `dist` or `src`.
+
+The first extended real build produced the retained RED: Assets CSS was `128,938 / 120,000` bytes. The correction does not raise the budget or delete product presentation. The Strategy desktop/APP presenters and their `19,170` source-byte stylesheet now form a workspace-owned lazy slice. Opening the default Relationships workspace transfers only the Assets base; `StrategyWorkspace.jsx` and `strategy.css` are requested when the user actually enters Strategies. The resulting default Assets route is `112,221 / 120,000` bytes.
+
+### Fresh isolated production-build budgets
+
+| Boundary | Actual | Limit | Verdict |
+| --- | ---: | ---: | --- |
+| Public CSS | `15,304` | `< 40,000` | PASS |
+| Public JS | `383,019` | `< 450,000` | PASS |
+| Initial AI + authenticated shell CSS | `124,148` | `< 180,000` | PASS |
+| Account route CSS | `114,976` | `< 120,000` | PASS |
+| Assets default route CSS | `112,221` | `< 120,000` | PASS |
+| Governance route CSS | `119,536` | `< 120,000` | PASS |
+| Governance route JS | `612,193` | `< 650,000` | PASS |
+
+### Real-browser transfer and responsiveness gate
+
+`tests/run-kordyn-v2-performance-browser.mjs` mounts the real `KordynV2Root` through the credential-free production-shaped Plan 06 browser harness at `1440x900`. It uses trusted navigation clicks, Resource Timing, Paint Timing, and a buffered `PerformanceObserver` for long tasks.
+
+- Initial AI interaction readiness: `300 ms`; first paint / first contentful paint: `176 / 176 ms`.
+- Account / Assets / Governance interaction readiness: `139 / 101 / 134 ms`.
+- Deferred Strategy workspace interaction readiness: `39 ms`.
+- Inactive Account, Assets, and Governance entrypoints requested before navigation: `0`.
+- Strategy component or Strategy CSS requested while only Relationships is active: `0`.
+- Legacy authenticated CSS/entry requests across the complete path: `0`.
+- V2 main-thread tasks over `200 ms`: `0`.
+
+These are local deterministic gate measurements rather than WAN performance claims. The runner fails above `5,000 ms` local interaction readiness, on any V2 long task over `200 ms`, on premature inactive-domain/Strategy transfer, or on any legacy authenticated style request.
+
 ## Plan 05 System Governance checkpoint — Task 5
 
 Task 5 records the current System Governance finish candidate against product source `1e97a26db9d0c9acc0af6fa686d88923a0986588` and capture-test source `b61ea43ec402997dc99bf129d45986ad7f06bcf5`, with evidence committed at `d5da55772d43ab4c30f88602262f6d8ef5107bc0`. The browser runner mounts the real `KordynV2Root`, lazy `domains/governance/index.jsx`, real Desktop and APP presenters, canonical selection, shared Context/Proof, `ConfirmHost`, and the existing `createGovernanceActions` authority boundary. Its fixture is production-shaped and credential-free; protected requests terminate in a fixture-local action ledger and no production endpoint is called. The final review corrections make no-change runtime configuration fail closed in both UI and server outcomes, remove persistable `Unavailable` placeholders, align Desktop Operations/Configuration plus APP status/degraded decision composition with the binding concepts, and anchor the APP operational boundary before opening read-only AI support.

@@ -15,10 +15,16 @@ import { normalizeResourceState } from "./viewModels/state.js";
 
 const unavailable = "Unavailable";
 const EMPTY_DATA = Object.freeze({});
-const LazyAiDomain = lazy(() => import("./domains/ai/index.jsx"));
-const LazyAccountDomain = lazy(() => import("./domains/account/index.jsx"));
-const LazyAssetsDomain = lazy(() => import("./domains/assets/index.jsx"));
-const LazyGovernanceDomain = lazy(() => import("./domains/governance/index.jsx"));
+const domainLoaders = Object.freeze({
+  ai: () => import("./domains/ai/index.jsx"),
+  account: () => import("./domains/account/index.jsx"),
+  assets: () => import("./domains/assets/index.jsx"),
+  governance: () => import("./domains/governance/index.jsx")
+});
+const LazyAiDomain = lazy(domainLoaders.ai);
+const LazyAccountDomain = lazy(domainLoaders.account);
+const LazyAssetsDomain = lazy(domainLoaders.assets);
+const LazyGovernanceDomain = lazy(domainLoaders.governance);
 const ACCOUNT_WORKSPACE_BY_OBJECT_TYPE = Object.freeze({
   Market: "market",
   Account: "account",

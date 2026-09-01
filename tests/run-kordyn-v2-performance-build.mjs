@@ -46,6 +46,9 @@ export async function runV2PerformanceGate({ root = rootDir } = {}) {
     assert.equal(budget.pass, true, `${name} ${budget.actual} must remain below ${budget.limit}`);
   }
   assert.equal(report.routes.aiShell.loadsLegacyProductStyles, false);
+  assert.equal(report.routes.aiDomain.loadsLegacyProductStyles, false);
+  assert.equal(report.routes.accountDomain.loadsLegacyProductStyles, false);
+  assert.equal(report.routes.assetsDomain.loadsLegacyProductStyles, false);
   assert.equal(report.routes.governanceDomain.loadsLegacyProductStyles, false);
   return {
     ...report,

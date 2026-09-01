@@ -2,6 +2,7 @@ import { ChevronRight, CircleGauge } from "lucide-react";
 import { StrategyInspector } from "./StrategyInspector.jsx";
 import { StrategyStudio } from "./StrategyStudio.jsx";
 import { strategySelectionCandidate } from "./StrategyRegistry.jsx";
+import "./strategy.css";
 
 export function MobileStrategyScreen({ model, actions, actionsDisabled = false, selectedStrategyId = "", onSelect = () => {} }) {
   const rows = model?.strategies || [];

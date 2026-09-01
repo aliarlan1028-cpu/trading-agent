@@ -1,0 +1,225 @@
+.kordynV2StrategyWorkspace {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 14px 16px 16px;
+  display: grid;
+  grid-template-rows: 42px minmax(0, 1fr);
+  gap: 10px;
+  overflow: hidden;
+  color: var(--kordyn-v2-text);
+  background:
+    radial-gradient(circle at 66% 24%, rgba(34, 93, 176, 0.1), transparent 28%),
+    linear-gradient(180deg, rgba(4, 13, 24, 0.98), rgba(2, 8, 16, 0.99));
+}
+
+.kordynV2StrategyTitle > div { display: flex; align-items: center; gap: 8px; }
+.kordynV2StrategyTitle button {
+  min-height: 34px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--kordyn-v2-border-strong);
+  border-radius: 8px;
+  color: var(--kordyn-v2-text-soft);
+  background: rgba(8, 19, 34, 0.84);
+  cursor: pointer;
+}
+.kordynV2StrategyTitle button:last-child { border-color: rgba(52, 120, 255, 0.58); color: #fff; background: #1757dd; }
+.kordynV2StrategyTitle button:disabled { color: var(--kordyn-v2-dim); background: rgba(12, 20, 31, 0.62); cursor: not-allowed; }
+
+.kordynV2StrategyWorkbench {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(470px, 1.15fr) minmax(330px, .85fr);
+  grid-template-rows: minmax(260px, 1fr) minmax(260px, 1fr);
+  gap: 10px;
+  overflow: hidden;
+}
+
+.kordynV2StrategyRegistry,
+.kordynV2StrategyInspector,
+.kordynV2StrategyStudio {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--kordyn-v2-border);
+  border-radius: 13px;
+  background: rgba(5, 14, 26, 0.82);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
+}
+
+.kordynV2StrategyRegistry { display: grid; grid-template-rows: 38px minmax(0, 1fr) 34px; }
+.kordynV2StrategyRegistryHeader,
+.kordynV2StrategyRegistry > div > button {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(130px, 1.3fr) 86px 76px minmax(76px, .8fr) 82px 82px 16px;
+  align-items: center;
+  gap: 8px;
+}
+.kordynV2StrategyRegistryHeader { padding: 0 10px; border-bottom: 1px solid var(--kordyn-v2-border); color: var(--kordyn-v2-muted); font-size: 9px; }
+.kordynV2StrategyRegistry > div { min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #263951 transparent; }
+.kordynV2StrategyRegistry > div > button {
+  width: 100%;
+  min-height: 54px;
+  padding: 7px 10px;
+  border: 0;
+  border-bottom: 1px solid rgba(130, 159, 199, 0.12);
+  color: var(--kordyn-v2-text-soft);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.kordynV2StrategyRegistry > div > button[data-selected="true"] { background: rgba(19, 54, 100, 0.45); box-shadow: inset 2px 0 var(--kordyn-v2-cobalt); }
+.kordynV2StrategyRegistry > div > button:hover { background-color: rgba(24, 57, 101, 0.25); }
+.kordynV2StrategyRegistry > div > button:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+.kordynV2StrategyRegistry button span,
+.kordynV2StrategyRegistry button em,
+.kordynV2StrategyRegistry button code,
+.kordynV2StrategyRegistry button b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2StrategyRegistry button > span:first-child { display: flex; align-items: center; gap: 7px; color: var(--kordyn-v2-amber); }
+.kordynV2StrategyRegistry button strong { overflow: hidden; color: var(--kordyn-v2-text); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2StrategyRegistry button em,
+.kordynV2StrategyRegistry button code,
+.kordynV2StrategyRegistry button b,
+.kordynV2StrategyRegistry button > span { color: var(--kordyn-v2-muted); font-family: var(--kordyn-v2-mono); font-size: 8px; font-style: normal; }
+.kordynV2StrategyRegistry button[data-provenance="system-native"] > em { color: #5ea0ff; }
+.kordynV2StrategyRegistry button[data-provenance="knowledge-derived"] > em { color: #bd83ff; }
+.kordynV2StrategyRegistry button[data-provenance="imported"] > em { color: #66bbff; }
+.kordynV2StrategyRegistry button [data-stage="active"],
+.kordynV2StrategyRegistry button [data-status="active"] { color: var(--kordyn-v2-mint); }
+.kordynV2StrategyRegistry > div > p { padding: 20px; color: var(--kordyn-v2-muted); text-align: center; }
+.kordynV2StrategyRegistry > footer { padding: 0 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid var(--kordyn-v2-border); color: var(--kordyn-v2-muted); font-size: 9px; }
+
+.kordynV2StrategyInspector { padding: 12px; display: grid; align-content: start; gap: 10px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #263951 transparent; }
+.kordynV2StrategyInspector.is-empty { place-content: center; color: var(--kordyn-v2-muted); text-align: center; }
+.kordynV2StrategyInspector.is-empty svg { margin: 0 auto; }
+.kordynV2StrategyInspector.is-empty p { margin: 5px 0 0; font-size: 10px; }
+.kordynV2StrategyInspector > header { min-width: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.kordynV2StrategyInspector > header span { min-width: 0; display: grid; grid-template-columns: minmax(0, auto) auto; gap: 3px 8px; }
+.kordynV2StrategyInspector > header small { grid-column: 1 / 3; color: var(--kordyn-v2-cobalt-soft); font-size: 9px; }
+.kordynV2StrategyInspector > header strong { overflow: hidden; color: #fff; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2StrategyInspector > header code { align-self: center; color: var(--kordyn-v2-muted); font-family: var(--kordyn-v2-mono); font-size: 9px; }
+.kordynV2StrategyInspector > header em { flex: 0 0 auto; padding: 5px 8px; border: 1px solid rgba(32, 215, 148, 0.25); border-radius: 7px; color: var(--kordyn-v2-mint); background: rgba(15, 65, 51, 0.23); font-family: var(--kordyn-v2-mono); font-size: 9px; font-style: normal; }
+.kordynV2StrategyContract { min-width: 0; display: grid; grid-template-columns: 1.15fr .85fr; gap: 8px; }
+.kordynV2StrategyContract > section { min-width: 0; padding: 9px; border: 1px solid rgba(131, 159, 198, 0.13); border-radius: 9px; background: rgba(3, 9, 18, 0.42); }
+.kordynV2StrategyContract > section > small,
+.kordynV2StrategyEvidence > small { color: var(--kordyn-v2-muted); font-size: 8px; }
+.kordynV2StrategyContract dl { margin: 6px 0 0; display: grid; gap: 4px; }
+.kordynV2StrategyContract dl > div { display: flex; justify-content: space-between; gap: 8px; }
+.kordynV2StrategyContract dt { color: var(--kordyn-v2-muted); font-size: 8px; }
+.kordynV2StrategyContract dd { margin: 0; overflow-wrap: anywhere; color: var(--kordyn-v2-text-soft); font-family: var(--kordyn-v2-mono); font-size: 8px; text-align: right; }
+.kordynV2StrategyContract ul { margin: 6px 0 0; padding: 0; display: grid; gap: 4px; list-style: none; }
+.kordynV2StrategyContract li { display: flex; align-items: center; gap: 5px; color: var(--kordyn-v2-text-soft); font-size: 8px; }
+.kordynV2StrategyContract li svg { color: var(--kordyn-v2-violet); }
+.kordynV2StrategyLineage { padding: 9px; border: 1px solid rgba(130, 159, 199, 0.13); border-radius: 9px; }
+.kordynV2StrategyLineage header { display: flex; align-items: center; gap: 6px; color: var(--kordyn-v2-text-soft); font-size: 9px; }
+.kordynV2StrategyLineage > div { margin-top: 7px; display: flex; align-items: center; gap: 5px; overflow: hidden; color: var(--kordyn-v2-muted); font-family: var(--kordyn-v2-mono); font-size: 8px; }
+.kordynV2StrategyLineage > div span,
+.kordynV2StrategyLineage > div b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2StrategyLineage > div i { flex: 0 0 14px; height: 1px; background: var(--kordyn-v2-border-strong); }
+.kordynV2StrategyLineage > div b { color: var(--kordyn-v2-cobalt-soft); }
+.kordynV2StrategyEvidence { padding: 9px; border: 1px solid rgba(32, 215, 148, 0.13); border-radius: 9px; background: rgba(9, 39, 34, 0.14); }
+.kordynV2StrategyEvidence > div { margin-top: 7px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
+.kordynV2StrategyEvidence span { min-width: 0; display: grid; gap: 3px; color: var(--kordyn-v2-muted); font-size: 8px; }
+.kordynV2StrategyEvidence strong { overflow: hidden; color: var(--kordyn-v2-mint); font-family: var(--kordyn-v2-mono); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2StrategyInspector > footer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.kordynV2StrategyInspector > footer button { min-height: 38px; padding: 0 9px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid rgba(52, 120, 255, 0.35); border-radius: 8px; color: #90b5ff; background: rgba(17, 48, 99, 0.38); cursor: pointer; font-size: 9px; }
+.kordynV2StrategyInspector > footer button:last-child { border-color: rgba(32, 215, 148, 0.3); color: var(--kordyn-v2-mint); background: rgba(14, 62, 48, 0.27); }
+.kordynV2StrategyInspector > footer button:disabled { border-color: var(--kordyn-v2-border); color: var(--kordyn-v2-dim); background: rgba(12, 20, 31, 0.6); cursor: not-allowed; }
+
+.kordynV2StrategyStudio { grid-column: 1 / 3; padding: 10px; display: grid; grid-template-rows: 36px minmax(0, 1fr) auto; gap: 8px; }
+.kordynV2StrategyStudio > header { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.kordynV2StrategyStudio > header span { min-width: 0; display: flex; align-items: center; gap: 7px; }
+.kordynV2StrategyStudio > header strong { font-size: 12px; }
+.kordynV2StrategyStudio > header small { overflow: hidden; color: var(--kordyn-v2-muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2StrategyStudio > header em { color: var(--kordyn-v2-muted); font-family: var(--kordyn-v2-mono); font-size: 9px; font-style: normal; }
+.kordynV2StrategyStudioGrid { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(180px, .75fr) minmax(180px, .75fr) minmax(360px, 1.5fr); gap: 8px; }
+.kordynV2StrategyDraftComposer,
+.kordynV2StrategyDraftList,
+.kordynV2StrategyValidation { min-width: 0; min-height: 0; padding: 8px; overflow: hidden; border: 1px solid rgba(131, 159, 198, 0.13); border-radius: 9px; background: rgba(3, 9, 18, 0.42); }
+.kordynV2StrategyDraftComposer { display: grid; grid-template-rows: auto minmax(52px, 1fr) 34px; gap: 6px; }
+.kordynV2StrategyDraftComposer label { color: var(--kordyn-v2-text-soft); font-size: 9px; }
+.kordynV2StrategyDraftComposer textarea { width: 100%; min-width: 0; min-height: 52px; padding: 8px; resize: none; border: 1px solid var(--kordyn-v2-border); border-radius: 7px; color: var(--kordyn-v2-text-soft); background: rgba(4, 13, 25, 0.9); font: 9px/1.5 var(--kordyn-v2-font); }
+.kordynV2StrategyDraftComposer textarea:focus-visible { outline: 2px solid var(--kordyn-v2-cobalt); outline-offset: 1px; }
+.kordynV2StrategyDraftComposer button,
+.kordynV2StrategyValidation footer button { min-height: 34px; padding: 0 9px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid rgba(52, 120, 255, 0.4); border-radius: 7px; color: #fff; background: #174fc4; cursor: pointer; font-size: 9px; }
+.kordynV2StrategyDraftComposer button:disabled,
+.kordynV2StrategyValidation footer button:disabled { border-color: var(--kordyn-v2-border); color: var(--kordyn-v2-dim); background: rgba(12, 20, 31, 0.66); cursor: not-allowed; }
+.kordynV2StrategyDraftList { display: grid; grid-template-rows: auto minmax(0, 1fr); align-content: start; gap: 5px; overflow-y: auto; }
+.kordynV2StrategyDraftList > header { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.kordynV2StrategyDraftList > header strong { font-size: 9px; }
+.kordynV2StrategyDraftList > header small { color: var(--kordyn-v2-muted); font-size: 7px; }
+.kordynV2StrategyDraftList > button { width: 100%; min-height: 44px; padding: 6px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid transparent; border-radius: 7px; color: var(--kordyn-v2-text-soft); background: transparent; cursor: pointer; text-align: left; }
+.kordynV2StrategyDraftList > button[data-selected="true"] { border-color: rgba(129, 103, 255, 0.34); background: rgba(54, 34, 112, 0.23); }
+.kordynV2StrategyDraftList button span { min-width: 0; display: grid; gap: 3px; }
+.kordynV2StrategyDraftList button strong,
+.kordynV2StrategyDraftList button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2StrategyDraftList button strong { font-size: 8px; }
+.kordynV2StrategyDraftList button small { color: var(--kordyn-v2-muted); font-size: 7px; }
+.kordynV2StrategyDraftList button em { color: var(--kordyn-v2-violet); font-family: var(--kordyn-v2-mono); font-size: 7px; font-style: normal; }
+.kordynV2StrategyDraftList > p { color: var(--kordyn-v2-muted); font-size: 9px; }
+.kordynV2StrategyValidation { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 7px; }
+.kordynV2StrategyValidation > header { min-width: 0; display: flex; justify-content: space-between; gap: 8px; }
+.kordynV2StrategyValidation > header span { min-width: 0; display: grid; gap: 2px; }
+.kordynV2StrategyValidation > header strong { overflow: hidden; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2StrategyValidation > header small { overflow: hidden; color: var(--kordyn-v2-muted); font-family: var(--kordyn-v2-mono); font-size: 7px; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2StrategyValidation > header em { color: var(--kordyn-v2-amber); font-family: var(--kordyn-v2-mono); font-size: 8px; font-style: normal; }
+.kordynV2StrategyValidation > header em[data-release="ready"] { color: var(--kordyn-v2-mint); }
+.kordynV2StrategyValidationFlow { min-width: 0; display: flex; align-items: stretch; gap: 5px; overflow-x: auto; }
+.kordynV2StrategyValidationFlow article { min-width: 86px; padding: 7px; display: grid; grid-template-columns: 15px minmax(0, 1fr); align-items: center; gap: 5px; border: 1px solid rgba(244, 173, 86, 0.23); border-radius: 7px; color: var(--kordyn-v2-amber); background: rgba(46, 28, 9, 0.2); }
+.kordynV2StrategyValidationFlow article[data-pass="true"] { border-color: rgba(32, 215, 148, 0.23); color: var(--kordyn-v2-mint); background: rgba(10, 52, 41, 0.21); }
+.kordynV2StrategyValidationFlow article span { min-width: 0; display: grid; gap: 2px; }
+.kordynV2StrategyValidationFlow article small,
+.kordynV2StrategyValidationFlow article strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2StrategyValidationFlow article small { color: var(--kordyn-v2-muted); font-size: 7px; }
+.kordynV2StrategyValidationFlow article strong { font-family: var(--kordyn-v2-mono); font-size: 8px; }
+.kordynV2StrategyValidation footer { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.kordynV2StrategyValidation footer button:nth-child(2) { border-color: rgba(129, 103, 255, 0.35); background: rgba(67, 45, 151, 0.42); }
+.kordynV2StrategyValidation footer button:last-child { border-color: rgba(32, 215, 148, 0.38); background: rgba(12, 98, 70, 0.48); }
+.kordynV2StrategyOutcome { margin: 0; padding: 6px 8px; border: 1px solid rgba(52, 120, 255, 0.24); border-radius: 7px; color: var(--kordyn-v2-cobalt-soft); background: rgba(18, 45, 91, 0.22); font-size: 8px; }
+.kordynV2StrategyOutcome[data-outcome="failed"] { border-color: rgba(255, 89, 104, 0.28); color: var(--kordyn-v2-danger); background: rgba(83, 25, 35, 0.22); }
+
+.kordynV2MobileStrategies { gap: 12px; }
+.kordynV2MobileStrategyRegistry { min-width: 0; display: grid; gap: 7px; }
+.kordynV2MobileStrategyRegistry > header { min-height: 36px; display: flex; align-items: center; justify-content: space-between; }
+.kordynV2MobileStrategyRegistry > header small { color: var(--kordyn-v2-muted); }
+.kordynV2MobileStrategyRegistry > button { min-width: 0; min-height: 72px; padding: 10px; display: grid; grid-template-columns: 34px minmax(0, 1fr) 19px; align-items: center; gap: 9px; border: 1px solid rgba(131, 159, 198, 0.14); border-radius: 14px; color: var(--kordyn-v2-cobalt-soft); background: rgba(7, 18, 33, 0.82); cursor: pointer; text-align: left; }
+.kordynV2MobileStrategyRegistry > button[data-selected="true"] { border-color: rgba(52, 120, 255, 0.68); background: rgba(17, 43, 84, 0.68); }
+.kordynV2MobileStrategyRegistry button span { min-width: 0; display: grid; gap: 3px; }
+.kordynV2MobileStrategyRegistry button em { color: var(--kordyn-v2-violet); font-size: 10px; font-style: normal; }
+.kordynV2MobileStrategyRegistry button[data-provenance="system-native"] em { color: #5ea0ff; }
+.kordynV2MobileStrategyRegistry button[data-provenance="knowledge-derived"] em { color: #bd83ff; }
+.kordynV2MobileStrategyRegistry button strong,
+.kordynV2MobileStrategyRegistry button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kordynV2MobileStrategyRegistry button strong { color: #fff; font-size: 13px; }
+.kordynV2MobileStrategyRegistry button small { color: var(--kordyn-v2-muted); font-family: var(--kordyn-v2-mono); font-size: 9px; }
+.kordynV2MobileStrategyDetail { min-width: 0; padding: 9px 10px 12px; border: 1px solid rgba(82, 117, 178, 0.32); border-radius: 20px; background: linear-gradient(180deg, rgba(13, 28, 50, 0.97), rgba(5, 13, 25, 0.98)); box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24); }
+.kordynV2MobileStrategyDetail > i { width: 44px; height: 4px; margin: 0 auto 7px; display: block; border-radius: 999px; background: rgba(182, 197, 222, 0.52); }
+.kordynV2MobileStrategyDetail .kordynV2StrategyInspector { padding: 4px 2px 0; border: 0; background: transparent; box-shadow: none; }
+.kordynV2MobileStrategyDetail .kordynV2StrategyInspector > footer button,
+.kordynV2MobileStrategies button { min-height: 44px; }
+.kordynV2MobileStrategies > [data-kordyn-v2-mobile-strategy-validation] .kordynV2StrategyStudio { padding: 10px; overflow: visible; }
+.kordynV2MobileStrategies .kordynV2StrategyStudioGrid { grid-template-columns: minmax(0, 1fr); }
+.kordynV2MobileStrategies .kordynV2StrategyStudio { grid-template-rows: auto auto auto; }
+.kordynV2MobileStrategies .kordynV2StrategyDraftComposer textarea { min-height: 92px; }
+.kordynV2MobileStrategies .kordynV2StrategyValidationFlow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; }
+.kordynV2MobileStrategies .kordynV2StrategyValidationFlow article { min-width: 0; }
+.kordynV2MobileStrategies .kordynV2StrategyValidation footer { grid-template-columns: minmax(0, 1fr); }
+.kordynV2MobileStrategies .kordynV2StrategyValidation footer button { min-height: 44px; }
+
+@media (max-width: 1180px) and (min-width: 768px) {
+  .kordynV2StrategyWorkbench { grid-template-columns: minmax(430px, 1.1fr) minmax(300px, .9fr); }
+  .kordynV2StrategyRegistryHeader,
+  .kordynV2StrategyRegistry > div > button { grid-template-columns: minmax(116px, 1.2fr) 72px 64px minmax(62px, .7fr) 72px 72px 14px; gap: 5px; }
+  .kordynV2StrategyStudioGrid { grid-template-columns: minmax(150px, .7fr) minmax(160px, .7fr) minmax(320px, 1.6fr); }
+}
+
+@media (max-width: 430px) {
+  .kordynV2MobileStrategies .kordynV2StrategyContract,
+  .kordynV2MobileStrategies .kordynV2StrategyEvidence > div { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

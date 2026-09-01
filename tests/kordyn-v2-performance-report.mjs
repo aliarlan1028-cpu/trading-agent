@@ -3,6 +3,7 @@ export const KORDYN_V2_PERFORMANCE_BUDGETS = Object.freeze({
   publicJs: 450_000,
   aiShellCss: 180_000,
   accountDomainCss: 120_000,
+  assetsDomainCss: 120_000,
   governanceDomainCss: 120_000,
   governanceDomainJs: 650_000
 });
@@ -70,6 +71,42 @@ function resolveV2Entry(manifest, publicEntry) {
   if (candidates.length === 0) throw new Error("missing_v2_entry");
   if (candidates.length !== 1) throw new Error("ambiguous_v2_entry");
   return candidates[0];
+}
+
+function resolveDomainEntries(manifest, v2Entry) {
+  const definitions = [
+    ["ai", "src/kordynV2/domains/ai/index.jsx"],
+    ["account", "src/kordynV2/domains/account/index.jsx"],
+    ["assets", "src/kordynV2/domains/assets/index.jsx"],
+    ["governance", "src/kordynV2/domains/governance/index.jsx"]
+  ];
+  const dynamicImports = manifest[v2Entry]?.dynamicImports;
+  if (!Array.isArray(dynamicImports) || dynamicImports.some((value) => typeof value !== "string" || !value)) {
+    throw new Error("invalid_v2_dynamic_imports");
+  }
+  const resolved = {};
+  const missing = [];
+  for (const [domainId, source] of definitions) {
+    const matches = Object.entries(manifest).filter(([key, row]) => key === source || row?.src === source);
+    if (matches.length > 1) throw new Error(`ambiguous_${domainId}_entry`);
+    if (matches.length === 1) resolved[domainId] = matches[0][0];
+    else missing.push(domainId);
+  }
+  const claimed = new Set(Object.values(resolved));
+  const remaining = dynamicImports.filter((key) => !claimed.has(key));
+  if (missing.length === 1 && remaining.length === 1) {
+    const row = manifest[remaining[0]];
+    const domainPrefix = `src/kordynV2/domains/${missing[0]}/`;
+    const children = [...(Array.isArray(row?.imports) ? row.imports : []), ...(Array.isArray(row?.dynamicImports) ? row.dynamicImports : [])];
+    const ownsDomainChild = children.some((key) => key.startsWith(domainPrefix) || manifest[key]?.src?.startsWith(domainPrefix));
+    if (row?.isDynamicEntry === true && validOwnedCss(row) && ownsDomainChild) resolved[missing[0]] = remaining[0];
+  }
+  for (const [domainId] of definitions) {
+    const entry = resolved[domainId];
+    if (!entry) throw new Error(missing.length > 1 || remaining.length > 1 ? `ambiguous_${domainId}_entry` : `missing_${domainId}_entry`);
+    if (!dynamicImports.includes(entry)) throw new Error(`${domainId}_entry_not_owned_by_v2_lazy_graph`);
+  }
+  return Object.freeze(resolved);
 }
 
 function staticClosure(manifest, entryKey) {
@@ -157,8 +194,11 @@ export function analyzeV2BuildManifest({ manifest: manifestInput, assetStats: as
   const publicEntry = uniquePublicEntry(manifest);
   const v2Entry = resolveV2Entry(manifest, publicEntry);
   const legacyEntry = uniqueEntry(manifest, "src/productStyles.js", "legacy");
-  const accountEntry = uniqueEntry(manifest, "src/kordynV2/domains/account/index.jsx", "account");
-  const governanceEntry = uniqueEntry(manifest, "src/kordynV2/domains/governance/index.jsx", "governance");
+  const domainEntries = resolveDomainEntries(manifest, v2Entry);
+  const aiEntry = domainEntries.ai;
+  const accountEntry = domainEntries.account;
+  const assetsEntry = domainEntries.assets;
+  const governanceEntry = domainEntries.governance;
   const dynamicImports = manifest[publicEntry]?.dynamicImports;
   if (!Array.isArray(dynamicImports) || !dynamicImports.includes(v2Entry)) {
     throw new Error("v2_entry_not_owned_by_public_graph");
@@ -166,59 +206,79 @@ export function analyzeV2BuildManifest({ manifest: manifestInput, assetStats: as
   if (!dynamicImports.includes(legacyEntry)) {
     throw new Error("legacy_entry_not_owned_by_public_graph");
   }
-  const v2DynamicImports = manifest[v2Entry]?.dynamicImports;
-  if (!Array.isArray(v2DynamicImports) || !v2DynamicImports.includes(accountEntry)) {
-    throw new Error("account_entry_not_owned_by_v2_lazy_graph");
-  }
-  if (!v2DynamicImports.includes(governanceEntry)) throw new Error("governance_entry_not_owned_by_v2_lazy_graph");
-
   const publicClosure = staticClosure(manifest, publicEntry);
   const v2Closure = staticClosure(manifest, v2Entry);
   const legacyClosure = staticClosure(manifest, legacyEntry);
+  const aiClosure = staticClosure(manifest, aiEntry);
   const accountClosure = staticClosure(manifest, accountEntry);
+  const assetsClosure = staticClosure(manifest, assetsEntry);
   const governanceClosure = staticClosure(manifest, governanceEntry);
   if (v2Closure.has(legacyEntry)) throw new Error("v2_imports_legacy_styles");
+  if (aiClosure.has(legacyEntry)) throw new Error("ai_imports_legacy_styles");
   if (accountClosure.has(legacyEntry)) throw new Error("account_imports_legacy_styles");
+  if (assetsClosure.has(legacyEntry)) throw new Error("assets_imports_legacy_styles");
   if (governanceClosure.has(legacyEntry)) throw new Error("governance_imports_legacy_styles");
 
   const publicAssets = assetsForClosure(manifest, publicClosure);
   const v2Assets = assetsForClosure(manifest, v2Closure);
   const legacyAssets = assetsForClosure(manifest, legacyClosure);
+  const aiAssets = assetsForClosure(manifest, aiClosure);
+  const aiShellAssets = assetsForClosure(manifest, new Set([...v2Closure, ...aiClosure]));
   const accountAssets = assetsForClosure(manifest, accountClosure);
+  const assetsDomainAssets = assetsForClosure(manifest, assetsClosure);
   const governanceAssets = assetsForClosure(manifest, governanceClosure);
-  const forbiddenLegacyCss = [...v2Assets.css].filter((file) => legacyAssets.css.has(file)).sort();
+  const forbiddenLegacyCss = [...aiShellAssets.css].filter((file) => legacyAssets.css.has(file)).sort();
   if (forbiddenLegacyCss.length > 0) {
     throw new Error(`v2_loads_legacy_css:${forbiddenLegacyCss.join(",")}`);
   }
-  const accountForbiddenLegacyCss = [...accountAssets.css].filter((file) => legacyAssets.css.has(file)).sort();
-  if (accountForbiddenLegacyCss.length > 0) {
-    throw new Error(`account_loads_legacy_css:${accountForbiddenLegacyCss.join(",")}`);
-  }
-  const governanceForbiddenLegacyCss = [...governanceAssets.css].filter((file) => legacyAssets.css.has(file)).sort();
-  if (governanceForbiddenLegacyCss.length > 0) throw new Error(`governance_loads_legacy_css:${governanceForbiddenLegacyCss.join(",")}`);
-  const sharedShellCss = [...accountAssets.css].filter((file) => v2Assets.css.has(file)).sort();
+  const domainDefinitions = [
+    ["ai", aiEntry, aiAssets],
+    ["account", accountEntry, accountAssets],
+    ["assets", assetsEntry, assetsDomainAssets],
+    ["governance", governanceEntry, governanceAssets]
+  ];
+  const domainCss = Object.fromEntries(domainDefinitions.map(([domainId, , domainAssets]) => {
+    const forbidden = [...domainAssets.css].filter((file) => legacyAssets.css.has(file)).sort();
+    if (forbidden.length > 0) throw new Error(`${domainId}_loads_legacy_css:${forbidden.join(",")}`);
+    return [domainId, {
+      forbidden,
+      shared: [...domainAssets.css].filter((file) => v2Assets.css.has(file)).sort()
+    }];
+  }));
 
   const publicReport = summarize(publicEntry, publicAssets, assetStats);
-  const aiShell = summarize(v2Entry, v2Assets, assetStats, {
+  const aiShell = summarize(v2Entry, aiShellAssets, assetStats, {
     loadsLegacyProductStyles: false,
     forbiddenLegacyCss
   });
   const legacy = summarize(legacyEntry, legacyAssets, assetStats);
+  const aiDomain = summarize(aiEntry, aiAssets, assetStats, {
+    lazyOwnedBy: v2Entry,
+    loadsLegacyProductStyles: false,
+    forbiddenLegacyCss: domainCss.ai.forbidden,
+    sharedShellCss: domainCss.ai.shared
+  });
   const accountDomain = summarize(accountEntry, accountAssets, assetStats, {
     lazyOwnedBy: v2Entry,
     loadsLegacyProductStyles: false,
-    forbiddenLegacyCss: accountForbiddenLegacyCss,
-    sharedShellCss
+    forbiddenLegacyCss: domainCss.account.forbidden,
+    sharedShellCss: domainCss.account.shared
+  });
+  const assetsDomain = summarize(assetsEntry, assetsDomainAssets, assetStats, {
+    lazyOwnedBy: v2Entry,
+    loadsLegacyProductStyles: false,
+    forbiddenLegacyCss: domainCss.assets.forbidden,
+    sharedShellCss: domainCss.assets.shared
   });
   const governanceDomain = summarize(governanceEntry, governanceAssets, assetStats, {
     lazyOwnedBy: v2Entry,
     loadsLegacyProductStyles: false,
-    forbiddenLegacyCss: governanceForbiddenLegacyCss,
-    sharedShellCss: [...governanceAssets.css].filter((file) => v2Assets.css.has(file)).sort()
+    forbiddenLegacyCss: domainCss.governance.forbidden,
+    sharedShellCss: domainCss.governance.shared
   });
   return {
     public: publicReport,
-    routes: { aiShell, legacy, accountDomain, governanceDomain },
+    routes: { aiShell, legacy, aiDomain, accountDomain, assetsDomain, governanceDomain },
     budgets: {
       publicCss: {
         actual: publicReport.css,
@@ -239,6 +299,11 @@ export function analyzeV2BuildManifest({ manifest: manifestInput, assetStats: as
         actual: accountDomain.css,
         limit: KORDYN_V2_PERFORMANCE_BUDGETS.accountDomainCss,
         pass: accountDomain.css < KORDYN_V2_PERFORMANCE_BUDGETS.accountDomainCss
+      },
+      assetsDomainCss: {
+        actual: assetsDomain.css,
+        limit: KORDYN_V2_PERFORMANCE_BUDGETS.assetsDomainCss,
+        pass: assetsDomain.css < KORDYN_V2_PERFORMANCE_BUDGETS.assetsDomainCss
       },
       governanceDomainCss: {
         actual: governanceDomain.css,

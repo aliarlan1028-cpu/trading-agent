@@ -2,6 +2,7 @@ import { Play, Plus } from "lucide-react";
 import { StrategyInspector } from "./StrategyInspector.jsx";
 import { StrategyRegistry } from "./StrategyRegistry.jsx";
 import { StrategyStudio } from "./StrategyStudio.jsx";
+import "./strategy.css";
 
 export function StrategyWorkspace({ model, actions, actionsDisabled = false, selectedStrategyId = "", onSelect = () => {} }) {
   const strategies = model?.strategies || [];

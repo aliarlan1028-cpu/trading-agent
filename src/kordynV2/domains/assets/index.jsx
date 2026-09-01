@@ -1,9 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { buildAssetsDomainModel } from "./assetsModel.js";
 import { MobileRelationshipScreen } from "./MobileRelationshipScreen.jsx";
 import { RelationshipWorkspace } from "./RelationshipWorkspace.jsx";
-import { MobileStrategyScreen } from "./MobileStrategyScreen.jsx";
-import { StrategyWorkspace } from "./StrategyWorkspace.jsx";
 import { strategySelectionCandidate } from "./StrategyRegistry.jsx";
 import { KnowledgeWorkspace } from "./KnowledgeWorkspace.jsx";
 import { CapabilityWorkspace } from "./CapabilityWorkspace.jsx";
@@ -12,6 +10,13 @@ import { MobileCapabilityScreen } from "./MobileCapabilityScreen.jsx";
 import { ReviewReleaseWorkspace } from "./ReviewReleaseWorkspace.jsx";
 import { MobileReviewReleaseScreen } from "./MobileReviewReleaseScreen.jsx";
 import "./assets.css";
+
+const LazyStrategyWorkspace = lazy(() => import("./StrategyWorkspace.jsx").then((module) => ({ default: module.StrategyWorkspace })));
+const LazyMobileStrategyScreen = lazy(() => import("./MobileStrategyScreen.jsx").then((module) => ({ default: module.MobileStrategyScreen })));
+
+function StrategyWorkspaceLoading() {
+  return <div className="kordynV2AssetsDomainLoading" role="status">正在加载策略工作区…</div>;
+}
 
 function shellSelectedNode(nodes, selection) {
   const id = selection?.object?.id;
@@ -74,7 +79,11 @@ export default function AssetsDomain({ device, workspaceId, data, actions, actio
     : <RelationshipWorkspace {...shared} />;
   if (workspaceId === "strategies") {
     const strategyProps = { ...shared, selectedStrategyId: selectedStrategy?.id || "", onSelect: selectStrategy };
-    return device === "mobile" ? <MobileStrategyScreen {...strategyProps} /> : <StrategyWorkspace {...strategyProps} />;
+    return (
+      <Suspense fallback={<StrategyWorkspaceLoading />}>
+        {device === "mobile" ? <LazyMobileStrategyScreen {...strategyProps} /> : <LazyStrategyWorkspace {...strategyProps} />}
+      </Suspense>
+    );
   }
   if (workspaceId === "knowledge") {
     const knowledgeProps = {
@@ -110,11 +119,9 @@ export { RelationshipGraph } from "./RelationshipGraph.jsx";
 export { RelationshipInspector } from "./RelationshipInspector.jsx";
 export { RelationshipWorkspace } from "./RelationshipWorkspace.jsx";
 export { MobileRelationshipScreen } from "./MobileRelationshipScreen.jsx";
-export { StrategyWorkspace } from "./StrategyWorkspace.jsx";
 export { StrategyRegistry } from "./StrategyRegistry.jsx";
 export { StrategyInspector } from "./StrategyInspector.jsx";
 export { StrategyStudio } from "./StrategyStudio.jsx";
-export { MobileStrategyScreen } from "./MobileStrategyScreen.jsx";
 export { KnowledgeWorkspace } from "./KnowledgeWorkspace.jsx";
 export { CapabilityWorkspace } from "./CapabilityWorkspace.jsx";
 export { MobileKnowledgeScreen } from "./MobileKnowledgeScreen.jsx";
