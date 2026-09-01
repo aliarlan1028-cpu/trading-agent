@@ -145,6 +145,9 @@ try {
   assert.equal(legacy.marker.present, true, "legacy rollback reads the V2 marker from the same backend");
   assert.equal(v2.visited.length, 23, "all 23 V2 workspaces were reached through trusted production-shell navigation");
   assert.equal(legacy.visited.length, 6, "legacy rollback shell reaches representative product families");
+  assert.equal(legacy.mobileVisited.length, 5, "legacy rollback APP reaches AI, Trade, Lab, Control, and Operations through real drawer clicks");
+  assert.equal(legacy.objectSearch?.destination, "researchCenter", "legacy rollback preserves the real object and feature switcher");
+  assert.ok(legacy.objectSearch?.availableResults > 0, "legacy rollback search exposes available production-shaped results");
   assert.ok(v2.styles.v2Count > 0, "V2 includes its authenticated product CSS");
   assert.equal(v2.styles.legacyCount, 0, "V2 excludes legacy product CSS");
   assert.ok(legacy.styles.legacyCount > 0, "legacy includes its authenticated product CSS");
@@ -154,6 +157,8 @@ try {
     backendIdentity: v2.backendIdentity,
     v2Workspaces: v2.visited.length,
     legacyFamilies: legacy.visited.length,
+    legacyMobileFamilies: legacy.mobileVisited.length,
+    legacyObjectSearch: legacy.objectSearch,
     marker: legacy.marker.symbol,
     boundaries: v2.boundaries,
     css: { v2: v2.styles, legacy: legacy.styles },

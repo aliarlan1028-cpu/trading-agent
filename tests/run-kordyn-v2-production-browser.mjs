@@ -132,12 +132,11 @@ function stableHash(value) {
 function styleClassification(owners) {
   const normalized = owners.map((value) => String(value || "").split("?")[0].replaceAll("\\", "/"));
   const legacyFiles = [
-    "styles.css", "product-foundation.css", "workspace.css", "workspace-additions.css",
-    "product-system.css", "conceptPages.css", "conceptSettings.css", "zero-base-mobile.css",
-    "zero-base-system.css", "zero-base-workbenches.css"
+    "styles.css", "workspace.css", "workspace-additions.css", "conceptPages.css",
+    "conceptSettings.css", "classic-shell.css"
   ];
   const v2 = normalized.filter((value) => value.includes("/src/kordynV2/") || value.includes("src/kordynV2/"));
-  const legacy = normalized.filter((value) => value.includes("productStyles.js") || legacyFiles.some((file) => value.endsWith(`/${file}`)));
+  const legacy = normalized.filter((value) => value.includes("classicStyles.js") || legacyFiles.some((file) => value.endsWith(`/${file}`)));
   return { v2: [...new Set(v2)], legacy: [...new Set(legacy)] };
 }
 
@@ -176,10 +175,12 @@ try {
     width: 1440, height: 900, screenWidth: 1440, screenHeight: 900, deviceScaleFactor: 1, mobile: false
   });
   await cdp.send("Page.navigate", { url: appUrl.href });
-  const rootSelector = version === "v2" ? '[data-kordyn-v2-shell="desktop"]' : '[data-zero-base-shell="desktop"]';
+  const rootSelector = version === "v2" ? '[data-kordyn-v2-shell="desktop"]' : '[data-classic-shell="desktop"]';
   await waitForExpression(cdp, `document.querySelector(${JSON.stringify(rootSelector)})`, `${version} actual authenticated production shell`, 30_000);
 
   const visited = [];
+  const mobileVisited = [];
+  let objectSearch = null;
   if (version === "v2") {
     for (const [domainId, workspaces] of Object.entries(KORDYN_V2_WORKSPACES)) {
       await click(cdp, `[data-kordyn-v2-domain-target="${domainId}"]`);
@@ -199,10 +200,52 @@ try {
       }
     }
   } else {
-    for (const familyId of ["ai", "portfolio", "strategy", "guard", "operations", "configuration"]) {
-      await click(cdp, `[data-zero-base-family="${familyId}"]`);
-      await waitForExpression(cdp, `document.querySelector('[data-zero-base-shell="desktop"]')?.dataset.zeroBaseFamily===${JSON.stringify(familyId)}`, `legacy ${familyId} family`);
-      visited.push(familyId);
+    await click(cdp, '.appTopbar .commandRail__search input');
+    await cdp.send("Input.insertText", { text: "Research" });
+    await waitForExpression(cdp, `document.querySelector('.appTopbar .commandRail__results [data-shell-result-state="available"]')`, "classic real object and feature search results");
+    const availableResults = await evaluate(cdp, `document.querySelectorAll('.appTopbar .commandRail__results [data-shell-result-state="available"]').length`);
+    await click(cdp, '.appTopbar .commandRail__results [data-shell-result-state="available"]');
+    await waitForExpression(cdp, `document.querySelector('[data-classic-shell="desktop"]')?.dataset.classicView === "researchCenter"`, "classic search result navigation");
+    objectSearch = { query: "Research", availableResults, destination: "researchCenter" };
+    for (const viewId of ["chat", "cockpit", "researchCenter", "riskCenter", "operationsCenter", "systemSettings"]) {
+      await click(cdp, `[data-classic-target="${viewId}"]`);
+      await waitForExpression(cdp, `(() => {
+        const root=document.querySelector('[data-classic-shell="desktop"]');
+        const active=[...document.querySelectorAll('[data-classic-target][aria-current="page"]')];
+        return root?.dataset.classicView===${JSON.stringify(viewId)}
+          && active.length===1 && active[0]?.dataset.classicTarget===${JSON.stringify(viewId)};
+      })()`, `classic ${viewId} workspace`);
+      visited.push(viewId);
+    }
+    await cdp.send("Emulation.setDeviceMetricsOverride", {
+      width: 390, height: 844, screenWidth: 390, screenHeight: 844, deviceScaleFactor: 1, mobile: true
+    });
+    await cdp.send("Page.reload", { ignoreCache: true });
+    await waitForExpression(cdp, `document.querySelector('[data-classic-mobile-shell="true"]')`, "classic actual authenticated mobile shell", 30_000);
+    for (const [familyId, viewId, expectedRoute] of [
+      ["ai", "patrol", "chat"],
+      ["portfolio", "positions", "cockpit"],
+      ["strategy", "catalog", "strategyLib"],
+      ["guard", "events", "riskHub"],
+      ["operations", "tasks", "auditSystem"]
+    ]) {
+      await click(cdp, ".classicMobileHeader .mMenuBtn");
+      await waitForExpression(cdp, `(() => {
+        const drawer=document.querySelector('.classicNavDrawer');
+        if (!drawer) return false;
+        const rect=drawer.getBoundingClientRect();
+        return rect.width>0 && rect.height>0 && rect.left>=-1;
+      })()`, "classic mobile drawer visible after transition");
+      await click(cdp, `.classicNavDrawer [data-classic-mobile-family-target="${familyId}"][data-classic-mobile-view-target="${viewId}"]`);
+      await waitForExpression(cdp, `(() => {
+        const root=document.querySelector('[data-classic-mobile-shell="true"]');
+        return root?.dataset.classicMobileFamily===${JSON.stringify(familyId)}
+          && root?.dataset.classicMobileView===${JSON.stringify(viewId)}
+          && root?.dataset.shellRoute===${JSON.stringify(expectedRoute)};
+      })()`, `classic mobile ${familyId}/${viewId}`);
+      const geometry = await evaluate(cdp, "({client:document.documentElement.clientWidth,scroll:document.documentElement.scrollWidth})");
+      assert.ok(geometry.scroll <= geometry.client + 1, `classic mobile ${familyId}/${viewId} has no document overflow: ${JSON.stringify(geometry)}`);
+      mobileVisited.push(`${familyId}/${viewId}`);
     }
   }
 
@@ -266,6 +309,8 @@ try {
     phase,
     rootSelector,
     visited,
+    mobileVisited,
+    objectSearch,
     backendIdentity: {
       overviewMode: core.body?.overviewMode,
       systemRelease: core.body?.systemRelease,

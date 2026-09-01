@@ -41,9 +41,9 @@ test("the V2 Root owns four explicit domain loaders and no legacy stylesheet imp
     assert.match(rootSource, new RegExp(`${domainId}: \\(\\) => import\\(\"\\./domains/${domainId}/index\\.jsx\"\\)`));
     const domainSource = await readFile(path.join(rootDir, `src/kordynV2/domains/${domainId}/index.jsx`), "utf8");
     assert.match(domainSource, new RegExp(`import \"\\./${domainId}\\.css\";`), `${domainId}: owns its domain CSS`);
-    assert.doesNotMatch(domainSource, /productStyles|styles\.css|product-foundation|zero-base/u, `${domainId}: no legacy stylesheet`);
+    assert.doesNotMatch(domainSource, /productStyles|classicStyles|styles\.css|product-foundation|zero-base/u, `${domainId}: no legacy stylesheet`);
   }
-  assert.doesNotMatch(rootSource, /productStyles|styles\.css|product-foundation|zero-base/u);
+  assert.doesNotMatch(rootSource, /productStyles|classicStyles|styles\.css|product-foundation|zero-base/u);
 });
 
 test("performance budgets remain strict decimal-byte gates", () => {
@@ -66,14 +66,14 @@ const validManifest = Object.freeze({
     src: "index.html",
     isEntry: true,
     imports: ["_react.js"],
-    dynamicImports: ["src/productStyles.js", "src/kordynV2/entry.jsx"],
+    dynamicImports: ["src/classicStyles.js", "src/kordynV2/entry.jsx"],
     css: ["assets/entry.css"]
   }),
   "_react.js": Object.freeze({ file: "assets/react.js", name: "react" }),
-  "src/productStyles.js": Object.freeze({
+  "src/classicStyles.js": Object.freeze({
     file: "assets/legacy.js",
-    name: "productStyles",
-    src: "src/productStyles.js",
+    name: "classicStyles",
+    src: "src/classicStyles.js",
     isDynamicEntry: true,
     css: ["assets/legacy.css"]
   }),
@@ -168,7 +168,7 @@ test("manifest graph ownership reports public, V2 shell, and legacy assets witho
     forbiddenLegacyCss: []
   });
   assert.deepEqual(report.routes.legacy, {
-    entry: "src/productStyles.js",
+    entry: "src/classicStyles.js",
     js: 30_000,
     jsGzip: 10_000,
     css: 170_000,
@@ -238,7 +238,7 @@ const coalescedV2Manifest = Object.freeze({
   ...validManifest,
   "index.html": Object.freeze({
     ...validManifest["index.html"],
-    dynamicImports: ["src/productStyles.js", "_entry-v2.js"]
+    dynamicImports: ["src/classicStyles.js", "_entry-v2.js"]
   }),
   "_entry-v2.js": Object.freeze({
     file: "assets/v2.js",
@@ -367,7 +367,7 @@ test("Vite-coalesced V2 entry resolution fails closed when the structural owner 
 test("Vite-coalesced V2 entry resolution rejects misowned or unscoped structural candidates", () => {
   assert.ifError(performanceImportError);
   for (const mutate of [
-    (manifest) => { manifest["index.html"].dynamicImports = ["src/productStyles.js"]; },
+    (manifest) => { manifest["index.html"].dynamicImports = ["src/classicStyles.js"]; },
     (manifest) => { manifest["_entry-v2.js"].isDynamicEntry = false; },
     (manifest) => { manifest["_entry-v2.js"].css = []; },
     (manifest) => { manifest["_entry-v2.js"].dynamicImports = []; }
@@ -406,7 +406,7 @@ test("manifest analysis fails closed on missing, ambiguous, non-finite, or legac
     ...validManifest,
     "src/kordynV2/entry.jsx": {
       ...validManifest["src/kordynV2/entry.jsx"],
-      imports: ["_react.js", "src/productStyles.js"]
+      imports: ["_react.js", "src/classicStyles.js"]
     }
   };
   assert.throws(() => analyze({ manifest: importsLegacy, assetStats: validAssetStats }), /v2_imports_legacy_styles/);

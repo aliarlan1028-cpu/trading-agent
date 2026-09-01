@@ -10,11 +10,12 @@ const productStyles = readFileSync(new URL("../src/productStyles.js", import.met
 const styles = readFileSync(new URL("../src/zero-base-workbenches.css", import.meta.url), "utf8");
 const systemStyles = readFileSync(new URL("../src/zero-base-system.css", import.meta.url), "utf8");
 
-test("every desktop workbench is scoped by the active zero-base family and view", () => {
+test("the retained zero-base workbench stays scoped while the approved classic rollback owns production", () => {
   assert.match(shell, /className="zbWorkbench"/);
   assert.match(shell, /data-zero-base-workbench=\{activeFamily\.id\}/);
   assert.match(shell, /data-zero-base-workbench-view=\{currentView\?\.id/);
-  assert.match(main, /import\("\.\/productStyles\.js"\)/);
+  assert.match(main, /import\("\.\/classicStyles\.js"\)/);
+  assert.doesNotMatch(main, /import\("\.\/productStyles\.js"\)/);
   assert.match(productStyles, /zero-base-workbenches\.css/);
 });
 

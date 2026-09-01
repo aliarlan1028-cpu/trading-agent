@@ -93,7 +93,7 @@ const PRODUCT_WORKSPACES = {
   }
 };
 
-function CenterShell({ title, subtitle, tabs, active, onChange, children, tabsExtra, inlineTabs, workspace = "" }) {
+function CenterShell({ title, subtitle, tabs, active, onChange, children, tabsExtra, inlineTabs, workspace = "", classic = false }) {
   // inlineTabs 只给 AI 交易员:Tab 内联到标题行;其他页面保持标题行 + 单独 Tab 行(原样)。
   const tabNav = <nav className={`uxTabs ${inlineTabs ? "uxTabsInline" : ""}`} aria-label={`${title} ${t("子页面", "sections")}`}>{tabs.map(([id, label, labelEn]) => <button key={id} className={active === id ? "active" : ""} onClick={() => onChange(id)}>{t(label, labelEn)}</button>)}</nav>;
   const product = PRODUCT_WORKSPACES[workspace];
@@ -117,7 +117,7 @@ function CenterShell({ title, subtitle, tabs, active, onChange, children, tabsEx
       descriptionEn: description[1]
     } : null;
   }).filter(Boolean));
-  if (product) {
+  if (product && !classic) {
     return (
       <div className="uxCenter productWorkspace" data-workspace={workspace}>
         <ProductWorkspaceFrame workspaceId={workspaceId} activeView={active} views={productViews} onViewChange={onChange}>
@@ -135,7 +135,7 @@ function CenterShell({ title, subtitle, tabs, active, onChange, children, tabsEx
   );
 }
 
-export function AiTraderCenter({ data, action, ui, initialTab = "dialog" }) {
+export function AiTraderCenter({ data, action, ui, initialTab = "dialog", classic = false }) {
   const [tab, setTab] = useState(initialTab);
   useEffect(() => setTab(initialTab), [initialTab]);
   useEffect(() => { if (tab === "events") ui.ensureSection?.("operationsCenter", { background: true }); }, [tab]);
@@ -143,10 +143,10 @@ export function AiTraderCenter({ data, action, ui, initialTab = "dialog" }) {
   const mandate = (data.mandates || []).find((item) => ["active", "running"].includes(item.status));
   const extra = tab === "dialog" ? <div className="aiTopCluster"><ChatKpiStrip data={data} bar/><div className="aiTopLinks"><button onClick={()=>ui.setActive("riskMandate")}><ShieldCheck/>{t("交易限制", "Trading limits")}<b>{mandate?.maxOrderNotionalUsdt ? `${mandate.maxOrderNotionalUsdt} U` : "—"}</b></button><button onClick={()=>setTab("watch")}><Eye/>{t("实时盯盘", "Live watch")}<b>{activeWatches}</b></button></div></div> : null;
   const page = ["dialog", "patrol", "poster"].includes(tab) ? <AiDialogConcept data={data} action={action} ui={ui} surface={tab}/> : tab === "intel" ? <IntelligenceConcept data={data} action={action} ui={ui}/> : tab === "watch" ? <WatchMonitorConcept data={data} action={action} ui={ui}/> : <EventsConcept data={data} action={action} ui={ui}/>;
-  return <CenterShell title={t("AI 交易员","AI Trader")} subtitle="" tabs={TABS.ai} active={tab} onChange={setTab} inlineTabs tabsExtra={extra}>{page}</CenterShell>;
+  return <CenterShell classic={classic} title={t("AI 交易员","AI Trader")} subtitle="" tabs={TABS.ai} active={tab} onChange={setTab} inlineTabs tabsExtra={extra}>{page}</CenterShell>;
 }
 
-export function TradingCenter({ data, action, ui, initialTab = "overview" }) {
+export function TradingCenter({ data, action, ui, initialTab = "overview", classic = false }) {
   const [tab, setTab] = useState(initialTab);
   useEffect(() => setTab(initialTab), [initialTab]);
   const tabs = TABS.trade;
@@ -160,10 +160,10 @@ export function TradingCenter({ data, action, ui, initialTab = "overview" }) {
     ledger: <ExecutionLedgerConcept data={data} action={action} ui={ui}/>
   };
   const safeTab = tabs.some(([id]) => id === tab) ? tab : "overview";
-  return <CenterShell workspace="trade" title={t("交易驾驶舱","Trading Cockpit")} subtitle={t("行情 · 账户 · 执行 · 复盘","Market · Account · Execution · Review")} tabs={tabs} active={safeTab} onChange={setTab}>{pages[safeTab] || pages.overview}</CenterShell>;
+  return <CenterShell classic={classic} workspace="trade" title={t("交易驾驶舱","Trading Cockpit")} subtitle={t("行情 · 账户 · 执行 · 复盘","Market · Account · Execution · Review")} tabs={tabs} active={safeTab} onChange={setTab}>{pages[safeTab] || pages.overview}</CenterShell>;
 }
 
-export function ResearchCenter({ data, action, ui, initialTab = "map", strategyInitialTab = "catalog", knowledgeInitialSection = "reference", capabilityInitialType = "全部工具", reviewInitialId = "", ownerInitialPane = "" }) {
+export function ResearchCenter({ data, action, ui, initialTab = "map", strategyInitialTab = "catalog", knowledgeInitialSection = "reference", capabilityInitialType = "全部工具", reviewInitialId = "", ownerInitialPane = "", classic = false }) {
   const [tab, setTab] = useState(initialTab);
   useEffect(() => setTab(initialTab), [initialTab]);
   useEffect(() => { if (tab === "reviews" || tab === "owner") ui.ensureSection?.("cockpit"); }, [tab]);
@@ -177,10 +177,10 @@ export function ResearchCenter({ data, action, ui, initialTab = "map", strategyI
     owner: data.user?.isOwner === true ? <OwnerReviewWorkspaceConcept data={data} action={action} ui={ui} initialOwnerPane={ownerInitialPane}/> : null
   };
   const safeTab = tabs.some(([id]) => id === tab) ? tab : "map";
-  return <CenterShell workspace="research" title={t("研究中心","Research")} subtitle={t("研究地图 · 孵化 · 正式资产 · 学习闭环","Research map · Incubation · Formal assets · Learning loop")} tabs={tabs} active={safeTab} onChange={setTab}>{pages[safeTab] || pages.map}</CenterShell>;
+  return <CenterShell classic={classic} workspace="research" title={t("研究中心","Research")} subtitle={t("研究地图 · 孵化 · 正式资产 · 学习闭环","Research map · Incubation · Formal assets · Learning loop")} tabs={tabs} active={safeTab} onChange={setTab}>{pages[safeTab] || pages.map}</CenterShell>;
 }
 
-export function RiskCenter({ data, action, ui, initialTab = "posture" }) {
+export function RiskCenter({ data, action, ui, initialTab = "posture", classic = false }) {
   const [tab, setTab] = useState(initialTab);
   useEffect(() => setTab(initialTab), [initialTab]);
   const pages = {
@@ -190,10 +190,10 @@ export function RiskCenter({ data, action, ui, initialTab = "posture" }) {
     rules: <RulesConcept data={data} action={action} ui={ui}/>
   };
   const safeTab = TABS.risk.some(([id]) => id === tab) ? tab : "posture";
-  return <CenterShell workspace="risk" title="Control" subtitle={t("实际状态 · 事件风险 · 生效边界 · 规则命中","Effective state · Event risk · Boundaries · Rule hits")} tabs={TABS.risk} active={safeTab} onChange={setTab}><div className="controlRuntimeWorkspace" data-ownership="runtime-readonly">{pages[safeTab] || pages.posture}</div></CenterShell>;
+  return <CenterShell classic={classic} workspace="risk" title={t("风控中心", "Risk Center")} subtitle={t("实际状态 · 事件风险 · 生效边界 · 规则命中","Effective state · Event risk · Boundaries · Rule hits")} tabs={TABS.risk} active={safeTab} onChange={setTab}><div className="controlRuntimeWorkspace" data-ownership="runtime-readonly">{pages[safeTab] || pages.posture}</div></CenterShell>;
 }
 
-export function OperationsCenter({ data, action, ui, initialTab = "overview" }) {
+export function OperationsCenter({ data, action, ui, initialTab = "overview", classic = false }) {
   const [tab, setTab] = useState(initialTab);
   useEffect(() => setTab(initialTab), [initialTab]);
   const pages = {
@@ -204,7 +204,7 @@ export function OperationsCenter({ data, action, ui, initialTab = "overview" }) 
     notifications: <OperationsInboxConcept data={data} action={action} ui={ui}/>
   };
   const safeTab=TABS.ops.some(([id])=>id===tab)?tab:"overview";
-  return <CenterShell workspace="operations" title={t("系统运营","Operations")} subtitle={t("运行事实 · 任务 · 恢复 · 审计","Runtime truth · Tasks · Recovery · Audit")} tabs={TABS.ops} active={safeTab} onChange={setTab}><div className="operationsRuntimeWorkspace" data-truth-source="operations-view">{pages[safeTab] || pages.overview}</div></CenterShell>;
+  return <CenterShell classic={classic} workspace="operations" title={t("系统运营","Operations")} subtitle={t("运行事实 · 任务 · 恢复 · 审计","Runtime truth · Tasks · Recovery · Audit")} tabs={TABS.ops} active={safeTab} onChange={setTab}><div className="operationsRuntimeWorkspace" data-truth-source="operations-view">{pages[safeTab] || pages.overview}</div></CenterShell>;
 }
 
 export { SettingsConcept };

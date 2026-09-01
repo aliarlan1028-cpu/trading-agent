@@ -26,9 +26,9 @@ try {
   assert.ok(initialCssBytes < 40_000, `initial CSS ${initialCssBytes} exceeds 40 kB`);
 
   const assets = await readdir(path.join(dist, "assets"));
-  const productCss = assets.find((file) => file.startsWith("productStyles-") && file.endsWith(".css"));
+  const productCss = assets.find((file) => file.startsWith("classicStyles-") && file.endsWith(".css"));
   assert.ok(productCss, "lazy authenticated product CSS asset is missing");
-  assert.doesNotMatch(html, /productStyles-[^"']+\.css/, "authenticated CSS must not be linked by the public HTML entry");
+  assert.doesNotMatch(html, /classicStyles-[^"']+\.css/, "authenticated CSS must not be linked by the public HTML entry");
 
   const initialJs = [...html.matchAll(/src="([^"]+\.js)"/g)].map((match) => match[1].replace(/^\//, ""));
   const initialJsBytes = (await Promise.all(initialJs.map(async (file) => (await stat(path.join(dist, file))).size))).reduce((sum, value) => sum + value, 0);

@@ -40,8 +40,9 @@ test("motion and touch behavior are bounded", () => {
   assert.match(mobileCss, /\.zeroBaseMobile :is\(\.mChips,[^}]*> button\s*\{[^}]*min-height:44px!important/);
 });
 
-test("zero-base CSS loads after the legacy foundation", () => {
-  assert.match(main, /import\("\.\/productStyles\.js"\)/);
+test("retained zero-base CSS keeps its cascade while the approved classic bundle owns production", () => {
+  assert.match(main, /import\("\.\/classicStyles\.js"\)/);
+  assert.doesNotMatch(main, /import\("\.\/productStyles\.js"\)/);
   const foundation = productStyles.indexOf('import "./product-foundation.css"');
   const zeroBase = productStyles.indexOf('import "./zero-base-system.css"');
   assert.ok(foundation >= 0);

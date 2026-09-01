@@ -143,12 +143,13 @@ test("desktop shell exports and renders command, workspace, context and trace ro
   for (const stage of ["Sense", "Recall", "Plan", "Guard", "Execute", "Monitor", "Review"]) assert.match(html, new RegExp(stage));
 });
 
-test("authenticated desktop composes the zero-base shell around the existing workspace content", () => {
+test("authenticated desktop composes the approved classic shell around the existing workspace content", () => {
   const main = fs.readFileSync(path.join(rootDir, "src/main.jsx"), "utf8");
   const zeroBaseShell = fs.readFileSync(path.join(rootDir, "src/zeroBaseShell.jsx"), "utf8");
-  assert.match(main, /<ZeroBaseDesktopShell\b/);
+  assert.match(main, /data-classic-shell="desktop"/);
+  assert.match(main, /<ClassicSidebar\b/);
   assert.match(main, /<Suspense\s+fallback=\{<PageSkeleton\s*\/>\}>\{content\}<\/Suspense>/);
-  assert.doesNotMatch(main, /<WorkspaceRail\b/);
+  assert.doesNotMatch(main, /<ZeroBaseDesktopShell\b/);
   assert.match(zeroBaseShell, /<ContextDock\b/);
   assert.match(zeroBaseShell, /<TraceRail\b/);
   assert.match(zeroBaseShell, /\{children\}/);

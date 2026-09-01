@@ -32,15 +32,18 @@ test("throwing preview reads retain the configured fail-closed version", () => {
   assert.equal(resolveKordynUiVersion({ DEV: true, VITE_KORDYN_UI_VERSION: "v2" }, storage), "v2");
 });
 
-test("V2 and legacy authenticated styles are mutually exclusive", () => {
+test("V2 and classic legacy authenticated styles are mutually exclusive", () => {
   const main = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
   const entry = readFileSync(new URL("../src/kordynV2/entry.jsx", import.meta.url), "utf8");
+  const classic = readFileSync(new URL("../src/classicStyles.js", import.meta.url), "utf8");
   assert.match(main, /resolveKordynUiVersion/);
   assert.match(main, /useRef\(resolveKordynUiVersion\(import\.meta\.env\)\)/);
   assert.match(main, /import\("\.\/kordynV2\/entry\.jsx"\)/);
-  assert.match(main, /import\("\.\/productStyles\.js"\)/);
+  assert.match(main, /import\("\.\/classicStyles\.js"\)/);
   assert.match(main, /\[authRequired,\s*loading,\s*productStylesAttempt,\s*uiVersion\]/);
   assert.match(entry, /styles\/tokens\.css/);
   assert.match(entry, /styles\/shell\.css/);
   assert.doesNotMatch(entry, /productStyles|styles\.css|zero-base|product-foundation/);
+  assert.match(classic, /import "\.\/product-foundation\.css"/);
+  assert.doesNotMatch(classic, /productStyles|product-system|zero-base|kordynV2/);
 });

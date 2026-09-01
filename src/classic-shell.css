@@ -1,0 +1,203 @@
+/*
+ * Presentation bridge for the authenticated shell captured immediately after
+ * the OpenRouter completion-budget fix (be729ac). It supplies aliases needed
+ * by capabilities added later, without importing the later product/zero-base
+ * visual systems.
+ */
+:root {
+  --kordyn-display: var(--font-ui);
+  --kordyn-sans: var(--font-ui);
+  --kordyn-mono: var(--font-mono);
+  --kordyn-paper: var(--bg);
+  --kordyn-paper-white: var(--surface-white);
+  --kordyn-ink: var(--text);
+  --kordyn-line: var(--border);
+  --kordyn-acid: var(--accent);
+  --kordyn-orange: var(--neg);
+}
+
+.authenticatedAppFrame.kordynSystem {
+  --kordyn-paper: #f4f1eb;
+  --kordyn-paper-2: #eee9df;
+  --kordyn-paper-white: #fbf9f5;
+  --kordyn-ink: #1e1b16;
+  --kordyn-ink-2: #3e382f;
+  --kordyn-muted: #7d7466;
+  --kordyn-acid: #d06a22;
+  --kordyn-mint: #4f8f70;
+  --kordyn-danger: #bd5548;
+  --kordyn-amber: #c68a20;
+  --kordyn-blue: #6b8fd6;
+  --kordyn-orange: #d06a22;
+  --kordyn-violet: #9a78bd;
+  --kordyn-line: #d9d2c6;
+  --kordyn-line-soft: #ebe5da;
+  --kordyn-display: var(--font-ui);
+  --kordyn-sans: var(--font-ui);
+  --kordyn-mono: var(--font-mono);
+  background: #f4f1eb;
+  color: #1e1b16;
+  accent-color: #d06a22;
+}
+
+.classicMobileHost { display: contents; }
+
+.classicMobileShell {
+  color: #1e1b16;
+  background: #f4f1eb;
+}
+
+.classicMobileHeader {
+  border-bottom-color: #ede7db;
+  background: #fbf9f5;
+}
+
+.classicNavDrawer .mDrawerNav {
+  padding-top: 4px;
+}
+
+.classicDrawerGroup {
+  border-top: 1px solid #ede7db;
+}
+
+.classicDrawerGroup > header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 8px 14px 5px;
+  color: #625b50;
+}
+
+.classicDrawerGroup > header b {
+  font-size: 12px;
+}
+
+.classicDrawerGroup .mDrawerItem {
+  padding-left: 26px;
+}
+
+.classicMobileShell .mShellTools {
+  background: #fbf9f5;
+}
+
+.classicMobileShell .mShellToolButton {
+  color: #1e1b16;
+}
+
+.classicMobileShell :is(.mCard, .mNativeSection, .mMetricCell, .mSectionCard, .mResearchMapHero, .mResearchMapSection, .mResearchMapQueue, .mOwnerHero, .mOwnerList) {
+  border-color: #d9d2c6;
+  border-radius: 12px;
+  background: #fbf9f5;
+  box-shadow: none;
+}
+
+.classicMobileShell .mNativeTabbar button.active {
+  color: #d06a22;
+  background: #f7e9de;
+}
+
+[data-classic-shell="desktop"] .appTopbar {
+  background: rgba(244, 241, 235, .9);
+  border-bottom-color: #e5dfd3;
+}
+
+[data-classic-shell="desktop"] .appTopbar > .commandRail {
+  position: static;
+  z-index: auto;
+  flex: 1 1 320px;
+  min-width: 180px;
+  height: 36px;
+  border: 1px solid #ddd6ca;
+  border-radius: 7px;
+  background: #fbf9f5;
+}
+
+[data-classic-shell="desktop"] .appTopbar .commandRail__brand,
+[data-classic-shell="desktop"] .appTopbar .commandRail__facts {
+  display: none;
+}
+
+[data-classic-shell="desktop"] .appTopbar .commandRail__search {
+  min-width: 0;
+  border: 0;
+}
+
+[data-classic-shell="desktop"] .appTopbar .commandRail__results {
+  top: 54px;
+  left: 229px;
+  width: min(620px, calc(100vw - 253px));
+  border: 1px solid #1e1b16;
+  border-radius: 8px;
+  background: #fbf9f5;
+  box-shadow: 8px 8px 0 rgba(30, 27, 22, .18);
+}
+
+[data-classic-shell="desktop"] .appTopbar .commandRail__results > button:is(.active, :hover, :focus-visible) {
+  background: #f1dfcf;
+}
+
+[data-classic-shell="desktop"] .sidebar {
+  border-right-color: #e5dfd3;
+  background: #f7f4ee;
+}
+
+[data-classic-shell="desktop"] .content {
+  background: #f4f1eb;
+}
+
+[data-classic-shell="desktop"] .navItem.active {
+  color: #fff;
+  background: #1e1b16;
+}
+
+[data-classic-shell="desktop"] .navItem.active::after {
+  display: none;
+}
+
+[data-classic-shell="desktop"] .navGear.active {
+  border-color: #d06a22;
+  color: #d06a22;
+  background: #fbf9f5;
+}
+
+[data-classic-shell="desktop"] :is(.researchMap__hero, .researchMap__canvas, .researchMap__queue, .researchMap__boundary) {
+  overflow: hidden;
+  border-color: #d4ccbf;
+  border-radius: 8px;
+  background: #fbf9f5;
+}
+
+[data-classic-shell="desktop"] :is(.researchMap__origin, .researchMap__route, .researchMap__feedback > button, .researchMap__registries > button) {
+  border-color: #d4ccbf;
+}
+
+[data-classic-shell="desktop"] .researchMap__merge b,
+[data-classic-shell="desktop"] .researchMap__queue > header > b,
+[data-classic-shell="desktop"] .researchMap__registries footer {
+  color: #fff;
+  background: #d06a22;
+}
+
+[data-classic-shell="desktop"] .workspaceState {
+  border-color: #d4ccbf;
+  border-radius: 8px;
+  background: #fbf9f5;
+}
+
+[data-classic-shell="desktop"] :focus-visible,
+[data-classic-shell="mobile"] :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-classic-shell] *,
+  [data-classic-shell] *::before,
+  [data-classic-shell] *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

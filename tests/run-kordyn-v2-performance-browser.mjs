@@ -18,6 +18,7 @@ const domainEntrypoints = Object.freeze({
 });
 const forbiddenLegacy = Object.freeze([
   "/src/productStyles.js",
+  "/src/classicStyles.js",
   "/src/styles.css",
   "/src/product-foundation.css",
   "/src/zero-base-styles.css"

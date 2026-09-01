@@ -18,6 +18,8 @@ import {
   Globe2,
   Eye,
   Info,
+  Menu,
+  MoreHorizontal,
   Plus,
   Play,
   RefreshCw,
@@ -1982,12 +1984,86 @@ function PullToRefresh({ onRefresh, className, children }) {
   );
 }
 
-export function MobileApp({ api, lang, switchLang }) {
+const classicMobileGroups = [
+  { id: "ai", label: ["AI 交易员", "AI Trader"], icon: Bot, items: [
+    ["dialog", "对话", "Dialog"], ["patrol", "自主巡检", "Patrol"], ["intelligence", "情报", "Intelligence"],
+    ["watch", "盯盘", "Watch"], ["events", "事件", "Events"], ["poster", "分析海报", "Poster"]
+  ]},
+  { id: "portfolio", label: ["交易驾驶舱", "Trade Cockpit"], icon: PieChart, items: [
+    ["overview", "账户总览", "Overview"], ["market", "市场", "Market"], ["account", "账户健康", "Account health"], ["positions", "持仓", "Positions"],
+    ["execution", "计划与执行", "Plans & execution"], ["ledger", "委托与成交", "Orders & fills"], ["protection", "组合保护", "Protection"]
+  ]},
+  { id: "strategy", label: ["研究与资产", "Research & assets"], icon: BookOpen, items: [
+    ["catalog", "策略库", "Strategies"], ["studio", "策略工作室", "Strategy studio"]
+  ]},
+  { id: "knowledge", label: ["知识库", "Knowledge"], icon: BookOpen, items: [
+    ["overview", "知识总览", "Overview"], ["import", "导入来源", "Imports"], ["evidence", "证据与纪律", "Evidence"], ["graph", "关系图谱", "Graph"],
+    ["artifacts", "提取产物", "Artifacts"], ["workflows", "工作流候选", "Workflow candidates"]
+  ]},
+  { id: "capability", label: ["能力库", "Capabilities"], icon: Wrench, items: [
+    ["overview", "能力总览", "Overview"], ["native", "原生工具", "Native tools"], ["workflow", "工作流", "Workflows"], ["mcp", "MCP", "MCP"],
+    ["connectors", "连接器", "Connectors"], ["skills", "导入技能", "Imported skills"]
+  ]},
+  { id: "reviews", label: ["Owner 优化", "Owner review"], icon: ClipboardList, items: [
+    ["reviews", "交易复盘", "Trade reviews"], ["owner", "优化建议", "Improvements"], ["lessons", "复盘教训", "Lessons"]
+  ]},
+  { id: "guard", label: ["风控中心", "Risk control"], icon: ShieldCheck, items: [
+    ["posture", "风控总览", "Posture"], ["events", "事件风险", "Event risk"], ["boundaries", "交易边界", "Boundaries"], ["rules", "风险规则", "Rules"]
+  ]},
+  { id: "operations", label: ["系统运营", "Operations"], icon: Activity, items: [
+    ["health", "运行总览", "Overview"], ["tasks", "任务与 Agent 运行", "Tasks & agent runs"], ["inputs", "事件源健康", "Event inputs"],
+    ["recovery", "恢复中心", "Recovery"], ["audit", "审计", "Audit"], ["notifications", "通知", "Notices"]
+  ]},
+  { id: "configuration", label: ["系统配置", "Configuration"], icon: Settings, items: [
+    ["trading", "交易与运行", "Trading & runtime"], ["risk", "风险规则", "Risk rules"], ["exchange", "交易所", "Exchange"],
+    ["environment", "环境与服务", "Environment"], ["network", "网络", "Network"], ["backup", "备份", "Backup"], ["security", "安全", "Security"],
+    ["notifications", "通知渠道", "Notifications"], ["event-sources", "事件源", "Event sources"], ["models", "模型与密钥", "Models & keys"],
+    ["agents", "Agent 配置", "Agents"], ["users", "用户", "Users"], ["subscriptions", "订阅", "Subscriptions"]
+  ]}
+];
+
+function ClassicMobileHeader({ familyId, viewId, runtime, reconnecting, onMenu, onOpenSafety, onBack }) {
+  const group = classicMobileGroups.find((item) => item.id === familyId) || classicMobileGroups[0];
+  const item = group.items.find((row) => row[0] === viewId);
+  return <header className="mHeader2 classicMobileHeader" data-shell-role="mobile-command">
+    <button type="button" className="mMenuBtn" onClick={onMenu} aria-label={t("打开菜单", "Open menu")}><Menu size={20}/></button>
+    <div className="mHeaderMid"><strong>{item ? t(item[1], item[2]) : t(group.label[0], group.label[1])}</strong><small className="mono">{group.id.toUpperCase()} · {String(viewId || "HOME").toUpperCase()}</small></div>
+    <div className="mHeaderRight">{onBack
+      ? <button type="button" className="mBack" onClick={onBack} aria-label={t("返回", "Back")}><ChevronLeft size={19}/></button>
+      : <button type="button" className={`mRuntimeButton ${runtime?.tone || "neutral"}`} onClick={onOpenSafety} title={runtime?.detail}><span/><div><small>{t("当前状态", "RUNTIME")}</small><b>{reconnecting ? t("重连中", "Reconnecting") : runtime?.label || "Unavailable"}</b></div><ChevronDown/></button>}
+    </div>
+  </header>;
+}
+
+function ClassicMobileTabbar({ familyId, route, onOpenFamily, onMore }) {
+  const items = [
+    ["ai", "dialog", "交易员", "Trader", Bot], ["ai", "watch", "盯盘", "Watch", Gauge],
+    ["portfolio", "overview", "市场", "Market", PieChart], ["guard", "posture", "风控", "Risk", ShieldCheck]
+  ];
+  return <nav className="mNativeTabbar classicMobileTabbar" aria-label={t("主导航", "Primary navigation")}>
+    {items.map(([family, view, zh, en, Icon]) => { const active = familyId === family && (family !== "ai" || route === (view === "watch" ? "watch" : "chat")); return <button type="button" key={`${family}:${view}`} data-classic-mobile-family-target={family} data-classic-mobile-view-target={view} className={active ? "active" : ""} aria-current={active ? "page" : undefined} onClick={() => onOpenFamily(family, view)}><Icon size={20}/><span>{t(zh, en)}</span></button>; })}
+    <button type="button" className={!items.some(([family]) => family === familyId) ? "active" : ""} onClick={onMore}><MoreHorizontal size={20}/><span>{t("更多", "More")}</span></button>
+  </nav>;
+}
+
+function ClassicNavDrawer({ open, familyId, viewId, onOpenFamily, onOpenSettings, onClose, lang, switchLang }) {
+  if (!open) return null;
+  return <div className="mDrawerOverlay" onClick={onClose}><aside className="mDrawer classicNavDrawer" onClick={(event) => event.stopPropagation()}>
+    <div className="mDrawerBrand"><span className="mDrawerLogo"><img src="/kordyn-logo.svg" alt="KORDYN"/></span><div className="mDrawerBrandText"><b>KORDYN</b><small>AI · DIGITAL ASSET</small></div></div>
+    {switchLang && <div className="mLangBar"><Globe2 size={14}/><div className="mLangSeg" role="group" aria-label={t("切换语言", "Switch language")}><button className={lang === "zh" ? "on" : ""} onClick={() => switchLang("zh")}>中文</button><button className={lang === "en" ? "on" : ""} onClick={() => switchLang("en")}>English</button></div></div>}
+    <div className="mDrawerTitle"><b>{t("全部工作区", "All workspaces")}</b><small>{t("当前能力完整保留", "All current capabilities retained")}</small></div>
+    <div className="mDrawerNav">{classicMobileGroups.map((group) => { const Icon = group.icon; return <section className="classicDrawerGroup" key={group.id}><header><Icon size={16}/><b>{t(group.label[0], group.label[1])}</b></header>{group.items.map(([id, zh, en]) => { const active = familyId === group.id && viewId === id; return <button type="button" key={id} data-classic-mobile-family-target={group.id} data-classic-mobile-view-target={id} className={`mDrawerItem ${active ? "active" : ""}`} aria-current={active ? "page" : undefined} onClick={() => { onOpenFamily(group.id, id); onClose(); }}><span><b>{t(zh, en)}</b><small>{group.id.toUpperCase()} · {id.toUpperCase()}</small></span><ChevronRight size={15}/></button>; })}</section>; })}</div>
+    <div className="mDrawerFoot"><button type="button" className="mDrawerSettings" onClick={() => { onOpenSettings(); onClose(); }}><Settings size={19}/><span><b>{t("系统设置", "Settings")}</b><small>{t("账户、交易、模型与服务配置", "Account, trading, model, and services")}</small></span><ChevronRight size={15}/></button></div>
+  </aside></div>;
+}
+
+export function MobileApp({ api, lang, switchLang, classic = false }) {
   const { data, action, toast, busy, notify, download, refresh, ensureSection, connectionError } = api;
-  const [mobileRoot, setMobileRoot] = useState("today");
-  const [activeFamilyId, setActiveFamilyId] = useState("today");
-  const [activeFamilyView, setActiveFamilyView] = useState("owner");
+  const [mobileRoot, setMobileRoot] = useState(classic ? "ai" : "today");
+  const [activeFamilyId, setActiveFamilyId] = useState(classic ? "ai" : "today");
+  const [activeFamilyView, setActiveFamilyView] = useState(classic ? "dialog" : "owner");
   const [route, setRoute] = useState("chat");
+  const [drawer, setDrawer] = useState(false);
   const [subPage, setSubPage] = useState("");
   const [panel, setPanel] = useState("");
   const [killConfirm, setKillConfirm] = useState(false);
@@ -2062,7 +2138,7 @@ export function MobileApp({ api, lang, switchLang }) {
   }, [route, settingsSection]);
 
   let content = null;
-  if (mobileRoot === "today") {
+  if (!classic && mobileRoot === "today") {
     content = <ZeroBaseMobileToday data={data} onNavigate={(familyId, viewId, directRoute) => directRoute ? navigate(directRoute) : openFamily(familyId, viewId)} viewId={activeFamilyView}/>;
   } else if ((mobileRoot === "intelligent" || mobileRoot === "more") && !activeFamilyId) {
     content = <ZeroBaseMobileHub rootId={mobileRoot} data={data} onFamilyNavigate={openFamily} lang={lang} switchLang={switchLang}/>;
@@ -2109,7 +2185,7 @@ export function MobileApp({ api, lang, switchLang }) {
 
   const resourceState = data.resourceState?.[activeSection] || "not_loaded";
   const retainsLastValid = workspaceResourceRetainsLastValid(resourceState);
-  if ((resourceState === "loaded" || retainsLastValid) && activeFamilyId) {
+  if (!classic && (resourceState === "loaded" || retainsLastValid) && activeFamilyId) {
     content = <><ZeroBaseMobileFamilyRail familyId={activeFamilyId} viewId={activeFamilyView} onNavigate={openFamily}/>{content}</>;
   }
   if (retainsLastValid) {
@@ -2126,6 +2202,14 @@ export function MobileApp({ api, lang, switchLang }) {
     {busy && <div className="busyIndicator"><Activity size={13} /> {t("执行中", "Working")}</div>}
     {toast && <div className="toast">{toast}</div>}
   </>;
+  if (classic) return <div className="mShell2 classicMobileShell" data-classic-mobile-shell="true" data-classic-mobile-family={activeFamilyId} data-classic-mobile-view={activeFamilyView} data-shell-route={route} data-shell-subpage={subPage || "none"}>
+    <ClassicMobileHeader familyId={activeFamilyId} viewId={activeFamilyView} runtime={runtime} reconnecting={Boolean(connectionError)} onMenu={() => setDrawer(true)} onOpenSafety={() => setSafetyOpen(true)} onBack={subPage ? () => setSubPage("") : null}/>
+    {route === "chat" && activeFamilyView === "dialog" ? <main className="mMain2 mMainChat">{content}</main> : <PullToRefresh className="mMain2" onRefresh={refresh}>{content}</PullToRefresh>}
+    <MobileShellTools data={data} workspaceId={activeProductWorkspace} selectedObject={selectedShellObject} onSelect={setSelectedShellObject} onNavigate={navigate}/>
+    <ClassicMobileTabbar familyId={activeFamilyId} route={route} onOpenFamily={openFamily} onMore={() => setDrawer(true)}/>
+    <ClassicNavDrawer open={drawer} familyId={activeFamilyId} viewId={activeFamilyView} onOpenFamily={openFamily} onOpenSettings={() => navigate("systemSettings")} onClose={() => setDrawer(false)} lang={lang} switchLang={switchLang}/>
+    {overlays}
+  </div>;
   return <ZeroBaseMobileShell
     rootId={mobileRoot}
     familyId={activeFamilyId}

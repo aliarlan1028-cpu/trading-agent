@@ -9,15 +9,15 @@ const performanceRunner = readFileSync(new URL("./run-zero-base-performance-buil
 test("public and auth entry no longer statically download the authenticated product stylesheet", () => {
   assert.match(main, /import "\.\/entry\.css"/);
   assert.doesNotMatch(main, /import "\.\/styles\.css"|import "\.\/product-foundation\.css"|import "\.\/zero-base-system\.css"|import "\.\/zero-base-workbenches\.css"/);
-  assert.match(main, /import\("\.\/productStyles\.js"\)/);
+  assert.match(main, /import\("\.\/classicStyles\.js"\)/);
 });
 
 test("authenticated product styles remain one explicit lazy boundary", () => {
-  const styles = readFileSync(new URL("../src/productStyles.js", import.meta.url), "utf8");
-  const ordered = ["styles.css", "product-foundation.css", "workspace.css", "workspace-additions.css", "product-system.css", "conceptPages.css", "conceptSettings.css", "zero-base-mobile.css", "zero-base-system.css", "zero-base-workbenches.css"];
+  const styles = readFileSync(new URL("../src/classicStyles.js", import.meta.url), "utf8");
+  const ordered = ["styles.css", "product-foundation.css", "workspace.css", "workspace-additions.css", "conceptPages.css", "conceptSettings.css", "classic-shell.css"];
   for (const file of ordered) assert.match(styles, new RegExp(file.replace(".", "\\.")));
   const positions = ordered.map((file) => styles.indexOf(file));
-  assert.deepEqual(positions, positions.slice().sort((a, b) => a - b), "legacy modules must load before the final zero-base cascade");
+  assert.deepEqual(positions, positions.slice().sort((a, b) => a - b), "classic foundation modules must load before the final classic bridge");
 
   for (const moduleName of ["workspacePages.jsx", "conceptPages.jsx", "zeroBaseMobile.jsx"]) {
     const moduleSource = readFileSync(new URL(`../src/${moduleName}`, import.meta.url), "utf8");

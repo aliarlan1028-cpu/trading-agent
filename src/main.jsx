@@ -4,8 +4,13 @@ import { getLang, setLang, t } from "./i18n.js";
 import {
   Activity,
   Bell,
+  BookOpen,
+  Bot,
   ChevronRight,
+  PieChart,
   RefreshCw,
+  Settings,
+  ShieldCheck,
   Target,
   Globe,
   Zap
@@ -18,10 +23,8 @@ import { uiConfirm } from "./confirm.jsx";
 import { resolveDesktopRoute } from "./productArchitecture.js";
 import { AuthenticatedV2Boundary } from "./kordynV2/AuthenticatedV2Boundary.jsx";
 import { resolveKordynUiVersion } from "./kordynV2/cutover.js";
-import { resolveZeroBaseDestination, zeroBaseLocationForRoute } from "./zeroBaseArchitecture.js";
-import { ZeroBaseDesktopShell } from "./zeroBaseShell.jsx";
-import { ZeroBaseToday } from "./zeroBaseToday.jsx";
-import { CommandRail, WorkspaceStateBoundary, buildShellContext, buildShellTrace, resolveShellObjectSelection, selectionForNavigation, workspaceResourceRetainsLastValid } from "./productShell.jsx";
+import { zeroBaseLocationForRoute } from "./zeroBaseArchitecture.js";
+import { CommandRail, WorkspaceStateBoundary, resolveShellObjectSelection, selectionForNavigation, workspaceResourceRetainsLastValid } from "./productShell.jsx";
 import { SafeArea } from "@capacitor-community/safe-area";
 import "./entry.css";
 
@@ -66,6 +69,47 @@ function BrandLogo({ size = 34, variant = "black" }) {
   return <img className="brandLogo" src={src} alt="KORDYN" width={size} height={size} />;
 }
 
+const classicNavItems = [
+  { id: "chat", label: "AI 交易员", labelEn: "AI Trader", icon: Bot },
+  { id: "cockpit", label: "交易驾驶舱", labelEn: "Cockpit", icon: PieChart },
+  { id: "researchCenter", label: "研究中心", labelEn: "Research", icon: BookOpen },
+  { id: "riskCenter", label: "风控中心", labelEn: "Risk", icon: ShieldCheck },
+  { id: "operationsCenter", label: "系统运营", labelEn: "Operations", icon: Activity }
+];
+
+function ClassicSidebar({ active, setActive }) {
+  return (
+    <aside className="sidebar" aria-label={t("主要工作区", "Primary workspaces")}>
+      <div className="brand">
+        <div className="brandMark"><BrandLogo size={32} /></div>
+        <div className="brandText">
+          <strong>KORDYN</strong>
+          <span className="brandSub">AI · DIGITAL ASSET</span>
+        </div>
+      </div>
+      <nav className="nav">
+        {classicNavItems.map((item) => {
+          const Icon = item.icon;
+          const on = active === item.id;
+          const label = t(item.label, item.labelEn);
+          return (
+            <button key={item.id} className={`navItem ${on ? "active" : ""}`} data-classic-target={item.id} aria-current={on ? "page" : undefined} title={label} onClick={() => setActive(item.id)}>
+              <Icon size={16} />
+              <span className="navLabelFull">{label}</span>
+              <span className="navLabelShort">{label}</span>
+            </button>
+          );
+        })}
+      </nav>
+      <div className="sidebarFoot">
+        <button className={`navGear ${active === "systemSettings" ? "active" : ""}`} data-classic-target="systemSettings" aria-current={active === "systemSettings" ? "page" : undefined} title={t("系统设置 / 密钥 / 用户管理", "Settings / Keys / Users")} onClick={() => setActive("systemSettings")}>
+          <Settings size={15} /> {t("系统设置", "Settings")}
+        </button>
+      </div>
+    </aside>
+  );
+}
+
 function useIsMobileViewport() {
   const [mobile, setMobile] = useState(() => window.matchMedia("(max-width: 900px)").matches);
   useEffect(() => {
@@ -87,7 +131,7 @@ function useIsMobileViewport() {
   return mobile;
 }
 
-function AppTopbar({ data, setActive, onObjectSelect, notify, action, lang, switchLang, shellTools = null }) {
+function AppTopbar({ data, setActive, onObjectSelect, notify, action, lang, switchLang }) {
   const [killConfirm, setKillConfirm] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
@@ -104,7 +148,7 @@ function AppTopbar({ data, setActive, onObjectSelect, notify, action, lang, swit
     }
   };
   return (
-    <header className="appTopbar zbTopbar" data-shell-role="desktop-command">
+    <header className="appTopbar" data-shell-role="desktop-command">
       <CommandRail data={data} onNavigate={setActive} onSelect={onObjectSelect} />
       <div className="topbarStatusGroup">
         <ExchangePill name="OKX" tone="okx" account={okx} onClick={() => setActive("systemSettings:exchange")} />
@@ -136,7 +180,6 @@ function AppTopbar({ data, setActive, onObjectSelect, notify, action, lang, swit
         <button type="button" className="danger" onClick={flattenAll} title={t("按市价关闭全部持仓", "Close all positions at market")}><Target/><span>{t("全部平仓", "Flatten")}</span></button>
         <button type="button" className={`danger ${stopped ? "active" : ""}`} onClick={() => setKillConfirm(true)} title={stopped?t("申请解除紧急停止", "Request clearing the emergency stop"):t("立即阻止所有新交易", "Immediately block all new trades")}><Zap/><span>{stopped?t("解除停止", "Clear stop"):t("紧急停止", "Stop")}</span></button>
       </div>
-      {shellTools}
       <div className="topbarActions">
         <button className="bellButton" title={t("通知", "Notifications")} aria-label={t("通知", "Notifications")} onClick={() => { setActive("operationsCenter:notifications"); if (unread) action("/api/notifications/read", {}); }}>
           <Bell size={18} />
@@ -323,7 +366,7 @@ function App() {
     if (uiVersion !== "legacy" || authRequired || loading || productStylesState === "ready") return undefined;
     let current = true;
     setProductStylesState("loading");
-    import("./productStyles.js")
+    import("./classicStyles.js")
       .then(() => { if (current) setProductStylesState("ready"); })
       .catch(() => { if (current) setProductStylesState("failed"); });
     return () => { current = false; };
@@ -351,11 +394,6 @@ function App() {
     if (resolved.settingsSection) setActiveSettingsSection(resolved.settingsSection);
     if (!resolved.recognized) notify(t("未找到该入口，已返回 AI 交易员。", "That destination was not found. Returned to AI Trader."));
   }
-  function navigateZeroBase(familyId, viewId, directRoute = "") {
-    if (directRoute) return navigate(directRoute);
-    const destination = resolveZeroBaseDestination(familyId, viewId, "desktop");
-    navigate(destination.route, undefined, { familyId: destination.familyId, viewId: destination.viewId });
-  }
   function selectObject(candidate) {
     const selected = resolveShellObjectSelection(data || {}, candidate);
     if (selected) setSelectedShellObject(selected);
@@ -364,7 +402,6 @@ function App() {
   const ui = { setActive: navigate, selectObject, notify, download, refresh, ensureSection, openPanel: setPanel, closePanel: () => setPanel("") };
   const content = useMemo(() => {
     if (!data) return null;
-    if (activeZeroBaseFamily === "today") return <ZeroBaseToday data={data} onNavigate={navigate} viewId={activeZeroBaseView} />;
     const resourceState = data.resourceState?.[active] || "not_loaded";
     if (resourceState !== "loaded" && !workspaceResourceRetainsLastValid(resourceState)) return <WorkspaceStateBoundary resourceState={resourceState} onRetry={() => ensureSection(active, { force: true })} />;
     const strategySurface = ({ studio: "studio", market: "market", historical: "research", forward: "research" })[activeZeroBaseView] || activeStrategyTab;
@@ -373,20 +410,17 @@ function App() {
     const researchTab = activeZeroBaseFamily === "reviews" && ["owner", "lessons"].includes(activeZeroBaseView) ? "owner" : activeWorkspaceTab;
     const ownerPane = activeZeroBaseView === "lessons" ? "lessons" : activeZeroBaseView === "owner" ? "improvements" : "";
     let workspaceContent;
-    if (active === "chat") workspaceContent = <AiTraderCenter key={`chat:${activeWorkspaceTab}:${activeZeroBaseView}`} data={data} action={action} ui={ui} initialTab={({ patrol:"patrol", poster:"poster" })[activeZeroBaseView] || activeWorkspaceTab} />;
-    else if (active === "cockpit") workspaceContent = <TradingCenter key={`cockpit:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
-    else if (active === "researchCenter") workspaceContent = <ResearchCenter key={`research:${researchTab}:${activeReviewId}`} data={data} action={action} ui={ui} initialTab={researchTab} strategyInitialTab={strategySurface} knowledgeInitialSection={knowledgeSection} capabilityInitialType={capabilityType} reviewInitialId={activeReviewId} ownerInitialPane={ownerPane} />;
-    else if (active === "riskCenter") workspaceContent = <RiskCenter key={`risk:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
-    else if (active === "operationsCenter") workspaceContent = <OperationsCenter key={`operations:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
+    if (active === "chat") workspaceContent = <AiTraderCenter key={`chat:${activeWorkspaceTab}:${activeZeroBaseView}`} classic data={data} action={action} ui={ui} initialTab={({ patrol:"patrol", poster:"poster" })[activeZeroBaseView] || activeWorkspaceTab} />;
+    else if (active === "cockpit") workspaceContent = <TradingCenter key={`cockpit:${activeWorkspaceTab}`} classic data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
+    else if (active === "researchCenter") workspaceContent = <ResearchCenter key={`research:${researchTab}:${activeReviewId}`} classic data={data} action={action} ui={ui} initialTab={researchTab} strategyInitialTab={strategySurface} knowledgeInitialSection={knowledgeSection} capabilityInitialType={capabilityType} reviewInitialId={activeReviewId} ownerInitialPane={ownerPane} />;
+    else if (active === "riskCenter") workspaceContent = <RiskCenter key={`risk:${activeWorkspaceTab}`} classic data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
+    else if (active === "operationsCenter") workspaceContent = <OperationsCenter key={`operations:${activeWorkspaceTab}`} classic data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
     else if (active === "systemSettings") workspaceContent = <SettingsConcept key={`settings:${activeSettingsTab}:${activeSettingsSection}`} data={data} action={action} ui={ui} activeTab={activeSettingsTab} initialBaseSection={activeSettingsSection} onTabChange={setActiveSettingsTab} />;
     else workspaceContent = <AiTraderCenter data={data} action={action} ui={ui} />;
     return workspaceResourceRetainsLastValid(resourceState)
       ? <WorkspaceStateBoundary resourceState={resourceState} onRetry={() => ensureSection(active, { force: true })}>{workspaceContent}</WorkspaceStateBoundary>
       : workspaceContent;
   }, [active, activeZeroBaseFamily, activeZeroBaseView, activeSettingsTab, activeSettingsSection, activeWorkspaceTab, activeStrategyTab, activeReviewId, data, action, lang]);
-  const shellContext = useMemo(() => buildShellContext({ data: data || {}, workspaceId: activeProductWorkspace, selectedObject: selectedShellObject }), [data, activeProductWorkspace, selectedShellObject]);
-  const shellTrace = useMemo(() => buildShellTrace(data || {}, activeProductWorkspace, selectedShellObject), [data, activeProductWorkspace, selectedShellObject]);
-
   if (authRequired) return <AppFrame><LandingPage login={login} registerAccount={registerAccount} toast={toast} apiBase={apiBase} setApiBase={setApiBase} isNativeApp={isNativeApp} publicInfo={publicInfo} /></AppFrame>;
   if (!loading && uiVersion === "legacy" && productStylesState !== "ready") return <AppFrame authenticated><div className="authenticatedEntryLoading" data-authenticated-state="styles"><div><Activity size={24}/><span><b>{productStylesState === "failed" ? t("界面资源加载失败", "Interface assets failed to load") : t("正在准备交易工作区", "Preparing the trading workspace")}</b><small>{productStylesState === "failed" ? t("网络恢复后重试，不会影响服务器中的任务。", "Retry after the network recovers. Server-side tasks are unaffected.") : t("仅在登录后加载完整工作区资源。", "Full workspace assets load only after sign-in.")}</small></span>{productStylesState === "failed" && <button type="button" onClick={() => setProductStylesAttempt((attempt) => attempt + 1)}>{t("重试", "Retry")}</button>}</div></div></AppFrame>;
   if (!loading && !data) return <AppFrame authenticated><ConnectionScreen apiBase={apiBase} setApiBase={setApiBase} refresh={refresh} toast={toast} connectionError={connectionError} isNativeApp={isNativeApp} /></AppFrame>;
@@ -405,27 +439,26 @@ function App() {
 
   if (isNativeApp || isMobileViewport) {
     // key={lang}:切换语言时整树 remount,让 mobile.jsx 里的 t() 立即全量重渲染(同桌面外壳)。
-    return <AppFrame authenticated><MobileApp key={lang} lang={lang} switchLang={switchLang} api={{ data, action, toast, busy, notify, download, refresh, ensureSection, connectionError }} /></AppFrame>;
+    return <AppFrame authenticated><div className="classicMobileHost" data-classic-shell="mobile"><MobileApp key={lang} classic lang={lang} switchLang={switchLang} api={{ data, action, toast, busy, notify, download, refresh, ensureSection, connectionError }} /></div></AppFrame>;
   }
 
   return (
-    <AppFrame authenticated><ZeroBaseDesktopShell key={lang}
-      data={data}
-      activeFamilyId={activeZeroBaseFamily}
-      activeViewId={activeZeroBaseView}
-      onFamilyNavigate={navigateZeroBase}
-      selectedObject={selectedShellObject}
-      context={shellContext}
-      trace={shellTrace}
-      renderTopbar={({ shellTools }) => <AppTopbar data={data} setActive={navigate} onObjectSelect={setSelectedShellObject} notify={notify} action={action} lang={lang} switchLang={switchLang} shellTools={shellTools} />}
-      overlays={<>
+    <AppFrame authenticated><div className="appShell" data-classic-shell="desktop" data-classic-view={active} key={lang}>
+      <ClassicSidebar active={active} setActive={navigate} />
+      <main className="mainArea">
+        <AppTopbar data={data} setActive={navigate} onObjectSelect={setSelectedShellObject} notify={notify} action={action} lang={lang} switchLang={switchLang} />
+        <div className={active === "chat" ? "content contentChat" : "content"}>
+          <Suspense fallback={<PageSkeleton />}>{content}</Suspense>
+        </div>
+      </main>
+      <>
         {panel && <ConfigPanel panel={panel} data={data} action={action} ui={ui} />}
         {busy && <div className="busyIndicator"><Activity size={13} /> {t("执行中", "Working")}</div>}
         <AssistantWidget data={data} ui={ui} currentPage={`${active}:${active === "systemSettings" ? activeSettingsTab : activeWorkspaceTab}`} />
         {toast && <div className="toast">{toast}</div>}
-      </>}>
-      <Suspense fallback={<PageSkeleton />}>{content}</Suspense>
-    </ZeroBaseDesktopShell></AppFrame>
+      </>
+      {/* data-classic-shell-end */}
+    </div></AppFrame>
   );
 }
 

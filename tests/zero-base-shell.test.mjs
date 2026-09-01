@@ -107,8 +107,11 @@ test("Today surface makes AI primary while exposing account and intelligent asse
   assert.match(markup, /Market patrol/);
 });
 
-test("production App uses the zero-base desktop shell instead of the legacy workspace rail", () => {
-  assert.match(mainSource, /<ZeroBaseDesktopShell\b/);
-  assert.match(mainSource, /<ZeroBaseToday\b/);
-  assert.doesNotMatch(mainSource.slice(mainSource.indexOf("if \(isNativeApp"), mainSource.indexOf("function ConnectionScreen")), /<WorkspaceRail\b/);
+test("production App uses the post-OpenRouter classic shell while retaining zero-base components off-path", () => {
+  assert.match(mainSource, /data-classic-shell="desktop"/);
+  assert.match(mainSource, /data-classic-shell="mobile"/);
+  assert.match(mainSource, /<ClassicSidebar\b/);
+  assert.match(mainSource, /<MobileApp key=\{lang\} classic\b/);
+  assert.doesNotMatch(mainSource, /<ZeroBaseDesktopShell\b/);
+  assert.doesNotMatch(mainSource, /<ZeroBaseToday\b/);
 });

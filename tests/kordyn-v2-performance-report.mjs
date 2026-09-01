@@ -193,7 +193,7 @@ export function analyzeV2BuildManifest({ manifest: manifestInput, assetStats: as
   const assetStats = record(assetStatsInput, "asset_stats");
   const publicEntry = uniquePublicEntry(manifest);
   const v2Entry = resolveV2Entry(manifest, publicEntry);
-  const legacyEntry = uniqueEntry(manifest, "src/productStyles.js", "legacy");
+  const legacyEntry = uniqueEntry(manifest, "src/classicStyles.js", "legacy");
   const domainEntries = resolveDomainEntries(manifest, v2Entry);
   const aiEntry = domainEntries.ai;
   const accountEntry = domainEntries.account;
