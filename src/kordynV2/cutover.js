@@ -1,4 +1,4 @@
-export const DEFAULT_KORDYN_UI_VERSION = "v2";
+export const DEFAULT_KORDYN_UI_VERSION = "legacy";
 
 // The presentation switch is deliberately not an API-version switch. These
 // templates are the deployed mutation/download boundaries shared by the legacy

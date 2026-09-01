@@ -303,7 +303,7 @@ function App() {
   const [productStylesState, setProductStylesState] = useState("idle");
   const [productStylesAttempt, setProductStylesAttempt] = useState(0);
   const [useLegacyAfterV2Failure, setUseLegacyAfterV2Failure] = useState(false);
-  const uiVersionRef = useRef(null);
+  const uiVersionRef = useRef(resolveKordynUiVersion(import.meta.env));
   const switchLang = (l) => { setLang(l); setLangState(l); try { action("/api/system/language", { lang: l }); } catch { /* AI 语言同步失败不影响 UI 切换 */ } };
   const [active, setActive] = useState("chat");
   const [activeZeroBaseFamily, setActiveZeroBaseFamily] = useState("today");
@@ -318,9 +318,6 @@ function App() {
   const [selectedShellObject, setSelectedShellObject] = useState(null);
   const isMobileViewport = useIsMobileViewport();
   const { data, loading, action, toast, authRequired, login, registerAccount, notify, download, refresh, ensureSection, apiBase, setApiBase, connectionError, busy, isNativeApp, publicInfo } = useApi();
-  if (!authRequired && !loading && data && uiVersionRef.current === null) {
-    uiVersionRef.current = resolveKordynUiVersion(import.meta.env);
-  }
   const uiVersion = useLegacyAfterV2Failure ? "legacy" : uiVersionRef.current;
   useEffect(() => {
     if (uiVersion !== "legacy" || authRequired || loading || productStylesState === "ready") return undefined;
