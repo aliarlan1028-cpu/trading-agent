@@ -43,7 +43,7 @@ esbuild.buildSync({
       export { ConceptGraph } from "./src/conceptGraph.jsx";
       export { ProductWorkspaceFrame, ObjectInspector, WorkspaceStateBoundary, CommandRail, WorkspaceRail, ContextDock, TraceRail, buildShellContext, buildShellTrace, buildShellSearchIndex } from "./src/productShell.jsx";
       export { AiTraderCenter, TradingCenter, ResearchCenter, RiskCenter, OperationsCenter } from "./src/workspacePages.jsx";
-      export { resolveApiBase, apiUrl, automationPresentation } from "./src/lib.jsx";
+      export { resolveApiBase, apiUrl, automationPresentation, coreBootstrapTimeoutMs } from "./src/lib.jsx";
       export { setLang } from "./src/i18n.js";
       export { ChatPage, DecisionBrief, PlanCard, ToolTrace, PatrolReceipt, PosterModal, buildCurrentExecutionSnapshot, cleanPresentationText } from "./src/chat.jsx";
       export { ConfigPanel } from "./src/panels.jsx";
@@ -97,6 +97,11 @@ test("网页版 API 始终同源，不受浏览器残留后端地址影响", () 
   assert.equal(C.resolveApiBase({ native: false, stored: "https://old.example.com", configured: "https://api.example.com/" }), "https://api.example.com");
   assert.equal(C.resolveApiBase({ native: true, stored: "https://customer.example.com/", configured: "" }), "https://customer.example.com");
   assert.equal(C.resolveApiBase({ native: true, stored: "http://127.0.0.1:8787", configured: "" }), "https://yegidawir.xyz");
+});
+
+test("核心启动请求为真机弱网保留恢复时间，而网页继续快速失败", () => {
+  assert.equal(C.coreBootstrapTimeoutMs(false), 12000);
+  assert.equal(C.coreBootstrapTimeoutMs(true), 30000);
 });
 
 test("App 登录前只显示精简登录与注册入口，不渲染 Web 营销页", () => {

@@ -35,6 +35,20 @@ test("core overview remains bounded without dropping old non-terminal risk state
     toolTrace: [{ payload: "y".repeat(20000) }]
   }));
   db.analysisBundles = [{ id: "analysis-large", summary: "a".repeat(800_000), toolTrace: [{ body: "b".repeat(800_000) }] }];
+  db.portfolio.systemAccountingAnchors = Array.from({ length: 4500 }, (_, index) => ({
+    id: `accounting-anchor-${index}`,
+    observedAt: new Date(Date.UTC(2026, 0, 1, 0, 0, index % 60)).toISOString(),
+    equityUsdt: 10_000 + index,
+    source: "exchange_account_snapshot"
+  }));
+  db.portfolio.accountingHistoryBackfill = {
+    status: "reconciled_account_evidence_only",
+    evidence: Array.from({ length: 1200 }, (_, index) => ({
+      id: `history-evidence-${index}`,
+      detail: "e".repeat(400)
+    }))
+  };
+  db.portfolio.authoritative = true;
 
   const core = buildCoreOverview(db, { revision: 7 });
   const bytes = Buffer.byteLength(JSON.stringify(core));
@@ -48,6 +62,9 @@ test("core overview remains bounded without dropping old non-terminal risk state
   assert.equal("agentRuns" in core, false);
   assert.ok(core.executionOrders.length <= 11, `expected non-terminal rows plus 8 history rows, got ${core.executionOrders.length}`);
   assert.ok(bytes < 250_000, `core payload exceeded 250 KB: ${bytes}`);
+  assert.equal(core.portfolio.authoritative, true, "current portfolio truth must remain in the core response");
+  assert.equal(core.portfolio.systemAccountingAnchors, undefined, "historical accounting anchors belong outside startup core");
+  assert.equal(core.portfolio.accountingHistoryBackfill, undefined, "accounting backfill evidence belongs outside startup core");
   assert.equal(core.agentStatus.currentPlan, undefined);
   assert.ok(core.agentStatus.timeline.length <= 5);
   assert.equal(core.resourceState.cockpit, "not_loaded");

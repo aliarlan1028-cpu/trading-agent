@@ -580,6 +580,10 @@ export function isNativeApp() {
   return Boolean(window.Capacitor?.isNativePlatform?.());
 }
 
+export function coreBootstrapTimeoutMs(native = isNativeApp()) {
+  return native ? 30000 : 12000;
+}
+
 // 触觉反馈:只在原生 App 上震动(Web 无操作、失败静默)。动态引入避免影响 Web 包。
 export async function haptic(style = "light") {
   try {
@@ -943,7 +947,7 @@ export function useApi() {
       cache: "no-store",
       headers: { ...(context.token ? { Authorization: `Bearer ${context.token}`, "X-Native-App": "true" } : {}) },
       signal: context.controller.signal
-    }, 12000);
+    }, coreBootstrapTimeoutMs());
     if (response.status === 401 && isCurrentRequest(context)) {
       expireSession();
       return null;

@@ -10844,66 +10844,76 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .cfmInput,
 .cfmBtn { border-radius: 0; }
 
-/* Authenticated bootstrap and shared overlays use the immutable product-shell
-   material. Public login and marketing keep the legacy declarations above. */
+/* Authenticated bootstrap follows the restored August 15 entry language.
+   It intentionally stays independent from the later product-shell tokens so
+   a slow connection never flashes the retired paper/ink/acid treatment. */
 .authenticatedAppFrame.kordynSystem .authenticatedStateScreen {
   min-height: 100dvh;
   display: grid;
   place-items: center;
   padding: max(24px, env(safe-area-inset-top, 0px)) 24px max(24px, env(safe-area-inset-bottom, 0px));
-  background: var(--kordyn-paper);
-  color: var(--kordyn-ink);
+  background: radial-gradient(circle at 50% 42%, rgba(232, 188, 111, .24), transparent 30%), linear-gradient(145deg, var(--surface-2) 0%, var(--bg) 100%);
+  color: var(--text);
 }
 .authenticatedAppFrame.kordynSystem .authenticatedStatePanel {
-  width: min(420px, calc(100vw - 48px));
-  min-height: 88px;
-  border: 1px solid var(--kordyn-ink);
-  border-radius: 0;
-  background: var(--kordyn-paper);
-  color: var(--kordyn-ink);
-  box-shadow: 10px 10px 0 var(--kordyn-acid);
-  backdrop-filter: none;
+  width: min(440px, calc(100vw - 48px));
+  min-height: 112px;
+  border: 1px solid rgba(222, 211, 195, .88);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--surface-white) 96%, transparent);
+  color: var(--text);
+  box-shadow: 0 24px 58px rgba(93, 64, 29, .14), inset 0 1px 0 var(--surface-white);
+  backdrop-filter: blur(10px);
 }
 .authenticatedAppFrame.kordynSystem .authenticatedStartupState,
-.authenticatedAppFrame.kordynSystem [data-authenticated-state="startup"] .loading {
+.authenticatedAppFrame.kordynSystem .entryLoadingPanel {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 20px 24px;
-  font-family: var(--kordyn-sans);
+  gap: 16px;
+  padding: 24px;
+  font-family: var(--font-ui);
 }
 .authenticatedAppFrame.kordynSystem .mobileConnectPanel {
-  gap: 16px;
-  padding: 28px;
+  gap: 14px;
+  padding: 30px;
 }
-.authenticatedAppFrame.kordynSystem .mobileConnectPanel :is(h1,p,small) { color: var(--kordyn-ink); }
+.authenticatedAppFrame.kordynSystem .mobileConnectPanel h1 { color: var(--text); }
+.authenticatedAppFrame.kordynSystem .mobileConnectPanel p { color: var(--text-2); }
+.authenticatedAppFrame.kordynSystem .mobileConnectPanel small { color: var(--neg); }
 .authenticatedAppFrame.kordynSystem .mobileConnectPanel input {
-  min-height: 44px;
-  border: 1px solid var(--kordyn-ink);
-  border-radius: 0;
-  background: var(--kordyn-paper-white);
-  color: var(--kordyn-ink);
+  min-height: 50px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-white);
+  color: var(--text);
 }
 .authenticatedAppFrame.kordynSystem .mobileConnectPanel :is(.primaryButton,.secondaryButton) {
-  min-height: 44px;
-  border: 1px solid var(--kordyn-ink);
-  border-radius: 0;
-  background: var(--kordyn-paper);
-  color: var(--kordyn-ink);
+  min-height: 48px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text-2);
   box-shadow: none;
 }
-.authenticatedAppFrame.kordynSystem .mobileConnectPanel .primaryButton { background: var(--kordyn-acid); }
+.authenticatedAppFrame.kordynSystem .mobileConnectPanel .primaryButton { border-color: var(--accent); background: var(--accent); color: var(--surface-white); box-shadow: 0 10px 22px rgba(196, 91, 30, .2); }
 .authenticatedAppFrame.kordynSystem .releaseUpdateNotice {
-  border: 1px solid var(--kordyn-ink);
-  border-radius: 0;
-  background: var(--kordyn-paper);
-  color: var(--kordyn-ink);
-  box-shadow: 10px 10px 0 var(--kordyn-acid);
-  backdrop-filter: none;
+  border: 1px solid rgba(180, 122, 39, .28);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-white) 97%, var(--surface-2));
+  color: var(--text);
+  box-shadow: 0 12px 36px rgba(44, 31, 15, .18);
+  backdrop-filter: blur(12px);
 }
-.authenticatedAppFrame.kordynSystem .releaseUpdateNotice span { color: var(--kordyn-ink-2); }
-.authenticatedAppFrame.kordynSystem .releaseUpdateNotice button,
+.authenticatedAppFrame.kordynSystem .releaseUpdateNotice span { color: var(--text-2); }
+.authenticatedAppFrame.kordynSystem .releaseUpdateNotice button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--surface-white);
+  box-shadow: 0 8px 18px rgba(196, 91, 30, .22);
+}
 .authenticatedAppFrame.kordynSystem .cfmOk {
   min-height: 44px;
   border: 1px solid var(--kordyn-ink);

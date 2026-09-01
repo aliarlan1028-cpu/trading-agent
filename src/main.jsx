@@ -420,9 +420,9 @@ function App() {
       : workspaceContent;
   }, [active, activeZeroBaseFamily, activeZeroBaseView, activeSettingsTab, activeSettingsSection, activeWorkspaceTab, activeStrategyTab, activeReviewId, data, action, lang]);
   if (authRequired) return <AppFrame><LandingPage login={login} registerAccount={registerAccount} toast={toast} apiBase={apiBase} setApiBase={setApiBase} isNativeApp={isNativeApp} publicInfo={publicInfo} /></AppFrame>;
-  if (!loading && uiVersion === "legacy" && productStylesState !== "ready") return <AppFrame authenticated><div className="authenticatedEntryLoading" data-authenticated-state="styles"><div><Activity size={24}/><span><b>{productStylesState === "failed" ? t("界面资源加载失败", "Interface assets failed to load") : t("正在准备交易工作区", "Preparing the trading workspace")}</b><small>{productStylesState === "failed" ? t("网络恢复后重试，不会影响服务器中的任务。", "Retry after the network recovers. Server-side tasks are unaffected.") : t("仅在登录后加载完整工作区资源。", "Full workspace assets load only after sign-in.")}</small></span>{productStylesState === "failed" && <button type="button" onClick={() => setProductStylesAttempt((attempt) => attempt + 1)}>{t("重试", "Retry")}</button>}</div></div></AppFrame>;
+  if (!loading && uiVersion === "legacy" && productStylesState !== "ready") return <AppFrame authenticated><div className="authenticatedEntryLoading" data-authenticated-state="styles"><div><Activity size={24}/><span><b>{productStylesState === "failed" ? t("界面资源加载失败", "Interface assets failed to load") : t("正在准备交易工作区", "Preparing the trading workspace")}</b><small>{productStylesState === "failed" ? t("网络恢复后重试，不会影响服务器中的任务。", "Retry after the network recovers. Server-side tasks are unaffected.") : t("AI 交易员正在恢复你的账户、任务与监控上下文。", "The AI Trader is restoring your account, missions, and monitoring context.")}</small></span>{productStylesState === "failed" && <button type="button" onClick={() => setProductStylesAttempt((attempt) => attempt + 1)}>{t("重试", "Retry")}</button>}</div></div></AppFrame>;
   if (!loading && !data) return <AppFrame authenticated><ConnectionScreen apiBase={apiBase} setApiBase={setApiBase} refresh={refresh} toast={toast} connectionError={connectionError} isNativeApp={isNativeApp} /></AppFrame>;
-  if (loading || !data) return <AppFrame authenticated><div className="authenticatedStateScreen" data-authenticated-state="startup"><div className="authenticatedStatePanel loading"><Activity size={28} /><span>{t("正在启动 Trader Agent...", "Starting Trader Agent...")}</span></div></div></AppFrame>;
+  if (loading || !data) return <AppFrame authenticated><AuthenticatedBootState state="startup" /></AppFrame>;
 
   if (uiVersion === "v2") {
     return <AppFrame authenticated><AuthenticatedV2Boundary
@@ -468,11 +468,19 @@ function App() {
 }
 
 function AuthenticatedV2BootState() {
-  return <div className="authenticatedStateScreen" data-authenticated-state="v2-startup"><div className="authenticatedStatePanel loading"><Activity size={28} /><span>{t("正在加载 KORDYN V2...", "Loading KORDYN V2...")}</span></div></div>;
+  return <AuthenticatedBootState state="workspace-startup" />;
+}
+
+function AuthenticatedBootState({ state = "startup" }) {
+  return <div className="authenticatedStateScreen" data-authenticated-state={state}><div className="authenticatedStatePanel entryLoadingPanel"><Activity size={28} /><span><b>{t("AI 交易员正在就绪", "Your AI Trader is getting ready")}</b><small>{t("正在核对账户状态、交易边界与进行中的任务。", "Checking account truth, trading boundaries, and active missions.")}</small></span></div></div>;
 }
 
 function ConnectionScreen({ apiBase, setApiBase, refresh, toast, connectionError, isNativeApp }) {
   const [value, setValue] = useState(apiBase || "");
+  const rawFailure = connectionError || toast;
+  const failureMessage = /failed to fetch|networkerror|abort(?:ed|error)|timeout/i.test(String(rawFailure || ""))
+    ? t("连接超时或网络暂时不可用，请重试。", "The connection timed out or the network is temporarily unavailable. Please retry.")
+    : rawFailure;
   function save(event) {
     event.preventDefault();
     if (isNativeApp) {
@@ -493,7 +501,7 @@ function ConnectionScreen({ apiBase, setApiBase, refresh, toast, connectionError
         {isNativeApp && <input value={value} onChange={(event) => setValue(event.target.value)} placeholder="https://yegidawir.xyz" inputMode="url" autoFocus />}
         <button className="primaryButton" type="submit">{isNativeApp ? t("保存并连接", "Save and connect") : t("重新连接", "Reconnect")}</button>
         {isNativeApp && <button className="secondaryButton" type="button" onClick={() => refresh()}>{t("重新连接", "Reconnect")}</button>}
-        {(connectionError || toast) && <small>{connectionError || toast}</small>}
+        {failureMessage && <small>{failureMessage}</small>}
       </form>
     </div>
   );

@@ -136,6 +136,20 @@ function compactCoreAgentStatus(status = {}) {
   };
 }
 
+function compactCorePortfolio(portfolio = {}) {
+  if (!portfolio || typeof portfolio !== "object") return portfolio;
+  const {
+    // These collections are audit/reconciliation history. They can contain
+    // thousands of rows in production and are not required to render account
+    // truth during startup. They remain server-side; recovery and accounting
+    // surfaces receive only their bounded, derived status summaries.
+    systemAccountingAnchors: _systemAccountingAnchors,
+    accountingHistoryBackfill: _accountingHistoryBackfill,
+    ...currentPortfolio
+  } = portfolio;
+  return currentPortfolio;
+}
+
 export function buildCoreOverview(db, options = {}) {
   const positions = normalizePositionsForUi(db.positions || []);
   const activePlans = nonTerminalAndRecent(db.tradePlans, isTerminalTradePlan, 6).map(compactPlan);
@@ -164,7 +178,7 @@ export function buildCoreOverview(db, options = {}) {
     systemRelease: options.systemRelease || "dev",
     automationState: options.automationState || null,
     agentStatus: compactCoreAgentStatus(getAgentStatus(db)),
-    portfolio: db.portfolio,
+    portfolio: compactCorePortfolio(db.portfolio),
     performance: performanceReport(db),
     mandates: activeMandate(db) ? [activeMandate(db)] : [],
     positions,

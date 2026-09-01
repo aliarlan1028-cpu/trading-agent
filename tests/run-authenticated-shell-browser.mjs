@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { spawn } from "node:child_process";
 import os from "node:os";
@@ -8,6 +8,7 @@ import WebSocket from "ws";
 
 let appUrl = process.env.KORDYN_APP_URL ? new URL(process.env.KORDYN_APP_URL) : null;
 const chromeBinary = process.env.CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const entryOutputDir = process.env.KORDYN_AUTH_ENTRY_OUTPUT_DIR ? path.resolve(process.env.KORDYN_AUTH_ENTRY_OUTPUT_DIR) : null;
 const managedServices = [];
 let managedServiceRoot = null;
 
@@ -160,6 +161,18 @@ async function waitForExpression(cdp, expression, label) {
   }
 }
 
+async function waitForSignal(signal, label, timeoutMs = 20_000) {
+  let timeoutId;
+  try {
+    return await Promise.race([
+      signal,
+      new Promise((_, reject) => { timeoutId = setTimeout(() => reject(new Error(`Timed out waiting for ${label}`)), timeoutMs); })
+    ]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function setViewport(cdp, width, height) {
   await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: width <= 900 });
   await cdp.send("Page.navigate", { url: appUrl.href });
@@ -245,6 +258,13 @@ async function readSurfaceContract(cdp, surfaceSelector, actionSelector = null) 
   })()`);
 }
 
+async function captureEntryState(cdp, name) {
+  if (!entryOutputDir) return;
+  await mkdir(entryOutputDir, { recursive: true });
+  const shot = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false, fromSurface: true });
+  await writeFile(path.join(entryOutputDir, `${name}.png`), Buffer.from(shot.data, "base64"));
+}
+
 function collectAuthenticatedSurfaceViolations(violations, label, surface, { shadowColor = "rgb(204, 255, 61)", requireAction = true } = {}) {
   const expect = (condition, detail) => { if (!condition) violations.push(`${label}: ${detail}`); };
   expect(Boolean(surface), "surface missing");
@@ -265,16 +285,25 @@ function collectAuthenticatedSurfaceViolations(violations, label, surface, { sha
   expect(Number.parseFloat(surface.action.minHeight) >= 44, `44px touch target expected, got ${surface.action.minHeight}`);
 }
 
-function collectZeroBaseBootSurfaceViolations(violations, label, surface) {
+function collectAugust15EntrySurfaceViolations(violations, label, surface, { release = false, requireAction = false } = {}) {
   const expect = (condition, detail) => { if (!condition) violations.push(`${label}: ${detail}`); };
   expect(Boolean(surface), "surface missing");
   if (!surface) return;
-  expect(surface.backgroundColor === "rgb(23, 26, 23)", `Ink boot background expected, got ${surface.backgroundColor}`);
-  expect(surface.color === "rgb(244, 241, 233)", `Paper boot foreground expected, got ${surface.color}`);
-  expect(surface.borderTopWidth === "1px" && surface.borderTopStyle === "solid" && surface.borderTopColor === "rgb(75, 85, 75)", `1px bounded boot border expected, got ${surface.borderTopWidth} ${surface.borderTopStyle} ${surface.borderTopColor}`);
-  expect(surface.borderRadius === "18px", `18px zero-base boot radius expected, got ${surface.borderRadius}`);
-  expect(surface.backdropFilter === "none", `no boot blur expected, got ${surface.backdropFilter}`);
-  expect(surface.boxShadow === "none", `no boot soft shadow expected, got ${surface.boxShadow}`);
+  const warmBackground = release
+    ? surface.backgroundColor.startsWith("rgba(255, 252, 246")
+    : surface.backgroundColor.startsWith("rgba(255, 253, 249") || surface.backgroundColor === "rgb(255, 253, 249)";
+  expect(warmBackground, `warm ivory background expected, got ${surface.backgroundColor}`);
+  expect(["rgb(38, 33, 26)", "rgb(30, 27, 22)", "rgb(23, 21, 18)"].includes(surface.color), `warm ink foreground expected, got ${surface.color}`);
+  expect(surface.borderTopWidth === "1px" && surface.borderTopStyle === "solid", `one-pixel warm border expected, got ${surface.borderTopWidth} ${surface.borderTopStyle}`);
+  expect(release ? surface.borderRadius === "14px" : ["20px", "28px"].includes(surface.borderRadius), `${release ? "14" : "20/28"}px August 15 radius expected, got ${surface.borderRadius}`);
+  expect(surface.backdropFilter.includes("blur"), `soft August 15 depth expected, got ${surface.backdropFilter}`);
+  expect(surface.boxShadow !== "none" && !surface.boxShadow.includes("10px 10px 0px"), `soft shadow expected instead of hard offset, got ${surface.boxShadow}`);
+  if (!requireAction) return;
+  expect(Boolean(surface.action), "primary action missing");
+  if (!surface.action) return;
+  expect(["rgb(231, 120, 47)", "rgb(208, 106, 34)"].includes(surface.action.backgroundColor), `orange primary action expected, got ${surface.action.backgroundColor}`);
+  expect(surface.action.color === "rgb(255, 255, 255)", `white primary action label expected, got ${surface.action.color}`);
+  expect(Number.parseFloat(surface.action.minHeight) >= 44, `44px touch target expected, got ${surface.action.minHeight}`);
 }
 
 if (!appUrl) appUrl = await startIsolatedProductionShell();
@@ -304,8 +333,10 @@ try {
   cdp = connectCdp(targets.find((row) => row.type === "page").webSocketDebuggerUrl);
   await Promise.all([cdp.send("Runtime.enable"), cdp.send("Page.enable")]);
 
+  entryLifecycleValidation: {
   const bootstrapProof = [];
   for (const [width, height] of [[1440, 900], [1180, 820], [390, 844], [430, 932]]) {
+    process.stdout.write(`authenticated shell browser: probing ${width}x${height} startup\n`);
     await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: width <= 900 });
     let resolveCoreRequest;
     let failCoreRequests = false;
@@ -323,22 +354,30 @@ try {
     const startupProbeUrl = new URL(appUrl);
     startupProbeUrl.searchParams.set("authenticated_state_probe", `${width}-${height}-${Date.now()}`);
     await cdp.send("Page.navigate", { url: startupProbeUrl.href });
-    await coreRequestPaused;
+    await waitForSignal(coreRequestPaused, `${width}x${height} startup core request`);
     const startupSelector = ".authenticatedAppFrame.kordynSystem [data-authenticated-state='startup'] .authenticatedStatePanel";
     await waitForExpression(cdp, `document.querySelector(${JSON.stringify(startupSelector)})`, `${width}x${height} authenticated startup loading state`);
     const startupFont = await evaluate(cdp, `getComputedStyle(document.querySelector(${JSON.stringify(startupSelector)})).fontFamily`);
     assertFontStack(startupFont, "Public Sans, Noto Sans SC, PingFang SC, Microsoft YaHei, sans-serif", `${width}x${height} zero-base authenticated startup font stack`);
-    collectZeroBaseBootSurfaceViolations(visualViolations, `${width}x${height} authenticated startup loading`, await readSurfaceContract(cdp, startupSelector));
+    collectAugust15EntrySurfaceViolations(visualViolations, `${width}x${height} authenticated startup loading`, await readSurfaceContract(cdp, startupSelector));
+    await captureEntryState(cdp, `startup-${width}x${height}`);
     failCoreRequests = true;
     await Promise.all([...pausedCoreRequests].map((requestId) => cdp.send("Fetch.failRequest", { requestId, errorReason: "Failed" }).catch(() => {})));
     const connectionSelector = ".authenticatedAppFrame.kordynSystem .mobileConnectPanel";
     await waitForExpression(cdp, `document.querySelector(${JSON.stringify(connectionSelector)})`, `${width}x${height} authenticated connection failure state`);
     const connectionFont = await evaluate(cdp, `getComputedStyle(document.querySelector(${JSON.stringify(connectionSelector)})).fontFamily`);
-    assertFontStack(connectionFont, "Inter, Helvetica Neue, Arial, sans-serif", `${width}x${height} zero-base authenticated connection failure product font stack`);
-    collectAuthenticatedSurfaceViolations(visualViolations, `${width}x${height} authenticated connection failure`, await readSurfaceContract(cdp, connectionSelector, `${connectionSelector} .primaryButton`));
+    assertFontStack(connectionFont, "Space Grotesk, Public Sans, Noto Sans SC, PingFang SC, Microsoft YaHei, sans-serif", `${width}x${height} August 15 authenticated connection failure product font stack`);
+    collectAugust15EntrySurfaceViolations(visualViolations, `${width}x${height} authenticated connection failure`, await readSurfaceContract(cdp, connectionSelector, `${connectionSelector} .primaryButton`), { requireAction: true });
+    await captureEntryState(cdp, `connection-failed-${width}x${height}`);
     stopListeningForCore();
     await cdp.send("Fetch.disable");
     bootstrapProof.push(`${width}x${height}:startup→connection-failed`);
+  }
+
+  if (process.env.KORDYN_AUTH_ENTRY_ONLY === "true") {
+    if (visualViolations.length) throw new Error(`August 15 entry visual contract has ${visualViolations.length} violation(s):\n${visualViolations.join("\n")}`);
+    process.stdout.write(`authenticated entry browser contract PASS bootstrap=[${bootstrapProof.join(", ")}] output=${entryOutputDir || "disabled"}\n`);
+    break entryLifecycleValidation;
   }
 
   await setViewport(cdp, 1440, 900);
@@ -389,20 +428,20 @@ try {
   await waitForExpression(cdp, "document.querySelector('.authenticatedAppFrame.kordynSystem .releaseUpdateNotice')", "production release mismatch notice");
   const releaseFont = await evaluate(cdp, "getComputedStyle(document.querySelector('.authenticatedAppFrame.kordynSystem .releaseUpdateNotice')).fontFamily");
   assertFontStack(releaseFont, "Inter, Helvetica Neue, Arial, sans-serif", "ReleaseUpdateNotice zero-base product sans stack");
-  collectAuthenticatedSurfaceViolations(visualViolations, "authenticated ReleaseUpdateNotice", await readSurfaceContract(cdp, ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice", ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice button"));
+  collectAugust15EntrySurfaceViolations(visualViolations, "authenticated ReleaseUpdateNotice", await readSurfaceContract(cdp, ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice", ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice button"), { release: true, requireAction: true });
 
   const viewportProof = ["1440x900:desktop"];
   await setViewport(cdp, 1180, 820);
   await evaluate(cdp, "window.dispatchEvent(new Event('focus'))");
   await waitForExpression(cdp, "document.querySelector('.authenticatedAppFrame.kordynSystem .releaseUpdateNotice')", "1180px production release mismatch notice");
-  collectAuthenticatedSurfaceViolations(visualViolations, "1180x820 authenticated ReleaseUpdateNotice", await readSurfaceContract(cdp, ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice", ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice button"));
+  collectAugust15EntrySurfaceViolations(visualViolations, "1180x820 authenticated ReleaseUpdateNotice", await readSurfaceContract(cdp, ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice", ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice button"), { release: true, requireAction: true });
   viewportProof.push("1180x820:desktop");
 
   for (const [width, height] of [[390, 844], [430, 932]]) {
     await setViewport(cdp, width, height);
     await evaluate(cdp, "window.dispatchEvent(new Event('focus'))");
     await waitForExpression(cdp, "document.querySelector('.authenticatedAppFrame.kordynSystem .releaseUpdateNotice')", `${width}px production release mismatch notice`);
-    collectAuthenticatedSurfaceViolations(visualViolations, `${width}x${height} authenticated ReleaseUpdateNotice`, await readSurfaceContract(cdp, ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice", ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice button"));
+    collectAugust15EntrySurfaceViolations(visualViolations, `${width}x${height} authenticated ReleaseUpdateNotice`, await readSurfaceContract(cdp, ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice", ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice button"), { release: true, requireAction: true });
     process.stdout.write(`authenticated shell browser: ${width}x${height} mounted\n`);
     const geometry = await evaluate(cdp, `(() => {
       const tools = document.querySelector('.mShellTools');
@@ -514,9 +553,9 @@ try {
   assert.equal(await evaluate(cdp, "document.querySelector('.publicAppFrame').classList.contains('kordynSystem')"), false, "login and marketing inheritance must not be opted into the authenticated Kordyn scope");
   assert.match(await evaluate(cdp, "getComputedStyle(document.querySelector('.publicAppFrame .releaseUpdateNotice')).fontFamily"), /Public Sans/, "public overlay uses the zero-base public font inheritance");
   assert.deepEqual(await readSurfaceContract(cdp, ".publicAppFrame .releaseUpdateNotice", ".publicAppFrame .releaseUpdateNotice button"), {
-    backgroundColor: "rgb(244, 241, 233)", color: "rgb(17, 19, 17)", borderTopWidth: "1px", borderTopStyle: "solid", borderTopColor: "rgb(17, 19, 17)", borderRadius: "16px", boxShadow: "rgb(79, 183, 139) 7px 7px 0px 0px", backdropFilter: "none", minHeight: "0px",
-    action: { backgroundColor: "rgb(204, 255, 61)", color: "rgb(17, 19, 17)", borderTopWidth: "1px", borderTopStyle: "solid", borderTopColor: "rgb(17, 19, 17)", borderRadius: "11px", minHeight: "44px" }
-  }, "public login and marketing release notice must use the zero-base public visual contract");
+    backgroundColor: "rgb(255, 253, 249)", color: "rgb(38, 33, 26)", borderTopWidth: "1px", borderTopStyle: "solid", borderTopColor: "rgba(180, 122, 39, 0.28)", borderRadius: "14px", boxShadow: "rgba(44, 31, 15, 0.18) 0px 12px 36px 0px", backdropFilter: "blur(12px)", minHeight: "0px",
+    action: { backgroundColor: "rgb(231, 120, 47)", color: "rgb(255, 255, 255)", borderTopWidth: "0px", borderTopStyle: "none", borderTopColor: "rgb(255, 255, 255)", borderRadius: "10px", minHeight: "44px" }
+  }, "public login and marketing release notice must use the August 15 warm visual contract");
   stopListeningForPublicCore();
   await cdp.send("Fetch.disable");
 
@@ -524,7 +563,8 @@ try {
     process.stderr.write(`authenticated shell visual contract RED ${visualViolations.length} violation(s)\n${visualViolations.map((item) => `- ${item}`).join("\n")}\n`);
   }
   assert.equal(visualViolations.length, 0, `authenticated shell visual contract has ${visualViolations.length} violation(s)`);
-  process.stdout.write(`authenticated shell browser contract PASS ${appUrl.href} bootstrap=[${bootstrapProof.join(", ")}] viewports=[${viewportProof.join(', ')}] release=production-mismatch confirm=desktop+MobileApp public=zero-base\n`);
+  process.stdout.write(`authenticated shell browser contract PASS ${appUrl.href} bootstrap=[${bootstrapProof.join(", ")}] viewports=[${viewportProof.join(', ')}] release=production-mismatch confirm=desktop+MobileApp public=august15-warm\n`);
+  }
 } finally {
   cdp?.close();
   await stopProcess(chrome);
