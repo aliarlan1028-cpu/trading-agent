@@ -27,9 +27,11 @@ test("authenticated product styles remain one explicit lazy boundary", () => {
   assert.doesNotMatch(productionMobileHarness, /import "\.\.\/src\/(?:styles|product-foundation)\.css"/);
 });
 
-test("entry CSS owns only boot, public frame, and zero-base authentication", () => {
+test("entry CSS owns boot and public frame while August 15 auth stays route-scoped", () => {
   const entry = readFileSync(new URL("../src/entry.css", import.meta.url), "utf8");
-  assert.match(entry, /zero-base-auth\.css/);
+  const landing = readFileSync(new URL("../src/landing.jsx", import.meta.url), "utf8");
+  assert.doesNotMatch(entry, /zero-base-auth\.css/);
+  assert.match(landing, /import "\.\/aug15-auth\.css"/);
   assert.match(entry, /\.authenticatedEntryLoading/);
   assert.match(entry, /\.lpRoot/);
   assert.doesNotMatch(entry, /\.zbShell|\.strategyWorkbench|\.mEventRiskRegistry/);

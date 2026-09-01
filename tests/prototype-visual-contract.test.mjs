@@ -1155,22 +1155,22 @@ test("ordinary and destructive modal shells use the prototype hard-edge offsets"
   assert.match(styles, /background:\s*rgba\(17,\s*21,\s*17,\s*\.78\)/);
 });
 
-test("authentication is deliberately rebuilt while marketing keeps content and adopts the approved palette", () => {
-  const base = execFileSync("git", ["show", "94d79ea07a2a20ac568ec8380baa1b439081b018:src/landing.jsx"], { cwd: rootDir, encoding: "utf8" });
+test("authentication and marketing restore the August 15 visual baseline without losing current auth behavior", () => {
+  const base = execFileSync("git", ["show", "7c8978427865a9d500a072780af0ec68cf6a9537:src/landing.jsx"], { cwd: rootDir, encoding: "utf8" });
   const current = fs.readFileSync(path.join(rootDir, "src/landing.jsx"), "utf8");
-  assert.notEqual(current, base);
-  for (const contract of ["AuthSystemMap", "nativeAuthPortal", "nativeAuthStory", "nativeAuthNetwork", "nativeAuthCard"]) {
+  for (const contract of ["AuthMarketMotion", "nativeAuthMotion", "nativeAuthMotionTile", "nativeAuthAgentOrb", "nativeAuthCard"]) {
     assert.match(current, new RegExp(contract));
   }
-  for (const preservedCapability of ["submitLogin", "submitRegister", "TurnstileWidget", "showTotp", "nativeServerSettings"]) {
+  for (const preservedCapability of ["submitLogin", "submitRegister", "TurnstileWidget", "showTotp", "nativeServerSettings", "mfaRequired", "useDialogFocus", "connectionSecurityStatus"]) {
     assert.match(current, new RegExp(preservedCapability));
   }
-  assert.doesNotMatch(current, /AuthMarketMotion|nativeAuthMotionTile/);
+  assert.match(base, /AuthMarketMotion|nativeAuthMotionTile/);
+  assert.doesNotMatch(current, /AuthSystemMap|nativeAuthNetwork/);
   const marketing = fs.readFileSync(path.join(rootDir, "public/landing.html"), "utf8");
-  const marketingCss = fs.readFileSync(path.join(rootDir, "public/landing.css"), "utf8");
-  assert.equal([...marketing.matchAll(/data-i18n(?:-html)?=/g)].length, 413);
+  const authCss = fs.readFileSync(path.join(rootDir, "src/aug15-auth.css"), "utf8");
+  assert.equal([...marketing.matchAll(/data-i18n(?:-html)?=/g)].length, 107);
   for (const action of ["login", "subscribe", "contact", "lang"]) assert.match(marketing, new RegExp(`data-action=["']${action}["']`));
-  assert.match(marketingCss, /--paper:\s*#F4F1E9/i);
-  assert.match(marketingCss, /--acid:\s*#CCFF3D/i);
-  assert.doesNotMatch(marketing, /fonts\.(?:googleapis|gstatic)\.com/);
+  assert.match(marketing, /#ff7a2f/i);
+  assert.match(marketing, /#0c0a08/i);
+  assert.match(authCss, /@keyframes nativeAuthOrb/);
 });

@@ -4,7 +4,7 @@ import test from "node:test";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 
-test("legacy cutover loads the August 17 classic visual bundle without later shell CSS", () => {
+test("legacy cutover loads the August 15 classic visual bundle without later shell CSS", () => {
   const main = read("../src/main.jsx");
   const styles = read("../src/classicStyles.js");
 
@@ -15,6 +15,7 @@ test("legacy cutover loads the August 17 classic visual bundle without later she
   assert.match(styles, /import "\.\/workspace-additions\.css"/);
   assert.match(styles, /import "\.\/conceptPages\.css"/);
   assert.match(styles, /import "\.\/conceptSettings\.css"/);
+  assert.match(styles, /CLASSIC_VISUAL_SOURCE = "7c8978427865a9d500a072780af0ec68cf6a9537"/);
   assert.doesNotMatch(styles, /product-system|zero-base|kordynV2/);
 });
 

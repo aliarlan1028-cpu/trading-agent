@@ -1,8 +1,7 @@
 /*
- * Presentation bridge for the authenticated shell captured immediately after
- * the OpenRouter completion-budget fix (be729ac). It supplies aliases needed
- * by capabilities added later, without importing the later product/zero-base
- * visual systems.
+ * Presentation bridge for the August 15 authenticated visual baseline
+ * (7c897842). It supplies aliases needed by capabilities added later, without
+ * importing the later product/zero-base visual systems.
  */
 :root {
   --kordyn-display: var(--font-ui);

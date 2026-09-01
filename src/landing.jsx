@@ -1,27 +1,44 @@
-import { useEffect, useRef, useState } from "react";
-import { BookOpen, Bot, Eye, EyeOff, Layers3, ShieldCheck, WalletCards, Wrench } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { TurnstileWidget } from "./lib.jsx";
 import { t } from "./i18n.js";
 import { connectionSecurityStatus } from "./connectionSecurity.js";
 import { useDialogFocus } from "./useDialogFocus.js";
+import "./aug15-auth.css";
 
-function AuthSystemMap() {
-  const nodes = [
-    { id: "account", label: t("账户事实", "Account truth"), icon: WalletCards },
-    { id: "strategy", label: t("策略", "Strategy"), icon: Layers3 },
-    { id: "knowledge", label: t("知识", "Knowledge"), icon: BookOpen },
-    { id: "capability", label: t("能力", "Capability"), icon: Wrench },
-    { id: "guard", label: t("风险边界", "Risk boundaries"), icon: ShieldCheck }
+function AuthMarketMotion() {
+  const tiles = [
+    { key: "btc", label: "BTC", value: "+2.8%", tone: "amber", path: "M3 38 C14 35 18 18 28 23 S43 34 50 20 S63 8 77 13" },
+    { key: "signal", label: t("信号", "SIGNAL"), value: t("偏多", "LONG"), tone: "sky", path: "M3 34 C14 30 18 35 27 26 S43 13 51 18 S64 12 77 6" },
+    { key: "agent", label: "KORDYN", value: "AI AGENT", tone: "agent" },
+    { key: "risk", label: t("风险", "RISK"), value: "0.7%", tone: "sage", path: "M3 17 C14 19 19 31 29 27 S44 14 52 20 S65 28 77 22" },
+    { key: "eth", label: "ETH", value: "+1.6%", tone: "violet", path: "M3 39 C13 34 20 37 28 28 S43 25 52 16 S66 20 77 9" }
   ];
-  return <aside className="nativeAuthStory">
-    <header className="nativeAuthBrand"><img src="/kordyn-logo.svg" alt="KORDYN"/><div><strong>KORDYN</strong><span>WEB3 AI TRADING SYSTEM</span></div></header>
-    <div className="nativeAuthStoryCopy"><small>PRIVATE OPERATING NETWORK</small><h1>{t("让 AI 交易员在你的事实与边界内工作。", "Put the AI trader to work inside your facts and boundaries.")}</h1><p>{t("账户、策略、知识和能力共同进入决策上下文；风险边界保留最终控制权。", "Account truth, strategy, knowledge, and capability form the decision context. Risk boundaries retain final control.")}</p></div>
-    <div className="nativeAuthNetwork" aria-label={t("KORDYN 系统关系", "KORDYN system relationships")}>
-      <div className="nativeAuthNetworkCore"><Bot/><small>PRIMARY</small><b>{t("AI 交易员", "AI Trader")}</b></div>
-      {nodes.map(({ id, label, icon: Icon }) => <div className={`nativeAuthNetworkNode nativeAuthNetworkNode--${id}`} key={id}><Icon/><span>{label}</span></div>)}
+
+  return (
+    <div className="nativeAuthMotion" aria-hidden="true">
+      <div className="nativeAuthMotionGlow" />
+      <div className="nativeAuthMotionRail">
+        {tiles.map((tile) => (
+          <div className={`nativeAuthMotionTile nativeAuthMotionTile--${tile.tone}`} key={tile.key}>
+            {tile.tone === "agent" ? (
+              <>
+                <div className="nativeAuthAgentOrb"><span /><img src="/kordyn-logo.svg" alt="" /></div>
+                <strong>{tile.label}</strong>
+                <small>{tile.value}</small>
+              </>
+            ) : (
+              <>
+                <span className="nativeAuthMotionLabel">{tile.label}</span>
+                <svg viewBox="0 0 80 46" preserveAspectRatio="none"><path d={tile.path} /></svg>
+                <strong>{tile.value}</strong>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
-    <footer><ShieldCheck/><span>{t("真实数据 · 明确授权 · 可追踪动作", "Real data · explicit authority · traceable actions")}</span></footer>
-  </aside>;
+  );
 }
 
 export function NativeAuthPage({ login, registerAccount, toast, apiBase, setApiBase, publicInfo }) {
@@ -54,11 +71,14 @@ export function NativeAuthPage({ login, registerAccount, toast, apiBase, setApiB
 
   return (
     <main className={`nativeAuthScreen nativeAuthScreen--${mode}`}>
-      <section className="nativeAuthPortal">
-        <AuthSystemMap />
-        <section className="nativeAuthCard" aria-label={t("登录或注册 KORDYN", "Sign in or sign up for KORDYN")}>
-        <header className="nativeAuthCardHead"><span><small>SECURE ACCESS</small><b>{t("进入你的私有系统", "Enter your private system")}</b></span><i className={transport.secure ? "secure" : "insecure"}>{transport.secure ? "HTTPS" : "HTTP"}</i></header>
-        <nav className="nativeAuthModeTabs" aria-label={t("登录或注册", "Log in or sign up")}><button type="button" className={mode === "login" ? "on" : ""} aria-current={mode === "login" ? "page" : undefined} onClick={() => setMode("login")}>{t("登录", "Log in")}</button><button type="button" className={mode === "subscribe" ? "on" : ""} aria-current={mode === "subscribe" ? "page" : undefined} onClick={() => setMode("subscribe")}>{t("注册", "Sign up")}</button></nav>
+      <div className="nativeAuthAmbient nativeAuthAmbient--one" aria-hidden="true" />
+      <div className="nativeAuthAmbient nativeAuthAmbient--two" aria-hidden="true" />
+      <section className="nativeAuthCard" aria-label={t("登录或注册 KORDYN", "Sign in or sign up for KORDYN")}>
+        <div className="nativeAuthProgress" aria-hidden="true"><i /><i /><i /></div>
+        <header className="nativeAuthBrand">
+          <img src="/kordyn-logo.svg" alt="KORDYN" />
+          <div><strong>KORDYN</strong><span>{t("有边界的自主交易智能体", "Autonomy, within your limits")}</span></div>
+        </header>
 
         {mode === "login" ? (
           <form className="nativeAuthForm" onSubmit={submitLogin}>
@@ -68,6 +88,8 @@ export function NativeAuthPage({ login, registerAccount, toast, apiBase, setApiB
             {showTotp && <label className="nativeAuthTotp"><span>{t("动态验证码", "Authenticator code")}</span><input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={loginForm.totp} onChange={(event) => setLoginForm({ ...loginForm, totp: event.target.value.replace(/\D/g, "").slice(0, 6) })} placeholder={t("输入 6 位验证码", "Enter the 6-digit code")} /></label>}
             <div className="nativeAuthFormTools"><span><ShieldCheck size={14} />{transport.secure ? t("HTTPS 加密会话", "HTTPS encrypted session") : t("不安全连接", "Insecure connection")}</span><button type="button" onClick={() => setShowTotp((current) => !current)}>{showTotp ? t("收起 2FA", "Hide 2FA") : t("使用 2FA", "Use 2FA")}</button></div>
             <button className="nativeAuthPrimary" type="submit"><span>{t("登录", "Log in")}</span><b aria-hidden="true">→</b></button>
+            <AuthMarketMotion />
+            <p className="nativeAuthSwitch">{t("第一次使用 KORDYN？", "New to KORDYN?")} <button type="button" onClick={() => setMode("subscribe")}>{t("注册", "Sign up")}</button></p>
           </form>
         ) : (
           <form className="nativeAuthForm nativeAuthForm--subscribe" onSubmit={submitRegister}>
@@ -93,6 +115,7 @@ export function NativeAuthPage({ login, registerAccount, toast, apiBase, setApiB
             <button className="nativeAuthPrimary" type="submit" disabled={!publicInfo?.registrationEnabled || (publicInfo?.captchaRequired && !registerForm.turnstileToken)}><span>{t("提交注册申请", "Submit sign-up request")}</span><b aria-hidden="true">→</b></button>
             {!publicInfo?.registrationEnabled && <p className="nativeAuthNotice">{t("当前未开放线上申请，请联系管理员。", "Online requests are currently closed. Contact the administrator.")}</p>}
             {application && <div className="nativeAuthSuccess"><strong>{t("申请已提交", "Request submitted")}</strong><span>{application.id}</span><small>{t("请查收邮件或等待审核。", "Check your email or wait for review.")}</small></div>}
+            <p className="nativeAuthSwitch">{t("已经有账号？", "Already have access?")} <button type="button" onClick={() => setMode("login")}>{t("登录", "Log in")}</button></p>
           </form>
         )}
 
@@ -101,7 +124,6 @@ export function NativeAuthPage({ login, registerAccount, toast, apiBase, setApiB
           <label><span>{t("后端地址", "Server URL")}</span><input inputMode="url" value={serverUrl} onChange={(event) => setServerUrl(event.target.value)} onBlur={() => setApiBase(serverUrl)} placeholder="https://yegidawir.xyz" /></label>
         </details>
         {toast && <p className="nativeAuthToast" role="status">{toast}</p>}
-        </section>
       </section>
     </main>
   );
