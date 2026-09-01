@@ -543,6 +543,32 @@ async function captureApprovedSurfaces(cdp, baseUrl) {
       await navigateWorkspace(cdp, viewport, "intelligence", "signals-registry-inspector");
       await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-selected-context=\"signal-cpi-flow\"]')", `${viewport.width}: Signals visual facts`);
       await assertNoOverflow(cdp, viewport, `${viewport.width} Signals visual`);
+      const inspectorReadingOrder = await evaluate(cdp, `(() => {
+        const inspector = document.querySelector('.kordynV2AiContextInspector');
+        const description = inspector?.querySelector(':scope > section p');
+        const actions = inspector?.querySelector(':scope > footer');
+        const section = inspector?.querySelector(':scope > section');
+        if (!inspector || !description || !actions || !section) return null;
+        const inspectorRect = inspector.getBoundingClientRect();
+        const descriptionRect = description.getBoundingClientRect();
+        const sectionRect = section.getBoundingClientRect();
+        const actionsRect = actions.getBoundingClientRect();
+        const factRects = [...inspector.querySelectorAll(':scope > dl > div')].map((node) => {
+          const rect = node.getBoundingClientRect();
+          return { top:rect.top, bottom:rect.bottom, height:rect.height };
+        });
+        return {
+          inspector:{ top:inspectorRect.top, bottom:inspectorRect.bottom },
+          section:{ top:sectionRect.top, bottom:sectionRect.bottom },
+          description:{ top:descriptionRect.top, bottom:descriptionRect.bottom },
+          actions:{ top:actionsRect.top, bottom:actionsRect.bottom },
+          facts:factRects,
+          sectionOverflowY:getComputedStyle(section).overflowY
+        };
+      })()`);
+      assert.ok(inspectorReadingOrder, `${viewport.width}: Signals inspector reading-order geometry exists`);
+      assert.ok(inspectorReadingOrder.description.bottom <= inspectorReadingOrder.actions.top - 4, `${viewport.width}: Signals evidence copy never intersects inspector actions ${JSON.stringify(inspectorReadingOrder)}`);
+      assert.ok(inspectorReadingOrder.actions.bottom <= inspectorReadingOrder.inspector.bottom + 1, `${viewport.width}: Signals actions remain contained by the inspector ${JSON.stringify(inspectorReadingOrder)}`);
       evidence.push(await captureVisual(cdp, viewport, `desktop-ai-signals--${viewport.width}x${viewport.height}.png`));
     } else {
       await click(cdp, 'button[data-kordyn-v2-object-id="run-sol-approval"][data-kordyn-v2-object-type="Agent run"]');

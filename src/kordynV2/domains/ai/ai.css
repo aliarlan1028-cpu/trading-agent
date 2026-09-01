@@ -2619,6 +2619,51 @@
   gap: 8px;
 }
 
+/* The Signals workbench shares its vertical field with decision and operation
+   rails. Keep the inspector dense enough that evidence remains in reading order
+   above its actions instead of overflowing a collapsed grid track. */
+.kordynV2AiSignalWorkbench .kordynV2AiContextInspector {
+  padding: 10px;
+  gap: 6px;
+}
+
+.kordynV2AiSignalWorkbench .kordynV2AiContextInspector > header {
+  min-height: 48px;
+}
+
+.kordynV2AiSignalWorkbench .kordynV2AiContextInspector dl {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.kordynV2AiSignalWorkbench .kordynV2AiContextInspector dl > div {
+  min-height: 38px;
+  padding: 2px 8px;
+  gap: 2px;
+  border-right: 1px solid rgba(135, 160, 194, 0.1);
+}
+
+.kordynV2AiSignalWorkbench .kordynV2AiContextInspector dl > div:nth-child(3n) {
+  border-right: 0;
+}
+
+.kordynV2AiSignalWorkbench .kordynV2AiContextInspector dl > div:nth-last-child(-n + 3) {
+  border-bottom: 0;
+}
+
+.kordynV2AiSignalWorkbench .kordynV2AiContextInspector > section {
+  padding: 7px 8px;
+}
+
+.kordynV2AiSignalWorkbench .kordynV2AiContextInspector > section p {
+  margin-top: 4px;
+  line-height: 1.35;
+}
+
+.kordynV2AiSignalWorkbench .kordynV2AiContextInspector > footer button {
+  min-height: 34px;
+  padding: 0 8px;
+}
+
 .kordynV2AiContextInspector > footer button,
 .kordynV2AiEventsToolbar button {
   min-height: 40px;
