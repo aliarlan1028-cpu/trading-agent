@@ -379,7 +379,8 @@ test("Root lazy-loads account UI and account CSS stays owned by that dynamic dom
     logLevel: "silent"
   });
   const outputs = Object.values(result.metafile.outputs);
-  const dynamicImports = outputs.flatMap((output) => output.imports || []).filter((item) => item.kind === "dynamic-import");
+  const rootEntryOutput = outputs.find((output) => output.entryPoint?.endsWith("src/kordynV2/KordynV2Root.jsx"));
+  const rootDomainImports = (rootEntryOutput?.imports || []).filter((item) => item.kind === "dynamic-import");
   const accountEntryOutput = outputs.find((output) => Object.hasOwn(output.inputs || {}, "src/kordynV2/domains/account/index.jsx"));
   const assetsEntryOutput = outputs.find((output) => Object.hasOwn(output.inputs || {}, "src/kordynV2/domains/assets/index.jsx"));
   const governanceEntryOutput = outputs.find((output) => Object.hasOwn(output.inputs || {}, "src/kordynV2/domains/governance/index.jsx"));
@@ -390,7 +391,8 @@ test("Root lazy-loads account UI and account CSS stays owned by that dynamic dom
     "src/kordynV2/styles/mobile-shell.css"
   ].map((file) => fs.readFileSync(path.join(rootDir, file), "utf8"));
 
-  assert.equal(dynamicImports.length, 4);
+  assert.ok(rootEntryOutput, "expected a KordynV2Root entry output");
+  assert.equal(rootDomainImports.length, 4, "Root owns exactly the four product-domain lazy boundaries");
   assert.ok(accountEntryOutput, "expected a distinct lazy account entry output");
   assert.ok(assetsEntryOutput, "expected a distinct lazy intelligent-assets entry output");
   assert.ok(governanceEntryOutput, "expected a distinct lazy governance entry output");

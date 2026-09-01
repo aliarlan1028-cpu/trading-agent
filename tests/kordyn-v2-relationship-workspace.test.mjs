@@ -129,7 +129,8 @@ test("an empty relationship model explains no result without inventing nodes or 
 test("the authenticated V2 root lazy-loads the real intelligent-assets domain", () => {
   const source = fs.readFileSync(path.join(rootDir, "src/kordynV2/KordynV2Root.jsx"), "utf8");
 
-  assert.match(source, /lazy\(\(\) => import\("\.\/domains\/assets\/index\.jsx"\)\)/);
+  assert.match(source, /assets:\s*\(\) => import\("\.\/domains\/assets\/index\.jsx"\)/);
+  assert.match(source, /const LazyAssetsDomain = lazy\(domainLoaders\.assets\)/);
   assert.match(source, /<LazyAssetsDomain/);
   assert.match(source, /actions=\{actions\.assets\}/);
   assert.match(source, /location\.domainId === "assets"/);

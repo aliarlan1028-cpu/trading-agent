@@ -347,7 +347,8 @@ test("KordynV2Root keeps AI in one lazy domain chunk with CSS isolated from Acco
     logLevel: "silent"
   });
   const outputs = Object.values(result.metafile.outputs);
-  const dynamicImports = outputs.flatMap((output) => output.imports || []).filter((item) => item.kind === "dynamic-import");
+  const rootEntryOutput = outputs.find((output) => output.entryPoint?.endsWith("src/kordynV2/KordynV2Root.jsx"));
+  const rootDomainImports = (rootEntryOutput?.imports || []).filter((item) => item.kind === "dynamic-import");
   const aiCssInput = "src/kordynV2/domains/ai/ai.css";
   const accountCssInput = "src/kordynV2/domains/account/account.css";
   const assetsCssInput = "src/kordynV2/domains/assets/assets.css";
@@ -360,7 +361,8 @@ test("KordynV2Root keeps AI in one lazy domain chunk with CSS isolated from Acco
   const mobileCss = fs.readFileSync(path.join(rootDir, "src/kordynV2/styles/mobile-shell.css"), "utf8");
   const rootSource = fs.readFileSync(path.join(rootDir, "src/kordynV2/KordynV2Root.jsx"), "utf8");
 
-  assert.equal(dynamicImports.length, 4);
+  assert.ok(rootEntryOutput, "expected a KordynV2Root entry output");
+  assert.equal(rootDomainImports.length, 4, "Root owns exactly the four product-domain lazy boundaries");
   assert.equal(aiEntryOutputs.length, 1);
   assert.equal(accountEntryOutputs.length, 1);
   assert.equal(assetsEntryOutputs.length, 1);

@@ -49,6 +49,7 @@ async function prepareAiCaptureRoot(testRoot, provenance = {}) {
     runner: provenance.runner || "tests/run-kordyn-v2-ai-browser.mjs",
     fixture: provenance.fixture || "tests/kordyn-v2-production-fixture.js",
     productionSourceCommit: provenance.productionSourceCommit ?? "a".repeat(40),
+    captureTestSourceCommit: provenance.captureTestSourceCommit ?? "b".repeat(40),
     captures
   }, null, 2)}\n`);
   return screenshotsDir;
@@ -82,6 +83,7 @@ test("AI comparison emits exactly four approved concepts and eight immutable-vie
     assert.equal(index.outOfScope.length, 11);
     assert.equal(index.scope, "ai");
     assert.equal(index.productionSourceCommit, "a".repeat(40));
+    assert.equal(index.captureTestSourceCommit, "b".repeat(40));
     assert.equal(index.comparisons.length, 8);
     for (const row of index.comparisons) {
       assert.equal(row.viewport === "1180x820", false);
@@ -90,6 +92,7 @@ test("AI comparison emits exactly four approved concepts and eight immutable-vie
       assert.equal(geometry.actual.runner, "tests/run-kordyn-v2-ai-browser.mjs");
       assert.equal(geometry.actual.fixture, "tests/kordyn-v2-production-fixture.js");
       assert.equal(geometry.actual.productionSourceCommit, "a".repeat(40));
+      assert.equal(geometry.actual.captureTestSourceCommit, "b".repeat(40));
     }
   } finally {
     await rm(testRoot, { recursive: true, force: true });
@@ -102,7 +105,8 @@ test("AI comparison rejects shell or forged capture provenance", async () => {
     for (const provenance of [
       { runner: "tests/run-kordyn-v2-shell-browser.mjs" },
       { fixture: "tests/fixture-presenter.js" },
-      { productionSourceCommit: "not-a-commit" }
+      { productionSourceCommit: "not-a-commit" },
+      { captureTestSourceCommit: "not-a-commit" }
     ]) {
       const screenshotsDir = await prepareAiCaptureRoot(testRoot, provenance);
       await assert.rejects(
