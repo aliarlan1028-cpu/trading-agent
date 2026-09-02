@@ -64,6 +64,39 @@ function renderUseApiWithoutEffects() {
   return createUseApiHarnessWithoutEffects().render();
 }
 
+test("web initializes on the public surface while its cookie session is unresolved", () => {
+  const saved = {
+    localStorage: globalThis.localStorage,
+    location: globalThis.location,
+    window: globalThis.window
+  };
+  const storage = new Map();
+  globalThis.localStorage = {
+    getItem: (key) => storage.get(key) || null,
+    setItem: (key, value) => storage.set(key, String(value)),
+    removeItem: (key) => storage.delete(key)
+  };
+  globalThis.location = { search: "" };
+  globalThis.window = {
+    location: { origin: "https://app.example", hostname: "app.example", protocol: "https:" },
+    localStorage: globalThis.localStorage,
+    setTimeout,
+    clearTimeout,
+    addEventListener: () => {},
+    removeEventListener: () => {}
+  };
+
+  try {
+    const api = renderUseApiWithoutEffects();
+    assert.equal(api.loading, true, "the background session probe is still pending");
+    assert.equal(api.authRequired, true, "an unresolved web session keeps the public marketing surface visible");
+  } finally {
+    globalThis.localStorage = saved.localStorage;
+    globalThis.location = saved.location;
+    globalThis.window = saved.window;
+  }
+});
+
 test("web login reloads the authenticated core instead of leaving the startup screen pending", async () => {
   const saved = {
     fetch: globalThis.fetch,

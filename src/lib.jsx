@@ -817,7 +817,11 @@ export function useApi() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState("");
-  const [authRequired, setAuthRequired] = useState(false);
+  // A browser cannot inspect the HttpOnly session cookie before the first core request returns.
+  // Keep the public entry visible during that unresolved interval instead of presenting an
+  // authenticated-workspace loader to signed-out visitors. Native keeps its existing token-led
+  // startup because its session identity is available synchronously from local storage.
+  const [authRequired, setAuthRequired] = useState(() => !isNativeApp());
   const [connectionError, setConnectionError] = useState("");
   const [busyCount, setBusyCount] = useState(0);
   const [publicInfo, setPublicInfo] = useState({ registrationEnabled: false, trc20Configured: false, subscriptionPlans: [] });

@@ -338,23 +338,54 @@ try {
   for (const [width, height] of [[1440, 900], [1180, 820], [390, 844], [430, 932]]) {
     process.stdout.write(`authenticated shell browser: probing ${width}x${height} startup\n`);
     await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: width <= 900 });
-    let resolveCoreRequest;
+    let resolveInitialCoreRequest;
+    let resolveAuthenticatedCoreRequest;
+    let resolveLoginRequest;
     let failCoreRequests = false;
-    const pausedCoreRequests = new Set();
-    const coreRequestPaused = new Promise((resolve) => { resolveCoreRequest = resolve; });
+    let coreRequestCount = 0;
+    const initialCoreRequestPaused = new Promise((resolve) => { resolveInitialCoreRequest = resolve; });
+    const authenticatedCoreRequestPaused = new Promise((resolve) => { resolveAuthenticatedCoreRequest = resolve; });
+    const loginRequestPaused = new Promise((resolve) => { resolveLoginRequest = resolve; });
     const stopListeningForCore = cdp.on("Fetch.requestPaused", (params) => {
       if (params.request?.url.includes("/api/bootstrap/core")) {
-        pausedCoreRequests.add(params.requestId);
-        resolveCoreRequest(params.requestId);
+        coreRequestCount += 1;
+        if (coreRequestCount === 1) resolveInitialCoreRequest(params.requestId);
+        else resolveAuthenticatedCoreRequest(params.requestId);
         if (failCoreRequests) cdp.send("Fetch.failRequest", { requestId: params.requestId, errorReason: "Failed" }).catch(() => {});
       }
+      else if (params.request?.url.includes("/api/auth/login")) resolveLoginRequest(params.requestId);
       else cdp.send("Fetch.continueRequest", { requestId: params.requestId }).catch(() => {});
     });
-    await cdp.send("Fetch.enable", { patterns: [{ urlPattern: "*api/bootstrap/core*", requestStage: "Request" }] });
+    await cdp.send("Fetch.enable", { patterns: [
+      { urlPattern: "*api/bootstrap/core*", requestStage: "Request" },
+      { urlPattern: "*api/auth/login*", requestStage: "Request" }
+    ] });
     const startupProbeUrl = new URL(appUrl);
     startupProbeUrl.searchParams.set("authenticated_state_probe", `${width}-${height}-${Date.now()}`);
     await cdp.send("Page.navigate", { url: startupProbeUrl.href });
-    await waitForSignal(coreRequestPaused, `${width}x${height} startup core request`);
+    const initialCoreRequestId = await waitForSignal(initialCoreRequestPaused, `${width}x${height} unresolved-session core request`);
+    const publicSelector = ".publicAppFrame .lpRoot";
+    await waitForExpression(cdp, `document.querySelector(${JSON.stringify(publicSelector)})`, `${width}x${height} public marketing while session is unresolved`);
+    assert.equal(await evaluate(cdp, "Boolean(document.querySelector('[data-authenticated-state=\"startup\"]'))"), false, `${width}x${height} unresolved web session must not cover marketing with the authenticated startup screen`);
+    await captureEntryState(cdp, `public-unresolved-${width}x${height}`);
+    await cdp.send("Fetch.fulfillRequest", {
+      requestId: initialCoreRequestId,
+      responseCode: 401,
+      responseHeaders: [{ name: "Content-Type", value: "application/json" }],
+      body: Buffer.from('{"error":"auth_required"}').toString("base64")
+    });
+    await waitForExpression(cdp, `document.querySelector(${JSON.stringify(publicSelector)})`, `${width}x${height} public marketing after guest session result`);
+    await evaluate(cdp, "window.postMessage({ type: 'lp-start', mode: 'login' }, '*')");
+    await waitForExpression(cdp, "document.querySelector('.lpLoginForm')", `${width}x${height} real public login form`);
+    await evaluate(cdp, "document.querySelector('.lpLoginForm').requestSubmit()");
+    const loginRequestId = await waitForSignal(loginRequestPaused, `${width}x${height} web login request`);
+    await cdp.send("Fetch.fulfillRequest", {
+      requestId: loginRequestId,
+      responseCode: 200,
+      responseHeaders: [{ name: "Content-Type", value: "application/json" }],
+      body: Buffer.from('{"ok":true}').toString("base64")
+    });
+    const authenticatedCoreRequestId = await waitForSignal(authenticatedCoreRequestPaused, `${width}x${height} authenticated startup core request`);
     const startupSelector = ".authenticatedAppFrame.kordynSystem [data-authenticated-state='startup'] .authenticatedStatePanel";
     await waitForExpression(cdp, `document.querySelector(${JSON.stringify(startupSelector)})`, `${width}x${height} authenticated startup loading state`);
     const startupFont = await evaluate(cdp, `getComputedStyle(document.querySelector(${JSON.stringify(startupSelector)})).fontFamily`);
@@ -362,7 +393,7 @@ try {
     collectAugust15EntrySurfaceViolations(visualViolations, `${width}x${height} authenticated startup loading`, await readSurfaceContract(cdp, startupSelector));
     await captureEntryState(cdp, `startup-${width}x${height}`);
     failCoreRequests = true;
-    await Promise.all([...pausedCoreRequests].map((requestId) => cdp.send("Fetch.failRequest", { requestId, errorReason: "Failed" }).catch(() => {})));
+    await cdp.send("Fetch.failRequest", { requestId: authenticatedCoreRequestId, errorReason: "Failed" });
     const connectionSelector = ".authenticatedAppFrame.kordynSystem .mobileConnectPanel";
     await waitForExpression(cdp, `document.querySelector(${JSON.stringify(connectionSelector)})`, `${width}x${height} authenticated connection failure state`);
     const connectionFont = await evaluate(cdp, `getComputedStyle(document.querySelector(${JSON.stringify(connectionSelector)})).fontFamily`);
@@ -371,7 +402,7 @@ try {
     await captureEntryState(cdp, `connection-failed-${width}x${height}`);
     stopListeningForCore();
     await cdp.send("Fetch.disable");
-    bootstrapProof.push(`${width}x${height}:startup→connection-failed`);
+    bootstrapProof.push(`${width}x${height}:public-unresolved→startup→connection-failed`);
   }
 
   if (process.env.KORDYN_AUTH_ENTRY_ONLY === "true") {
