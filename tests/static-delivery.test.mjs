@@ -43,4 +43,11 @@ test("static delivery serves landing at the public root and product at app paths
   assert.equal(await (await fetch(`${baseUrl}/`)).text(), "LANDING");
   assert.equal(await (await fetch(`${baseUrl}/app`)).text(), "PRODUCT");
   assert.equal(await (await fetch(`${baseUrl}/api/proof`)).text(), "API");
+  assert.equal(await (await fetch(`${baseUrl}/API/proof`)).text(), "API");
+  const encodedApiPath = await fetch(`${baseUrl}/api%2Fproof`);
+  assert.equal(encodedApiPath.status, 400);
+  assert.doesNotMatch(await encodedApiPath.text(), /STATIC API/);
+  const encodedApiBackslash = await fetch(`${baseUrl}/api%5Cproof`);
+  assert.equal(encodedApiBackslash.status, 400);
+  assert.doesNotMatch(await encodedApiBackslash.text(), /STATIC API/);
 });
