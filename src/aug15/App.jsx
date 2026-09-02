@@ -30,6 +30,7 @@ import { isNativeApp } from "./lib.jsx";
 import { ConfirmHost } from "./confirm.jsx";
 import { hasNewWebRelease, normalizeRelease } from "./releaseUpdate.js";
 import { resolveDesktopRoute } from "../productArchitecture.js";
+import { useDialogFocus } from "../useDialogFocus.js";
 import {
   buildShellSearchIndex,
   filterShellSearchResults,
@@ -240,6 +241,8 @@ function AppTopbar({ data, setActive, onObjectSelect, notify, action, lang, swit
   const [killConfirm, setKillConfirm] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
+  const killTriggerRef = useRef(null);
+  const accountTriggerRef = useRef(null);
   const accounts = data.exchangeAccounts || [];
   const okx = accounts.find((item) => item.exchange === "OKX") || {};
   const unread = (data.notifications || []).filter((item) => !item.read).length;
@@ -267,7 +270,7 @@ function AppTopbar({ data, setActive, onObjectSelect, notify, action, lang, swit
           <span />
           {currentStatus.label}
         </button>
-        <button className="killButton" title={t("紧急停止：立即阻止所有新交易", "Emergency stop: block all new trades immediately")} onClick={() => setKillConfirm(true)}>
+        <button ref={killTriggerRef} className="killButton" title={t("紧急停止：立即阻止所有新交易", "Emergency stop: block all new trades immediately")} onClick={() => setKillConfirm(true)}>
           <Zap size={15} /> {t("紧急停止", "STOP")}
         </button>
         <button className="bellButton" title={t("通知", "Notifications")} aria-label={t("通知", "Notifications")} onClick={() => { setActive("auditSystem"); if (unread) action("/api/notifications/read", {}); }}>
@@ -286,18 +289,18 @@ function AppTopbar({ data, setActive, onObjectSelect, notify, action, lang, swit
             </div>
           </>}
         </div>
-        <button className="topAvatar" title={`${displayUserName} · ${t("账户设置", "Account settings")}`} onClick={() => setShowPassword(true)} aria-label={t("账户设置", "Account settings")}>
+        <button ref={accountTriggerRef} className="topAvatar" title={`${displayUserName} · ${t("账户设置", "Account settings")}`} onClick={() => setShowPassword(true)} aria-label={t("账户设置", "Account settings")}>
           {data.user?.avatar ? <img src={data.user.avatar} alt="" /> : displayUserName.slice(0, 1).toUpperCase()}
         </button>
       </div>
-      {killConfirm && <KillConfirmDialog enable action={action} onClose={() => setKillConfirm(false)} />}
-      {showPassword && <AccountDialog user={data.user || {}} action={action} notify={notify} onClose={() => setShowPassword(false)} />}
+      {killConfirm && <KillConfirmDialog enable action={action} onClose={() => setKillConfirm(false)} triggerRef={killTriggerRef} />}
+      {showPassword && <AccountDialog user={data.user || {}} action={action} notify={notify} onClose={() => setShowPassword(false)} triggerRef={accountTriggerRef} />}
     </header>
   );
 }
 
 // 账户设置：任何用户（含 Owner）都能改显示名 + 上传头像；非 Owner 还能自助改密码。
-function AccountDialog({ user = {}, action, notify, onClose }) {
+function AccountDialog({ user = {}, action, notify, onClose, triggerRef }) {
   const [name, setName] = useState(user.name || "");
   const [avatar, setAvatar] = useState(user.avatar || "");
   const [savingProfile, setSavingProfile] = useState(false);
@@ -308,7 +311,9 @@ function AccountDialog({ user = {}, action, notify, onClose }) {
   const [mfaCode, setMfaCode] = useState("");
   const [mfaPassword, setMfaPassword] = useState("");
   const fileRef = useRef(null);
+  const dialogRef = useRef(null);
   const profileDirty = name.trim() !== (user.name || "") || avatar !== (user.avatar || "");
+  useDialogFocus({ open: true, containerRef: dialogRef, onClose, triggerRef });
 
   // 客户端压缩：任何尺寸图片 → 128×128 居中裁剪 → JPEG data URL，控制在几十 KB。
   function pickAvatar(event) {
@@ -368,8 +373,8 @@ function AccountDialog({ user = {}, action, notify, onClose }) {
 
   return (
     <div className="modalOverlay" onClick={onClose}>
-      <div className="modalCard" onClick={(event) => event.stopPropagation()}>
-        <h3>{t("账户设置", "Account Settings")}</h3>
+      <div ref={dialogRef} className="modalCard" role="dialog" aria-modal="true" aria-labelledby="account-dialog-title" tabIndex={-1} onClick={(event) => event.stopPropagation()}>
+        <h3 id="account-dialog-title">{t("账户设置", "Account Settings")}</h3>
         <div className="acctAvatarRow">
           <div className="acctAvatarPreview">{avatar ? <img src={avatar} alt={t("头像", "Avatar")} /> : (name || "A").slice(0, 1).toUpperCase()}</div>
           <div className="acctAvatarActions">

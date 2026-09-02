@@ -74,6 +74,6 @@ button:focus-visible,input:focus-visible { outline:3px solid rgba(231,120,47,.32
 }
 
 @media(prefers-reduced-motion:reduce){
-  *{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}
+  html{scroll-behavior:auto}
   .authenticatedEntryLoading svg,.authenticatedStatePanel svg { animation:none; }
 }

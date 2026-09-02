@@ -43,6 +43,7 @@ import { ChatPage } from "./chat.jsx";
 import { ConceptGraph } from "./pages.jsx";
 import { ConfigPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
 import { t } from "./i18n.js";
+import { useDialogFocus } from "../useDialogFocus.js";
 import { executionExitAction, requestExecutionExit } from "./executionExit.js";
 import { resolveMobileRoute } from "../productArchitecture.js";
 import {
@@ -58,16 +59,18 @@ import {
   netReviewResult
 } from "./viewData.js";
 
-export function KillConfirmDialog({ enable, action, onClose }) {
+export function KillConfirmDialog({ enable, action, onClose, triggerRef }) {
   const [reason, setReason] = useState("");
+  const dialogRef = useRef(null);
+  useDialogFocus({ open: true, containerRef: dialogRef, onClose, triggerRef });
   async function confirm() {
     await action("/api/risk/kill-switch", { enabled: enable, reason });
     onClose();
   }
   return (
     <div className="modalOverlay" onClick={onClose}>
-      <div className="confirmDialog" onClick={(event) => event.stopPropagation()}>
-        <strong>{enable ? t("确认紧急停止新交易？", "Activate the emergency stop?") : t("确认恢复新交易？", "Resume new trading?")}</strong>
+      <div ref={dialogRef} className="confirmDialog" role="dialog" aria-modal="true" aria-labelledby="kill-confirm-title" tabIndex={-1} onClick={(event) => event.stopPropagation()}>
+        <strong id="kill-confirm-title">{enable ? t("确认紧急停止新交易？", "Activate the emergency stop?") : t("确认恢复新交易？", "Resume new trading?")}</strong>
         <p>{enable ? t("将立即阻断所有新交易，并请求撤销全部在途委托。", "This immediately blocks all new trades and requests cancellation of all open orders.") : t("解除后系统恢复正常风控运行，重新允许新交易。", "Once released, the system resumes normal risk control and allows new trades again.")}</p>
         {enable && <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder={t("停止原因（可选，会写入审计记录）", "Reason (optional, written to the audit trail)")} autoFocus />}
         <div className="confirmActions">
@@ -226,6 +229,8 @@ export function MobilePositions({ data, action, ui }) {
 export const groupMobileClosedTrades = groupClosedTradeLifecyclesForView;
 
 function MobileReviewSheet({ review, trade, onClose }) {
+  const dialogRef = useRef(null);
+  useDialogFocus({ open: Boolean(review), containerRef: dialogRef, onClose });
   if (!review) return null;
   const pnl = netReviewResult(review, trade);
   const closeFee = hasFiniteNumber(review.feeUsdt) ? Number(review.feeUsdt) : hasFiniteNumber(trade?.feeUsdt) ? Number(trade.feeUsdt) : null;
@@ -238,9 +243,9 @@ function MobileReviewSheet({ review, trade, onClose }) {
     [t("深度复盘", "Deep review"), review.deepReflection]
   ].filter(([, text]) => localizeText(text));
   return <div className="mReviewSheetOverlay" onClick={onClose}>
-    <aside className="mReviewSheet" onClick={(event) => event.stopPropagation()}>
+    <aside ref={dialogRef} className="mReviewSheet" role="dialog" aria-modal="true" aria-labelledby="mobile-review-sheet-title" tabIndex={-1} onClick={(event) => event.stopPropagation()}>
       <button type="button" className="mSheetGrip" onClick={onClose} aria-label={t("关闭", "Close")}><i /></button>
-      <header className="mReviewSheetHead"><div><small>{t("交易复盘", "Trade review")}</small><b className="mono">{review.symbol || trade?.symbol || "—"} · {/short|sell|空/i.test(String(review.direction || trade?.direction || "")) ? t("做空", "Short") : t("做多", "Long")}</b></div><StatusBadge tone={statusTone(review.status)}>{humanize(review.status || "pending")}</StatusBadge></header>
+      <header className="mReviewSheetHead"><div><small>{t("交易复盘", "Trade review")}</small><b id="mobile-review-sheet-title" className="mono">{review.symbol || trade?.symbol || "—"} · {/short|sell|空/i.test(String(review.direction || trade?.direction || "")) ? t("做空", "Short") : t("做多", "Long")}</b></div><StatusBadge tone={statusTone(review.status)}>{humanize(review.status || "pending")}</StatusBadge></header>
       <div className={`mReviewResult ${pnl == null ? "unknown" : pnl >= 0 ? "win" : "loss"}`}><span>{t("净交易结果", "Net trade result")}</span><b className="mono">{pnl == null ? "—" : `${pnl >= 0 ? "+" : ""}${displayMoney(pnl, 2)}`}</b><small>{pnl == null ? t("缺少完整生命周期净值，等待成交与费用回补", "Awaiting complete lifecycle PnL and fee reconciliation") : fee != null ? `${fee < 0 ? t("已计入交易所净返佣", "Includes net exchange rebate") : t("已计入记录的开/平仓净费用", "Includes recorded net entry/close costs")} ${displayMoney(fee, 2)}` : t("净值来自已持久化的完整交易生命周期", "Net result comes from the persisted full lifecycle")}</small></div>
       <div className="mReviewFacts"><span>{t("完成时间", "Completed")}<b>{formatDateTime(review.completedAt || review.updatedAt || trade?.createdAt)}</b></span><span>{t("归因", "Attribution")}<b>{localizeText(review.attribution) || t("待归因", "Pending")}</b></span><span>{t("平仓成交", "Close fills")}<b>{review.partialCloseCount || trade?.closeCount || review.fillIds?.length || 1} {t("笔", "fills")}</b></span></div>
       <div className="mReviewSheetBody">{sections.map(([title, text]) => <section key={title}><b>{title}</b><p>{localizeText(text)}</p></section>)}{!completed && <section className="pending"><b>{t("正在复盘", "Review in progress")}</b><p>{t("系统正在回补成交事实、费用与持仓轨迹，完成后会给出明确归因和下一次动作。", "The system is reconciling fills, costs, and the position path before producing attribution and a concrete next action.")}</p></section>}</div>
@@ -360,10 +365,11 @@ function pairLabel(symbol = "") {
 
 function MobilePairMultiPicker({ value = [], onChange, instruments = [], instrumentsLoading = false, instrumentsError = "", instrumentsStale = false, instrumentsAsOf = null, onRetry, allowEmpty = false, fallbackHint = "" }) {
   const [open, setOpen] = useState(false);
+  const triggerRef = useRef(null);
   const selected = [...new Set((value || []).map(pairLabel).filter(Boolean))];
   const options = [...new Set([...selected, ...(instruments || []).map(pairLabel)].filter(Boolean))];
   return <div className="mRiskPairPicker">
-    <button type="button" className="mRiskPairTrigger" onClick={() => setOpen(true)}>
+    <button ref={triggerRef} type="button" className="mRiskPairTrigger" onClick={() => setOpen(true)}>
       <span>
         <b>{selected.length ? t(`已选 ${selected.length} 个`, `${selected.length} selected`) : t("沿用交易权限", "Use trading permissions")}</b>
         <small>{selected.length ? selected.map((symbol) => symbol.replace("/USDT", "")).join(" · ") : fallbackHint}</small>
@@ -383,6 +389,7 @@ function MobilePairMultiPicker({ value = [], onChange, instruments = [], instrum
       title={t("选择交易币种", "Select trading pairs")}
       onApply={(next) => onChange(next)}
       onClose={() => setOpen(false)}
+      triggerRef={triggerRef}
     />}
   </div>;
 }
@@ -1070,11 +1077,13 @@ function useMobileInstruments() {
 
 // 移动版底部弹层选币器：已选状态与搜索输入分层展示，避免 iOS 键盘/长币对把选择结果盖住。
 // 单选用于行情切换，多选用于风控白名单；两者共享同一份真实合约清单，但保持各自的 App 交互。
-export function MobilePairSheet({ instruments, current, selected = [], multiple = false, allowEmpty = false, loading = false, error = "", stale = false, asOf = null, onRetry, title, onPick, onApply, onClose, onAddWatch }) {
+export function MobilePairSheet({ instruments, current, selected = [], multiple = false, allowEmpty = false, loading = false, error = "", stale = false, asOf = null, onRetry, title, onPick, onApply, onClose, onAddWatch, triggerRef }) {
   const [q, setQ] = useState("");
   const [draft, setDraft] = useState(() => [...new Set((selected || []).map(pairLabel).filter(Boolean))]);
   const [drag, setDrag] = useState(0);
   const startY = useRef(null);
+  const dialogRef = useRef(null);
+  useDialogFocus({ open: true, containerRef: dialogRef, onClose, triggerRef });
   const qU = q.trim().toUpperCase();
   const normalizedCurrent = pairLabel(current);
   const active = multiple ? draft : (normalizedCurrent ? [normalizedCurrent] : []);
@@ -1086,9 +1095,9 @@ export function MobilePairSheet({ instruments, current, selected = [], multiple 
   const dEnd = () => { const close = drag > 90; startY.current = null; if (close) { haptic("light"); onClose(); } else setDrag(0); };
   return (
     <div className="mSheetOverlay" onClick={onClose}>
-      <div className="mSheet" onClick={(e) => e.stopPropagation()} style={{ transform: drag ? `translateY(${drag}px)` : "", transition: startY.current == null ? "transform .22s ease-out" : "none" }}>
+      <div ref={dialogRef} className="mSheet" role="dialog" aria-modal="true" aria-labelledby="mobile-pair-sheet-title" tabIndex={-1} onClick={(e) => e.stopPropagation()} style={{ transform: drag ? `translateY(${drag}px)` : "", transition: startY.current == null ? "transform .22s ease-out" : "none" }}>
         <div className="mSheetGrip" onTouchStart={dStart} onTouchMove={dMove} onTouchEnd={dEnd}><span /></div>
-        <div className="mSheetHead"><div><b>{title || t("选择币对", "Select pair")}</b><small>{multiple ? t("可多选，完成后一次应用", "Select multiple, then apply") : t("点选后立即切换行情", "Tap once to switch market")}</small></div><button className="mSheetClose" onClick={onClose} aria-label={t("关闭", "Close")}><ChevronDown size={20} /></button></div>
+        <div className="mSheetHead"><div><b id="mobile-pair-sheet-title">{title || t("选择币对", "Select pair")}</b><small>{multiple ? t("可多选，完成后一次应用", "Select multiple, then apply") : t("点选后立即切换行情", "Tap once to switch market")}</small></div><button className="mSheetClose" onClick={onClose} aria-label={t("关闭", "Close")}><ChevronDown size={20} /></button></div>
         <div className="mSheetSelection">
           <span>{multiple ? t("已选择", "Selected") : t("当前币对", "Current pair")}</span>
           <div>{active.length ? active.map((symbol) => <button type="button" key={symbol} onClick={() => multiple && toggle(symbol)}>{symbol.replace("/USDT", "")}{multiple && <i>×</i>}</button>) : <em>{t("未单独选择", "No separate selection")}</em>}</div>
@@ -1114,6 +1123,7 @@ export function MobileMarket({ data, action, ui }) {
   const [tf, setTf] = useState("1H");
   const [sym, setSym] = useState(null);
   const [sheet, setSheet] = useState(false);
+  const pairTriggerRef = useRef(null);
   const instrumentState = useMobileInstruments();
   const portfolio = data.portfolio || {};
   const configured = (data.exchangeAccounts || []).some((a) => a.readEnabled);
@@ -1163,7 +1173,7 @@ export function MobileMarket({ data, action, ui }) {
         </div>
         <div className="mSymPills">
           {markets.slice(0, 4).map((m) => <button key={m.symbol} className={m.symbol === market.symbol ? "active" : ""} onClick={() => setSym(m.symbol)}>{m.symbol.replace("/USDT", "")}</button>)}
-          <button className="mSymMore" onClick={() => setSheet(true)}><Search size={13} /> {t("全部币对", "All pairs")}</button>
+          <button ref={pairTriggerRef} className="mSymMore" onClick={() => setSheet(true)}><Search size={13} /> {t("全部币对", "All pairs")}</button>
         </div>
         <div className="mTfPills">{["15m", "1H", "4H", "1D"].map((t) => <button key={t} className={tf === t ? "active" : ""} onClick={() => setTf(t)}>{t}</button>)}</div>
         <div className="mKline tv"><TradingViewChart symbol={market.symbol} interval={tvInterval} livePrice={market.price} /></div>
@@ -1196,7 +1206,7 @@ export function MobileMarket({ data, action, ui }) {
         </svg>
         <div className="mMarginInfo"><b>{t("保证金率", "Margin ratio")}</b><small>{marginRate != null ? `${t("已用保证金", "Used margin")} ${marginRate.toFixed(1)}%` : t("连接账户后显示", "Shown after connecting an account")}</small></div>
       </div>
-      {sheet && <MobilePairSheet instruments={instrumentState.instruments} loading={instrumentState.loading} error={instrumentState.error} stale={instrumentState.stale} asOf={instrumentState.asOf} onRetry={instrumentState.retry} current={market.symbol} onPick={setSym} onClose={() => setSheet(false)} onAddWatch={(s) => { action("/api/watchlist", { symbol: s }); ui.notify?.(`${t("已加入自选", "Added to watchlist")} ${s}`); }} />}
+      {sheet && <MobilePairSheet instruments={instrumentState.instruments} loading={instrumentState.loading} error={instrumentState.error} stale={instrumentState.stale} asOf={instrumentState.asOf} onRetry={instrumentState.retry} current={market.symbol} onPick={setSym} onClose={() => setSheet(false)} triggerRef={pairTriggerRef} onAddWatch={(s) => { action("/api/watchlist", { symbol: s }); ui.notify?.(`${t("已加入自选", "Added to watchlist")} ${s}`); }} />}
     </div>
   );
 }
@@ -1340,6 +1350,8 @@ export function MobileCapabilities({ data, action, ui }) {
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState("");
+  const detailDialogRef = useRef(null);
+  const detailTriggerRef = useRef(null);
   const filters = [
     ["all", t("全部", "All"), () => true],
     ["enabled", t("已启用", "Enabled"), (item) => item.enabled],
@@ -1349,6 +1361,7 @@ export function MobileCapabilities({ data, action, ui }) {
   const filterFn = filters.find(([id]) => id === filter)?.[2] || filters[0][2];
   const shown = items.filter((item) => filterFn(item) && (!query.trim() || String(localizeText(item.name)).toLowerCase().includes(query.trim().toLowerCase())));
   const selected = items.find((item) => item.id === openId) || null;
+  useDialogFocus({ open: Boolean(selected), containerRef: detailDialogRef, onClose: () => setOpenId(""), triggerRef: detailTriggerRef });
   const typeLabel = (item) => item.category === "mcp" ? "MCP" : item.category === "workflow" ? t("工作流", "Workflow") : t("分析工具", "Analysis tool");
   const manageSelected = async () => {
     if (!selected) return;
@@ -1385,7 +1398,7 @@ export function MobileCapabilities({ data, action, ui }) {
     <div className="mCapabilitySearch"><Search size={16}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("搜索能力", "Search capabilities")}/>{query && <button onClick={() => setQuery("")} aria-label={t("清空", "Clear")}>×</button>}</div>
     <div className="mCapabilityFilters">{filters.map(([id, label, fn]) => <button key={id} className={filter === id ? "active" : ""} onClick={() => setFilter(id)}>{label}<b>{items.filter(fn).length}</b></button>)}</div>
     <section className="mCapabilityList">
-      {shown.map((item) => <button className="mCapabilityRow" key={item.id} onClick={() => setOpenId(item.id)}>
+      {shown.map((item) => <button className="mCapabilityRow" key={item.id} onClick={(event) => { detailTriggerRef.current = event.currentTarget; setOpenId(item.id); }}>
         <span className={`mCapabilityIcon ${item.category}`}><Wrench size={17}/></span>
         <span className="mCapabilityRowText"><b>{localizeText(item.name)}</b><small>{typeLabel(item)} · {item.connector ? t("配置型连接", "Configuration connector") : `${t("记录调用", "Recorded")} ${item.calls ?? "—"}`}</small></span>
         <StatusBadge tone={capabilityHealthTone(item.health)}>{capabilityHealthLabel(item.health)}</StatusBadge><ChevronRight size={15}/>
@@ -1393,9 +1406,9 @@ export function MobileCapabilities({ data, action, ui }) {
       {!shown.length && <div className="mNativeEmpty"><Wrench size={22}/><b>{query ? t("没有匹配的能力", "No matching capabilities") : t("暂无能力", "No capabilities yet")}</b><span>{t("可以从 Skill 导入入口添加工具类能力。", "Add tool capabilities from the Skill import flow.")}</span></div>}
     </section>
     {selected && <div className="mCapabilitySheetOverlay" onClick={() => setOpenId("")}>
-      <aside className="mCapabilitySheet" onClick={(event) => event.stopPropagation()}>
+      <aside ref={detailDialogRef} className="mCapabilitySheet" role="dialog" aria-modal="true" aria-labelledby="mobile-capability-sheet-title" tabIndex={-1} onClick={(event) => event.stopPropagation()}>
         <button type="button" className="mSheetGrip" onClick={() => setOpenId("")} aria-label={t("关闭", "Close")}><i/></button>
-        <header><span className={`mCapabilityIcon ${selected.category}`}><Wrench size={18}/></span><div><small>{typeLabel(selected)} · {capabilityStatusLabel(selected)}</small><b>{localizeText(selected.name)}</b></div><StatusBadge tone={capabilityHealthTone(selected.health)}>{capabilityHealthLabel(selected.health)}</StatusBadge></header>
+        <header><span className={`mCapabilityIcon ${selected.category}`}><Wrench size={18}/></span><div><small>{typeLabel(selected)} · {capabilityStatusLabel(selected)}</small><b id="mobile-capability-sheet-title">{localizeText(selected.name)}</b></div><StatusBadge tone={capabilityHealthTone(selected.health)}>{capabilityHealthLabel(selected.health)}</StatusBadge></header>
         <p>{localizeText(selected.description || selected.summary) || t("该能力由 AI 在受控工作流中按权限调用。", "The AI calls this capability inside permission-controlled workflows.")}</p>
         <div className="mCapabilityFacts"><span>{t("来源", "Source")}<b>{selected.source || selected.packageName || t("内置", "Built-in")}</b></span><span>{t("启用状态", "Enablement")}<b>{capabilityStatusLabel(selected)}</b></span><span>{t("记录调用", "Recorded calls")}<b className="mono">{selected.connector ? "—" : selected.calls ?? 0}</b></span><span>{t("最近运行", "Last run")}<b>{selected.lastRunAt ? formatDateTime(selected.lastRunAt) : t("尚未运行", "Not observed")}</b></span></div>
         {!selected.connector && <div className="mCapabilitySources"><span><small>{t("模型主动","Model")}</small><b>{selected.usage?.legacyUnsplit?"—":selected.usage?.sourceCalls?.model||0}</b></span><span><small>{t("系统预检","Preflight")}</small><b>{selected.usage?.legacyUnsplit?"—":selected.usage?.sourceCalls?.preflight||0}</b></span><span><small>{t("系统直接","System")}</small><b>{selected.usage?.legacyUnsplit?"—":selected.usage?.sourceCalls?.system||0}</b></span><span><small>{t("健康评测","Evaluation")}</small><b>{selected.usage?.sourceCalls?.evaluation||selected.evalMetrics?.calls||0}</b></span></div>}
@@ -1449,13 +1462,15 @@ function MobileSparkline({ values = [], tone = "green" }) {
 }
 
 function MobileResearchDetailSheet({ record, onClose }) {
+  const dialogRef = useRef(null);
+  useDialogFocus({ open: Boolean(record), containerRef: dialogRef, onClose });
   if (!record) return null;
   const folds = record.folds || [];
   const params = Object.entries(record.parameters || {}).slice(0, 10);
   return <div className="mResearchSheetOverlay" onClick={onClose}>
-    <aside className="mResearchSheet" onClick={(event) => event.stopPropagation()}>
+    <aside ref={dialogRef} className="mResearchSheet" role="dialog" aria-modal="true" aria-labelledby="mobile-research-sheet-title" tabIndex={-1} onClick={(event) => event.stopPropagation()}>
       <button type="button" className="mSheetGrip" onClick={onClose} aria-label={t("关闭", "Close")}><i/></button>
-      <header><div><small>{mobileResearchEvidenceLabel(record.evidenceType)}</small><b>{localizeText(record.name)}</b><span>{record.symbol || "—"} · {record.timeframe || "—"} · {record.createdAt ? formatDate(record.createdAt) : t("时间未记录", "Time unavailable")}</span></div><StatusBadge tone={mobileResearchStatusTone(record)}>{mobileResearchStatusLabel(record.status)}</StatusBadge></header>
+      <header><div><small>{mobileResearchEvidenceLabel(record.evidenceType)}</small><b id="mobile-research-sheet-title">{localizeText(record.name)}</b><span>{record.symbol || "—"} · {record.timeframe || "—"} · {record.createdAt ? formatDate(record.createdAt) : t("时间未记录", "Time unavailable")}</span></div><StatusBadge tone={mobileResearchStatusTone(record)}>{mobileResearchStatusLabel(record.status)}</StatusBadge></header>
       <div className="mResearchSheetMetrics"><span><small>{t("累计收益", "Total return")}</small><b className={Number(record.totalReturnPct || 0) >= 0 ? "pos" : "neg"}>{record.totalReturnPct == null ? "—" : displayPct(record.totalReturnPct)}</b></span><span><small>{t("R 期望", "R expectancy")}</small><b>{record.expectancyR == null ? "—" : `${record.expectancyR}R`}</b></span><span><small>{t("盈亏因子", "Profit factor")}</small><b>{record.profitFactor ?? "—"}</b></span><span><small>{t("最大回撤", "Max drawdown")}</small><b className="neg">{record.maxDrawdownPct == null ? "—" : `${record.maxDrawdownPct}%`}</b></span></div>
       <section><div className="mResearchSectionHead"><b>{t("收益曲线", "Equity curve")}</b><span>{record.trades ?? "—"} {t("笔交易", "trades")}</span></div><MobileSparkline values={record.equityCurve || []}/></section>
       <section className="mResearchDetailRows"><span>{t("胜率", "Win rate")}<b>{record.winRatePct == null ? "—" : `${record.winRatePct}%`}</b></span><span>{t("90% 置信下界", "90% lower bound")}<b>{record.expectancyLower90R == null ? "—" : `${record.expectancyLower90R}R`}</b></span><span>{t("正向样本外分段", "Positive OOS folds")}<b>{record.positiveFolds == null ? "—" : `${record.positiveFolds}/${record.activeFolds ?? "—"}`}</b></span><span>{t("研究方法", "Methodology")}<b>{localizeText(record.methodology) || t("统一成本模型下的历史验证", "Historical validation with the unified cost model")}</b></span></section>
@@ -1564,7 +1579,7 @@ function MobileTabbar({ route, onNavigate, onMore }) {
     {mobilePrimaryNav.map((item) => {
       const Icon = item.icon;
       const active = item.id === "more" ? !["chat", "watch", "cockpit", "riskHub"].includes(route) : route === item.id;
-      return <button key={item.id} className={active ? "active" : ""} onClick={() => item.id === "more" ? onMore() : onNavigate(item.id)}><Icon size={20}/><span>{mobileNavLabel(item)}</span></button>;
+      return <button key={item.id} className={active ? "active" : ""} onClick={(event) => item.id === "more" ? onMore(event) : onNavigate(item.id)}><Icon size={20}/><span>{mobileNavLabel(item)}</span></button>;
     })}
   </nav>;
 }
@@ -1583,15 +1598,17 @@ function MobileHeader({ route, onMenu, right, reconnecting }) {
   );
 }
 
-function NavDrawer({ open, route, onNavigate, onClose, data, lang, switchLang }) {
+function NavDrawer({ open, route, onNavigate, onClose, data, lang, switchLang, triggerRef }) {
+  const dialogRef = useRef(null);
+  useDialogFocus({ open, containerRef: dialogRef, onClose, triggerRef });
   if (!open) return null;
   const status = systemStatus(data);
   return (
     <div className="mDrawerOverlay" onClick={onClose}>
-      <aside className="mDrawer classicNavDrawer" onClick={(event) => event.stopPropagation()}>
+      <aside ref={dialogRef} className="mDrawer classicNavDrawer" role="dialog" aria-modal="true" aria-labelledby="mobile-more-drawer-title" tabIndex={-1} onClick={(event) => event.stopPropagation()}>
         <div className="mDrawerBrand"><span className="mDrawerLogo"><img src="/kordyn-logo.svg" alt="KORDYN" /></span><div className="mDrawerBrandText"><b>KORDYN</b><small>AI · DIGITAL ASSET</small></div></div>
         {switchLang && <div className="mLangBar"><Globe2 size={14} /><div className="mLangSeg" role="group" aria-label={t("切换语言", "Switch language")}><button className={lang === "zh" ? "on" : ""} onClick={() => switchLang("zh")}>中文</button><button className={lang === "en" ? "on" : ""} onClick={() => switchLang("en")}>English</button></div></div>}
-        <div className="mDrawerTitle"><b>{t("更多功能", "More")}</b><small>{t("低频设置与记录", "Settings and records")}</small></div>
+        <div className="mDrawerTitle"><b id="mobile-more-drawer-title">{t("更多功能", "More")}</b><small>{t("低频设置与记录", "Settings and records")}</small></div>
         <div className="mDrawerNav">
           {mobileSecondaryNav.map((n) => {
             const Icon = n.icon;
@@ -1654,6 +1671,8 @@ export function MobileApp({ api, lang, switchLang }) {
   const [subPage, setSubPage] = useState("");
   const [panel, setPanel] = useState("");
   const [killConfirm, setKillConfirm] = useState(false);
+  const killTriggerRef = useRef(null);
+  const drawerTriggerRef = useRef(null);
   // 打开审计/动态即把未读通知标为已读
   useEffect(() => {
     if (route === "auditSystem" && (data.notifications || []).some((item) => !item.read)) action("/api/notifications/read", {});
@@ -1738,7 +1757,7 @@ export function MobileApp({ api, lang, switchLang }) {
     ? <button className="mBack" onClick={() => setSubPage("")} aria-label={t("返回", "Back")}><ChevronLeft size={19} /></button>
     : route === "chat"
       ? <span className={`mRunBadge ${autoOn ? "on" : "off"}`}><span className="pulseDot" />{autoOn ? t("运行中", "Running") : t("已暂停", "Paused")}</span>
-      : <button className="mKill" onClick={() => setKillConfirm(true)}><Zap size={13} /> {data.system?.killSwitch ? t("恢复交易", "Resume") : t("紧急停止", "Emergency stop")}</button>;
+      : <button ref={killTriggerRef} className="mKill" onClick={() => setKillConfirm(true)}><Zap size={13} /> {data.system?.killSwitch ? t("恢复交易", "Resume") : t("紧急停止", "Emergency stop")}</button>;
 
   return (
     <div
@@ -1748,13 +1767,13 @@ export function MobileApp({ api, lang, switchLang }) {
       data-classic-mobile-family={route === "chat" || route === "watch" || route === "intelligence" ? "ai" : route === "cockpit" || route === "executionReview" || route === "tradeLedger" ? "portfolio" : route === "riskHub" ? "guard" : ["knowledgeBase", "capabilityLib", "strategyLib"].includes(route) ? "strategy" : route === "systemSettings" ? "configuration" : "operations"}
       data-classic-mobile-view={requestedRoute.includes("patrol") ? "patrol" : requestedRoute.includes("poster") ? "poster" : subPage || (route === "strategyLib" ? "catalog" : route === "chat" ? "dialog" : route)}
     >
-      <MobileHeader route={route} onMenu={() => setDrawer(true)} right={headerRight} reconnecting={Boolean(connectionError)} />
+      <MobileHeader route={route} onMenu={(event) => { drawerTriggerRef.current = event.currentTarget; setDrawer(true); }} right={headerRight} reconnecting={Boolean(connectionError)} />
       {route === "chat" && !subPage
         ? <main className="mMain2 mMainChat">{content}</main>
         : <PullToRefresh className="mMain2" onRefresh={refresh}>{content}</PullToRefresh>}
-      <MobileTabbar route={route} onNavigate={navigate} onMore={() => setDrawer(true)} />
-      <NavDrawer open={drawer} route={route} onNavigate={navigate} onClose={() => setDrawer(false)} data={data} lang={lang} switchLang={switchLang} />
-      {killConfirm && <KillConfirmDialog enable={!data.system?.killSwitch} action={action} onClose={() => setKillConfirm(false)} />} {/* 已熔断时应走解除流程(审计 L5) */}
+      <MobileTabbar route={route} onNavigate={navigate} onMore={(event) => { drawerTriggerRef.current = event.currentTarget; setDrawer(true); }} />
+      <NavDrawer open={drawer} route={route} onNavigate={navigate} onClose={() => setDrawer(false)} data={data} lang={lang} switchLang={switchLang} triggerRef={drawerTriggerRef} />
+      {killConfirm && <KillConfirmDialog enable={!data.system?.killSwitch} action={action} onClose={() => setKillConfirm(false)} triggerRef={killTriggerRef} />} {/* 已熔断时应走解除流程(审计 L5) */}
       {panel && <ConfigPanel panel={panel} data={data} action={action} ui={ui} />}
       {busy && <div className="busyIndicator"><Activity size={13} /> {t("执行中", "Working")}</div>}
       {toast && <div className="toast">{toast}</div>}

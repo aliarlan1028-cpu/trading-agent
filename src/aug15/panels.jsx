@@ -21,8 +21,11 @@ import {
 } from "lucide-react";
 import { apiUrl, formatMoney, displayMoney, displayPct, asArray, readFileAsDataUrl, formatDateTime, humanize, localizeText, statusTone, exchangeState, StatusBadge, RiskLine, InsightNote } from "./lib.jsx";
 import { t } from "./i18n.js";
+import { useDialogFocus } from "../useDialogFocus.js";
 
 export function ConfigPanel({ panel, data, action, ui }) {
+  const dialogRef = useRef(null);
+  useDialogFocus({ open: Boolean(panel), containerRef: dialogRef, onClose: ui.closePanel });
   const titles = {
     mandate: t("交易权限设置", "Trading permissions"),
     riskRules: t("风险规则管理", "Risk rule management"),
@@ -40,11 +43,11 @@ export function ConfigPanel({ panel, data, action, ui }) {
   };
   return (
     <div className="panelOverlay" onClick={ui.closePanel}>
-      <aside className="configPanel" onClick={(event) => event.stopPropagation()}>
+      <aside ref={dialogRef} className="configPanel" role="dialog" aria-modal="true" aria-labelledby="config-panel-title" tabIndex={-1} onClick={(event) => event.stopPropagation()}>
         <header>
           <div>
             <span>{t("配置中心", "Configuration")}</span>
-            <h2>{titles[panel] || t("系统设置", "System settings")}</h2>
+            <h2 id="config-panel-title">{titles[panel] || t("系统设置", "System settings")}</h2>
           </div>
           <button className="secondaryButton" onClick={ui.closePanel}>{t("关闭", "Close")}</button>
         </header>

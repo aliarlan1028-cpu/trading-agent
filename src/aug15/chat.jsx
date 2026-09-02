@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { toPng } from "html-to-image";
 import { uiConfirm, uiPrompt } from "./confirm.jsx";
 import { executionExitAction, requestExecutionExit } from "./executionExit.js";
+import { useDialogFocus } from "../useDialogFocus.js";
 import {
   AlertTriangle,
   Activity,
@@ -1340,6 +1341,8 @@ function SetupChecklist({ onExample }) {
 // 把一条 AI 交易员分析渲染成精美海报,支持中/英切换与导出 PNG(社交分享获客)。
 // 内容只用消息原文(中文)+ 后端 LLM 翻译(英文),不编造。图片在前端由 html-to-image 从模板导出。
 function PosterModal({ content, meta, onClose }) {
+  const dialogRef = useRef(null);
+  useDialogFocus({ open: true, containerRef: dialogRef, onClose });
   const [lang, setLang] = useState("zh");
   const [enText, setEnText] = useState("");
   const [translating, setTranslating] = useState(false);
@@ -1347,12 +1350,6 @@ function PosterModal({ content, meta, onClose }) {
   const [downloading, setDownloading] = useState(false);
   const posterRef = useRef(null);
   const publishableContent = cleanPresentationText(content);
-
-  useEffect(() => {
-    const onEsc = (e) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onEsc);
-    return () => window.removeEventListener("keydown", onEsc);
-  }, [onClose]);
 
   async function toEnglish() {
     setLang("en");
@@ -1395,7 +1392,7 @@ function PosterModal({ content, meta, onClose }) {
 
   return (
     <div className="posterOverlay" onClick={onClose}>
-      <div className="posterModal" onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} className="posterModal" role="dialog" aria-modal="true" aria-label={t("分享海报预览", "Share poster preview")} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
         <div className="posterToolbar">
           <div className="posterLangTabs">
             <button type="button" className={lang === "zh" ? "active" : ""} onClick={() => setLang("zh")}>中文</button>
@@ -1458,6 +1455,9 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false }) 
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
   const latestMessageRef = useRef(null);
+  const historyDialogRef = useRef(null);
+  const historyTriggerRef = useRef(null);
+  useDialogFocus({ open: mobile && showHistory, containerRef: historyDialogRef, onClose: () => setShowHistory(false), triggerRef: historyTriggerRef });
   // 输入框自动长高:随内容增高到 160px 上限,超过再内部滚动——不再卡在 1 行看不全打的字。
   useEffect(() => {
     const el = inputRef.current;
@@ -1634,13 +1634,13 @@ export function ChatPage({ data, action, ui, concept = false, mobile = false }) 
           {!mobile && <span className={`agRunBadge ${autoOn ? "on" : "off"}`}><span />{autoOn ? t("运行中", "Running") : system.killSwitch ? t("紧急停止中", "Emergency stop active") : t("已暂停", "Paused")}</span>}
           {!mobile && <button className="agLaunchBtn" onClick={() => action("/api/system/autonomy", { enabled: !system.autonomyEnabled })}><Rocket size={14} /> {system.autonomyEnabled ? t("暂停自主", "Pause autonomy") : t("启动自主交易", "Start autonomous trading")}</button>}
           {mobile && view === "chat" && <button className="agMobileIconBtn" onClick={newSession} aria-label={t("新建对话", "New chat")}><Plus size={17} /></button>}
-          {mobile && view === "chat" && <button className="agMobileIconBtn" onClick={() => setShowHistory(true)} aria-label={t("对话历史", "Chat history")}><Clock3 size={17} />{sessions.length > 0 && <b>{sessions.length}</b>}</button>}
+          {mobile && view === "chat" && <button ref={historyTriggerRef} className="agMobileIconBtn" onClick={() => setShowHistory(true)} aria-label={t("对话历史", "Chat history")}><Clock3 size={17} />{sessions.length > 0 && <b>{sessions.length}</b>}</button>}
         </div>
       </div>
 
       {mobile && showHistory && <div className="mChatHistoryOverlay" onClick={() => setShowHistory(false)}>
-        <section className="mChatHistorySheet" onClick={(event) => event.stopPropagation()}>
-          <div className="mChatHistoryHead"><div><b>{t("对话历史", "Chat history")}</b><small>{t("选择一段对话继续", "Choose a conversation to continue")}</small></div><button onClick={() => setShowHistory(false)} aria-label={t("关闭", "Close")}><X size={18}/></button></div>
+        <section ref={historyDialogRef} className="mChatHistorySheet" role="dialog" aria-modal="true" aria-labelledby="mobile-chat-history-title" tabIndex={-1} onClick={(event) => event.stopPropagation()}>
+          <div className="mChatHistoryHead"><div><b id="mobile-chat-history-title">{t("对话历史", "Chat history")}</b><small>{t("选择一段对话继续", "Choose a conversation to continue")}</small></div><button onClick={() => setShowHistory(false)} aria-label={t("关闭", "Close")}><X size={18}/></button></div>
           <button className="mChatNewSession" onClick={newSession}><Plus size={16}/>{t("新建对话", "New conversation")}</button>
           <div className="mChatHistoryList">
             {sessions.map((session) => <button className={session.id === activeSessionId ? "active" : ""} key={session.id} onClick={() => switchSession(session.id)}><span><b>{localizeText(session.title || t("未命名对话", "Untitled"))}</b><small>{formatTime(session.updatedAt || session.createdAt)}</small></span><ChevronRight size={16}/></button>)}
