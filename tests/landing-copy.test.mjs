@@ -2,59 +2,107 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const files = ["public/landing.html", "public/landing.js", "index.html"];
-const source = files.map((file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8")).join("\n");
+const html = readFileSync(new URL("../public/landing.html", import.meta.url), "utf8");
+const script = readFileSync(new URL("../public/landing.js", import.meta.url), "utf8");
+const styles = readFileSync(new URL("../public/landing.css", import.meta.url), "utf8");
+const source = `${html}\n${script}\n${styles}`;
 
-test("营销页使用清晰的自主交易、权限、闭环、风控与知识库标题", () => {
+test("营销页完整回答系统是什么、解决什么、如何解决、特色与竞品差异", () => {
   for (const phrase of [
-    "数字货币自主交易 Agent",
-    "持续理解市场",
-    "范围由你设定",
-    "自主交易能力 · CAPABILITIES",
-    "交易闭环 · LIFECYCLE",
-    "权限与风控 · GUARDRAILS",
-    "交易知识库 · KNOWLEDGE",
-    "持续沉淀为下一次判断的依据"
+    "TO THE MOON",
+    "不是靠冲动起飞",
+    "市场没有下班，人的注意力会",
+    "一条航线，连接感知、判断与行动",
+    "不是一个聊天框，是一套交易操作系统",
+    "AI Agent 很多，交易闭环很少",
+    "飞得更远之前，先知道哪里不能去",
+    "知识图谱 + 审批规则",
+    "持久意图 + 对账恢复"
   ]) assert.match(source, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 });
 
-test("产品名称和栏目名称使用独立的主视觉层级", () => {
-  for (const className of [
-    "taHeroProduct",
-    "taHeroStatement",
-    "taMandateTitle",
-    "taMandateSupport",
-    "taSectionTitle",
-    "taSectionName",
-    "taSectionSupport"
-  ]) assert.match(source, new RegExp(`class=["'][^"']*${className}`));
-
-  for (const rule of [
-    [/\.taHeroProduct\s*\{[^}]*font-size:\s*38px/s, "首屏产品名称"],
-    [/\.taHeroStatement\s*\{[^}]*font-size:\s*28px/s, "首屏辅助标题"],
-    [/\.taSectionName\s*\{[^}]*font-size:\s*30px/s, "栏目名称"],
-    [/\.taSectionSupport\s*\{[^}]*font-size:\s*19px/s, "栏目辅助文案"],
-    [/\.taMandateTitle\s*\{[^}]*font-size:\s*30px/s, "交易权限名称"],
-    [/\.taMandateSupport\s*\{[^}]*font-size:\s*19px/s, "交易权限辅助文案"]
-  ]) assert.match(source, rule[0], `${rule[1]}字号层级应保持清晰`);
-
-  assert.match(source, /<h1 class="taHeroProduct"/);
-  assert.match(source, /<h2 class="taHeroStatement"/);
-  assert.match(source, /<h2 class="taSectionName"[^>]*data-i18n="cap\.tag"/);
-  assert.doesNotMatch(source, /<h1 class="taHeroStatement"/);
+test("To the Moon 明确是工程主题而不是收益承诺", () => {
+  assert.match(source, /不是收益承诺/);
+  assert.match(source, /不构成投资建议或收益承诺/);
+  assert.doesNotMatch(html, /今日盈亏|胜率 WIN|MAX DD|data-count=/);
 });
 
-test("营销页面不再出现旧的抽象标题", () => {
-  for (const phrase of [
-    "授权后自主交易,绝不无边界",
-    "让 Agent 自主交易，让每一步都有边界",
-    "你划定边界",
-    "你定义交易权限",
-    "只在框内行动",
-    "四个专业角色,一套交易大脑",
-    "从感知到复盘的交易闭环",
-    "边界写进系统",
-    "每一笔交易，都必须通过权限与风控",
-    "不是资料仓库"
-  ]) assert.doesNotMatch(source, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+test("页面提供月球任务控制、飞行路线、真实产品工作台与对比表等原生视觉结构", () => {
+  for (const className of [
+    "lunar-stage",
+    "moon",
+    "mission-console",
+    "console-route",
+    "flight-plan",
+    "flight-map",
+    "flight-vehicle",
+    "product-proof",
+    "app-showcase",
+    "app-showcase__nav",
+    "app-market-strip",
+    "product-panel",
+    "ui-intel-grid",
+    "ui-signal-mix",
+    "ui-knowledge-grid",
+    "ui-knowledge-stats",
+    "ui-strategy-grid",
+    "ui-performance-snapshot",
+    "ui-operations-grid",
+    "ui-risk-grid",
+    "ui-risk-telemetry",
+    "cap-boundary-strip",
+    "cap-boundary-list",
+    "comparison-wrap",
+    "closing-moon"
+  ]) assert.match(html, new RegExp(`class=["'][^"']*${className}`));
+  assert.match(styles, /@keyframes moonBreath/);
+  assert.match(styles, /@keyframes satellite/);
+  assert.match(styles, /@keyframes flightSignal/);
+  assert.match(styles, /@keyframes panelEnter/);
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(styles, /@media \(max-width: 580px\)/);
+  for (const panel of ["intel", "knowledge", "strategy", "operations", "risk"]) {
+    assert.match(html, new RegExp(`data-product-panel=["']${panel}["']`));
+    assert.match(html, new RegExp(`data-product-tab=["']${panel}["']`));
+  }
+  assert.match(script, /function initProductShowcase\(/);
+  assert.ok(html.indexOf('id="guardrails"') < html.indexOf('id="compare"'), "能力与安全边界应位于对比板块之前");
+});
+
+test("产品工作台使用明确标注的丰富示例数据，而不是伪装成客户实绩", () => {
+  assert.match(html, /data-i18n="app\.demoData"/);
+  assert.match(html, /12,486\.30/);
+  assert.match(html, /2,184/);
+  assert.match(html, /7\/7/);
+  assert.match(html, /示例验证数据 · 不代表未来表现/);
+  assert.match(styles, /@keyframes dataPulse/);
+});
+
+test("营销页保留真实行情、登录、订阅、联系与中英切换入口", () => {
+  assert.match(html, /id="taTicker"/);
+  assert.match(script, /\/api\/public\/ticker-bar/);
+  assert.match(script, /type: "lp-start"/);
+  assert.match(html, /data-action="login"/);
+  assert.match(html, /data-action="subscribe"/);
+  assert.match(html, /data-action="contact"/);
+  assert.match(html, /data-action="lang"/);
+});
+
+test("每个 HTML i18n key 都有中英文文案", () => {
+  const keys = [...html.matchAll(/data-i18n(?:-html)?="([^"]+)"/g)].map((match) => match[1]);
+  assert.ok(keys.length > 70);
+  for (const key of new Set(keys)) {
+    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    assert.match(script, new RegExp(`"${escaped}"\\s*:\\s*\\["[^"\\n]+",\\s*"[^"\\n]+"\\]`), `missing bilingual copy for ${key}`);
+  }
+});
+
+test("关键页面层级和新品牌色存在，且不是旧营销稿的内联样式堆叠", () => {
+  assert.match(html, /<h1 class="taHeroProduct">TO THE/);
+  assert.match(html, /<h2 class="taHeroStatement"/);
+  assert.match(html, /KORDYN · AI AUTONOMOUS TRADING/);
+  assert.match(styles, /--green:\s*#4FB78B/i);
+  assert.match(styles, /--acid:\s*#CCFF3D/i);
+  assert.match(styles, /\.taHeroProduct\s*\{[^}]*clamp\(/s);
+  assert.doesNotMatch(html, /style="/);
 });

@@ -1155,7 +1155,7 @@ test("ordinary and destructive modal shells use the prototype hard-edge offsets"
   assert.match(styles, /background:\s*rgba\(17,\s*21,\s*17,\s*\.78\)/);
 });
 
-test("authentication and marketing restore the August 15 visual baseline without losing current auth behavior", () => {
+test("authentication keeps the August 15 motion scene while marketing restores To the Moon without losing current auth behavior", () => {
   const base = execFileSync("git", ["show", "7c8978427865a9d500a072780af0ec68cf6a9537:src/landing.jsx"], { cwd: rootDir, encoding: "utf8" });
   const current = fs.readFileSync(path.join(rootDir, "src/landing.jsx"), "utf8");
   for (const contract of ["AuthMarketMotion", "nativeAuthMotion", "nativeAuthMotionTile", "nativeAuthAgentOrb", "nativeAuthCard"]) {
@@ -1167,10 +1167,14 @@ test("authentication and marketing restore the August 15 visual baseline without
   assert.match(base, /AuthMarketMotion|nativeAuthMotionTile/);
   assert.doesNotMatch(current, /AuthSystemMap|nativeAuthNetwork/);
   const marketing = fs.readFileSync(path.join(rootDir, "public/landing.html"), "utf8");
+  const marketingCss = fs.readFileSync(path.join(rootDir, "public/landing.css"), "utf8");
   const authCss = fs.readFileSync(path.join(rootDir, "src/aug15-auth.css"), "utf8");
-  assert.equal([...marketing.matchAll(/data-i18n(?:-html)?=/g)].length, 107);
+  assert.equal([...marketing.matchAll(/data-i18n(?:-html)?=/g)].length, 413);
   for (const action of ["login", "subscribe", "contact", "lang"]) assert.match(marketing, new RegExp(`data-action=["']${action}["']`));
-  assert.match(marketing, /#ff7a2f/i);
-  assert.match(marketing, /#0c0a08/i);
+  assert.match(marketing, /TO THE <span>MOON\.<\/span>/i);
+  assert.match(marketingCss, /--paper:\s*#F4F1E9/i);
+  assert.match(marketingCss, /--ink:\s*#111311/i);
+  assert.match(marketingCss, /--acid:\s*#CCFF3D/i);
+  assert.doesNotMatch(marketingCss, /#a78bfa|#ff7a32|#ffb47f/i);
   assert.match(authCss, /@keyframes nativeAuthOrb/);
 });

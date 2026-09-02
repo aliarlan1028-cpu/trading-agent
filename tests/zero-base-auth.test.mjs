@@ -35,6 +35,18 @@ test("August 15 auth CSS preserves the animated card geometry and touch sizes", 
   assert.match(css, /@media\(prefers-reduced-motion:reduce\)/);
 });
 
+test("APP Agent motion stays compositor-only and does not shake the character", () => {
+  const tileMotion = css.match(/@keyframes nativeAuthTileFloat\{([^}]|\}(?!\s*@))*\}/)?.[0] || "";
+  const orbMotion = css.match(/@keyframes nativeAuthOrb\{([^}]|\}(?!\s*@))*\}/)?.[0] || "";
+
+  assert.match(css, /\.nativeAuthMotionTile\{[^}]*will-change:transform/i);
+  assert.match(css, /\.nativeAuthMotionTile\{[^}]*backface-visibility:hidden/i);
+  assert.match(tileMotion, /translate3d/i);
+  assert.doesNotMatch(tileMotion, /margin|top|bottom|left|right/i);
+  assert.match(orbMotion, /translate3d/i);
+  assert.doesNotMatch(orbMotion, /rotate\(/i);
+});
+
 test("web marketing keeps its iframe and moves the real authentication modal into the warm entry family", () => {
   assert.match(source, /<iframe className="lpFrame" src="\/landing\.html"/);
   assert.match(css, /\.lpModal\{[^}]*#fffdf9/i);

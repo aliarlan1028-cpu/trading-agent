@@ -1266,18 +1266,19 @@ test("desktop runtime controls fit the two true emergency actions without empty 
   assert.match(desktopMedia, /repeat\(2,minmax\(64px,1fr\)\)/);
 });
 
-test("August 15 public product preview truthfully explains autonomy and guardrails", () => {
+test("To the Moon public product preview teaches the same three modes as the real cockpit", () => {
   const html = fs.readFileSync(path.join(rootDir, "public/landing.html"), "utf8");
   const script = fs.readFileSync(path.join(rootDir, "public/landing.js"), "utf8");
   const preview = `${html}\n${script}`;
-  assert.match(preview, /数字货币自主交易 Agent/);
-  assert.match(preview, /默认只读/);
-  assert.match(preview, /提现权限永不开放/);
-  assert.match(preview, /示意界面 · 数据为演示/);
-  assert.match(preview, /交易权限校验/);
-  assert.match(preview, /必要时紧急停止新交易/);
-  assert.match(preview, /全程 append-only 审计/);
-  assert.match(preview, /知识不可用时自动降级为保守模式或禁止交易/);
+  assert.match(preview, /TO THE MOON/);
+  assert.match(preview, /自动交易/);
+  assert.match(preview, /只分析/);
+  assert.match(preview, /逐笔确认/);
+  assert.match(preview, /AI 交易员/);
+  assert.match(preview, /产品演示数据/);
+  assert.match(preview, /紧急停止可随时接管/);
+  assert.match(preview, /归因、对账与审计/);
+  assert.doesNotMatch(preview, /只减仓|暂停自主/);
 });
 
 test("mobile More is a governance hub without duplicated primary roots", () => {

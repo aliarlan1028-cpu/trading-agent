@@ -30,31 +30,96 @@ esbuild.buildSync({
 });
 const { useApi } = require(outFile);
 
-function renderUseApiWithoutEffects() {
+function createUseApiHarnessWithoutEffects() {
   const dispatcherRef = React.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED.ReactCurrentDispatcher;
-  const previousDispatcher = dispatcherRef.current;
   const states = [];
   const refs = [];
-  let index = 0;
-  dispatcherRef.current = {
-    useState(initial) {
-      const slot = index++;
-      if (!(slot in states)) states[slot] = typeof initial === "function" ? initial() : initial;
-      return [states[slot], (next) => { states[slot] = typeof next === "function" ? next(states[slot]) : next; }];
-    },
-    useRef(initial) {
-      const slot = index++;
-      if (!(slot in refs)) refs[slot] = { current: initial };
-      return refs[slot];
-    },
-    useEffect() { index++; }
+  return {
+    render() {
+      const previousDispatcher = dispatcherRef.current;
+      let index = 0;
+      dispatcherRef.current = {
+        useState(initial) {
+          const slot = index++;
+          if (!(slot in states)) states[slot] = typeof initial === "function" ? initial() : initial;
+          return [states[slot], (next) => { states[slot] = typeof next === "function" ? next(states[slot]) : next; }];
+        },
+        useRef(initial) {
+          const slot = index++;
+          if (!(slot in refs)) refs[slot] = { current: initial };
+          return refs[slot];
+        },
+        useEffect() { index++; }
+      };
+      try {
+        return useApi();
+      } finally {
+        dispatcherRef.current = previousDispatcher;
+      }
+    }
   };
-  try {
-    return useApi();
-  } finally {
-    dispatcherRef.current = previousDispatcher;
-  }
 }
+
+function renderUseApiWithoutEffects() {
+  return createUseApiHarnessWithoutEffects().render();
+}
+
+test("web login reloads the authenticated core instead of leaving the startup screen pending", async () => {
+  const saved = {
+    fetch: globalThis.fetch,
+    localStorage: globalThis.localStorage,
+    location: globalThis.location,
+    window: globalThis.window
+  };
+  const storage = new Map();
+  let coreRequests = 0;
+  globalThis.localStorage = {
+    getItem: (key) => storage.get(key) || null,
+    setItem: (key, value) => storage.set(key, String(value)),
+    removeItem: (key) => storage.delete(key)
+  };
+  globalThis.location = { search: "" };
+  globalThis.window = {
+    location: { origin: "https://app.example", hostname: "app.example", protocol: "https:" },
+    localStorage: globalThis.localStorage,
+    setTimeout,
+    clearTimeout,
+    addEventListener: () => {},
+    removeEventListener: () => {}
+  };
+  globalThis.fetch = async (url) => {
+    const target = String(url);
+    if (target.endsWith("/api/bootstrap/core")) {
+      coreRequests += 1;
+      if (coreRequests === 1) return { ok: false, status: 401, json: async () => ({ error: "auth_required" }) };
+      return { ok: true, status: 200, json: async () => ({ revision: 7, resourceState: { chat: "not_loaded" } }) };
+    }
+    if (target.endsWith("/api/auth/login")) {
+      return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    }
+    throw new Error(`Unexpected request: ${target}`);
+  };
+
+  try {
+    const harness = createUseApiHarnessWithoutEffects();
+    let api = harness.render();
+    await api.refresh();
+    api = harness.render();
+    assert.equal(api.authRequired, true, "the initial 401 exposes the login surface");
+
+    assert.deepEqual(await api.login({ email: "owner@example.com", password: "password" }), { ok: true });
+    api = harness.render();
+    assert.equal(api.authRequired, false, "successful login exits the public surface");
+    assert.equal(api.loading, false, "the authenticated bootstrap reaches a terminal state");
+    assert.equal(api.data?.revision, 7, "the authenticated core is published without a manual reload");
+    assert.equal(coreRequests, 2, "login performs the first authenticated core request");
+  } finally {
+    globalThis.fetch = saved.fetch;
+    globalThis.localStorage = saved.localStorage;
+    globalThis.location = saved.location;
+    globalThis.window = saved.window;
+  }
+});
 
 test("useApi aborts stale actions after base or token identity changes and only authorizes the current request", async () => {
   const saved = {

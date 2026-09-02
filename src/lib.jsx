@@ -1176,7 +1176,8 @@ export function useApi() {
       setToast(json.error || t("登录失败", "Sign-in failed"));
       return { ok: false, mfaRequired: json.mfaRequired === true, mfaRetry: json.mfaRetry || null, error: json.error || "login_failed" };
     }
-    if (isNativeApp()) {
+    const native = isNativeApp();
+    if (native) {
       localStorage.setItem("agent_token", json.token);
       resetSnapshotIdentity();
       tokenRef.current = json.token;
@@ -1188,6 +1189,11 @@ export function useApi() {
       setToken("");
     }
     setAuthRequired(false);
+    // Web authentication is cookie-backed, so the token dependency does not change after
+    // sign-in. Explicitly resume the authenticated bootstrap instead of leaving the startup
+    // screen pending until a manual page reload. Native authentication changes the bearer
+    // token and is refreshed by the token-dependent effect, avoiding a duplicate request.
+    if (!native) await refresh(true, apiBaseRef.current);
     setToast(t("登录成功", "Signed in"));
     window.setTimeout(() => setToast(""), 1800);
     return { ok: true };
