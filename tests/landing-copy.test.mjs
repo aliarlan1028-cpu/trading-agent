@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const html = readFileSync(new URL("../public/landing.html", import.meta.url), "utf8");
-const script = readFileSync(new URL("../public/landing.js", import.meta.url), "utf8");
-const styles = readFileSync(new URL("../public/landing.css", import.meta.url), "utf8");
+const html = readFileSync(new URL("../landing.html", import.meta.url), "utf8");
+const script = readFileSync(new URL("../src/marketing/landing.js", import.meta.url), "utf8");
+const styles = readFileSync(new URL("../src/marketing/landing.css", import.meta.url), "utf8");
 const source = `${html}\n${script}\n${styles}`;
 
 test("营销页完整回答系统是什么、解决什么、如何解决、特色与竞品差异", () => {

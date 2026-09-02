@@ -1267,8 +1267,8 @@ test("desktop runtime controls fit the two true emergency actions without empty 
 });
 
 test("To the Moon public product preview teaches the same three modes as the real cockpit", () => {
-  const html = fs.readFileSync(path.join(rootDir, "public/landing.html"), "utf8");
-  const script = fs.readFileSync(path.join(rootDir, "public/landing.js"), "utf8");
+  const html = fs.readFileSync(path.join(rootDir, "landing.html"), "utf8");
+  const script = fs.readFileSync(path.join(rootDir, "src/marketing/landing.js"), "utf8");
   const preview = `${html}\n${script}`;
   assert.match(preview, /TO THE MOON/);
   assert.match(preview, /自动交易/);

@@ -1166,8 +1166,8 @@ test("authentication keeps the August 15 motion scene while marketing restores T
   }
   assert.match(base, /AuthMarketMotion|nativeAuthMotionTile/);
   assert.doesNotMatch(current, /AuthSystemMap|nativeAuthNetwork/);
-  const marketing = fs.readFileSync(path.join(rootDir, "public/landing.html"), "utf8");
-  const marketingCss = fs.readFileSync(path.join(rootDir, "public/landing.css"), "utf8");
+  const marketing = fs.readFileSync(path.join(rootDir, "landing.html"), "utf8");
+  const marketingCss = fs.readFileSync(path.join(rootDir, "src/marketing/landing.css"), "utf8");
   const authCss = fs.readFileSync(path.join(rootDir, "src/aug15-auth.css"), "utf8");
   assert.equal([...marketing.matchAll(/data-i18n(?:-html)?=/g)].length, 413);
   for (const action of ["login", "subscribe", "contact", "lang"]) assert.match(marketing, new RegExp(`data-action=["']${action}["']`));
