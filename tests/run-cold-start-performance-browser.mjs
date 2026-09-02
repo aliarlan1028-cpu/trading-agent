@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import os from "node:os";
@@ -106,21 +107,64 @@ async function waitExpression(cdp, expression, label) {
   }
 }
 
+async function stableClickPoint(cdp, selector, { trackPointer = false } = {}) {
+  const deadline = Date.now() + 20_000;
+  let previous;
+  let stableSamples = 0;
+  while (Date.now() < deadline) {
+    await evaluate(cdp, "new Promise((resolve) => requestAnimationFrame(() => resolve(true)))");
+    const sample = await evaluate(cdp, `(() => {
+      const node = document.querySelector(${JSON.stringify(selector)});
+      if (!node) return null;
+      node.scrollIntoView({ behavior: "instant", block: "center", inline: "center" });
+      const rect = node.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      const hit = document.elementFromPoint(x, y);
+      return { x, y, left:rect.left, top:rect.top, width:rect.width, height:rect.height, visible:rect.width > 0 && rect.height > 0 && (hit === node || node.contains(hit)) };
+    })()`);
+    const stable = sample?.visible && previous?.visible
+      && ["left", "top", "width", "height"].every((key) => Math.abs(sample[key] - previous[key]) <= 0.25);
+    if (trackPointer && sample?.visible) {
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: sample.x, y: sample.y, button: "none" });
+    }
+    stableSamples = stable ? stableSamples + 1 : 0;
+    if (stableSamples >= 3) return { x: sample.x, y: sample.y };
+    previous = sample;
+  }
+  throw new Error(`Timed out waiting for stable physical click target ${selector}`);
+}
+
 async function click(cdp, selector) {
-  await waitExpression(cdp, `(() => {
-    const node = document.querySelector(${JSON.stringify(selector)});
-    if (!node) return false;
-    node.scrollIntoView({ block: "center", inline: "center" });
-    const rect = node.getBoundingClientRect();
-    const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
-    return rect.width > 0 && rect.height > 0 && (hit === node || node.contains(hit));
-  })()`, `physical click target ${selector}`);
-  const point = await evaluate(cdp, `(() => {
-    const rect = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
-    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-  })()`);
+  let point = await stableClickPoint(cdp, selector);
+  await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: point.x, y: point.y, button: "none" });
+  point = await stableClickPoint(cdp, selector, { trackPointer: true });
+  await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: point.x, y: point.y, button: "none" });
   await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: point.x, y: point.y, button: "left", clickCount: 1 });
   await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: point.x, y: point.y, button: "left", clickCount: 1 });
+}
+
+async function clickAndWaitForNavigation(cdp, selector, pathname) {
+  let stopListening;
+  const navigated = new Promise((resolve) => {
+    stopListening = cdp.on("Page.frameNavigated", ({ frame }) => {
+      if (!frame?.parentId && new URL(frame.url).pathname === pathname) resolve(frame.url);
+    });
+  });
+  try {
+    await click(cdp, selector);
+    await Promise.race([
+      navigated,
+      delay(20_000).then(() => { throw new Error(`Timed out waiting for new document ${pathname}`); })
+    ]);
+  } finally {
+    stopListening?.();
+  }
+}
+
+async function typeText(cdp, selector, value) {
+  await click(cdp, selector);
+  await cdp.send("Input.insertText", { text: value });
 }
 
 async function press(cdp, key) {
@@ -155,11 +199,28 @@ function noOverflowMessage(width, mode, proof) {
   return `${width}px ${mode} horizontal overflow: ${JSON.stringify(proof)}`;
 }
 
+function manifestInitialClosure(manifest, entryKey) {
+  const visited = new Set();
+  const files = new Set();
+  const visit = (key) => {
+    if (!key || visited.has(key)) return;
+    visited.add(key);
+    const entry = manifest[key];
+    assert.ok(entry, `manifest closure is missing ${key}`);
+    if (entry.file) files.add(entry.file);
+    for (const file of [...(entry.css || []), ...(entry.assets || [])]) files.add(file);
+    for (const importedKey of entry.imports || []) visit(importedKey);
+  };
+  visit(entryKey);
+  return [...files].sort();
+}
+
 const workspace = await mkdtemp(path.join(os.tmpdir(), "kordyn-cold-start-"));
 const buildDir = path.join(workspace, "dist");
 const chromeProfile = path.join(workspace, "chrome-profile");
 const serverRequests = [];
 const browserRequests = [];
+const navigationUrls = [];
 const appPort = await freePort();
 let server;
 let chrome;
@@ -168,6 +229,9 @@ let coreMode = "guest";
 let coreStartedAt = 0;
 let coreCompletedAt = 0;
 const authenticatedCoreEnabled = true;
+const credentialNonce = randomUUID().replaceAll("-", "");
+const credentialEmail = `cold-start-${credentialNonce}@invalid.example`;
+const credentialPassword = `Task7-${credentialNonce}-secret`;
 
 try {
   process.stderr.write(`cold-start browser: build stage pid=${process.pid} output=${buildDir}\n`);
@@ -188,7 +252,13 @@ try {
   assert.equal(productStylesCss.length, 1, `deferred productStyles must own one real CSS asset, got ${JSON.stringify(productStylesEntry.assets || [])}`);
   const [augustStylesheet] = productStylesCss;
 
-  const landingFiles = ["landing.html", landingEntry.file, ...(landingEntry.css || [])];
+  const landingClosure = manifestInitialClosure(manifest, "landing.html");
+  const appInitialClosure = manifestInitialClosure(manifest, "index.html");
+  const landingClosureSet = new Set(landingClosure);
+  const appOnlyInitialClosure = appInitialClosure.filter((file) => !landingClosureSet.has(file));
+  assert.ok(appOnlyInitialClosure.includes(appEntry.file), "app-only closure must contain the product entry");
+  assert.ok(appOnlyInitialClosure.some((file) => file.endsWith(".css")), "app-only closure must contain the product entry CSS");
+  const landingFiles = ["landing.html", ...landingClosure];
   const assetMetrics = {};
   for (const file of landingFiles) {
     const bytes = await readFile(path.join(buildDir, file));
@@ -203,8 +273,10 @@ try {
   }
 
   const app = express();
-  app.use((req, _res, next) => {
-    serverRequests.push({ host: req.get("host"), path: req.originalUrl, at: Date.now() });
+  app.use((req, res, next) => {
+    const request = { host: req.get("host"), path: req.originalUrl, at: Date.now(), finishedAt: null };
+    serverRequests.push(request);
+    res.once("finish", () => { request.finishedAt = Date.now(); });
     next();
   });
   app.get("/api/public/ticker-bar", (_req, res) => res.json({ items: [] }));
@@ -222,9 +294,10 @@ try {
     coreStartedAt = Date.now();
     if (coreMode !== "authenticated" || !authenticatedCoreEnabled) return res.status(401).json({ error: "auth_required" });
     await delay(1_200);
-    coreCompletedAt = Date.now();
+    res.once("finish", () => { coreCompletedAt = Date.now(); });
     res.type("json").send(KORDYN_V2_PRODUCTION_FIXTURE_JSON);
   });
+  app.post("/api/auth/login", express.json(), (_req, res) => res.status(401).json({ error: "invalid_credentials" }));
   app.get("/api/overview", (_req, res) => res.type("json").send(KORDYN_V2_PRODUCTION_FIXTURE_JSON));
   app.get("/api/stream", (_req, res) => {
     res.set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
@@ -247,8 +320,12 @@ try {
   const targets = await waitFor(`http://127.0.0.1:${chromePort}/json`, (rows) => rows.some((row) => row.type === "page"));
   cdp = connectCdp(targets.find((row) => row.type === "page").webSocketDebuggerUrl);
   await Promise.all([cdp.send("Runtime.enable"), cdp.send("Page.enable"), cdp.send("Network.enable")]);
+  await cdp.send("Network.setCacheDisabled", { cacheDisabled: true });
   cdp.on("Runtime.exceptionThrown", ({ exceptionDetails }) => process.stderr.write(`browser exception: ${exceptionDetails?.exception?.description || exceptionDetails?.text}\n`));
   cdp.on("Network.requestWillBeSent", ({ request }) => browserRequests.push({ url: request.url, at: Date.now() }));
+  cdp.on("Page.frameNavigated", ({ frame }) => {
+    if (!frame?.parentId) navigationUrls.push(frame.url);
+  });
   await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: `
     let assignedCapacitor;
     Object.defineProperty(window, "Capacitor", {
@@ -278,17 +355,27 @@ try {
     assert.equal(publicProof.overflow, 0, noOverflowMessage(width, "public", publicProof));
     const publicRequests = requestEvidence(browserRequests.slice(requestStart));
     assert.equal(publicRequests.some((row) => /(^|\.)googleapis\.com$|(^|\.)gstatic\.com$/.test(row.host)), false, `${width}px public marketing requests no Google font host`);
-    const productAssets = [appEntry.file, augustEntry.file, productStylesEntry.file, augustStylesheet];
-    assert.equal(publicRequests.some((row) => productAssets.some((file) => row.path.split("?")[0] === `/${file}`)), false, `${width}px public marketing requests no product JS or CSS asset`);
+    assert.equal(publicRequests.some((row) => appOnlyInitialClosure.some((file) => row.path.split("?")[0] === `/${file}`)), false, `${width}px public marketing requests no app-only initial JS or CSS asset`);
+    assert.equal(publicRequests.some((row) => [augustEntry.file, productStylesEntry.file, augustStylesheet].some((file) => row.path.split("?")[0] === `/${file}`)), false, `${width}px public marketing requests no deferred product JS or CSS asset`);
     assert.equal(publicRequests.some((row) => row.path.startsWith("/api/bootstrap/core")), false, `${width}px public marketing requests no core bootstrap`);
-    publicResults.push({ width, height, overflow: publicProof.overflow, requestCount: publicRequests.length, requests: publicRequests });
+    publicResults.push({
+      width,
+      height,
+      overflow: publicProof.overflow,
+      requestCount: publicRequests.length,
+      googleFontHostCount: 0,
+      appOnlyRequestCount: 0,
+      deferredProductRequestCount: 0,
+      coreRequestCount: 0,
+      requests: publicRequests
+    });
 
     for (const mode of ["login", "subscribe"]) {
       requestStart = browserRequests.length;
       await navigate(cdp, `${baseUrl}/?${mode}_probe=${width}-${Date.now()}`, width, height);
       await waitExpression(cdp, `document.readyState === "complete" && document.querySelector('[data-action="${mode}"]')`, `${width}px marketing ${mode} action`);
       await delay(150);
-      await click(cdp, `[data-action="${mode}"]`);
+      await clickAndWaitForNavigation(cdp, `[data-action="${mode}"]`, "/app");
       await waitExpression(cdp, `location.pathname === "/app" && document.querySelector('.lpModal--${mode}[role="dialog"][aria-labelledby="web-auth-title"]')`, `${width}px real ${mode} modal`);
       await press(cdp, "Tab");
       const modalProof = await evaluate(cdp, `(() => {
@@ -310,6 +397,14 @@ try {
       assert.equal(modalProof.focusInside, true, `${width}px ${mode} keyboard focus stays inside real modal`);
       assert.equal(modalProof.focusVisible, true, `${width}px ${mode} keyboard focus is visibly styled`);
       assert.equal(modalProof.overflow, 0, noOverflowMessage(width, mode, modalProof));
+      if (width === 1440 && mode === "login") {
+        const loginRequestCount = serverRequests.filter((row) => row.path === "/api/auth/login").length;
+        await typeText(cdp, "#web-login-email", credentialEmail);
+        await typeText(cdp, "#web-login-password", credentialPassword);
+        await click(cdp, ".lpLoginForm .lpBtn");
+        await waitExpression(cdp, `document.querySelector('.lpToast')?.textContent.includes('invalid_credentials')`, "production-shaped rejected login response");
+        assert.equal(serverRequests.filter((row) => row.path === "/api/auth/login").length, loginRequestCount + 1, "real login form submits exactly one production-shaped request");
+      }
       await press(cdp, "Escape");
       await waitExpression(cdp, `!document.querySelector('.lpModal--${mode}')`, `${width}px ${mode} Escape close`);
       const modalRequests = requestEvidence(browserRequests.slice(requestStart));
@@ -337,29 +432,45 @@ try {
   coreStartedAt = 0;
   coreCompletedAt = 0;
   const authStart = browserRequests.length;
+  const authServerStart = serverRequests.length;
   await navigate(cdp, `${baseUrl}/app?authenticated_probe=${Date.now()}`, 1440, 900);
   await waitExpression(cdp, "document.querySelector('[data-classic-shell]')", "real authenticated August 15 shell");
   const authenticatedRequests = requestEvidence(browserRequests.slice(authStart));
+  const authenticatedServerRequests = serverRequests.slice(authServerStart);
   const augustRequest = authenticatedRequests.find((row) => row.path.split("?")[0] === `/${augustEntry.file}`);
   const productStylesRequest = authenticatedRequests.find((row) => row.path.split("?")[0] === `/${productStylesEntry.file}`);
   const stylesheetRequest = authenticatedRequests.find((row) => row.path.split("?")[0] === `/${augustStylesheet}`);
+  const augustServerRequest = authenticatedServerRequests.find((row) => row.path.split("?")[0] === `/${augustEntry.file}`);
+  const productStylesServerRequest = authenticatedServerRequests.find((row) => row.path.split("?")[0] === `/${productStylesEntry.file}`);
+  const stylesheetServerRequest = authenticatedServerRequests.find((row) => row.path.split("?")[0] === `/${augustStylesheet}`);
   assert.ok(coreStartedAt > 0, "authenticated product entry requests the core fixture");
   assert.ok(coreCompletedAt > coreStartedAt, "authenticated core fixture completes after its configured delay");
   assert.ok(augustRequest, `authenticated product requests the August 15 entry ${augustEntry.file}`);
   assert.ok(productStylesRequest, `authenticated product requests the deferred style loader ${productStylesEntry.file}`);
   assert.ok(stylesheetRequest, `authenticated product requests the deferred stylesheet ${augustStylesheet}`);
-  assert.ok(augustRequest.at < coreCompletedAt, `August 15 entry request must begin before delayed core completes: ${JSON.stringify({ augustAt: augustRequest.at, coreStartedAt, coreCompletedAt })}`);
-  assert.ok(coreCompletedAt < productStylesRequest.at, `deferred style loader must begin after delayed core completes: ${JSON.stringify({ coreCompletedAt, productStylesAt: productStylesRequest.at })}`);
-  assert.ok(coreCompletedAt < stylesheetRequest.at, `App JS < core completion < CSS request ordering is required: ${JSON.stringify({ augustAt: augustRequest.at, coreCompletedAt, stylesheetAt: stylesheetRequest.at })}`);
+  assert.ok(augustServerRequest && productStylesServerRequest && stylesheetServerRequest, "server captures App JS, productStyles JS, and CSS arrival timestamps");
+  assert.ok(augustServerRequest.at < coreCompletedAt, `August 15 App request must arrive before core response finish: ${JSON.stringify({ augustAt: augustServerRequest.at, coreStartedAt, coreCompletedAt })}`);
+  assert.ok(coreCompletedAt < productStylesServerRequest.at, `productStyles request must arrive after core response finish: ${JSON.stringify({ coreCompletedAt, productStylesAt: productStylesServerRequest.at })}`);
+  assert.ok(coreCompletedAt < stylesheetServerRequest.at, `App JS < core response finish < CSS request ordering is required on one server clock: ${JSON.stringify({ augustAt: augustServerRequest.at, coreCompletedAt, stylesheetAt: stylesheetServerRequest.at })}`);
+
+  const credentialUrls = [...browserRequests.map((row) => row.url), ...navigationUrls];
+  const credentialParameter = /[?&](?:email|e-?mail|password|passwd|pwd|credential|username)=/iu;
+  const credentialUrlSafe = credentialUrls.every((url) => !credentialParameter.test(url)
+    && !url.includes(credentialEmail)
+    && !url.includes(encodeURIComponent(credentialEmail))
+    && !url.includes(credentialPassword)
+    && !url.includes(encodeURIComponent(credentialPassword)));
+  assert.equal(credentialUrlSafe, true, "credential names and sentinel values never enter captured request/navigation URLs or queries");
 
   console.log(JSON.stringify({
     result: "PASS",
     buildDir,
-    assets: { landing: landingEntry.file, product: appEntry.file, august15: augustEntry.file, productStyles: productStylesEntry.file, augustStylesheet, assetCount: landingFiles.length, landingGzipBytes, marketingFiles: assetMetrics, productFiles: productAssetMetrics },
+    assets: { landing: landingEntry.file, product: appEntry.file, august15: augustEntry.file, productStyles: productStylesEntry.file, augustStylesheet, assetCount: landingFiles.length, landingGzipBytes, landingClosure, appInitialClosure, appOnlyInitialClosure, marketingFiles: assetMetrics, productFiles: productAssetMetrics },
     public: publicResults,
     modals: modalResults,
     native: { ...nativeProof, coreRequestCount: nativeCoreRequestCount, requestCount: nativeRequests.length, requests: nativeRequests },
-    authenticated: { coreStartedAt, coreCompletedAt, augustRequest, productStylesRequest, stylesheetRequest, timingOrder: "App JS < core completion < CSS request", requestCount: authenticatedRequests.length, requests: authenticatedRequests },
+    authenticated: { coreStartedAt, coreResponseFinishedAt: coreCompletedAt, augustRequest, productStylesRequest, stylesheetRequest, augustServerRequest, productStylesServerRequest, stylesheetServerRequest, timingOrder: "App JS < core response finish < CSS request", requestCount: authenticatedRequests.length, requests: authenticatedRequests },
+    credentialUrlSafe,
     serverRequestCount: serverRequests.length
   }, null, 2));
 } catch (error) {

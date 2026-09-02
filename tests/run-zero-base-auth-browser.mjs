@@ -17,7 +17,29 @@ async function evaluate(cdp,expression){const result=await cdp.send("Runtime.eva
 async function waitExpression(cdp,expression,label){const end=Date.now()+20_000;while(!await evaluate(cdp,`Boolean(${expression})`)){if(Date.now()>end)throw new Error(`Timed out waiting for ${label}`);await delay(60);}}
 async function viewport(cdp,url,width,height){await cdp.send("Emulation.setDeviceMetricsOverride",{width,height,deviceScaleFactor:1,mobile:width<800,screenWidth:width,screenHeight:height});await cdp.send("Page.navigate",{url});await waitExpression(cdp,"window.__zeroBaseAuthReady","auth harness");await delay(900);}
 async function click(cdp,selector){await waitExpression(cdp,`document.querySelector(${JSON.stringify(selector)})`,`click ${selector}`);const point=await evaluate(cdp,`(()=>{const n=document.querySelector(${JSON.stringify(selector)});n.scrollIntoView({block:"center"});const r=n.getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2};})()`);await cdp.send("Input.dispatchMouseEvent",{type:"mousePressed",x:point.x,y:point.y,button:"left",clickCount:1});await cdp.send("Input.dispatchMouseEvent",{type:"mouseReleased",x:point.x,y:point.y,button:"left",clickCount:1});await delay(100);}
-async function clickMarketingAction(cdp,action){const selector=`[data-action="${action}"]`;await waitExpression(cdp,`document.querySelector('iframe')?.contentDocument?.querySelector(${JSON.stringify(selector)})`,`marketing iframe ${action}`);await evaluate(cdp,`document.querySelector('iframe').contentDocument.querySelector(${JSON.stringify(selector)}).click()`);await delay(100);}
+async function clickMarketingAction(cdp,action){
+  const selector=`[data-action="${action}"]`,keys=["left","top","width","height","childLeft","childTop","childWidth","childHeight"];
+  const stablePoint=async(trackPointer)=>{
+    const end=Date.now()+20_000;let previous,stableSamples=0;
+    while(Date.now()<end){
+      await evaluate(cdp,"new Promise((resolve)=>requestAnimationFrame(()=>resolve(true)))");
+      const sample=await evaluate(cdp,`(()=>{const frame=document.querySelector('iframe'),child=frame?.contentDocument?.querySelector(${JSON.stringify(selector)});if(!frame||frame.contentDocument.readyState!=="complete"||!child)return null;child.scrollIntoView({behavior:"instant",block:"center",inline:"center"});const f=frame.getBoundingClientRect(),c=child.getBoundingClientRect(),cx=c.left+c.width/2,cy=c.top+c.height/2,x=f.left+cx*(f.width/frame.contentWindow.innerWidth),y=f.top+cy*(f.height/frame.contentWindow.innerHeight),topHit=document.elementFromPoint(x,y),childHit=frame.contentDocument.elementFromPoint(cx,cy);return{x,y,left:f.left,top:f.top,width:f.width,height:f.height,childLeft:c.left,childTop:c.top,childWidth:c.width,childHeight:c.height,visible:f.width>0&&f.height>0&&c.width>0&&c.height>0&&topHit===frame&&(childHit===child||child.contains(childHit))};})()`);
+      if(trackPointer&&sample?.visible)await cdp.send("Input.dispatchMouseEvent",{type:"mouseMoved",x:sample.x,y:sample.y,button:"none"});
+      const stable=sample?.visible&&previous?.visible&&keys.every((key)=>Math.abs(sample[key]-previous[key])<=.25);
+      stableSamples=stable?stableSamples+1:0;
+      if(stableSamples>=3)return sample;
+      previous=sample;
+    }
+    throw new Error(`Timed out waiting for stable physical marketing iframe ${action} action`);
+  };
+  let point=await stablePoint(false);
+  await cdp.send("Input.dispatchMouseEvent",{type:"mouseMoved",x:point.x,y:point.y,button:"none"});
+  point=await stablePoint(true);
+  await cdp.send("Input.dispatchMouseEvent",{type:"mouseMoved",x:point.x,y:point.y,button:"none"});
+  await cdp.send("Input.dispatchMouseEvent",{type:"mousePressed",x:point.x,y:point.y,button:"left",clickCount:1});
+  await cdp.send("Input.dispatchMouseEvent",{type:"mouseReleased",x:point.x,y:point.y,button:"left",clickCount:1});
+  await delay(100);
+}
 async function type(cdp,selector,value){await click(cdp,selector);await cdp.send("Input.insertText",{text:value});await delay(60);}
 async function pressKey(cdp,key,{shift=false}={}){const code=key==="Escape"?"Escape":key==="Tab"?"Tab":key;const windowsVirtualKeyCode=key==="Escape"?27:key==="Tab"?9:0;await cdp.send("Input.dispatchKeyEvent",{type:"keyDown",key,code,windowsVirtualKeyCode,modifiers:shift?8:0});await cdp.send("Input.dispatchKeyEvent",{type:"keyUp",key,code,windowsVirtualKeyCode,modifiers:shift?8:0});await delay(80);}
 async function capture(cdp,name){const dir=process.env.KORDYN_ZERO_BASE_AUTH_SCREENSHOT_DIR;if(!dir)return;await mkdir(dir,{recursive:true});const shot=await cdp.send("Page.captureScreenshot",{format:"png",fromSurface:true,captureBeyondViewport:false});await writeFile(path.join(dir,`${name}.png`),Buffer.from(shot.data,"base64"));}

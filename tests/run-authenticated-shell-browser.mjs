@@ -54,7 +54,7 @@ function connectCdp(url) {
     const request = pending.get(message.id);
     if (!request) return;
     pending.delete(message.id);
-    if (message.error) request.reject(new Error(message.error.message));
+    if (message.error) request.reject(new Error(`${request.method}: ${message.error.message}`));
     else request.resolve(message.result);
   });
   const ready = new Promise((resolve, reject) => {
@@ -66,7 +66,7 @@ function connectCdp(url) {
       await ready;
       const id = ++requestId;
       return await new Promise((resolve, reject) => {
-        pending.set(id, { resolve, reject });
+        pending.set(id, { resolve, reject, method });
         socket.send(JSON.stringify({ id, method, params }));
       });
     },
@@ -230,11 +230,53 @@ async function trustedClick(cdp, selector) {
 
 async function clickMarketingIframeAction(cdp, action) {
   const selector = `[data-action="${action}"]`;
-  await waitForExpression(cdp, `(() => {
+  const stablePoint = async (trackPointer) => {
+    const deadline = Date.now() + 20_000;
+    let previous;
+    let lastSample;
+    let stableSamples = 0;
+    while (Date.now() < deadline) {
+      await evaluate(cdp, "new Promise((resolve) => requestAnimationFrame(() => resolve(true)))");
+      const sample = await evaluate(cdp, `(() => {
+        const frame = document.querySelector('.lpFrame');
+        const child = frame?.contentDocument?.querySelector(${JSON.stringify(selector)});
+        if (!frame || frame.contentDocument.readyState !== 'complete' || !child) return null;
+        child.scrollIntoView({ behavior:'instant', block:'center', inline:'center' });
+        const frameRect = frame.getBoundingClientRect();
+        const childRect = child.getBoundingClientRect();
+        const childX = childRect.left + childRect.width / 2;
+        const childY = childRect.top + childRect.height / 2;
+        const x = frameRect.left + childX * (frameRect.width / frame.contentWindow.innerWidth);
+        const y = frameRect.top + childY * (frameRect.height / frame.contentWindow.innerHeight);
+        const topHit = document.elementFromPoint(x, y);
+        const childHit = frame.contentDocument.elementFromPoint(childX, childY);
+        return { x,y,left:frameRect.left,top:frameRect.top,width:frameRect.width,height:frameRect.height,childLeft:childRect.left,childTop:childRect.top,childWidth:childRect.width,childHeight:childRect.height,topHit:topHit?.outerHTML?.slice(0,240)||null,childHit:childHit?.outerHTML?.slice(0,240)||null,bodyClass:document.body.className,visible:frameRect.width>0&&frameRect.height>0&&childRect.width>0&&childRect.height>0&&topHit===frame&&(childHit===child||child.contains(childHit)) };
+      })()`);
+      lastSample = sample;
+      if (trackPointer && sample?.visible) await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: sample.x, y: sample.y, button: "none" });
+      const keys = ["left", "top", "width", "height", "childLeft", "childTop", "childWidth", "childHeight"];
+      const stable = sample?.visible && previous?.visible && keys.every((key) => Math.abs(sample[key] - previous[key]) <= 0.25);
+      stableSamples = stable ? stableSamples + 1 : 0;
+      if (stableSamples >= 3) return sample;
+      previous = sample;
+    }
+    throw new Error(`Timed out waiting for stable physical marketing iframe ${action} action: ${JSON.stringify(lastSample)}`);
+  };
+  let point = await stablePoint(false);
+  await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: point.x, y: point.y, button: "none" });
+  point = await stablePoint(true);
+  await evaluate(cdp, `(() => {
     const frame = document.querySelector('.lpFrame');
-    return frame?.contentDocument?.readyState === 'complete' && frame.contentDocument.querySelector(${JSON.stringify(selector)});
-  })()`, `real marketing iframe ${action} action`);
-  await evaluate(cdp, `document.querySelector('.lpFrame').contentDocument.querySelector(${JSON.stringify(selector)}).click()`);
+    frame.contentWindow.__kordynPhysicalClickObserved = false;
+    frame.contentDocument.addEventListener('click', (event) => {
+      if (event.target.closest(${JSON.stringify(selector)})) frame.contentWindow.__kordynPhysicalClickObserved = true;
+    }, { once:true, capture:true });
+    return true;
+  })()`);
+  await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: point.x, y: point.y, button: "none" });
+  await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: point.x, y: point.y, button: "left", clickCount: 1 });
+  await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: point.x, y: point.y, button: "left", clickCount: 1 });
+  await waitForExpression(cdp, "document.querySelector('.lpFrame')?.contentWindow?.__kordynPhysicalClickObserved === true", `physical marketing iframe ${action} click event`);
 }
 
 async function trustedClickText(cdp, selector, label) {
@@ -398,27 +440,46 @@ try {
     let resolveAuthenticatedCoreRequest;
     let resolveLoginRequest;
     let failCoreRequests = false;
-    let coreRequestCount = 0;
+    let initialCoreCaptured = false;
+    let expectAuthenticatedCore = false;
     const initialCoreRequestPaused = new Promise((resolve) => { resolveInitialCoreRequest = resolve; });
     const authenticatedCoreRequestPaused = new Promise((resolve) => { resolveAuthenticatedCoreRequest = resolve; });
     const loginRequestPaused = new Promise((resolve) => { resolveLoginRequest = resolve; });
     const stopListeningForCore = cdp.on("Fetch.requestPaused", (params) => {
       if (params.request?.url.includes("/api/bootstrap/core")) {
-        coreRequestCount += 1;
-        if (coreRequestCount === 1) resolveInitialCoreRequest(params.requestId);
-        else resolveAuthenticatedCoreRequest(params.requestId);
-        if (failCoreRequests) cdp.send("Fetch.failRequest", { requestId: params.requestId, errorReason: "Failed" }).catch(() => {});
+        if (!initialCoreCaptured) {
+          initialCoreCaptured = true;
+          resolveInitialCoreRequest(params.requestId);
+        } else if (expectAuthenticatedCore) {
+          resolveAuthenticatedCoreRequest(params.requestId);
+          if (failCoreRequests) cdp.send("Fetch.failRequest", { requestId: params.requestId, errorReason: "Failed" }).catch(() => {});
+        } else {
+          cdp.send("Fetch.fulfillRequest", {
+            requestId: params.requestId,
+            responseCode: 401,
+            responseHeaders: [{ name: "Content-Type", value: "application/json" }],
+            body: Buffer.from('{"error":"auth_required"}').toString("base64")
+          }).catch(() => {});
+        }
       }
       else if (params.request?.url.includes("/api/auth/login")) resolveLoginRequest(params.requestId);
+      else if (params.request?.url.includes("/api/health?release_check=")) cdp.send("Fetch.fulfillRequest", {
+        requestId: params.requestId,
+        responseCode: 200,
+        responseHeaders: [{ name: "Content-Type", value: "application/json" }],
+        body: Buffer.from('{"release":"authenticated-browser-client"}').toString("base64")
+      }).catch(() => {});
       else cdp.send("Fetch.continueRequest", { requestId: params.requestId }).catch(() => {});
     });
     await cdp.send("Fetch.enable", { patterns: [
       { urlPattern: "*api/bootstrap/core*", requestStage: "Request" },
-      { urlPattern: "*api/auth/login*", requestStage: "Request" }
+      { urlPattern: "*api/auth/login*", requestStage: "Request" },
+      { urlPattern: "*api/health?release_check=*", requestStage: "Request" }
     ] });
     const startupProbeUrl = new URL(appUrl);
     startupProbeUrl.searchParams.set("authenticated_state_probe", `${width}-${height}-${Date.now()}`);
     await cdp.send("Page.navigate", { url: startupProbeUrl.href });
+    await waitForExpression(cdp, `location.href === ${JSON.stringify(startupProbeUrl.href)} && document.readyState !== 'loading'`, `${width}x${height} startup probe document commit`);
     const initialCoreRequestId = await waitForSignal(initialCoreRequestPaused, `${width}x${height} unresolved-session core request`);
     const publicSelector = ".publicAppFrame .lpRoot";
     await waitForExpression(cdp, `document.querySelector(${JSON.stringify(publicSelector)})`, `${width}x${height} public marketing while session is unresolved`);
@@ -435,6 +496,7 @@ try {
     await waitForExpression(cdp, "document.querySelector('.lpLoginForm')", `${width}x${height} real public login form`);
     await evaluate(cdp, "document.querySelector('.lpLoginForm').requestSubmit()");
     const loginRequestId = await waitForSignal(loginRequestPaused, `${width}x${height} web login request`);
+    expectAuthenticatedCore = true;
     await cdp.send("Fetch.fulfillRequest", {
       requestId: loginRequestId,
       responseCode: 200,
@@ -448,8 +510,8 @@ try {
     assertFontStack(startupFont, "Public Sans, Noto Sans SC, PingFang SC, Microsoft YaHei, sans-serif", `${width}x${height} zero-base authenticated startup font stack`);
     collectAugust15EntrySurfaceViolations(visualViolations, `${width}x${height} authenticated startup loading`, await readSurfaceContract(cdp, startupSelector));
     await captureEntryState(cdp, `startup-${width}x${height}`);
-    failCoreRequests = true;
     await cdp.send("Fetch.failRequest", { requestId: authenticatedCoreRequestId, errorReason: "Failed" });
+    failCoreRequests = true;
     const connectionSelector = ".authenticatedAppFrame.kordynSystem .mobileConnectPanel";
     await waitForExpression(cdp, `document.querySelector(${JSON.stringify(connectionSelector)})`, `${width}x${height} authenticated connection failure state`);
     const connectionFont = await evaluate(cdp, `getComputedStyle(document.querySelector(${JSON.stringify(connectionSelector)})).fontFamily`);
@@ -469,6 +531,19 @@ try {
 
   await evaluate(cdp, "sessionStorage.setItem('kordyn_ui_version', 'v2')");
   expectedAuthenticatedMode = "v2";
+  const stopSuppressingDesktopRelease = cdp.on("Fetch.requestPaused", (params) => {
+    if (!params.request?.url.includes("/api/health?release_check=")) {
+      cdp.send("Fetch.continueRequest", { requestId: params.requestId }).catch(() => {});
+      return;
+    }
+    cdp.send("Fetch.fulfillRequest", {
+      requestId: params.requestId,
+      responseCode: 200,
+      responseHeaders: [{ name: "Content-Type", value: "application/json" }],
+      body: Buffer.from('{"release":"authenticated-browser-client"}').toString("base64")
+    }).catch(() => {});
+  });
+  await cdp.send("Fetch.enable", { patterns: [{ urlPattern: "*api/health?release_check=*", requestStage: "Request" }] });
   try {
     await setViewport(cdp, 1440, 900);
   } catch (error) {
@@ -500,6 +575,15 @@ try {
   await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
   await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape" });
   await waitForExpression(cdp, "!document.querySelector('[data-kordyn-v2-overlay]') && document.activeElement === document.querySelector('[data-kordyn-v2-context-trigger]')", "V2 Context Escape close and focus return");
+
+  await trustedClick(cdp, "[data-kordyn-v2-proof-trigger]");
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-overlay=\"proof\"]')?.contains(document.activeElement)", "V2 Proof overlay focus");
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab" });
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab" });
+  assert.equal(await evaluate(cdp, "document.querySelector('[data-kordyn-v2-overlay=\"proof\"]')?.contains(document.activeElement)"), true, "V2 Proof traps focus");
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape" });
+  await waitForExpression(cdp, "!document.querySelector('[data-kordyn-v2-overlay]') && document.activeElement === document.querySelector('[data-kordyn-v2-proof-trigger]')", "V2 Proof Escape close and focus return");
 
   await trustedClick(cdp, "[data-kordyn-v2-ai-support-trigger]");
   await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-ai-support-panel]')?.contains(document.activeElement)", "V2 AI support overlay focus");
@@ -548,6 +632,8 @@ try {
   await waitForExpression(cdp, "!document.querySelector('.cfmCard')", "ordinary ConfirmHost Escape close");
   await waitForExpression(cdp, "document.activeElement?.matches('.kordynV2RecoveryActions > button:nth-of-type(1)')", "ordinary ConfirmHost focus return");
 
+  stopSuppressingDesktopRelease();
+  await cdp.send("Fetch.disable");
   await evaluate(cdp, "window.dispatchEvent(new Event('focus'))");
   await waitForExpression(cdp, "document.querySelector('.authenticatedAppFrame.kordynSystem .releaseUpdateNotice')", "production release mismatch notice");
   const releaseFont = await evaluate(cdp, "getComputedStyle(document.querySelector('.authenticatedAppFrame.kordynSystem .releaseUpdateNotice')).fontFamily");
@@ -564,6 +650,19 @@ try {
   viewportProof.push("1180x820:desktop,overflow=0");
 
   for (const [width, height] of [[390, 844], [430, 932]]) {
+    const stopSuppressingMobileRelease = cdp.on("Fetch.requestPaused", (params) => {
+      if (!params.request?.url.includes("/api/health?release_check=")) {
+        cdp.send("Fetch.continueRequest", { requestId: params.requestId }).catch(() => {});
+        return;
+      }
+      cdp.send("Fetch.fulfillRequest", {
+        requestId: params.requestId,
+        responseCode: 200,
+        responseHeaders: [{ name: "Content-Type", value: "application/json" }],
+        body: Buffer.from('{"release":"authenticated-browser-client"}').toString("base64")
+      }).catch(() => {});
+    });
+    await cdp.send("Fetch.enable", { patterns: [{ urlPattern: "*api/health?release_check=*", requestStage: "Request" }] });
     await setViewport(cdp, width, height);
     process.stdout.write(`authenticated shell browser: ${width}x${height} mounted\n`);
     const geometry = await evaluate(cdp, `(() => {
@@ -597,6 +696,17 @@ try {
     await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape" });
     await waitForExpression(cdp, "!document.querySelector('[data-kordyn-v2-mobile-sheet]') && document.activeElement === document.querySelector('[data-kordyn-v2-ai-support-trigger]')", `${width}px V2 AI support Escape close and focus return`);
 
+    await trustedClick(cdp, "[data-kordyn-v2-proof-trigger]");
+    await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-mobile-sheet=\"evidence\"]')?.contains(document.activeElement) && document.querySelector('[data-kordyn-v2-evidence-tab=\"proof\"]')?.getAttribute('aria-selected') === 'true'", `${width}px V2 Proof sheet focus and selected tab`);
+    await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab" });
+    await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab" });
+    assert.equal(await evaluate(cdp, "document.querySelector('[data-kordyn-v2-mobile-sheet=\"evidence\"]')?.contains(document.activeElement)"), true, `${width}px V2 Proof sheet traps focus`);
+    await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
+    await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape" });
+    await waitForExpression(cdp, "!document.querySelector('[data-kordyn-v2-mobile-sheet]') && document.activeElement === document.querySelector('[data-kordyn-v2-proof-trigger]')", `${width}px V2 Proof Escape close and focus return`);
+
+    stopSuppressingMobileRelease();
+    await cdp.send("Fetch.disable");
     await evaluate(cdp, "window.dispatchEvent(new Event('focus'))");
     await waitForExpression(cdp, "document.querySelector('.authenticatedAppFrame.kordynSystem .releaseUpdateNotice')", `${width}px production release mismatch notice`);
     collectV2ReleaseSurfaceViolations(visualViolations, `${width}x${height} authenticated ReleaseUpdateNotice`, await readSurfaceContract(cdp, ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice", ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice button"));
@@ -699,7 +809,7 @@ try {
     process.stderr.write(`authenticated shell visual contract RED ${visualViolations.length} violation(s)\n${visualViolations.map((item) => `- ${item}`).join("\n")}\n`);
   }
   assert.equal(visualViolations.length, 0, `authenticated shell visual contract has ${visualViolations.length} violation(s)`);
-  process.stdout.write(`authenticated shell browser contract PASS ${appUrl.href} bootstrap=[${bootstrapProof.join(", ")}] viewports=[${viewportProof.join(', ')}] release=production-mismatch confirm=desktop+MobileApp public=august15-warm\n`);
+  process.stdout.write(`authenticated shell browser contract PASS ${appUrl.href} bootstrap=[${bootstrapProof.join(", ")}] viewports=[${viewportProof.join(', ')}] proof=desktop+mobile release=production-mismatch confirm=desktop+MobileApp public=august15-warm\n`);
   }
 } finally {
   cdp?.close();
