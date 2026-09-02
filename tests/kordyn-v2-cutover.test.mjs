@@ -46,6 +46,6 @@ test("V2 and classic legacy authenticated styles are mutually exclusive", () => 
   assert.match(entry, /styles\/shell\.css/);
   assert.doesNotMatch(entry, /productStyles|styles\.css|zero-base|product-foundation/);
   assert.doesNotMatch(august15, /import "\.\/styles\.css"/);
-  assert.match(august15Styles, /import "\.\/styles\.css"/);
+  assert.match(august15Styles, /import stylesheetUrl from "\.\/styles\.css\?url"/);
   assert.doesNotMatch(august15, /productStyles|product-system|zero-base|kordynV2/);
 });

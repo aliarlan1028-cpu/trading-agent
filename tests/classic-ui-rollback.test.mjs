@@ -14,7 +14,7 @@ test("legacy cutover loads the August 15 classic visual bundle without later she
   assert.match(main, /import\("\.\/aug15\/App\.jsx"\)/);
   assert.match(main, /<August15AuthenticatedShell/);
   assert.doesNotMatch(app, /import "\.\/styles\.css"/);
-  assert.match(productStyles, /import "\.\/styles\.css"/);
+  assert.match(productStyles, /import stylesheetUrl from "\.\/styles\.css\?url"/);
   assert.match(workspaces, /import "\.\/workspace\.css"/);
   assert.match(workspaces, /import "\.\/workspace-additions\.css"/);
   assert.match(concepts, /import "\.\/conceptPages\.css"/);

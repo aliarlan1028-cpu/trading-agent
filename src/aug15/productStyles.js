@@ -1,1 +1,3 @@
-import "./styles.css";
+import stylesheetUrl from "./styles.css?url";
+
+export { stylesheetUrl };

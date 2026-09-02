@@ -50,6 +50,33 @@ export function loadAugust15AuthenticatedEntry(importer = () => import("./aug15/
   return august15EntryPromise;
 }
 const August15AuthenticatedShell = lazyNamed(loadAugust15AuthenticatedEntry, "August15AuthenticatedShell");
+let august15StylesPromise;
+let august15StylesLink;
+let august15StylesRetry = 0;
+export function loadAugust15AuthenticatedStyles(importer = () => import("./aug15/productStyles.js")) {
+  if (!august15StylesPromise) {
+    const stylesPromise = importer().then(({ stylesheetUrl }) => new Promise((resolve, reject) => {
+      const link = document.createElement("link");
+      const retry = ++august15StylesRetry;
+      const separator = stylesheetUrl.includes("?") ? "&" : "?";
+      link.rel = "stylesheet";
+      link.href = `${stylesheetUrl}${separator}authenticatedStylesRetry=${retry}`;
+      august15StylesLink = link;
+      link.onload = () => resolve();
+      link.onerror = () => {
+        link.remove();
+        if (august15StylesLink === link) august15StylesLink = undefined;
+        reject(new Error("August 15 stylesheet failed to load"));
+      };
+      document.head.append(link);
+    }));
+    august15StylesPromise = stylesPromise;
+    stylesPromise.catch(() => {
+      if (august15StylesPromise === stylesPromise) august15StylesPromise = undefined;
+    });
+  }
+  return august15StylesPromise;
+}
 const kordynV2StyleNodes = new Set();
 const loadKordynV2Root = async () => {
   const existingStyleNodes = new Set(document.head.querySelectorAll('link[rel="stylesheet"], style'));
@@ -385,7 +412,7 @@ function App() {
     if (uiVersion !== "legacy" || authRequired || loading || !data || productEntryState !== "ready" || productStylesState === "ready") return undefined;
     let current = true;
     setProductStylesState("loading");
-    import("./aug15/productStyles.js")
+    loadAugust15AuthenticatedStyles()
       .then(() => { if (current) setProductStylesState("ready"); })
       .catch(() => { if (current) setProductStylesState("failed"); });
     return () => { current = false; };

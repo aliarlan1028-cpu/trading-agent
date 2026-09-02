@@ -98,7 +98,8 @@ test("production preload transfers the authenticated entry without its styleshee
 
     assert.ok(entry?.file, "the authenticated entry remains a production dynamic asset for early transfer");
     assert.deepEqual(entry.css || [], [], "preloading authenticated code must not apply August 15 CSS before the data gate");
-    assert.match(styles?.file || "", /\.css$/, "the authenticated stylesheet must remain a separately deferred production asset");
+    assert.match(styles?.file || "", /\.js$/, "the authenticated stylesheet URL must remain a separately deferred production module");
+    assert.ok(styles?.assets?.some((asset) => asset.endsWith(".css")), "the deferred stylesheet module must expose its production CSS asset");
   } finally {
     await rm(outputRoot, { recursive: true, force: true });
   }
