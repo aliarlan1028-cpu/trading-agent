@@ -16,6 +16,8 @@ const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const chromeBinary = process.env.CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const viewports = [[1440, 900], [1180, 820], [430, 932], [390, 844]];
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const credentialUrlSelfTest = process.env.KORDYN_CREDENTIAL_URL_SELF_TEST === "same-document";
+const pendingNavigationTimers = new Set();
 
 async function freePort() {
   return await new Promise((resolve, reject) => {
@@ -146,19 +148,28 @@ async function click(cdp, selector) {
 
 async function clickAndWaitForNavigation(cdp, selector, pathname) {
   let stopListening;
+  let timerId;
   const navigated = new Promise((resolve) => {
     stopListening = cdp.on("Page.frameNavigated", ({ frame }) => {
       if (!frame?.parentId && new URL(frame.url).pathname === pathname) resolve(frame.url);
     });
   });
+  const timedOut = new Promise((_, reject) => {
+    timerId = setTimeout(() => {
+      pendingNavigationTimers.delete(timerId);
+      reject(new Error(`Timed out waiting for new document ${pathname}`));
+    }, 20_000);
+    pendingNavigationTimers.add(timerId);
+  });
   try {
     await click(cdp, selector);
-    await Promise.race([
-      navigated,
-      delay(20_000).then(() => { throw new Error(`Timed out waiting for new document ${pathname}`); })
-    ]);
+    await Promise.race([navigated, timedOut]);
   } finally {
     stopListening?.();
+    if (timerId) {
+      clearTimeout(timerId);
+      pendingNavigationTimers.delete(timerId);
+    }
   }
 }
 
@@ -199,6 +210,34 @@ function noOverflowMessage(width, mode, proof) {
   return `${width}px ${mode} horizontal overflow: ${JSON.stringify(proof)}`;
 }
 
+function containsCredentialUrlEvidence(rawUrl, sentinels) {
+  const credentialNames = new Set(["email", "emailaddress", "password", "passwd", "pwd", "pass", "passcode", "credential", "credentials", "username", "user"]);
+  let parsed;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return true;
+  }
+  for (const name of parsed.searchParams.keys()) {
+    if (credentialNames.has(name.toLowerCase().replaceAll(/[-_]/g, ""))) return true;
+  }
+  const decode = (value) => {
+    let decoded = value;
+    for (let pass = 0; pass < 2; pass += 1) {
+      try {
+        const next = decodeURIComponent(decoded);
+        if (next === decoded) break;
+        decoded = next;
+      } catch { break; }
+    }
+    return decoded;
+  };
+  const textCandidates = [rawUrl, decode(rawUrl), parsed.pathname, decode(parsed.pathname), parsed.hash, decode(parsed.hash)];
+  const credentialNameText = /(?:^|[/?#&;])(?:e-?mail|emailaddress|password|passwd|pwd|pass|passcode|credentials?|username|user)(?:=|\/|:|$)/iu;
+  if (textCandidates.some((value) => credentialNameText.test(value))) return true;
+  return sentinels.some((sentinel) => textCandidates.some((value) => value.includes(sentinel) || value.includes(encodeURIComponent(sentinel))));
+}
+
 function manifestInitialClosure(manifest, entryKey) {
   const visited = new Set();
   const files = new Set();
@@ -221,6 +260,7 @@ const chromeProfile = path.join(workspace, "chrome-profile");
 const serverRequests = [];
 const browserRequests = [];
 const navigationUrls = [];
+const finalUrls = [];
 const appPort = await freePort();
 let server;
 let chrome;
@@ -324,8 +364,9 @@ try {
   cdp.on("Runtime.exceptionThrown", ({ exceptionDetails }) => process.stderr.write(`browser exception: ${exceptionDetails?.exception?.description || exceptionDetails?.text}\n`));
   cdp.on("Network.requestWillBeSent", ({ request }) => browserRequests.push({ url: request.url, at: Date.now() }));
   cdp.on("Page.frameNavigated", ({ frame }) => {
-    if (!frame?.parentId) navigationUrls.push(frame.url);
+    if (frame?.url) navigationUrls.push(frame.url);
   });
+  cdp.on("Page.navigatedWithinDocument", ({ url }) => navigationUrls.push(url));
   await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: `
     let assignedCapacitor;
     Object.defineProperty(window, "Capacitor", {
@@ -404,6 +445,10 @@ try {
         await click(cdp, ".lpLoginForm .lpBtn");
         await waitExpression(cdp, `document.querySelector('.lpToast')?.textContent.includes('invalid_credentials')`, "production-shaped rejected login response");
         assert.equal(serverRequests.filter((row) => row.path === "/api/auth/login").length, loginRequestCount + 1, "real login form submits exactly one production-shaped request");
+        if (credentialUrlSelfTest) {
+          await evaluate(cdp, `history.replaceState(history.state, '', '/app#email=' + encodeURIComponent(${JSON.stringify(credentialEmail)}) + '&proof=' + encodeURIComponent(${JSON.stringify(credentialPassword)}))`);
+        }
+        finalUrls.push(await evaluate(cdp, "location.href"));
       }
       await press(cdp, "Escape");
       await waitExpression(cdp, `!document.querySelector('.lpModal--${mode}')`, `${width}px ${mode} Escape close`);
@@ -453,14 +498,18 @@ try {
   assert.ok(coreCompletedAt < productStylesServerRequest.at, `productStyles request must arrive after core response finish: ${JSON.stringify({ coreCompletedAt, productStylesAt: productStylesServerRequest.at })}`);
   assert.ok(coreCompletedAt < stylesheetServerRequest.at, `App JS < core response finish < CSS request ordering is required on one server clock: ${JSON.stringify({ augustAt: augustServerRequest.at, coreCompletedAt, stylesheetAt: stylesheetServerRequest.at })}`);
 
-  const credentialUrls = [...browserRequests.map((row) => row.url), ...navigationUrls];
-  const credentialParameter = /[?&](?:email|e-?mail|password|passwd|pwd|credential|username)=/iu;
-  const credentialUrlSafe = credentialUrls.every((url) => !credentialParameter.test(url)
-    && !url.includes(credentialEmail)
-    && !url.includes(encodeURIComponent(credentialEmail))
-    && !url.includes(credentialPassword)
-    && !url.includes(encodeURIComponent(credentialPassword)));
-  assert.equal(credentialUrlSafe, true, "credential names and sentinel values never enter captured request/navigation URLs or queries");
+  const sentinels = [credentialEmail, credentialPassword];
+  const requestCredentialUrlSafe = browserRequests.every((row) => !containsCredentialUrlEvidence(row.url, sentinels));
+  const navigationCredentialUrlSafe = navigationUrls.every((url) => !containsCredentialUrlEvidence(url, sentinels));
+  const finalCredentialUrlSafe = finalUrls.every((url) => !containsCredentialUrlEvidence(url, sentinels));
+  const credentialUrlSafe = requestCredentialUrlSafe && navigationCredentialUrlSafe && finalCredentialUrlSafe;
+  if (credentialUrlSelfTest) {
+    assert.equal(navigationCredentialUrlSafe, false, "navigatedWithinDocument credential URL self-test must be captured and rejected");
+    assert.equal(finalCredentialUrlSafe, false, "post-submit final location credential URL self-test must be captured and rejected");
+  } else {
+    assert.equal(credentialUrlSafe, true, "credential names and sentinel values never enter captured request/navigation URLs or queries");
+  }
+  assert.equal(pendingNavigationTimers.size, 0, "successful navigation waits leave no pending 20-second timeout");
 
   console.log(JSON.stringify({
     result: "PASS",
@@ -470,7 +519,8 @@ try {
     modals: modalResults,
     native: { ...nativeProof, coreRequestCount: nativeCoreRequestCount, requestCount: nativeRequests.length, requests: nativeRequests },
     authenticated: { coreStartedAt, coreResponseFinishedAt: coreCompletedAt, augustRequest, productStylesRequest, stylesheetRequest, augustServerRequest, productStylesServerRequest, stylesheetServerRequest, timingOrder: "App JS < core response finish < CSS request", requestCount: authenticatedRequests.length, requests: authenticatedRequests },
-    credentialUrlSafe,
+    credentialUrlSafe: credentialUrlSelfTest ? undefined : credentialUrlSafe,
+    credentialUrlSelfTestRejected: credentialUrlSelfTest ? { sameDocumentNavigation: !navigationCredentialUrlSafe, finalLocation: !finalCredentialUrlSafe } : undefined,
     serverRequestCount: serverRequests.length
   }, null, 2));
 } catch (error) {
