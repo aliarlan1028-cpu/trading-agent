@@ -36,6 +36,7 @@ test("V2 and classic legacy authenticated styles are mutually exclusive", () => 
   const main = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
   const entry = readFileSync(new URL("../src/kordynV2/entry.jsx", import.meta.url), "utf8");
   const august15 = readFileSync(new URL("../src/aug15/App.jsx", import.meta.url), "utf8");
+  const august15Styles = readFileSync(new URL("../src/aug15/productStyles.js", import.meta.url), "utf8");
   assert.match(main, /resolveKordynUiVersion/);
   assert.match(main, /useRef\(resolveKordynUiVersion\(import\.meta\.env\)\)/);
   assert.match(main, /import\("\.\/kordynV2\/entry\.jsx"\)/);
@@ -44,6 +45,7 @@ test("V2 and classic legacy authenticated styles are mutually exclusive", () => 
   assert.match(entry, /styles\/tokens\.css/);
   assert.match(entry, /styles\/shell\.css/);
   assert.doesNotMatch(entry, /productStyles|styles\.css|zero-base|product-foundation/);
-  assert.match(august15, /import "\.\/styles\.css"/);
+  assert.doesNotMatch(august15, /import "\.\/styles\.css"/);
+  assert.match(august15Styles, /import "\.\/styles\.css"/);
   assert.doesNotMatch(august15, /productStyles|product-system|zero-base|kordynV2/);
 });

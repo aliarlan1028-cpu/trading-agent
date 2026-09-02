@@ -7,12 +7,14 @@ const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 test("legacy cutover loads the August 15 classic visual bundle without later shell CSS", () => {
   const main = read("../src/main.jsx");
   const app = read("../src/aug15/App.jsx");
+  const productStyles = read("../src/aug15/productStyles.js");
   const workspaces = read("../src/aug15/workspacePages.jsx");
   const concepts = read("../src/aug15/conceptPages.jsx");
 
   assert.match(main, /import\("\.\/aug15\/App\.jsx"\)/);
   assert.match(main, /<August15AuthenticatedShell/);
-  assert.match(app, /import "\.\/styles\.css"/);
+  assert.doesNotMatch(app, /import "\.\/styles\.css"/);
+  assert.match(productStyles, /import "\.\/styles\.css"/);
   assert.match(workspaces, /import "\.\/workspace\.css"/);
   assert.match(workspaces, /import "\.\/workspace-additions\.css"/);
   assert.match(concepts, /import "\.\/conceptPages\.css"/);

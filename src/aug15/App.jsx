@@ -42,7 +42,6 @@ import {
   shellSearchResultUnavailable
 } from "../productShell.jsx";
 import { SafeArea } from "@capacitor-community/safe-area";
-import "./styles.css";
 
 const lazyNamed = (loader, name) => lazy(() => loader().then((module) => ({ default: module[name] })));
 export const AUGUST15_VISUAL_SOURCE = "7c8978427865a9d500a072780af0ec68cf6a9537";

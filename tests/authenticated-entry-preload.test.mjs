@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { build } from "vite";
 
 const require = createRequire(import.meta.url);
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -84,6 +87,23 @@ test("stale rejection cleanup preserves a newer shared import", async () => {
   assert.equal(newerImporterCalls, 1);
 });
 
+test("production preload transfers the authenticated entry without its stylesheet", async () => {
+  const outputRoot = await mkdtemp(path.join(os.tmpdir(), "kordyn-authenticated-entry-preload-"));
+  const outputDir = path.join(outputRoot, "dist");
+  try {
+    await build({ root: rootDir, logLevel: "silent", build: { outDir: outputDir, emptyOutDir: true, manifest: true } });
+    const manifest = JSON.parse(await readFile(path.join(outputDir, ".vite", "manifest.json"), "utf8"));
+    const entry = Object.values(manifest).find((candidate) => candidate?.name === "App" && candidate?.isDynamicEntry === true);
+    const styles = manifest["src/aug15/productStyles.js"];
+
+    assert.ok(entry?.file, "the authenticated entry remains a production dynamic asset for early transfer");
+    assert.deepEqual(entry.css || [], [], "preloading authenticated code must not apply August 15 CSS before the data gate");
+    assert.match(styles?.file || "", /\.css$/, "the authenticated stylesheet must remain a separately deferred production asset");
+  } finally {
+    await rm(outputRoot, { recursive: true, force: true });
+  }
+});
+
 test("legacy preload starts before bootstrap completes while rendering keeps auth and data gates", () => {
   const effectStart = main.indexOf('  useEffect(() => {\n    if (uiVersion !== "legacy"');
   const effectEnd = main.indexOf("  }, [authRequired, loading, productStylesAttempt, uiVersion]);", effectStart);
@@ -95,7 +115,8 @@ test("legacy preload starts before bootstrap completes while rendering keeps aut
   assert.doesNotMatch(preloadEffect, /\|\| loading/);
   assert.doesNotMatch(preloadEffect, /\|\| authRequired/);
   assert.match(main, /if \(authRequired\) return <AppFrame><LandingPage/);
-  assert.match(main, /if \(!loading && uiVersion === "legacy" && productStylesState !== "ready"\)/);
+  assert.match(main, /import\("\.\/aug15\/productStyles\.js"\)/);
+  assert.match(main, /if \(!loading && data && uiVersion === "legacy" && \(productEntryState !== "ready" \|\| productStylesState !== "ready"\)\)/);
   assert.match(main, /if \(!loading && !data\) return <AppFrame authenticated><ConnectionScreen/);
   assert.match(main, /if \(loading \|\| !data\) return <AppFrame authenticated><AuthenticatedBootState/);
 });

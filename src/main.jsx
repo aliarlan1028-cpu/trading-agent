@@ -352,6 +352,7 @@ function ExchangePill({ name, tone, account = {}, onClick }) {
 
 function App() {
   const [lang, setLangState] = useState(getLang());
+  const [productEntryState, setProductEntryState] = useState("idle");
   const [productStylesState, setProductStylesState] = useState("idle");
   const [productStylesAttempt, setProductStylesAttempt] = useState(0);
   const [useLegacyAfterV2Failure, setUseLegacyAfterV2Failure] = useState(false);
@@ -372,14 +373,23 @@ function App() {
   const { data, loading, action, toast, authRequired, login, registerAccount, notify, download, refresh, ensureSection, apiBase, setApiBase, connectionError, busy, isNativeApp, publicInfo } = useApi();
   const uiVersion = useLegacyAfterV2Failure ? "legacy" : uiVersionRef.current;
   useEffect(() => {
-    if (uiVersion !== "legacy" || productStylesState === "ready") return undefined;
+    if (uiVersion !== "legacy" || productEntryState === "ready") return undefined;
+    let current = true;
+    setProductEntryState("loading");
+    loadAugust15AuthenticatedEntry()
+      .then(() => { if (current) setProductEntryState("ready"); })
+      .catch(() => { if (current) setProductEntryState("failed"); });
+    return () => { current = false; };
+  }, [authRequired, loading, productStylesAttempt, uiVersion]);
+  useEffect(() => {
+    if (uiVersion !== "legacy" || authRequired || loading || !data || productEntryState !== "ready" || productStylesState === "ready") return undefined;
     let current = true;
     setProductStylesState("loading");
-    loadAugust15AuthenticatedEntry()
+    import("./aug15/productStyles.js")
       .then(() => { if (current) setProductStylesState("ready"); })
       .catch(() => { if (current) setProductStylesState("failed"); });
     return () => { current = false; };
-  }, [authRequired, loading, productStylesAttempt, uiVersion]);
+  }, [authRequired, loading, Boolean(data), productEntryState, productStylesAttempt, uiVersion]);
   useEffect(() => {
     if (data) ensureSection(active);
   }, [active, Boolean(data)]);
@@ -431,7 +441,7 @@ function App() {
       : workspaceContent;
   }, [active, activeZeroBaseFamily, activeZeroBaseView, activeSettingsTab, activeSettingsSection, activeWorkspaceTab, activeStrategyTab, activeReviewId, data, action, lang]);
   if (authRequired) return <AppFrame><LandingPage login={login} registerAccount={registerAccount} toast={toast} apiBase={apiBase} setApiBase={setApiBase} isNativeApp={isNativeApp} publicInfo={publicInfo} /></AppFrame>;
-  if (!loading && uiVersion === "legacy" && productStylesState !== "ready") return <AppFrame authenticated><div className="authenticatedEntryLoading" data-authenticated-state="styles"><div><Activity size={24}/><span><b>{productStylesState === "failed" ? t("界面资源加载失败", "Interface assets failed to load") : t("正在准备交易工作区", "Preparing the trading workspace")}</b><small>{productStylesState === "failed" ? t("网络恢复后重试，不会影响服务器中的任务。", "Retry after the network recovers. Server-side tasks are unaffected.") : t("AI 交易员正在恢复你的账户、任务与监控上下文。", "The AI Trader is restoring your account, missions, and monitoring context.")}</small></span>{productStylesState === "failed" && <button type="button" onClick={() => setProductStylesAttempt((attempt) => attempt + 1)}>{t("重试", "Retry")}</button>}</div></div></AppFrame>;
+  if (!loading && data && uiVersion === "legacy" && (productEntryState !== "ready" || productStylesState !== "ready")) return <AppFrame authenticated><div className="authenticatedEntryLoading" data-authenticated-state="styles"><div><Activity size={24}/><span><b>{productEntryState === "failed" || productStylesState === "failed" ? t("界面资源加载失败", "Interface assets failed to load") : t("正在准备交易工作区", "Preparing the trading workspace")}</b><small>{productEntryState === "failed" || productStylesState === "failed" ? t("网络恢复后重试，不会影响服务器中的任务。", "Retry after the network recovers. Server-side tasks are unaffected.") : t("AI 交易员正在恢复你的账户、任务与监控上下文。", "The AI Trader is restoring your account, missions, and monitoring context.")}</small></span>{(productEntryState === "failed" || productStylesState === "failed") && <button type="button" onClick={() => setProductStylesAttempt((attempt) => attempt + 1)}>{t("重试", "Retry")}</button>}</div></div></AppFrame>;
   if (!loading && !data) return <AppFrame authenticated><ConnectionScreen apiBase={apiBase} setApiBase={setApiBase} refresh={refresh} toast={toast} connectionError={connectionError} isNativeApp={isNativeApp} /></AppFrame>;
   if (loading || !data) return <AppFrame authenticated><AuthenticatedBootState state="startup" /></AppFrame>;
 
