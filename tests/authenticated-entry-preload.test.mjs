@@ -13,9 +13,13 @@ const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const main = fs.readFileSync(path.join(rootDir, "src", "main.jsx"), "utf8");
 const cacheDir = path.join(rootDir, "node_modules", ".cache", "authenticated-entry-preload");
 const bundle = path.join(cacheDir, `bundle-${process.pid}.cjs`);
+const stylesBundle = path.join(cacheDir, `styles-bundle-${process.pid}.cjs`);
 
 fs.mkdirSync(cacheDir, { recursive: true });
-process.on("exit", () => { try { fs.rmSync(bundle, { force: true }); } catch { /* noop */ } });
+process.on("exit", () => {
+  try { fs.rmSync(bundle, { force: true }); } catch { /* noop */ }
+  try { fs.rmSync(stylesBundle, { force: true }); } catch { /* noop */ }
+});
 
 function loadAuthenticatedEntryHarness() {
   const loaderSource = main.match(/let august15EntryPromise;[\s\S]*?^}\n(?=const August15AuthenticatedShell)/m)?.[0];
@@ -34,6 +38,25 @@ function loadAuthenticatedEntryHarness() {
   });
   delete require.cache[bundle];
   return require(bundle);
+}
+
+function loadAuthenticatedStylesHarness() {
+  const loaderSource = main.match(/let august15StylesPromise;[\s\S]*?^}\n(?=const kordynV2StyleNodes)/m)?.[0];
+  assert.ok(loaderSource, "main must export the shared August 15 authenticated-styles loader");
+  require("esbuild").buildSync({
+    stdin: {
+      contents: loaderSource,
+      resolveDir: path.join(rootDir, "src"),
+      loader: "jsx"
+    },
+    bundle: true,
+    format: "cjs",
+    platform: "node",
+    outfile: stylesBundle,
+    logLevel: "silent"
+  });
+  delete require.cache[stylesBundle];
+  return require(stylesBundle);
 }
 
 test("authenticated entry loader shares one in-flight import and retries after rejection", async () => {
@@ -87,6 +110,48 @@ test("stale rejection cleanup preserves a newer shared import", async () => {
   assert.equal(newerImporterCalls, 1);
 });
 
+test("authenticated stylesheet loader reuses its loaded link and promise", async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "document");
+  const links = [];
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: {
+      createElement(tag) {
+        assert.equal(tag, "link");
+        return { remove() { this.removed = true; } };
+      },
+      head: {
+        append(link) {
+          links.push(link);
+          queueMicrotask(() => link.onload());
+        }
+      }
+    }
+  });
+  try {
+    const { loadAugust15AuthenticatedStyles } = loadAuthenticatedStylesHarness();
+    let importerCalls = 0;
+    const importer = () => {
+      importerCalls += 1;
+      return Promise.resolve({ stylesheetUrl: "/assets/aug15.css" });
+    };
+    const first = loadAugust15AuthenticatedStyles(importer);
+    const second = loadAugust15AuthenticatedStyles(importer);
+    assert.equal(first, second);
+    await first;
+    assert.equal(importerCalls, 1);
+    assert.equal(links.length, 1);
+    assert.equal(links[0].rel, "stylesheet");
+    assert.match(links[0].href, /\/assets\/aug15\.css\?authenticatedStylesRetry=1$/);
+    assert.equal(loadAugust15AuthenticatedStyles(importer), first);
+    assert.equal(importerCalls, 1);
+    assert.equal(links.length, 1);
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, "document", descriptor);
+    else delete globalThis.document;
+  }
+});
+
 test("production preload transfers the authenticated entry without its stylesheet", async () => {
   const outputRoot = await mkdtemp(path.join(os.tmpdir(), "kordyn-authenticated-entry-preload-"));
   const outputDir = path.join(outputRoot, "dist");
@@ -117,7 +182,18 @@ test("legacy preload starts before bootstrap completes while rendering keeps aut
   assert.doesNotMatch(preloadEffect, /\|\| authRequired/);
   assert.match(main, /if \(authRequired\) return <AppFrame><LandingPage/);
   assert.match(main, /import\("\.\/aug15\/productStyles\.js"\)/);
-  assert.match(main, /if \(!loading && data && uiVersion === "legacy" && \(productEntryState !== "ready" \|\| productStylesState !== "ready"\)\)/);
+  const stylesEffectStart = main.indexOf('  useEffect(() => {\n    if (uiVersion !== "legacy" || authRequired');
+  const stylesEffectEnd = main.indexOf("  }, [authRequired, loading, Boolean(data), productEntryState, productStylesAttempt, uiVersion]);", stylesEffectStart);
+  const stylesEffect = stylesEffectStart >= 0 && stylesEffectEnd >= 0
+    ? main.slice(stylesEffectStart, stylesEffectEnd)
+    : "";
+  assert.ok(stylesEffect, "main must retain its authenticated stylesheet loader effect");
+  assert.doesNotMatch(stylesEffect, /\|\| !data/);
+  assert.match(main, /if \(!loading && uiVersion === "legacy" && \(productEntryState !== "ready" \|\| productStylesState !== "ready"\)\)/);
+  assert.ok(
+    main.indexOf('if (!loading && uiVersion === "legacy"') < main.indexOf('if (!loading && !data) return <AppFrame authenticated><ConnectionScreen'),
+    "connection failure must wait for the authenticated stylesheet outcome after loading completes"
+  );
   assert.match(main, /if \(!loading && !data\) return <AppFrame authenticated><ConnectionScreen/);
   assert.match(main, /if \(loading \|\| !data\) return <AppFrame authenticated><AuthenticatedBootState/);
 });
