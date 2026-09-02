@@ -1,0 +1,1772 @@
+{
+  "generatedAt": "2026-09-02T06:49:57.919Z",
+  "perf": {
+    "resources": 86,
+    "cssFiles": 7,
+    "jsFiles": 27,
+    "cssTransferBytes": 589453,
+    "jsTransferBytes": 2335783,
+    "cssDecodedBytes": 587353,
+    "jsDecodedBytes": 2327683,
+    "bootstrapMs": 14.300000071525574,
+    "domInteractiveMs": 12,
+    "loadMs": 2217
+  },
+  "surfaces": [
+    {
+      "label": "desktop-1440-chat-0",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 29,
+      "minInteractiveHeight": 14,
+      "interactiveUnder44": 28,
+      "textCount": 89,
+      "minFontSize": 8,
+      "textUnder11": 34,
+      "textUnder12": 58,
+      "headings": [
+        "AI 交易员"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 338
+    },
+    {
+      "label": "desktop-1440-chat-1",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 33,
+      "minInteractiveHeight": 18,
+      "interactiveUnder44": 28,
+      "textCount": 112,
+      "minFontSize": 8.5,
+      "textUnder11": 24,
+      "textUnder12": 75,
+      "headings": [
+        "AI 交易员"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 316
+    },
+    {
+      "label": "desktop-1440-chat-2",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 17,
+      "minInteractiveHeight": 18,
+      "interactiveUnder44": 16,
+      "textCount": 42,
+      "minFontSize": 8.5,
+      "textUnder11": 4,
+      "textUnder12": 14,
+      "headings": [
+        "AI 交易员"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 209
+    },
+    {
+      "label": "desktop-1440-cockpit-0",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 22,
+      "minInteractiveHeight": 16,
+      "interactiveUnder44": 16,
+      "textCount": 72,
+      "minFontSize": 8.5,
+      "textUnder11": 4,
+      "textUnder12": 28,
+      "headings": [
+        "交易驾驶舱"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 283
+    },
+    {
+      "label": "desktop-1440-cockpit-1",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 35,
+      "minInteractiveHeight": 14,
+      "interactiveUnder44": 29,
+      "textCount": 111,
+      "minFontSize": 8.5,
+      "textUnder11": 5,
+      "textUnder12": 76,
+      "headings": [
+        "交易驾驶舱"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 316
+    },
+    {
+      "label": "desktop-1440-cockpit-2",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 19,
+      "minInteractiveHeight": 18,
+      "interactiveUnder44": 13,
+      "textCount": 49,
+      "minFontSize": 8.5,
+      "textUnder11": 3,
+      "textUnder12": 15,
+      "headings": [
+        "交易驾驶舱"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 229
+    },
+    {
+      "label": "desktop-1440-cockpit-3",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 28,
+      "minInteractiveHeight": 18,
+      "interactiveUnder44": 22,
+      "textCount": 130,
+      "minFontSize": 8,
+      "textUnder11": 42,
+      "textUnder12": 71,
+      "headings": [
+        "交易驾驶舱",
+        "执行与复盘"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 397
+    },
+    {
+      "label": "desktop-1440-cockpit-4",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 28,
+      "minInteractiveHeight": 18,
+      "interactiveUnder44": 22,
+      "textCount": 102,
+      "minFontSize": 8.5,
+      "textUnder11": 32,
+      "textUnder12": 62,
+      "headings": [
+        "交易驾驶舱",
+        "委托与成交"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 297
+    },
+    {
+      "label": "desktop-1440-researchCenter-0",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 32,
+      "minInteractiveHeight": 16,
+      "interactiveUnder44": 28,
+      "textCount": 149,
+      "minFontSize": 8.5,
+      "textUnder11": 14,
+      "textUnder12": 88,
+      "headings": [
+        "研究中心"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 396
+    },
+    {
+      "label": "desktop-1440-researchCenter-1",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 49,
+      "minInteractiveHeight": 16,
+      "interactiveUnder44": 45,
+      "textCount": 247,
+      "minFontSize": 8.5,
+      "textUnder11": 39,
+      "textUnder12": 205,
+      "headings": [
+        "研究中心"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 470
+    },
+    {
+      "label": "desktop-1440-research-strategy-策略目录",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 49,
+      "minInteractiveHeight": 16,
+      "interactiveUnder44": 45,
+      "textCount": 247,
+      "minFontSize": 8.5,
+      "textUnder11": 39,
+      "textUnder12": 205,
+      "headings": [
+        "研究中心"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 470
+    },
+    {
+      "label": "desktop-1440-research-strategy-策略工作室",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 23,
+      "minInteractiveHeight": 18,
+      "interactiveUnder44": 18,
+      "textCount": 39,
+      "minFontSize": 8.5,
+      "textUnder11": 4,
+      "textUnder12": 14,
+      "headings": [
+        "研究中心"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 200
+    },
+    {
+      "label": "desktop-1440-research-strategy-内部策略市场",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 29,
+      "minInteractiveHeight": 18,
+      "interactiveUnder44": 25,
+      "textCount": 121,
+      "minFontSize": 8.5,
+      "textUnder11": 32,
+      "textUnder12": 89,
+      "headings": [
+        "研究中心"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 292
+    },
+    {
+      "label": "desktop-1440-research-strategy-回测研究",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 23,
+      "minInteractiveHeight": 18,
+      "interactiveUnder44": 19,
+      "textCount": 42,
+      "minFontSize": 8.5,
+      "textUnder11": 5,
+      "textUnder12": 15,
+      "headings": [
+        "研究中心"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 190
+    },
+    {
+      "label": "desktop-1440-researchCenter-2",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 81,
+      "minInteractiveHeight": 14,
+      "interactiveUnder44": 77,
+      "textCount": 475,
+      "minFontSize": 8.5,
+      "textUnder11": 9,
+      "textUnder12": 443,
+      "headings": [
+        "研究中心"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 691
+    },
+    {
+      "label": "desktop-1440-riskCenter-0",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 23,
+      "minInteractiveHeight": 18,
+      "interactiveUnder44": 14,
+      "textCount": 101,
+      "minFontSize": 8.5,
+      "textUnder11": 1,
+      "textUnder12": 63,
+      "headings": [
+        "风控中心"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 298
+    },
+    {
+      "label": "desktop-1440-riskCenter-1",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 62,
+      "minInteractiveHeight": 13,
+      "interactiveUnder44": 54,
+      "textCount": 253,
+      "minFontSize": 8.5,
+      "textUnder11": 106,
+      "textUnder12": 139,
+      "headings": [
+        "风控中心"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 622
+    },
+    {
+      "label": "desktop-1440-riskCenter-2",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 31,
+      "minInteractiveHeight": 15,
+      "interactiveUnder44": 26,
+      "textCount": 80,
+      "minFontSize": 8.5,
+      "textUnder11": 6,
+      "textUnder12": 52,
+      "headings": [
+        "风控中心"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 253
+    },
+    {
+      "label": "desktop-1440-riskCenter-3",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 19,
+      "minInteractiveHeight": 18,
+      "interactiveUnder44": 14,
+      "textCount": 57,
+      "minFontSize": 8.5,
+      "textUnder11": 1,
+      "textUnder12": 29,
+      "headings": [
+        "风控中心"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 237
+    },
+    {
+      "label": "desktop-1440-operationsCenter-0",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 28,
+      "minInteractiveHeight": 16,
+      "interactiveUnder44": 22,
+      "textCount": 201,
+      "minFontSize": 8.5,
+      "textUnder11": 1,
+      "textUnder12": 164,
+      "headings": [
+        "系统运营"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 435
+    },
+    {
+      "label": "desktop-1440-operationsCenter-1",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 27,
+      "minInteractiveHeight": 18,
+      "interactiveUnder44": 21,
+      "textCount": 157,
+      "minFontSize": 8.5,
+      "textUnder11": 52,
+      "textUnder12": 129,
+      "headings": [
+        "系统运营",
+        "2027年6月季度合约交割"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 380
+    },
+    {
+      "label": "desktop-1440-operationsCenter-2",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 49,
+      "minInteractiveHeight": 16,
+      "interactiveUnder44": 43,
+      "textCount": 262,
+      "minFontSize": 8.5,
+      "textUnder11": 13,
+      "textUnder12": 233,
+      "headings": [
+        "系统运营"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 487
+    },
+    {
+      "label": "desktop-1440-operationsCenter-3",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 34,
+      "minInteractiveHeight": 14,
+      "interactiveUnder44": 28,
+      "textCount": 169,
+      "minFontSize": 8.5,
+      "textUnder11": 1,
+      "textUnder12": 137,
+      "headings": [
+        "系统运营"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 355
+    },
+    {
+      "label": "desktop-1440-operationsCenter-4",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 28,
+      "minInteractiveHeight": 18,
+      "interactiveUnder44": 22,
+      "textCount": 81,
+      "minFontSize": 8.5,
+      "textUnder11": 15,
+      "textUnder12": 44,
+      "headings": [
+        "系统运营",
+        "选择一条通知"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 261
+    },
+    {
+      "label": "desktop-1440-settings-0",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 25,
+      "minInteractiveHeight": 18,
+      "interactiveUnder44": 19,
+      "textCount": 110,
+      "minFontSize": 8.5,
+      "textUnder11": 27,
+      "textUnder12": 58,
+      "headings": [
+        "系统设置",
+        "系统运行概览"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 313
+    },
+    {
+      "label": "desktop-1440-settings-1",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 48,
+      "minInteractiveHeight": 18,
+      "interactiveUnder44": 24,
+      "textCount": 125,
+      "minFontSize": 8.5,
+      "textUnder11": 23,
+      "textUnder12": 45,
+      "headings": [
+        "系统设置",
+        "基础配置",
+        "外部服务与通知"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 436
+    },
+    {
+      "label": "desktop-1440-settings-2",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 26,
+      "minInteractiveHeight": 18,
+      "interactiveUnder44": 15,
+      "textCount": 41,
+      "minFontSize": 8.5,
+      "textUnder11": 2,
+      "textUnder12": 5,
+      "headings": [
+        "系统设置"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 202
+    },
+    {
+      "label": "desktop-1440-settings-3",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 24,
+      "minInteractiveHeight": 18,
+      "interactiveUnder44": 16,
+      "textCount": 43,
+      "minFontSize": 8.5,
+      "textUnder11": 4,
+      "textUnder12": 11,
+      "headings": [
+        "系统设置"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 214
+    },
+    {
+      "label": "desktop-1440-settings-4",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 41,
+      "minInteractiveHeight": 18,
+      "interactiveUnder44": 20,
+      "textCount": 88,
+      "minFontSize": 8.5,
+      "textUnder11": 15,
+      "textUnder12": 31,
+      "headings": [
+        "系统设置"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 381
+    },
+    {
+      "label": "desktop-1440-settings-5",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 30,
+      "minInteractiveHeight": 18,
+      "interactiveUnder44": 24,
+      "textCount": 109,
+      "minFontSize": 8.5,
+      "textUnder11": 17,
+      "textUnder12": 72,
+      "headings": [
+        "系统设置"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 301
+    },
+    {
+      "label": "desktop-1440-account-modal",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 35,
+      "minInteractiveHeight": 14,
+      "interactiveUnder44": 34,
+      "textCount": 99,
+      "minFontSize": 8,
+      "textUnder11": 34,
+      "textUnder12": 59,
+      "headings": [
+        "账户设置",
+        "AI 交易员"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 363
+    },
+    {
+      "label": "desktop-1440-kill-confirm",
+      "width": 1440,
+      "height": 900,
+      "documentOverflow": 0,
+      "interactiveCount": 32,
+      "minInteractiveHeight": 14,
+      "interactiveUnder44": 31,
+      "textCount": 93,
+      "minFontSize": 8,
+      "textUnder11": 34,
+      "textUnder12": 58,
+      "headings": [
+        "AI 交易员"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 347
+    },
+    {
+      "label": "desktop-1280-chat-0",
+      "width": 1280,
+      "height": 800,
+      "documentOverflow": 0,
+      "interactiveCount": 29,
+      "minInteractiveHeight": 14,
+      "interactiveUnder44": 28,
+      "textCount": 85,
+      "minFontSize": 8,
+      "textUnder11": 32,
+      "textUnder12": 56,
+      "headings": [
+        "AI 交易员"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 338
+    },
+    {
+      "label": "desktop-1280-cockpit-0",
+      "width": 1280,
+      "height": 800,
+      "documentOverflow": 0,
+      "interactiveCount": 22,
+      "minInteractiveHeight": 16,
+      "interactiveUnder44": 16,
+      "textCount": 72,
+      "minFontSize": 8.5,
+      "textUnder11": 4,
+      "textUnder12": 28,
+      "headings": [
+        "交易驾驶舱"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 283
+    },
+    {
+      "label": "desktop-1280-researchCenter-0",
+      "width": 1280,
+      "height": 800,
+      "documentOverflow": 0,
+      "interactiveCount": 32,
+      "minInteractiveHeight": 16,
+      "interactiveUnder44": 28,
+      "textCount": 149,
+      "minFontSize": 8.5,
+      "textUnder11": 14,
+      "textUnder12": 88,
+      "headings": [
+        "研究中心"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 396
+    },
+    {
+      "label": "desktop-1280-riskCenter-0",
+      "width": 1280,
+      "height": 800,
+      "documentOverflow": 0,
+      "interactiveCount": 23,
+      "minInteractiveHeight": 18,
+      "interactiveUnder44": 14,
+      "textCount": 101,
+      "minFontSize": 8.5,
+      "textUnder11": 1,
+      "textUnder12": 63,
+      "headings": [
+        "风控中心"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 298
+    },
+    {
+      "label": "desktop-1280-operationsCenter-0",
+      "width": 1280,
+      "height": 800,
+      "documentOverflow": 0,
+      "interactiveCount": 28,
+      "minInteractiveHeight": 16,
+      "interactiveUnder44": 22,
+      "textCount": 201,
+      "minFontSize": 8.5,
+      "textUnder11": 1,
+      "textUnder12": 164,
+      "headings": [
+        "系统运营"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 435
+    },
+    {
+      "label": "desktop-1280-settings-0",
+      "width": 1280,
+      "height": 800,
+      "documentOverflow": 0,
+      "interactiveCount": 25,
+      "minInteractiveHeight": 18,
+      "interactiveUnder44": 19,
+      "textCount": 110,
+      "minFontSize": 8.5,
+      "textUnder11": 27,
+      "textUnder12": 58,
+      "headings": [
+        "系统设置",
+        "系统运行概览"
+      ],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 313
+    },
+    {
+      "label": "mobile-768-chat",
+      "width": 768,
+      "height": 1024,
+      "documentOverflow": 0,
+      "interactiveCount": 13,
+      "minInteractiveHeight": 31,
+      "interactiveUnder44": 8,
+      "textCount": 24,
+      "minFontSize": 8,
+      "textUnder11": 14,
+      "textUnder12": 18,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 252
+    },
+    {
+      "label": "mobile-768-cockpit",
+      "width": 768,
+      "height": 1024,
+      "documentOverflow": 0,
+      "interactiveCount": 16,
+      "minInteractiveHeight": 19,
+      "interactiveUnder44": 11,
+      "textCount": 58,
+      "minFontSize": 9.5,
+      "textUnder11": 13,
+      "textUnder12": 31,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 188
+    },
+    {
+      "label": "mobile-768-riskHub",
+      "width": 768,
+      "height": 1024,
+      "documentOverflow": 0,
+      "interactiveCount": 12,
+      "minInteractiveHeight": 30,
+      "interactiveUnder44": 7,
+      "textCount": 34,
+      "minFontSize": 9.5,
+      "textUnder11": 14,
+      "textUnder12": 17,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 150
+    },
+    {
+      "label": "mobile-768-systemSettings",
+      "width": 768,
+      "height": 1024,
+      "documentOverflow": 0,
+      "interactiveCount": 12,
+      "minInteractiveHeight": 30,
+      "interactiveUnder44": 6,
+      "textCount": 41,
+      "minFontSize": 9.5,
+      "textUnder11": 12,
+      "textUnder12": 21,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 155
+    },
+    {
+      "label": "mobile-768-more-drawer",
+      "width": 768,
+      "height": 1024,
+      "documentOverflow": 0,
+      "interactiveCount": 23,
+      "minInteractiveHeight": 30,
+      "interactiveUnder44": 6,
+      "textCount": 80,
+      "minFontSize": 9,
+      "textUnder11": 22,
+      "textUnder12": 31,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 262
+    },
+    {
+      "label": "mobile-430-chat",
+      "width": 430,
+      "height": 932,
+      "documentOverflow": 0,
+      "interactiveCount": 13,
+      "minInteractiveHeight": 31,
+      "interactiveUnder44": 7,
+      "textCount": 24,
+      "minFontSize": 8,
+      "textUnder11": 14,
+      "textUnder12": 18,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 252
+    },
+    {
+      "label": "mobile-430-watch",
+      "width": 430,
+      "height": 932,
+      "documentOverflow": 0,
+      "interactiveCount": 7,
+      "minInteractiveHeight": 30,
+      "interactiveUnder44": 2,
+      "textCount": 24,
+      "minFontSize": 9.5,
+      "textUnder11": 16,
+      "textUnder12": 17,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 125
+    },
+    {
+      "label": "mobile-430-cockpit",
+      "width": 430,
+      "height": 932,
+      "documentOverflow": 0,
+      "interactiveCount": 16,
+      "minInteractiveHeight": 19,
+      "interactiveUnder44": 11,
+      "textCount": 58,
+      "minFontSize": 9.5,
+      "textUnder11": 13,
+      "textUnder12": 31,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 188
+    },
+    {
+      "label": "mobile-430-riskHub",
+      "width": 430,
+      "height": 932,
+      "documentOverflow": 0,
+      "interactiveCount": 12,
+      "minInteractiveHeight": 30,
+      "interactiveUnder44": 7,
+      "textCount": 34,
+      "minFontSize": 9.5,
+      "textUnder11": 14,
+      "textUnder12": 17,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 150
+    },
+    {
+      "label": "mobile-430-executionReview",
+      "width": 430,
+      "height": 932,
+      "documentOverflow": 0,
+      "interactiveCount": 14,
+      "minInteractiveHeight": 16,
+      "interactiveUnder44": 7,
+      "textCount": 40,
+      "minFontSize": 9.5,
+      "textUnder11": 15,
+      "textUnder12": 28,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 154
+    },
+    {
+      "label": "mobile-430-knowledgeBase",
+      "width": 430,
+      "height": 932,
+      "documentOverflow": 0,
+      "interactiveCount": 18,
+      "minInteractiveHeight": 30,
+      "interactiveUnder44": 12,
+      "textCount": 40,
+      "minFontSize": 9.5,
+      "textUnder11": 13,
+      "textUnder12": 23,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 179
+    },
+    {
+      "label": "mobile-430-capabilityLib",
+      "width": 430,
+      "height": 932,
+      "documentOverflow": 0,
+      "interactiveCount": 63,
+      "minInteractiveHeight": 19,
+      "interactiveUnder44": 8,
+      "textCount": 283,
+      "minFontSize": 8.5,
+      "textUnder11": 69,
+      "textUnder12": 175,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 640
+    },
+    {
+      "label": "mobile-430-strategyLib",
+      "width": 430,
+      "height": 932,
+      "documentOverflow": 0,
+      "interactiveCount": 11,
+      "minInteractiveHeight": 30,
+      "interactiveUnder44": 6,
+      "textCount": 80,
+      "minFontSize": 9.5,
+      "textUnder11": 14,
+      "textUnder12": 55,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 214
+    },
+    {
+      "label": "mobile-430-intelligence",
+      "width": 430,
+      "height": 932,
+      "documentOverflow": 0,
+      "interactiveCount": 12,
+      "minInteractiveHeight": 30,
+      "interactiveUnder44": 7,
+      "textCount": 49,
+      "minFontSize": 8.5,
+      "textUnder11": 31,
+      "textUnder12": 35,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 187
+    },
+    {
+      "label": "mobile-430-eventsTasks",
+      "width": 430,
+      "height": 932,
+      "documentOverflow": 0,
+      "interactiveCount": 61,
+      "minInteractiveHeight": 30,
+      "interactiveUnder44": 56,
+      "textCount": 138,
+      "minFontSize": 8.5,
+      "textUnder11": 66,
+      "textUnder12": 73,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 320
+    },
+    {
+      "label": "mobile-430-auditSystem",
+      "width": 430,
+      "height": 932,
+      "documentOverflow": 0,
+      "interactiveCount": 8,
+      "minInteractiveHeight": 19,
+      "interactiveUnder44": 3,
+      "textCount": 57,
+      "minFontSize": 9.5,
+      "textUnder11": 21,
+      "textUnder12": 37,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 184
+    },
+    {
+      "label": "mobile-430-systemSettings",
+      "width": 430,
+      "height": 932,
+      "documentOverflow": 0,
+      "interactiveCount": 12,
+      "minInteractiveHeight": 30,
+      "interactiveUnder44": 6,
+      "textCount": 41,
+      "minFontSize": 9.5,
+      "textUnder11": 12,
+      "textUnder12": 21,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 155
+    },
+    {
+      "label": "mobile-430-more-drawer",
+      "width": 430,
+      "height": 932,
+      "documentOverflow": 0,
+      "interactiveCount": 23,
+      "minInteractiveHeight": 30,
+      "interactiveUnder44": 6,
+      "textCount": 80,
+      "minFontSize": 9,
+      "textUnder11": 22,
+      "textUnder12": 31,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 262
+    },
+    {
+      "label": "mobile-390-chat",
+      "width": 390,
+      "height": 844,
+      "documentOverflow": 0,
+      "interactiveCount": 13,
+      "minInteractiveHeight": 31,
+      "interactiveUnder44": 6,
+      "textCount": 24,
+      "minFontSize": 8,
+      "textUnder11": 14,
+      "textUnder12": 18,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 252
+    },
+    {
+      "label": "mobile-390-watch",
+      "width": 390,
+      "height": 844,
+      "documentOverflow": 0,
+      "interactiveCount": 7,
+      "minInteractiveHeight": 30,
+      "interactiveUnder44": 2,
+      "textCount": 24,
+      "minFontSize": 9.5,
+      "textUnder11": 16,
+      "textUnder12": 17,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 125
+    },
+    {
+      "label": "mobile-390-cockpit",
+      "width": 390,
+      "height": 844,
+      "documentOverflow": 0,
+      "interactiveCount": 16,
+      "minInteractiveHeight": 19,
+      "interactiveUnder44": 11,
+      "textCount": 58,
+      "minFontSize": 9.5,
+      "textUnder11": 13,
+      "textUnder12": 31,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 188
+    },
+    {
+      "label": "mobile-390-riskHub",
+      "width": 390,
+      "height": 844,
+      "documentOverflow": 0,
+      "interactiveCount": 12,
+      "minInteractiveHeight": 30,
+      "interactiveUnder44": 7,
+      "textCount": 34,
+      "minFontSize": 9.5,
+      "textUnder11": 14,
+      "textUnder12": 17,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 150
+    },
+    {
+      "label": "mobile-390-executionReview",
+      "width": 390,
+      "height": 844,
+      "documentOverflow": 0,
+      "interactiveCount": 14,
+      "minInteractiveHeight": 16,
+      "interactiveUnder44": 7,
+      "textCount": 40,
+      "minFontSize": 9.5,
+      "textUnder11": 15,
+      "textUnder12": 28,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 154
+    },
+    {
+      "label": "mobile-390-knowledgeBase",
+      "width": 390,
+      "height": 844,
+      "documentOverflow": 0,
+      "interactiveCount": 18,
+      "minInteractiveHeight": 30,
+      "interactiveUnder44": 12,
+      "textCount": 40,
+      "minFontSize": 9.5,
+      "textUnder11": 13,
+      "textUnder12": 23,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 179
+    },
+    {
+      "label": "mobile-390-capabilityLib",
+      "width": 390,
+      "height": 844,
+      "documentOverflow": 0,
+      "interactiveCount": 63,
+      "minInteractiveHeight": 19,
+      "interactiveUnder44": 8,
+      "textCount": 283,
+      "minFontSize": 8.5,
+      "textUnder11": 69,
+      "textUnder12": 175,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 640
+    },
+    {
+      "label": "mobile-390-strategyLib",
+      "width": 390,
+      "height": 844,
+      "documentOverflow": 0,
+      "interactiveCount": 11,
+      "minInteractiveHeight": 30,
+      "interactiveUnder44": 6,
+      "textCount": 80,
+      "minFontSize": 9.5,
+      "textUnder11": 14,
+      "textUnder12": 55,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 214
+    },
+    {
+      "label": "mobile-390-intelligence",
+      "width": 390,
+      "height": 844,
+      "documentOverflow": 0,
+      "interactiveCount": 12,
+      "minInteractiveHeight": 30,
+      "interactiveUnder44": 7,
+      "textCount": 49,
+      "minFontSize": 8.5,
+      "textUnder11": 31,
+      "textUnder12": 35,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 187
+    },
+    {
+      "label": "mobile-390-eventsTasks",
+      "width": 390,
+      "height": 844,
+      "documentOverflow": 0,
+      "interactiveCount": 61,
+      "minInteractiveHeight": 30,
+      "interactiveUnder44": 56,
+      "textCount": 178,
+      "minFontSize": 8.5,
+      "textUnder11": 93,
+      "textUnder12": 114,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 411
+    },
+    {
+      "label": "mobile-390-auditSystem",
+      "width": 390,
+      "height": 844,
+      "documentOverflow": 0,
+      "interactiveCount": 8,
+      "minInteractiveHeight": 19,
+      "interactiveUnder44": 3,
+      "textCount": 57,
+      "minFontSize": 9.5,
+      "textUnder11": 21,
+      "textUnder12": 37,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 184
+    },
+    {
+      "label": "mobile-390-systemSettings",
+      "width": 390,
+      "height": 844,
+      "documentOverflow": 0,
+      "interactiveCount": 12,
+      "minInteractiveHeight": 30,
+      "interactiveUnder44": 6,
+      "textCount": 41,
+      "minFontSize": 9.5,
+      "textUnder11": 12,
+      "textUnder12": 21,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 155
+    },
+    {
+      "label": "mobile-390-more-drawer",
+      "width": 390,
+      "height": 844,
+      "documentOverflow": 0,
+      "interactiveCount": 23,
+      "minInteractiveHeight": 30,
+      "interactiveUnder44": 6,
+      "textCount": 80,
+      "minFontSize": 9,
+      "textUnder11": 22,
+      "textUnder12": 31,
+      "headings": [],
+      "bodyBackground": "rgb(234, 229, 219)",
+      "stylesheets": [
+        "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+        "inline",
+        "inline",
+        "inline"
+      ],
+      "domNodes": 262
+    }
+  ]
+}
