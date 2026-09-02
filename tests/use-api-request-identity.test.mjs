@@ -97,6 +97,39 @@ test("web initializes on the public surface while its cookie session is unresolv
   }
 });
 
+test("native without a token initializes on the login surface", () => {
+  const saved = {
+    localStorage: globalThis.localStorage,
+    location: globalThis.location,
+    window: globalThis.window
+  };
+  const storage = new Map();
+  globalThis.localStorage = {
+    getItem: (key) => storage.get(key) || null,
+    setItem: (key, value) => storage.set(key, String(value)),
+    removeItem: (key) => storage.delete(key)
+  };
+  globalThis.location = { search: "" };
+  globalThis.window = {
+    Capacitor: { isNativePlatform: () => true },
+    location: { origin: "https://app.example", hostname: "app.example", protocol: "https:" },
+    localStorage: globalThis.localStorage,
+    setTimeout,
+    clearTimeout,
+    addEventListener: () => {},
+    removeEventListener: () => {}
+  };
+
+  try {
+    const api = renderUseApiWithoutEffects();
+    assert.equal(api.authRequired, true, "a native app without a stored token opens the login surface");
+  } finally {
+    globalThis.localStorage = saved.localStorage;
+    globalThis.location = saved.location;
+    globalThis.window = saved.window;
+  }
+});
+
 test("web login reloads the authenticated core instead of leaving the startup screen pending", async () => {
   const saved = {
     fetch: globalThis.fetch,

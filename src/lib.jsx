@@ -11,6 +11,7 @@ import {
 } from "./jsonResponseProvenance.js";
 import { acceptCoreSnapshot, acceptSectionSnapshot, clearSnapshotStore, createSnapshotStore, markSnapshotResource, observeSnapshotInvalidation, projectSnapshotStore, shouldRetryStaleSnapshot } from "./snapshotStore.js";
 import { connectionSecurityStatus, shouldAttemptNativeFallback } from "./connectionSecurity.js";
+import { initialAuthRequired, shouldBootstrapCoreOnMount } from "./sessionBootstrap.js";
 
 const boundedApprovalText = (value, maximum = 240) => typeof value === "string"
   && value.length > 0
@@ -821,7 +822,7 @@ export function useApi() {
   // Keep the public entry visible during that unresolved interval instead of presenting an
   // authenticated-workspace loader to signed-out visitors. Native keeps its existing token-led
   // startup because its session identity is available synchronously from local storage.
-  const [authRequired, setAuthRequired] = useState(() => !isNativeApp());
+  const [authRequired, setAuthRequired] = useState(() => initialAuthRequired({ native: isNativeApp(), token }));
   const [connectionError, setConnectionError] = useState("");
   const [busyCount, setBusyCount] = useState(0);
   const [publicInfo, setPublicInfo] = useState({ registrationEnabled: false, trc20Configured: false, subscriptionPlans: [] });
@@ -1236,7 +1237,7 @@ export function useApi() {
 
   useEffect(() => {
     refreshPublicInfo();
-    refresh();
+    if (shouldBootstrapCoreOnMount({ native: isNativeApp(), token: tokenRef.current })) refresh();
     // SSE is the primary invalidation channel. This five-minute timer is only a recovery net for
     // proxies/WebViews that silently buffer EventSource; it no longer downloads the monolithic
     // overview every 15 seconds.
