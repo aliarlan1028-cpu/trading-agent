@@ -9,6 +9,20 @@ import WebSocket from "ws";
 const chromeBinary = process.env.CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const managed = [];
 
+function parseRgb(value) {
+  return value.match(/\d+(?:\.\d+)?/gu)?.slice(0, 3).map(Number) || null;
+}
+
+function contrastRatio(foreground, background) {
+  const linear = (channel) => {
+    const normalized = channel / 255;
+    return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = ([red, green, blue]) => 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue);
+  const [first, second] = [luminance(foreground), luminance(background)].sort((left, right) => right - left);
+  return (first + 0.05) / (second + 0.05);
+}
+
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
@@ -201,6 +215,8 @@ try {
       const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
       const buttonStyle = getComputedStyle(button);
       const noticeStyle = getComputedStyle(notice);
+      const titleStyle = getComputedStyle(notice.querySelector('strong'));
+      const detailStyle = getComputedStyle(notice.querySelector('span'));
       return {
         viewport: [document.documentElement.clientWidth, document.documentElement.scrollWidth],
         shell: [shell.clientWidth, shell.scrollWidth],
@@ -209,15 +225,36 @@ try {
         position: noticeStyle.position,
         zIndex: noticeStyle.zIndex,
         display: noticeStyle.display,
+        backgroundImage: noticeStyle.backgroundImage,
+        borderColor: noticeStyle.borderTopColor,
+        titleColor: titleStyle.color,
+        detailColor: detailStyle.color,
+        buttonColor: buttonStyle.color,
+        buttonBackground: buttonStyle.backgroundColor,
         minHeight: buttonStyle.minHeight,
         active: document.activeElement === button
       };
     })()`);
+    viewportEvidence.contrast = {
+      title: contrastRatio(parseRgb(viewportEvidence.titleColor), [5, 13, 25]),
+      detail: contrastRatio(parseRgb(viewportEvidence.detailColor), [5, 13, 25]),
+      button: contrastRatio(parseRgb(viewportEvidence.buttonColor), parseRgb(viewportEvidence.buttonBackground))
+    };
+    process.stdout.write(`V2 release overlay colors ${width}x${height} ${JSON.stringify(viewportEvidence)}\n`);
     assert.deepEqual(viewportEvidence.viewport, [width, width], `${width}px release notice must not create document overflow`);
     assert.ok(viewportEvidence.shell[1] <= viewportEvidence.shell[0] + 1, `${width}px release notice must not create shell overflow`);
     assert.equal(viewportEvidence.position, "fixed", `${width}px release notice must be fixed above the V2 root`);
     assert.equal(viewportEvidence.zIndex, "1000", `${width}px release notice must retain its V2 overlay layer`);
     assert.equal(viewportEvidence.display, "flex", `${width}px release notice must retain its compact layout`);
+    assert.equal(viewportEvidence.borderColor, "rgba(135, 164, 205, 0.28)", `${width}px release notice must retain its visible V2 border`);
+    assert.equal(viewportEvidence.titleColor, "rgb(242, 246, 253)", `${width}px release title must retain V2 light text`);
+    assert.equal(viewportEvidence.detailColor, "rgb(194, 206, 222)", `${width}px release detail must retain V2 soft text`);
+    assert.equal(viewportEvidence.buttonColor, "rgb(3, 9, 20)", `${width}px release action must retain contrast-safe V2 ink`);
+    assert.equal(viewportEvidence.buttonBackground, "rgb(52, 120, 255)", `${width}px release action must retain V2 cobalt`);
+    assert.match(viewportEvidence.backgroundImage, /rgb\(13, 24, 39\).*rgb\(5, 13, 25\)/u, `${width}px release notice must retain the V2 dark surface gradient`);
+    assert.ok(viewportEvidence.contrast.title >= 7, `${width}px release title contrast must remain high`);
+    assert.ok(viewportEvidence.contrast.detail >= 4.5, `${width}px release detail contrast must remain adequate`);
+    assert.ok(viewportEvidence.contrast.button >= 4.5, `${width}px release action contrast must remain adequate`);
     assert.ok(Number.parseFloat(viewportEvidence.minHeight) >= 44, `${width}px release action must retain a 44px touch target`);
     assert.ok(viewportEvidence.rect.height >= 44 && viewportEvidence.rect.width >= 44, `${width}px release action must have an actual 44px hit rect`);
     assert.equal(viewportEvidence.hitIsButton, true, `${width}px physical hit test must resolve the release button`);

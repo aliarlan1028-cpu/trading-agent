@@ -15,6 +15,17 @@ const sharedV2FontTokens = {
   "--kordyn-mono": '"SFMono-Regular", "Roboto Mono", "Space Mono", ui-monospace, monospace'
 };
 
+const sharedV2ReleaseSurfaceTokens = {
+  "--kordyn-v2-canvas": "#030914",
+  "--kordyn-v2-canvas-soft": "#050d19",
+  "--kordyn-v2-field-raised": "#0d1827",
+  "--kordyn-v2-border-strong": "rgba(135, 164, 205, 0.28)",
+  "--kordyn-v2-text": "#f2f6fd",
+  "--kordyn-v2-text-soft": "#c2cede",
+  "--kordyn-v2-cobalt": "#3478ff",
+  "--kordyn-v2-cobalt-soft": "#6a99ff"
+};
+
 function declarationInRule(css, selector, property) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
   const match = css.match(new RegExp(`${escaped}\\s*\\{([\\s\\S]*?)\\}`, "u"));
@@ -44,13 +55,20 @@ test("V2 sibling overlays inherit the V2 font token only through the active V2 b
 });
 
 test("V2 release notices are fixed above the authenticated root with a mobile touch target", () => {
+  const v2BodyScope = "body:has(.kordynV2Root)";
   const releaseScope = "body:has(.kordynV2Root) .authenticatedAppFrame .releaseUpdateNotice";
   const releaseButtonScope = `${releaseScope} button`;
 
+  for (const [property, value] of Object.entries(sharedV2ReleaseSurfaceTokens)) {
+    assert.equal(declarationInRule(tokenCss, v2BodyScope, property), value, `${property} must reach the sibling release overlay through the V2 body scope`);
+    assert.equal(declarationInRule(tokenCss, ".kordynV2Root", property), value, `${property} must retain the same V2 root value`);
+  }
   assert.equal(declarationInRule(tokenCss, releaseScope, "position"), "fixed", "the release notice must escape the fixed V2 root stacking layer");
   assert.equal(declarationInRule(tokenCss, releaseScope, "z-index"), "1000", "the release notice must layer above V2 shell controls and below confirmation dialogs");
   assert.equal(declarationInRule(tokenCss, releaseScope, "display"), "flex", "the release notice must retain an explicit compact overlay layout");
   assert.equal(declarationInRule(tokenCss, releaseButtonScope, "min-height"), "44px", "the release update action must remain a mobile-sized touch target");
+  assert.match(tokenCss, /background:\s*linear-gradient\(145deg,\s*var\(--kordyn-v2-field-raised\),\s*var\(--kordyn-v2-canvas-soft\)\);/u, "the release notice background must use shared V2 surface tokens");
+  assert.match(tokenCss, /\.releaseUpdateNotice button\s*\{[\s\S]*?color:\s*var\(--kordyn-v2-canvas\);[\s\S]*?background:\s*var\(--kordyn-v2-cobalt\);/u, "the release action must use semantic V2 foreground and background tokens");
   assert.match(tokenCss, /@media\s*\(max-width:\s*767px\)\s*\{[\s\S]*?body:has\(\.kordynV2Root\)\s+\.authenticatedAppFrame\s+\.releaseUpdateNotice\s*\{[\s\S]*?width:\s*auto;/u, "mobile V2 notices must remain within both viewport edges without a fixed-width overflow");
   assert.doesNotMatch(tokenCss, /\.publicAppFrame\s+\.releaseUpdateNotice/u, "public release notices must remain outside the V2 overlay scope");
 });
