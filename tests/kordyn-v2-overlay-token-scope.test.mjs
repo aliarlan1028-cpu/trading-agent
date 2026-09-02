@@ -42,3 +42,15 @@ test("V2 sibling overlays inherit the V2 font token only through the active V2 b
   }
   assert.doesNotMatch(august15, /kordynV2Root|kordyn-v2-font/u, "legacy Aug15 remains outside the V2 body scope");
 });
+
+test("V2 release notices are fixed above the authenticated root with a mobile touch target", () => {
+  const releaseScope = "body:has(.kordynV2Root) .authenticatedAppFrame .releaseUpdateNotice";
+  const releaseButtonScope = `${releaseScope} button`;
+
+  assert.equal(declarationInRule(tokenCss, releaseScope, "position"), "fixed", "the release notice must escape the fixed V2 root stacking layer");
+  assert.equal(declarationInRule(tokenCss, releaseScope, "z-index"), "1000", "the release notice must layer above V2 shell controls and below confirmation dialogs");
+  assert.equal(declarationInRule(tokenCss, releaseScope, "display"), "flex", "the release notice must retain an explicit compact overlay layout");
+  assert.equal(declarationInRule(tokenCss, releaseButtonScope, "min-height"), "44px", "the release update action must remain a mobile-sized touch target");
+  assert.match(tokenCss, /@media\s*\(max-width:\s*767px\)\s*\{[\s\S]*?body:has\(\.kordynV2Root\)\s+\.authenticatedAppFrame\s+\.releaseUpdateNotice\s*\{[\s\S]*?width:\s*auto;/u, "mobile V2 notices must remain within both viewport edges without a fixed-width overflow");
+  assert.doesNotMatch(tokenCss, /\.publicAppFrame\s+\.releaseUpdateNotice/u, "public release notices must remain outside the V2 overlay scope");
+});

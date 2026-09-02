@@ -9,6 +9,66 @@ body:has(.kordynV2Root) .authenticatedAppFrame {
   font-family: var(--kordyn-sans);
 }
 
+body:has(.kordynV2Root) .authenticatedAppFrame .releaseUpdateNotice {
+  position: fixed;
+  z-index: 1000;
+  top: max(16px, calc(env(safe-area-inset-top) + 12px));
+  right: max(16px, calc(env(safe-area-inset-right) + 12px));
+  width: min(440px, calc(100vw - 32px));
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid var(--kordyn-v2-border-strong);
+  border-radius: 12px;
+  color: var(--kordyn-v2-text);
+  background: linear-gradient(145deg, rgba(13, 24, 39, 0.98), rgba(5, 13, 25, 0.98));
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.42), 0 0 24px rgba(52, 120, 255, 0.1);
+}
+
+body:has(.kordynV2Root) .authenticatedAppFrame .releaseUpdateNotice > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+body:has(.kordynV2Root) .authenticatedAppFrame .releaseUpdateNotice strong {
+  font-size: 14px;
+}
+
+body:has(.kordynV2Root) .authenticatedAppFrame .releaseUpdateNotice span {
+  color: var(--kordyn-v2-text-soft);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+body:has(.kordynV2Root) .authenticatedAppFrame .releaseUpdateNotice button {
+  min-height: 44px;
+  flex: 0 0 auto;
+  padding: 0 14px;
+  border: 1px solid rgba(106, 153, 255, 0.68);
+  border-radius: 9px;
+  color: #fff;
+  background: #3478ff;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.26);
+  font: 700 13px var(--kordyn-sans);
+}
+
+body:has(.kordynV2Root) .authenticatedAppFrame .releaseUpdateNotice button:focus-visible {
+  outline: 2px solid #6a99ff;
+  outline-offset: 2px;
+}
+
+@media (max-width: 767px) {
+  body:has(.kordynV2Root) .authenticatedAppFrame .releaseUpdateNotice {
+    top: max(8px, calc(env(safe-area-inset-top) + 8px));
+    right: 12px;
+    left: 12px;
+    width: auto;
+  }
+}
+
 .kordynV2Root {
   --kordyn-v2-canvas: #030914;
   --kordyn-v2-canvas-soft: #050d19;
