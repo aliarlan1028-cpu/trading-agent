@@ -49,7 +49,7 @@ test("APP Agent motion stays compositor-only and does not shake the character", 
 });
 
 test("web marketing keeps the real React authentication form over its app-background iframe", () => {
-  assert.match(source, /<iframe className="lpFrame" src="\/landing\.html"/);
+  assert.match(source, /<iframe[^>]*ref=\{landingFrameRef\}[^>]*className="lpFrame"[^>]*src="\/landing\.html"/);
   for (const contract of ["lpModal--", "lpMissionLabel", "lpSubscribeForm", "submitLogin", "submitRegister", "mfaStep", "TurnstileWidget"]) {
     assert.match(source, new RegExp(contract));
   }

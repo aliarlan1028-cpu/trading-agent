@@ -130,7 +130,7 @@ export function NativeAuthPage({ login, registerAccount, toast, apiBase, setApiB
   );
 }
 
-// 营销落地页:用 iframe 渲染 public/landing.html(样式完全隔离,不与 app CSS 冲突)。
+// 营销落地页：用 iframe 渲染独立 Vite landing.html 入口（样式完全隔离，不与 app CSS 冲突）。
 // 营销页里的「Start Trading」通过 postMessage({type:"lp-start"}) 通知这里,弹出真实登录/订阅弹窗。
 export function LandingPage(props) {
   if (props.isNativeApp) return <NativeAuthPage {...props} />;
@@ -148,6 +148,7 @@ function WebLandingPage({ login, registerAccount, toast, apiBase, setApiBase, is
   const [application, setApplication] = useState(null);
   const [mfaStep, setMfaStep] = useState(false);
   const authDialogRef = useRef(null);
+  const landingFrameRef = useRef(null);
   const closeAuth = () => setAuthOpen(false);
   useDialogFocus({ open: authOpen, containerRef: authDialogRef, onClose: closeAuth });
   const selectedPlan = plans.find((p) => p.id === selectedPlanId) || plans[0];
@@ -168,6 +169,9 @@ function WebLandingPage({ login, registerAccount, toast, apiBase, setApiBase, is
   }, []);
   useEffect(() => {
     const onMsg = (e) => {
+      if (e.origin !== window.location.origin) return;
+      const landingWindow = landingFrameRef.current?.contentWindow;
+      if (!landingWindow || e.source !== landingWindow) return;
       if (!e.data || e.data.type !== "lp-start") return;
       const nextMode = normalizeAuthMode(e.data.mode);
       if (!nextMode) return;
@@ -188,7 +192,7 @@ function WebLandingPage({ login, registerAccount, toast, apiBase, setApiBase, is
 
   return (
     <div className="lpRoot">
-      <iframe className="lpFrame" src="/landing.html" title="KORDYN" />
+      <iframe ref={landingFrameRef} className="lpFrame" src="/landing.html" title="KORDYN" />
       {authOpen && (
         <div className="lpOverlay" onClick={(e) => { if (e.target.classList.contains("lpOverlay")) setAuthOpen(false); }}>
           <div ref={authDialogRef} className={`lpModal lpModal--${mode}`} role="dialog" aria-modal="true" aria-labelledby="web-auth-title" tabIndex={-1}>
