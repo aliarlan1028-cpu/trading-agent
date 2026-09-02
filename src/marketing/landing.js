@@ -1,3 +1,5 @@
+import { dispatchMarketingAuth } from "./authIntent.js";
+
 (function () {
   "use strict";
 
@@ -628,7 +630,15 @@
   }
 
   function startAuth(mode) {
-    try { window.parent.postMessage({ type: "lp-start", mode: mode }, window.location.origin); } catch (_error) { /* parent may be unavailable */ }
+    try {
+      dispatchMarketingAuth({
+        mode: mode,
+        topLevel: window.top === window,
+        origin: window.location.origin,
+        navigate: function (path) { window.location.assign(path); },
+        postMessage: function (payload, origin) { window.parent.postMessage(payload, origin); }
+      });
+    } catch (_error) { /* parent may be unavailable */ }
   }
 
   document.addEventListener("click", function (event) {

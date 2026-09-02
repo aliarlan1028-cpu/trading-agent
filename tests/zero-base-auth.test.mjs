@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const source = readFileSync(new URL("../src/landing.jsx", import.meta.url), "utf8");
+const authIntentSource = readFileSync(new URL("../src/marketing/authIntent.js", import.meta.url), "utf8");
 const css = readFileSync(new URL("../src/aug15-auth.css", import.meta.url), "utf8");
 const entryCss = readFileSync(new URL("../src/entry.css", import.meta.url), "utf8");
 const lifecycleRunner = readFileSync(new URL("./run-authenticated-shell-browser.mjs", import.meta.url), "utf8");
@@ -47,11 +48,19 @@ test("APP Agent motion stays compositor-only and does not shake the character", 
   assert.doesNotMatch(orbMotion, /rotate\(/i);
 });
 
-test("web marketing keeps its iframe and real authentication actions while the browser gate owns visual parity", () => {
+test("web marketing keeps the real React authentication form over its app-background iframe", () => {
   assert.match(source, /<iframe className="lpFrame" src="\/landing\.html"/);
   for (const contract of ["lpModal--", "lpMissionLabel", "lpSubscribeForm", "submitLogin", "submitRegister", "mfaStep", "TurnstileWidget"]) {
     assert.match(source, new RegExp(contract));
   }
+});
+
+test("the allowlisted auth query controls presentation without becoming authentication data", () => {
+  assert.match(source, /authIntentFromSearch/);
+  assert.match(source, /history\.replaceState/);
+  assert.match(authIntentSource, /normalizeAuthMode/);
+  assert.match(authIntentSource, /"login"/);
+  assert.match(authIntentSource, /"subscribe"/);
 });
 
 test("authenticated startup and connection gates remain on the current runtime contract", () => {

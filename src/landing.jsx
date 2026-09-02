@@ -4,6 +4,7 @@ import { TurnstileWidget } from "./lib.jsx";
 import { t } from "./i18n.js";
 import { connectionSecurityStatus } from "./connectionSecurity.js";
 import { useDialogFocus } from "./useDialogFocus.js";
+import { authIntentFromSearch, normalizeAuthMode } from "./marketing/authIntent.js";
 import "./aug15-auth.css";
 
 function AuthMarketMotion() {
@@ -138,8 +139,9 @@ export function LandingPage(props) {
 
 function WebLandingPage({ login, registerAccount, toast, apiBase, setApiBase, isNativeApp, publicInfo }) {
   const plans = publicInfo?.subscriptionPlans || [];
-  const [authOpen, setAuthOpen] = useState(false);
-  const [mode, setMode] = useState("login");
+  const initialAuthIntent = authIntentFromSearch(window.location.search);
+  const [authOpen, setAuthOpen] = useState(Boolean(initialAuthIntent));
+  const [mode, setMode] = useState(initialAuthIntent || "login");
   const [selectedPlanId, setSelectedPlanId] = useState(plans[0]?.id || "");
   const [loginForm, setLoginForm] = useState({ email: "", password: "", totp: "" });
   const [registerForm, setRegisterForm] = useState({ name: "", email: "", inviteCode: "", acceptTerms: false, acceptPrivacy: false, acknowledgeRisk: false, turnstileToken: "" });
@@ -158,7 +160,20 @@ function WebLandingPage({ login, registerAccount, toast, apiBase, setApiBase, is
   };
 
   useEffect(() => {
-    const onMsg = (e) => { if (e.data && e.data.type === "lp-start") { setMode(e.data.mode === "subscribe" ? "subscribe" : "login"); setAuthOpen(true); } };
+    if (!initialAuthIntent) return;
+    const search = new URLSearchParams(window.location.search);
+    search.delete("auth");
+    const remainingSearch = search.toString();
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}${remainingSearch ? `?${remainingSearch}` : ""}${window.location.hash}`);
+  }, []);
+  useEffect(() => {
+    const onMsg = (e) => {
+      if (!e.data || e.data.type !== "lp-start") return;
+      const nextMode = normalizeAuthMode(e.data.mode);
+      if (!nextMode) return;
+      setMode(nextMode);
+      setAuthOpen(true);
+    };
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
   }, []);
