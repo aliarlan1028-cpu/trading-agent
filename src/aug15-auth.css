@@ -98,31 +98,51 @@
 @media(max-height:720px) and (min-width:371px){.nativeAuthCard{min-height:calc(100dvh - 20px);padding-top:18px;padding-bottom:12px}.nativeAuthBrand{margin:12px 0 16px}.nativeAuthIntro{margin-bottom:2px}.nativeAuthIntro strong{font-size:25px}.nativeAuthForm{gap:10px}.nativeAuthForm input{height:49px}.nativeAuthPrimary{min-height:52px}.nativeAuthMotion{min-height:118px}.nativeAuthMotionRail{--rail-scale:.86;bottom:-8px}.nativeAuthSwitch{font-size:11px}}
 @media(prefers-reduced-motion:reduce){.nativeAuthCard,.nativeAuthForm,.nativeAuthAmbient,.nativeAuthProgress i::after,.nativeAuthMotionRail,.nativeAuthMotionTile,.nativeAuthMotionGlow,.nativeAuthMotionTile svg path,.nativeAuthAgentOrb,.nativeAuthAgentOrb::before,.nativeAuthAgentOrb::after{animation:none!important}.nativeAuthMotionRail{transform:translate3d(-50%,0,0) scale(var(--rail-scale))}}
 
-.lpRoot{position:fixed;inset:0;z-index:1;background:#f6edde}
+.lpRoot{position:fixed;inset:0;z-index:1;background:#111311}
 .lpFrame{position:fixed;inset:0;width:100%;height:100%;border:0}
-.lpOverlay{position:fixed;inset:0;background:rgba(74,53,30,.3);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;z-index:200;padding:16px}
-.lpModal{position:relative;background:#fffdf9;border:1px solid #e2d5c3;border-radius:24px;padding:32px;width:400px;max-width:calc(100vw - 32px);text-align:center;color:#171512;box-shadow:0 30px 70px rgba(75,51,25,.24),inset 0 1px 0 #fff;font-family:'Space Grotesk','Public Sans','Noto Sans SC',sans-serif}
-.lpModal h3{font-size:23px;margin-bottom:6px;color:#171512;font-weight:700}
-.lpMsub{color:#887e71;font-size:14px;margin-bottom:20px}
-.lpTabs{display:flex;gap:8px;margin-bottom:18px}
-.lpTabs button{flex:1;min-height:44px;padding:9px;border-radius:11px;border:1px solid #e3d8c8;background:#fffaf3;color:#7c7266;cursor:pointer;font-weight:700}
-.lpTabs button.on{background:#fff0e4;color:#b95720;border-color:#ff9a5f}
-.lpInput{width:100%;min-height:48px;padding:12px 14px;border-radius:12px;border:1px solid #ded4c6;background:#fff;color:#171512;margin-bottom:11px;font-size:14px;outline:0}
-.lpInput::placeholder{color:#aaa094}
-.lpInput:focus{border-color:#ff9a5f;box-shadow:0 0 0 4px rgba(255,122,47,.12)}
-.lpBtn{width:100%;min-height:48px;padding:13px;border-radius:12px;border:0;background:linear-gradient(120deg,#ffa259,#ff7a2f);color:#fff;font-weight:700;font-size:15px;cursor:pointer;box-shadow:0 12px 24px -8px rgba(207,92,29,.48)}
-.lpBtn:disabled{opacity:.5;cursor:default;box-shadow:none}
-.lpX{position:absolute;top:14px;right:14px;width:44px;height:44px;background:transparent;border:0;border-radius:50%;color:#8f836e;cursor:pointer;font-size:22px;line-height:1}
-.lpX:hover{background:#f7efe5;color:#302b25}
-.lpPlans{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
-.lpPlans button{display:flex;justify-content:space-between;align-items:center;min-height:46px;padding:10px 13px;border-radius:11px;border:1px solid #e3d8c8;background:#fffaf3;cursor:pointer;color:#302b25}
-.lpPlans button.on{border-color:#ff9a5f;background:#fff0e4}
-.lpPlans button b{font-size:14px}.lpPlans button span{font-size:12px;color:#8f836e}
-.lpPay{margin-top:12px;background:#fff8ed;border:1px solid #e7c89e;border-radius:11px;padding:12px;text-align:left;font-size:13px;color:#5d5144}
-.lpPay code{display:block;word-break:break-all;color:#bd632d;margin-top:4px}
-.lpMhint,.lpToast{display:block;color:#8f836e;font-size:12px;margin-top:8px}
-.lpConsent{display:flex;align-items:flex-start;gap:8px;color:#756d63;font-size:12px;line-height:1.45;margin:8px 0;text-align:left}
-.lpConsent input{width:15px;height:15px;margin-top:2px;accent-color:#ff7a2f;flex:0 0 auto}
-.lpConsent a{color:#b95720;text-decoration:underline;text-underline-offset:2px}
-.lpModal :is(button,input):focus-visible{outline:3px solid rgba(255,122,47,.28);outline-offset:3px}
+.lpOverlay{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;padding:24px;background-color:rgba(17,19,17,.82);background-image:radial-gradient(circle at 78% 16%,rgba(204,255,61,.12),transparent 28%),radial-gradient(circle at 16% 84%,rgba(79,183,139,.12),transparent 24%);backdrop-filter:none}
+.lpModal{position:relative;width:520px;max-width:calc(100vw - 48px);max-height:calc(100dvh - 48px);overflow:auto;border:1px solid #111311;border-radius:8px;color:#111311;background:#F4F1E9;box-shadow:8px 8px 0 #CCFF3D,0 28px 70px rgba(3,7,4,.38);text-align:left;font-family:"Inter","Helvetica Neue",Arial,"Noto Sans SC",sans-serif;scrollbar-color:#697169 #EAE8E0}
+.lpModal--subscribe{width:760px}
+.lpModalHeader{position:relative;padding:30px 72px 23px 30px;border-bottom:1px solid #111311;color:#F4F1E9;background:#111311}
+.lpMissionLabel{display:block;margin-bottom:13px;color:#CCFF3D;font-family:"SFMono-Regular","Roboto Mono","Space Mono",monospace;font-size:10px;font-weight:700;letter-spacing:.14em}
+.lpModal h3{margin:0 0 7px;color:#FBFAF5;font-family:"Avenir Next","Helvetica Neue",Arial,"Noto Sans SC",sans-serif;font-size:30px;font-weight:750;letter-spacing:-.04em;line-height:1.04}
+.lpMsub{max-width:58ch;margin:0;color:#B8C0B8;font-size:13px;line-height:1.5}
+.lpTabs{display:grid;grid-template-columns:1fr 1fr;gap:0;margin:20px 28px 18px;padding:4px;border:1px solid #B8C0B8;border-radius:4px;background:#EAE8E0}
+.lpTabs button{min-height:44px;padding:9px 14px;border:0;border-radius:2px;color:#4D554D;background:transparent;cursor:pointer;font-weight:750;transition:color .16s ease,background-color .16s ease,box-shadow .16s ease,transform .16s ease}
+.lpTabs button.on{color:#F4F1E9;background:#111311;box-shadow:inset 0 -3px 0 #CCFF3D}
+.lpLoginForm{padding:0 28px 28px}
+.lpFieldGroup{display:grid;gap:7px;margin-bottom:14px}
+.lpFieldLabel{color:#303630;font-family:"SFMono-Regular","Roboto Mono","Space Mono",monospace;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.lpInput{width:100%;min-height:50px;margin:0;padding:12px 14px;border:1px solid #B8C0B8;border-radius:4px;color:#111311;background:#FBFAF5;font-size:14px;outline:0;transition:border-color .16s ease,box-shadow .16s ease,background-color .16s ease}
+.lpInput::placeholder{color:#697169;opacity:.82}
+.lpInput:focus{border-color:#111311;background:#fff;box-shadow:0 0 0 3px #CCFF3D}
+.lpBtn{width:100%;min-height:50px;padding:13px 18px;border:1px solid #111311;border-radius:4px;color:#111311;background:#CCFF3D;box-shadow:4px 4px 0 #111311;font-size:14px;font-weight:800;cursor:pointer;transition:transform .16s ease,box-shadow .16s ease,background-color .16s ease}
+.lpBtn:hover:not(:disabled){background:#D8FF70}
+.lpBtn:active:not(:disabled){transform:translateY(1px);box-shadow:2px 2px 0 #111311}
+.lpBtn:disabled{border-color:#B8C0B8;color:#697169;background:#D6D7D0;box-shadow:none;cursor:not-allowed}
+.lpX{position:absolute;z-index:2;top:18px;right:18px;width:44px;height:44px;border:1px solid #4D554D;border-radius:4px;color:#FBFAF5;background:#1B1F1B;cursor:pointer;font-size:24px;line-height:1;transition:color .16s ease,background-color .16s ease,border-color .16s ease}
+.lpX:hover{border-color:#CCFF3D;color:#111311;background:#CCFF3D}
+.lpSubscribeForm{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:18px;padding:0 28px 28px}
+.lpPlanPane,.lpApplicationPane{min-width:0}
+.lpPlanPane{padding:18px;border:1px solid #B8C0B8;border-radius:4px;background:#EAE8E0}
+.lpApplicationPane{padding:18px;border:1px solid #B8C0B8;border-radius:4px;background:#FBFAF5}
+.lpPaneHeading{display:grid;gap:3px;margin-bottom:14px}
+.lpPaneHeading strong{font-size:14px;letter-spacing:-.015em}
+.lpPaneHeading small{color:#697169;font-family:"SFMono-Regular","Roboto Mono","Space Mono",monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase}
+.lpPlans{display:grid;gap:8px}
+.lpPlans button{display:grid;grid-template-columns:1fr auto;align-items:center;min-height:52px;padding:10px 12px;border:1px solid #B8C0B8;border-radius:4px;color:#303630;background:#F4F1E9;cursor:pointer;text-align:left;transition:color .16s ease,background-color .16s ease,border-color .16s ease,box-shadow .16s ease,transform .16s ease}
+.lpPlans button:hover{border-color:#111311;background:#FBFAF5}
+.lpPlans button.on{border-color:#111311;color:#F4F1E9;background:#111311;box-shadow:4px 0 0 #CCFF3D}
+.lpPlans button b{font-size:13px}.lpPlans button span{color:#697169;font-family:"SFMono-Regular","Roboto Mono","Space Mono",monospace;font-size:10px}.lpPlans button.on span{color:#CCFF3D}
+.lpConsentList{margin:4px 0 12px;padding:10px 12px;border:1px solid #D6D7D0;border-radius:4px;background:#F4F1E9}
+.lpConsent{display:flex;align-items:flex-start;gap:9px;margin:0;padding:6px 0;color:#4D554D;font-size:11px;line-height:1.45;text-align:left}
+.lpConsent input{width:17px;height:17px;margin:0;accent-color:#111311;flex:0 0 auto}
+.lpConsent a{color:#2D7F60;font-weight:700;text-decoration:underline;text-underline-offset:2px}
+.lpPay{display:grid;gap:4px;margin-top:12px;padding:12px;border:1px solid #4FB78B;border-radius:4px;color:#234936;background:#E7F1E9;font-size:12px;text-align:left}
+.lpPay span{overflow-wrap:anywhere;font-family:"SFMono-Regular","Roboto Mono","Space Mono",monospace;font-size:10px}
+.lpMhint,.lpToast{display:block;margin-top:10px;padding:9px 11px;border-left:3px solid #EFB44B;color:#4D554D;background:#FFF2D8;font-size:11px;line-height:1.45;text-align:left}
+.lpToast{margin:0 28px 28px;border-color:#E25645;color:#7C3027;background:#FCE9E5}
+.lpModal :is(button,input,a):focus-visible{outline:3px solid #CCFF3D;outline-offset:3px}
 .turnstileHost{min-height:65px;margin:10px 0;overflow:hidden}
+@media(max-width:760px){.lpOverlay{padding:16px}.lpModal,.lpModal--subscribe{width:520px;max-width:calc(100vw - 32px);max-height:calc(100dvh - 32px)}.lpSubscribeForm{grid-template-columns:1fr}.lpModalHeader{padding-left:22px}.lpTabs{margin-left:20px;margin-right:20px}.lpLoginForm,.lpSubscribeForm{padding-left:20px;padding-right:20px}.lpToast{margin-left:20px;margin-right:20px}}
+@media(prefers-reduced-motion:reduce){.lpModal :is(button,input){transition:none}}

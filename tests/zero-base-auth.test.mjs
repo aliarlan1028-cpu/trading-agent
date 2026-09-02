@@ -47,13 +47,11 @@ test("APP Agent motion stays compositor-only and does not shake the character", 
   assert.doesNotMatch(orbMotion, /rotate\(/i);
 });
 
-test("web marketing keeps its iframe and moves the real authentication modal into the warm entry family", () => {
+test("web marketing keeps its iframe and real authentication actions while the browser gate owns visual parity", () => {
   assert.match(source, /<iframe className="lpFrame" src="\/landing\.html"/);
-  assert.match(css, /\.lpModal\{[^}]*#fffdf9/i);
-  assert.match(css, /\.lpBtn\{[^}]*#ff7a2f/i);
-  const webAuthCss = css.split(".lpRoot")[1] || "";
-  assert.doesNotMatch(webAuthCss, /#15110c|#100d0a|#17120c|#CCFF3D|#4FB78B/i);
-  assert.match(source, /mfaStep/);
+  for (const contract of ["lpModal--", "lpMissionLabel", "lpSubscribeForm", "submitLogin", "submitRegister", "mfaStep", "TurnstileWidget"]) {
+    assert.match(source, new RegExp(contract));
+  }
 });
 
 test("authenticated startup and connection gates remain on the current runtime contract", () => {

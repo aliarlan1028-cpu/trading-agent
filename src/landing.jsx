@@ -176,42 +176,53 @@ function WebLandingPage({ login, registerAccount, toast, apiBase, setApiBase, is
       <iframe className="lpFrame" src="/landing.html" title="KORDYN" />
       {authOpen && (
         <div className="lpOverlay" onClick={(e) => { if (e.target.classList.contains("lpOverlay")) setAuthOpen(false); }}>
-          <div ref={authDialogRef} className="lpModal" role="dialog" aria-modal="true" aria-labelledby="web-auth-title" tabIndex={-1}>
+          <div ref={authDialogRef} className={`lpModal lpModal--${mode}`} role="dialog" aria-modal="true" aria-labelledby="web-auth-title" tabIndex={-1}>
             <button className="lpX" onClick={closeAuth} aria-label="Close authentication">×</button>
-            <h3 id="web-auth-title">{mode === "login" ? "Start Trading" : "Subscribe"}</h3>
-            <p className="lpMsub">{mode === "login" ? "Sign in to open the cockpit." : "Apply for an isolated KORDYN instance. No account is created inside the owner workspace."}</p>
-            <div className="lpTabs">
-              <button className={mode === "login" ? "on" : ""} onClick={() => setMode("login")}>Log in</button>
-              <button className={mode === "subscribe" ? "on" : ""} onClick={() => setMode("subscribe")}>Subscribe</button>
+            <header className="lpModalHeader">
+              <span className="lpMissionLabel">KORDYN / MISSION ACCESS</span>
+              <h3 id="web-auth-title">{mode === "login" ? "Start Trading" : "Subscribe"}</h3>
+              <p className="lpMsub">{mode === "login" ? "Sign in to open the cockpit." : "Apply for an isolated KORDYN instance. No account is created inside the owner workspace."}</p>
+            </header>
+            <div className="lpTabs" role="tablist" aria-label="Authentication mode">
+              <button type="button" role="tab" aria-selected={mode === "login"} className={mode === "login" ? "on" : ""} onClick={() => setMode("login")}>Log in</button>
+              <button type="button" role="tab" aria-selected={mode === "subscribe"} className={mode === "subscribe" ? "on" : ""} onClick={() => setMode("subscribe")}>Subscribe</button>
             </div>
             {isNativeApp && <input className="lpInput" value={apiBase || ""} onChange={(e) => setApiBase(e.target.value)} placeholder="Backend URL" />}
             {mode === "login" ? (
-              <form onSubmit={submitLogin}>
-                <input className="lpInput" value={loginForm.email} onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })} placeholder="you@example.com" autoFocus />
-                <input className="lpInput" type="password" value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} placeholder="Password" />
-                {mfaStep && <input className="lpInput" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={loginForm.totp} onChange={(e) => setLoginForm({ ...loginForm, totp: e.target.value.replace(/\D/g, "").slice(0, 6) })} placeholder="Six-digit authenticator code" autoFocus />}
+              <form className="lpLoginForm" onSubmit={submitLogin}>
+                <label className="lpFieldGroup" htmlFor="web-login-email"><span className="lpFieldLabel">Email</span><input id="web-login-email" className="lpInput" type="email" autoComplete="username" value={loginForm.email} onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })} placeholder="you@example.com" autoFocus /></label>
+                <label className="lpFieldGroup" htmlFor="web-login-password"><span className="lpFieldLabel">Password</span><input id="web-login-password" className="lpInput" type="password" autoComplete="current-password" value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} placeholder="Enter your password" /></label>
+                {mfaStep && <label className="lpFieldGroup" htmlFor="web-login-totp"><span className="lpFieldLabel">Authenticator code</span><input id="web-login-totp" className="lpInput" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={loginForm.totp} onChange={(e) => setLoginForm({ ...loginForm, totp: e.target.value.replace(/\D/g, "").slice(0, 6) })} placeholder="Six-digit code" autoFocus /></label>}
                 <button className="lpBtn" type="submit">{mfaStep ? "Verify and continue →" : "Enter the cockpit →"}</button>
               </form>
             ) : (
-              <form onSubmit={submitRegister}>
-                {plans.length > 0 && (
-                  <div className="lpPlans">{plans.map((p) => (
-                    <button type="button" key={p.id} className={selectedPlanId === p.id ? "on" : ""} onClick={() => setSelectedPlanId(p.id)}>
-                      <b>{planLabel(p)}</b><span>{p.priceUsdt} USDT · {p.months || 1}mo</span>
-                    </button>
-                  ))}</div>
-                )}
-                <input className="lpInput" value={registerForm.name} onChange={(e) => setRegisterForm({ ...registerForm, name: e.target.value })} placeholder="Your name" />
-                <input className="lpInput" value={registerForm.email} onChange={(e) => setRegisterForm({ ...registerForm, email: e.target.value })} placeholder="you@example.com" />
-                {publicInfo?.inviteRequired && <input className="lpInput" value={registerForm.inviteCode} onChange={(e) => setRegisterForm({ ...registerForm, inviteCode: e.target.value })} placeholder="Invite code" />}
-                <label className="lpConsent"><input type="checkbox" checked={registerForm.acceptTerms} onChange={(e) => setRegisterForm({ ...registerForm, acceptTerms: e.target.checked })} /><span>I accept the <a href={publicInfo?.termsUrl || "#"} target="_blank" rel="noreferrer">Terms of Service</a> (v{publicInfo?.termsVersion || "current"}).</span></label>
-                <label className="lpConsent"><input type="checkbox" checked={registerForm.acceptPrivacy} onChange={(e) => setRegisterForm({ ...registerForm, acceptPrivacy: e.target.checked })} /><span>I accept the <a href={publicInfo?.privacyUrl || "#"} target="_blank" rel="noreferrer">Privacy Policy</a>.</span></label>
-                <label className="lpConsent"><input type="checkbox" checked={registerForm.acknowledgeRisk} onChange={(e) => setRegisterForm({ ...registerForm, acknowledgeRisk: e.target.checked })} /> I understand crypto trading can result in total loss.</label>
-                <TurnstileWidget siteKey={publicInfo?.turnstileSiteKey} onToken={(turnstileToken) => setRegisterForm((current) => ({ ...current, turnstileToken }))} />
-                <button className="lpBtn" type="submit" disabled={!publicInfo?.registrationEnabled || (publicInfo?.captchaRequired && !registerForm.turnstileToken)}>Submit onboarding application</button>
-                {!publicInfo?.registrationEnabled && <small className="lpMhint">Applications are currently closed — contact us to be onboarded.</small>}
-                {publicInfo?.registrationEnabled && !publicInfo?.capacity?.canProvision && <small className="lpMhint">Applications are open, but new instances are currently waitlisted for capacity.</small>}
-                {application && <div className="lpPay"><strong>Application received</strong><span>{application.id}</span><small>Status: {application.status}. Check your email or wait for manual review.</small></div>}
+              <form className="lpSubscribeForm" onSubmit={submitRegister}>
+                <section className="lpPlanPane" aria-labelledby="web-plan-title">
+                  <div className="lpPaneHeading"><strong id="web-plan-title">Choose access window</strong><small>Isolated KORDYN instance</small></div>
+                  {plans.length > 0 && (
+                    <div className="lpPlans">{plans.map((p) => (
+                      <button type="button" key={p.id} aria-pressed={selectedPlanId === p.id} className={selectedPlanId === p.id ? "on" : ""} onClick={() => setSelectedPlanId(p.id)}>
+                        <b>{planLabel(p)}</b><span>{p.priceUsdt} USDT · {p.months || 1}mo</span>
+                      </button>
+                    ))}</div>
+                  )}
+                </section>
+                <section className="lpApplicationPane" aria-labelledby="web-application-title">
+                  <div className="lpPaneHeading"><strong id="web-application-title">Application details</strong><small>Owner review required</small></div>
+                  <label className="lpFieldGroup" htmlFor="web-register-name"><span className="lpFieldLabel">Name</span><input id="web-register-name" className="lpInput" autoComplete="name" value={registerForm.name} onChange={(e) => setRegisterForm({ ...registerForm, name: e.target.value })} placeholder="Your name" /></label>
+                  <label className="lpFieldGroup" htmlFor="web-register-email"><span className="lpFieldLabel">Email</span><input id="web-register-email" className="lpInput" type="email" autoComplete="email" value={registerForm.email} onChange={(e) => setRegisterForm({ ...registerForm, email: e.target.value })} placeholder="you@example.com" /></label>
+                  {publicInfo?.inviteRequired && <label className="lpFieldGroup" htmlFor="web-register-invite"><span className="lpFieldLabel">Invite code</span><input id="web-register-invite" className="lpInput" value={registerForm.inviteCode} onChange={(e) => setRegisterForm({ ...registerForm, inviteCode: e.target.value })} placeholder="Invite code" /></label>}
+                  <div className="lpConsentList">
+                    <label className="lpConsent"><input type="checkbox" checked={registerForm.acceptTerms} onChange={(e) => setRegisterForm({ ...registerForm, acceptTerms: e.target.checked })} /><span>I accept the <a href={publicInfo?.termsUrl || "#"} target="_blank" rel="noreferrer">Terms of Service</a> (v{publicInfo?.termsVersion || "current"}).</span></label>
+                    <label className="lpConsent"><input type="checkbox" checked={registerForm.acceptPrivacy} onChange={(e) => setRegisterForm({ ...registerForm, acceptPrivacy: e.target.checked })} /><span>I accept the <a href={publicInfo?.privacyUrl || "#"} target="_blank" rel="noreferrer">Privacy Policy</a>.</span></label>
+                    <label className="lpConsent"><input type="checkbox" checked={registerForm.acknowledgeRisk} onChange={(e) => setRegisterForm({ ...registerForm, acknowledgeRisk: e.target.checked })} /> I understand crypto trading can result in total loss.</label>
+                  </div>
+                  <TurnstileWidget siteKey={publicInfo?.turnstileSiteKey} onToken={(turnstileToken) => setRegisterForm((current) => ({ ...current, turnstileToken }))} />
+                  <button className="lpBtn" type="submit" disabled={!publicInfo?.registrationEnabled || (publicInfo?.captchaRequired && !registerForm.turnstileToken)}>Submit onboarding application</button>
+                  {!publicInfo?.registrationEnabled && <small className="lpMhint">Applications are currently closed. Contact us to be onboarded.</small>}
+                  {publicInfo?.registrationEnabled && !publicInfo?.capacity?.canProvision && <small className="lpMhint">Applications are open, but new instances are currently waitlisted for capacity.</small>}
+                  {application && <div className="lpPay"><strong>Application received</strong><span>{application.id}</span><small>Status: {application.status}. Check your email or wait for manual review.</small></div>}
+                </section>
               </form>
             )}
             {toast && <small className="lpToast">{toast}</small>}
