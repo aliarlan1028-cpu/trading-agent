@@ -20,6 +20,7 @@ import { activateMandate, changeAgentRunStatus, expireStalePlans, getAgentStatus
 import { validateRuntimeConfig } from "./schema.mjs";
 import { registerAllRoutes } from "./routes/index.mjs";
 import { transportSecurityPolicy, TRUSTED_REVERSE_PROXY_RANGES } from "./transportSecurity.mjs";
+import { installStaticDelivery, staticContentSecurityPolicy } from "./staticDelivery.mjs";
 import { compareOverviewShadowFacts, overviewShadowFacts } from "./overviewShadow.mjs";
 import { authRequired, hashPassword, installAuth, invalidateSessions, invalidateUserSessions, requirePermission, resolvePermissions, verifyPassword } from "./auth.mjs";
 import { consumeStreamTicket, issueStreamTicket, STREAM_TICKET_TTL_MS } from "./streamTickets.mjs";
@@ -481,9 +482,7 @@ app.use((_req, res, next) => {
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-  // 营销页(landing.html)用 Google Fonts(Space Grotesk / IBM Plex Mono / Public Sans / Noto Sans SC),
-  // 故 style-src/font-src 放行 fonts.googleapis.com / fonts.gstatic.com;脚本仍严格 'self'(landing.js 外置)。
-  res.setHeader("Content-Security-Policy", "default-src 'self'; connect-src 'self' https: wss:; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self'; frame-src 'self'; frame-ancestors 'self'");
+  res.setHeader("Content-Security-Policy", staticContentSecurityPolicy());
   next();
 });
 app.use((req, res, next) => {
@@ -492,23 +491,7 @@ app.use((req, res, next) => {
   if (!policy.allowed) return res.status(policy.status || 426).json({ error: policy.error, message: "Production API access requires HTTPS." });
   next();
 });
-app.use(express.static(publicDir, {
-  setHeaders(res, filePath) {
-    // Vite 产物 /assets/*.js|css 文件名带内容哈希 → 内容不可变,可永久缓存(改动会换新哈希名)。
-    // 其余入口文件(index.html / landing.html / landing.js)用 no-cache,保证发版即时生效。
-    if (/[\\/]assets[\\/]/.test(filePath)) {
-      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-    } else {
-      res.setHeader("Cache-Control", "no-cache");
-    }
-  }
-}));
-app.get(/^\/(?!api(?:\/|$)).*/, (_req, res, next) => {
-  res.setHeader("Cache-Control", "no-cache");
-  res.sendFile(path.join(publicDir, "index.html"), (error) => {
-    if (error) next(error);
-  });
-});
+installStaticDelivery(app, { publicDir });
 installAuth(app, db);
 // 鉴权必须先于大请求解析：普通 API/公开 webhook 最多 1MB；只有已经通过上方
 // auth middleware 的知识文件导入允许 20MB，避免匿名请求用大 JSON 消耗内存。
