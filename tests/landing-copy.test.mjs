@@ -81,7 +81,8 @@ test("产品工作台使用明确标注的丰富示例数据，而不是伪装�
 test("营销页保留真实行情、登录、订阅、联系与中英切换入口", () => {
   assert.match(html, /id="taTicker"/);
   assert.match(script, /\/api\/public\/ticker-bar/);
-  assert.match(script, /type: "lp-start"/);
+  assert.match(script, /import\s*\{\s*dispatchMarketingAuth\s*\}\s*from\s*["']\.\/authIntent\.js["']/);
+  assert.match(script, /dispatchMarketingAuth\(\{\s*mode:\s*mode,\s*topLevel:\s*window\.top === window,\s*origin:\s*window\.location\.origin,\s*navigate:\s*function\s*\(path\)\s*\{\s*window\.location\.assign\(path\);\s*\},\s*postMessage:\s*function\s*\(payload, origin\)\s*\{\s*window\.parent\.postMessage\(payload, origin\);\s*\}/s);
   assert.match(html, /data-action="login"/);
   assert.match(html, /data-action="subscribe"/);
   assert.match(html, /data-action="contact"/);
