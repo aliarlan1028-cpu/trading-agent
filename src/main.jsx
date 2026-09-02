@@ -41,9 +41,10 @@ const SettingsConcept = lazyNamed(() => import("./workspacePages.jsx"), "Setting
 let august15EntryPromise;
 export function loadAugust15AuthenticatedEntry(importer = () => import("./aug15/App.jsx")) {
   if (!august15EntryPromise) {
-    august15EntryPromise = importer();
-    august15EntryPromise.catch(() => {
-      if (august15EntryPromise) august15EntryPromise = undefined;
+    const entryPromise = importer();
+    august15EntryPromise = entryPromise;
+    entryPromise.catch(() => {
+      if (august15EntryPromise === entryPromise) august15EntryPromise = undefined;
     });
   }
   return august15EntryPromise;

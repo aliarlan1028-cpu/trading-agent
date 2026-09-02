@@ -18,18 +18,23 @@ function loadAuthenticatedEntryHarness() {
   const loaderSource = main.match(/let august15EntryPromise;[\s\S]*?^}\n(?=const August15AuthenticatedShell)/m)?.[0];
   assert.ok(loaderSource, "main must export the shared August 15 authenticated-entry loader");
   require("esbuild").buildSync({
-    stdin: { contents: loaderSource, resolveDir: path.join(rootDir, "src"), loader: "jsx" },
+    stdin: {
+      contents: `${loaderSource}\nexport function replaceAugust15EntryPromiseForTest(entryPromise) { august15EntryPromise = entryPromise; }`,
+      resolveDir: path.join(rootDir, "src"),
+      loader: "jsx"
+    },
     bundle: true,
     format: "cjs",
     platform: "node",
     outfile: bundle,
     logLevel: "silent"
   });
-  return require(bundle).loadAugust15AuthenticatedEntry;
+  delete require.cache[bundle];
+  return require(bundle);
 }
 
 test("authenticated entry loader shares one in-flight import and retries after rejection", async () => {
-  const loadAugust15AuthenticatedEntry = loadAuthenticatedEntryHarness();
+  const { loadAugust15AuthenticatedEntry } = loadAuthenticatedEntryHarness();
   let rejectedCalls = 0;
   const failed = loadAugust15AuthenticatedEntry(() => {
     rejectedCalls += 1;
@@ -51,6 +56,32 @@ test("authenticated entry loader shares one in-flight import and retries after r
   assert.equal(importerCalls, 1);
   assert.equal(first, second);
   assert.equal(await first, module);
+});
+
+test("stale rejection cleanup preserves a newer shared import", async () => {
+  const { loadAugust15AuthenticatedEntry, replaceAugust15EntryPromiseForTest } = loadAuthenticatedEntryHarness();
+  let rejectOld;
+  const oldPromise = new Promise((resolve, reject) => { rejectOld = reject; });
+  loadAugust15AuthenticatedEntry(() => oldPromise);
+
+  // Model a retry that has cleared the failed old entry before that entry's delayed cleanup runs.
+  replaceAugust15EntryPromiseForTest(undefined);
+  let newerImporterCalls = 0;
+  const newerPromise = new Promise(() => {});
+  const newer = loadAugust15AuthenticatedEntry(() => {
+    newerImporterCalls += 1;
+    return newerPromise;
+  });
+
+  rejectOld(new Error("stale import failure"));
+  await assert.rejects(oldPromise, /stale import failure/);
+
+  const repeatedRetry = loadAugust15AuthenticatedEntry(() => {
+    newerImporterCalls += 1;
+    return Promise.resolve({ August15AuthenticatedShell: "duplicate" });
+  });
+  assert.equal(repeatedRetry, newer);
+  assert.equal(newerImporterCalls, 1);
 });
 
 test("legacy preload starts before bootstrap completes while rendering keeps auth and data gates", () => {
