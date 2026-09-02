@@ -268,6 +268,7 @@ let cdp;
 let coreMode = "guest";
 let coreStartedAt = 0;
 let coreCompletedAt = 0;
+let nativeInvalidationEmissionCount = 0;
 const authenticatedCoreEnabled = true;
 const credentialNonce = randomUUID().replaceAll("-", "");
 const credentialEmail = `cold-start-${credentialNonce}@invalid.example`;
@@ -341,6 +342,12 @@ try {
   app.get("/api/overview", (_req, res) => res.type("json").send(KORDYN_V2_PRODUCTION_FIXTURE_JSON));
   app.get("/api/stream", (_req, res) => {
     res.set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
+    if (String(_req.get("referer") || "").includes("native_recovery_probe=1") && nativeInvalidationEmissionCount === 0) {
+      nativeInvalidationEmissionCount += 1;
+      res.write(`data: ${JSON.stringify({ type: "core_invalidated", revision: 999 })}\n\n`);
+      setTimeout(() => res.end(), 50);
+      return;
+    }
     res.end(": fixture\n\n");
   });
   installStaticDelivery(app, { publicDir: buildDir });
@@ -368,6 +375,12 @@ try {
   });
   cdp.on("Page.navigatedWithinDocument", ({ url }) => navigationUrls.push(url));
   await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: `
+    const nativeRecoverySetInterval = window.setInterval.bind(window);
+    window.setInterval = (callback, delay, ...args) => nativeRecoverySetInterval(
+      callback,
+      new URLSearchParams(location.search).has("native_recovery_probe") && delay === 300000 ? 100 : delay,
+      ...args
+    );
     let assignedCapacitor;
     Object.defineProperty(window, "Capacitor", {
       configurable: true,
@@ -459,17 +472,22 @@ try {
 
   coreMode = "guest";
   const nativeStart = browserRequests.length;
-  await navigate(cdp, `${baseUrl}/app?native_probe=1`, 390, 844);
+  await navigate(cdp, `${baseUrl}/app?native_probe=1&native_recovery_probe=1`, 390, 844);
   await waitExpression(cdp, "document.querySelector('.nativeAuthCard')", "Capacitor no-token NativeAuthPage");
-  await delay(250);
+  await evaluate(cdp, "window.dispatchEvent(new FocusEvent('focus'))");
+  await evaluate(cdp, "document.dispatchEvent(new Event('visibilitychange'))");
+  await delay(1_250);
   const nativeRequests = requestEvidence(browserRequests.slice(nativeStart));
   const nativeProof = await evaluate(cdp, `(() => ({
     label: document.querySelector('.nativeAuthCard')?.getAttribute('aria-label'),
     overflow: Math.max(document.documentElement.scrollWidth - document.documentElement.clientWidth, document.body.scrollWidth - document.body.clientWidth)
   }))()`);
   const nativeCoreRequestCount = nativeRequests.filter((row) => row.path.startsWith("/api/bootstrap/core")).length;
+  const nativeSectionRequestCount = nativeRequests.filter((row) => row.path.startsWith("/api/overview?view=section")).length;
   assert.match(nativeProof.label, /KORDYN/, "Capacitor no-token entry renders the real labelled NativeAuthPage");
   assert.equal(nativeCoreRequestCount, 0, "Capacitor no-token entry makes zero core bootstrap requests");
+  assert.equal(nativeSectionRequestCount, 0, "Capacitor no-token recovery makes zero authenticated section requests");
+  assert.equal(nativeInvalidationEmissionCount, 1, "Capacitor no-token gate receives one production-shaped SSE invalidation");
   assert.equal(nativeRequests.some((row) => row.host && row.host !== new URL(baseUrl).host), false, "Capacitor fixture traffic stays on the production-shaped local server");
   assert.equal(nativeProof.overflow, 0, noOverflowMessage(390, "native", nativeProof));
 
@@ -517,7 +535,7 @@ try {
     assets: { landing: landingEntry.file, product: appEntry.file, august15: augustEntry.file, productStyles: productStylesEntry.file, augustStylesheet, assetCount: landingFiles.length, landingGzipBytes, landingClosure, appInitialClosure, appOnlyInitialClosure, marketingFiles: assetMetrics, productFiles: productAssetMetrics },
     public: publicResults,
     modals: modalResults,
-    native: { ...nativeProof, coreRequestCount: nativeCoreRequestCount, requestCount: nativeRequests.length, requests: nativeRequests },
+    native: { ...nativeProof, coreRequestCount: nativeCoreRequestCount, sectionRequestCount: nativeSectionRequestCount, invalidationEmissionCount: nativeInvalidationEmissionCount, recoverySources: ["fallback", "focus", "visibility", "invalidation"], requestCount: nativeRequests.length, requests: nativeRequests },
     authenticated: { coreStartedAt, coreResponseFinishedAt: coreCompletedAt, augustRequest, productStylesRequest, stylesheetRequest, augustServerRequest, productStylesServerRequest, stylesheetServerRequest, timingOrder: "App JS < core response finish < CSS request", requestCount: authenticatedRequests.length, requests: authenticatedRequests },
     credentialUrlSafe: credentialUrlSelfTest ? undefined : credentialUrlSafe,
     credentialUrlSelfTestRejected: credentialUrlSelfTest ? { sameDocumentNavigation: !navigationCredentialUrlSafe, finalLocation: !finalCredentialUrlSafe } : undefined,

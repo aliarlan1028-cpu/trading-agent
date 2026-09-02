@@ -11,7 +11,7 @@ import {
 } from "./jsonResponseProvenance.js";
 import { acceptCoreSnapshot, acceptSectionSnapshot, clearSnapshotStore, createSnapshotStore, markSnapshotResource, observeSnapshotInvalidation, projectSnapshotStore, shouldRetryStaleSnapshot } from "./snapshotStore.js";
 import { connectionSecurityStatus, shouldAttemptNativeFallback } from "./connectionSecurity.js";
-import { initialAuthRequired, shouldBootstrapCoreOnMount } from "./sessionBootstrap.js";
+import { initialAuthRequired, shouldSynchronizeAuthenticatedData } from "./sessionBootstrap.js";
 
 const boundedApprovalText = (value, maximum = 240) => typeof value === "string"
   && value.length > 0
@@ -840,6 +840,10 @@ export function useApi() {
   const tokenRef = useRef(token);
   const apiBaseRef = useRef(apiBase);
 
+  function canSynchronizeAuthenticatedData() {
+    return shouldSynchronizeAuthenticatedData({ native: isNativeApp(), token: tokenRef.current });
+  }
+
   const supplementalSectionsFor = (section) => ({
     chat: ["operationsCenter"],
     systemSettings: ["riskCenter", "operationsCenter"]
@@ -1237,16 +1241,18 @@ export function useApi() {
 
   useEffect(() => {
     refreshPublicInfo();
-    if (shouldBootstrapCoreOnMount({ native: isNativeApp(), token: tokenRef.current })) refresh();
+    if (canSynchronizeAuthenticatedData()) refresh();
     // SSE is the primary invalidation channel. This five-minute timer is only a recovery net for
     // proxies/WebViews that silently buffer EventSource; it no longer downloads the monolithic
     // overview every 15 seconds.
     const fallback = setInterval(() => {
+      if (!canSynchronizeAuthenticatedData()) return;
       refresh(false);
       ensureSection(activeSectionRef.current, { force: true });
     }, 300000);
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
+      if (!canSynchronizeAuthenticatedData()) return;
       if (Date.now() - lastCoreSyncRef.current > 60000) refresh(false);
       if (Date.now() - lastSectionSyncRef.current > 180000) ensureSection(activeSectionRef.current, { force: true });
     };
@@ -1270,10 +1276,12 @@ export function useApi() {
     let invalidationTimer = null;
     let disposed = false;
     const scheduleInvalidationSync = (forceSection = false, immediate = false) => {
+      if (!canSynchronizeAuthenticatedData()) return;
       if (invalidationTimer) clearTimeout(invalidationTimer);
       const coreDelay = immediate ? 0 : Math.max(1000, 15000 - (Date.now() - lastCoreSyncRef.current));
       invalidationTimer = setTimeout(() => {
         invalidationTimer = null;
+        if (!canSynchronizeAuthenticatedData()) return;
         refresh(false);
         if (forceSection || Date.now() - lastSectionSyncRef.current > 60000) {
           ensureSection(activeSectionRef.current, { force: true });

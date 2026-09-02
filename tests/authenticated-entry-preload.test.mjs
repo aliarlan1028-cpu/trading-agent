@@ -172,9 +172,9 @@ test("production preload transfers the authenticated entry without its styleshee
 
 test("legacy preload starts before bootstrap completes while rendering keeps auth and data gates", () => {
   const effectStart = main.indexOf('  useEffect(() => {\n    if (uiVersion !== "legacy"');
-  const effectEnd = main.indexOf("  }, [authRequired, loading, productStylesAttempt, uiVersion]);", effectStart);
+  const effectEnd = main.indexOf("  }, [authRequired, loading, uiVersion]);", effectStart);
   const preloadEffect = effectStart >= 0 && effectEnd >= 0
-    ? main.slice(effectStart, effectEnd + "  }, [authRequired, loading, productStylesAttempt, uiVersion]);".length)
+    ? main.slice(effectStart, effectEnd + "  }, [authRequired, loading, uiVersion]);".length)
     : "";
 
   assert.ok(preloadEffect, "main must retain its authenticated-entry preload effect");
@@ -183,7 +183,7 @@ test("legacy preload starts before bootstrap completes while rendering keeps aut
   assert.match(main, /if \(authRequired\) return <AppFrame><LandingPage/);
   assert.match(main, /import\("\.\/aug15\/productStyles\.js"\)/);
   const stylesEffectStart = main.indexOf('  useEffect(() => {\n    if (uiVersion !== "legacy" || authRequired');
-  const stylesEffectEnd = main.indexOf("  }, [authRequired, loading, Boolean(data), productEntryState, productStylesAttempt, uiVersion]);", stylesEffectStart);
+  const stylesEffectEnd = main.indexOf("  }, [authRequired, loading, Boolean(data), productEntryState, uiVersion]);", stylesEffectStart);
   const stylesEffect = stylesEffectStart >= 0 && stylesEffectEnd >= 0
     ? main.slice(stylesEffectStart, stylesEffectEnd)
     : "";

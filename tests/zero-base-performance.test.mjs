@@ -37,14 +37,13 @@ test("entry CSS owns boot and public frame while August 15 auth stays route-scop
   assert.doesNotMatch(entry, /\.zbShell|\.strategyWorkbench|\.mEventRiskRegistry/);
 });
 
-test("authenticated product-style loading can reach ready and retry without cancelling itself", () => {
-  assert.match(main, /productStylesAttempt/);
-  assert.match(main, /\[authRequired,\s*loading,\s*productStylesAttempt,\s*uiVersion\]/);
+test("authenticated product-style loading reaches ready without depending on its own state", () => {
+  assert.match(main, /\[authRequired,\s*loading,\s*uiVersion\]/);
   assert.doesNotMatch(main, /\[authRequired,\s*loading,\s*productStylesState\]/);
   assert.match(main, /export function loadAugust15AuthenticatedEntry/);
   assert.match(main, /const August15AuthenticatedShell = lazyNamed\(loadAugust15AuthenticatedEntry, "August15AuthenticatedShell"\)/);
   assert.match(main, /loadAugust15AuthenticatedEntry\(\)\n\s*\.then/);
-  assert.match(main, /setProductStylesAttempt\(\(attempt\)\s*=>\s*attempt\s*\+\s*1\)/);
+  assert.match(main, /function retryAugust15AuthenticatedResources\(\)[\s\S]*window\.location\.reload\(\)/);
 });
 
 test("performance gate builds the current source into an isolated temporary output", () => {

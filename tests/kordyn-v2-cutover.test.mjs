@@ -41,7 +41,7 @@ test("V2 and classic legacy authenticated styles are mutually exclusive", () => 
   assert.match(main, /useRef\(resolveKordynUiVersion\(import\.meta\.env\)\)/);
   assert.match(main, /import\("\.\/kordynV2\/entry\.jsx"\)/);
   assert.match(main, /import\("\.\/aug15\/App\.jsx"\)/);
-  assert.match(main, /\[authRequired,\s*loading,\s*productStylesAttempt,\s*uiVersion\]/);
+  assert.match(main, /\[authRequired,\s*loading,\s*uiVersion\]/);
   assert.match(entry, /styles\/tokens\.css/);
   assert.match(entry, /styles\/shell\.css/);
   assert.doesNotMatch(entry, /productStyles|styles\.css|zero-base|product-foundation/);
