@@ -27,6 +27,7 @@ test("Vite builds the marketing page as an isolated hashed entry", () => {
     assert.match(marketingHtml, /\/assets\/landing-[^"']+\.js/);
     assert.match(marketingHtml, /\/assets\/landing-[^"']+\.css/);
     assert.match(productHtml, /\/assets\/index-[^"']+\.js/);
+    assert.doesNotMatch(productHtml, /fonts\.(?:googleapis|gstatic)\.com/);
     assert.ok(manifest["landing.html"], "landing entry must be listed in Vite's manifest");
     assert.ok(manifest["index.html"], "product entry must be listed in Vite's manifest");
 
