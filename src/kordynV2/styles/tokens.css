@@ -1,3 +1,14 @@
+body:has(.kordynV2Root) {
+  --kordyn-v2-font: Inter, "Helvetica Neue", Arial, sans-serif;
+  --kordyn-sans: Inter, "Helvetica Neue", Arial, sans-serif;
+  --kordyn-display: "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+  --kordyn-mono: "SFMono-Regular", "Roboto Mono", "Space Mono", ui-monospace, monospace;
+}
+
+body:has(.kordynV2Root) .authenticatedAppFrame {
+  font-family: var(--kordyn-sans);
+}
+
 .kordynV2Root {
   --kordyn-v2-canvas: #030914;
   --kordyn-v2-canvas-soft: #050d19;
@@ -21,6 +32,5 @@
   --kordyn-v2-truth-height: 68px;
   --kordyn-v2-local-height: 52px;
   --kordyn-v2-header-height: calc(var(--kordyn-v2-truth-height) + var(--kordyn-v2-local-height));
-  --kordyn-v2-font: Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --kordyn-v2-mono: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
 }
