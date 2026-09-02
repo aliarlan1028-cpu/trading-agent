@@ -7,6 +7,7 @@ import path from "node:path";
 import WebSocket from "ws";
 
 let appUrl = process.env.KORDYN_APP_URL ? new URL(process.env.KORDYN_APP_URL) : null;
+const externalAppUrl = Boolean(appUrl);
 const chromeBinary = process.env.CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const entryOutputDir = process.env.KORDYN_AUTH_ENTRY_OUTPUT_DIR ? path.resolve(process.env.KORDYN_AUTH_ENTRY_OUTPUT_DIR) : null;
 const managedServices = [];
@@ -124,7 +125,8 @@ async function startIsolatedProductionShell() {
     env: {
       ...process.env,
       PORT: String(vitePort), VITE_API_PROXY_TARGET: apiUrl,
-      VITE_APP_RELEASE: "authenticated-browser-client"
+      VITE_APP_RELEASE: "authenticated-browser-client",
+      VITE_ALLOW_KORDYN_V2_PREVIEW: "true"
     }
   });
   try {
@@ -173,10 +175,32 @@ async function waitForSignal(signal, label, timeoutMs = 20_000) {
   }
 }
 
+let expectedAuthenticatedMode = "legacy";
+
 async function setViewport(cdp, width, height) {
   await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: width <= 900 });
   await cdp.send("Page.navigate", { url: appUrl.href });
-  await waitForExpression(cdp, width <= 900 ? "document.querySelector('.mShell2.kordynSystem')" : "document.querySelector('.appShell.kordynSystem')", `${width}px authenticated product shell`);
+  try {
+    const shellExpression = expectedAuthenticatedMode === "v2"
+      ? width <= 900
+        ? "document.querySelector('.authenticatedAppFrame.kordynSystem > [data-kordyn-v2-root=\"mobile\"]')"
+        : "document.querySelector('.authenticatedAppFrame.kordynSystem > [data-kordyn-v2-root=\"desktop\"]')"
+      : width <= 900
+        ? "document.querySelector('.authenticatedAppFrame.kordynSystem > .mShell2[data-classic-mobile-shell=\"true\"]')"
+        : "document.querySelector('.authenticatedAppFrame.kordynSystem > .appShell[data-classic-shell=\"desktop\"]')";
+    await waitForExpression(cdp, shellExpression, `${width}px ${expectedAuthenticatedMode} authenticated product shell`);
+  } catch (error) {
+    const state = await evaluate(cdp, `({
+      href: location.href,
+      title: document.title,
+      startup: Boolean(document.querySelector('[data-authenticated-state]')),
+      connection: Boolean(document.querySelector('.mobileConnectPanel')),
+      publicSurface: Boolean(document.querySelector('.publicAppFrame .lpRoot')),
+      text: document.body.innerText.slice(0, 240),
+      styles: [...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.href)
+    })`);
+    throw new Error(`${error.message}; state=${JSON.stringify(state)}`, { cause: error });
+  }
 }
 
 async function clickPoint(cdp, point) {
@@ -202,6 +226,15 @@ async function trustedClick(cdp, selector) {
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
   })()`);
   await clickPoint(cdp, point);
+}
+
+async function clickMarketingIframeAction(cdp, action) {
+  const selector = `[data-action="${action}"]`;
+  await waitForExpression(cdp, `(() => {
+    const frame = document.querySelector('.lpFrame');
+    return frame?.contentDocument?.readyState === 'complete' && frame.contentDocument.querySelector(${JSON.stringify(selector)});
+  })()`, `real marketing iframe ${action} action`);
+  await evaluate(cdp, `document.querySelector('.lpFrame').contentDocument.querySelector(${JSON.stringify(selector)}).click()`);
 }
 
 async function trustedClickText(cdp, selector, label) {
@@ -237,6 +270,7 @@ async function readSurfaceContract(cdp, surfaceSelector, actionSelector = null) 
     const actionStyle = action ? getComputedStyle(action) : null;
     return {
       backgroundColor: style.backgroundColor,
+      backgroundImage: style.backgroundImage,
       color: style.color,
       borderTopWidth: style.borderTopWidth,
       borderTopStyle: style.borderTopStyle,
@@ -244,6 +278,9 @@ async function readSurfaceContract(cdp, surfaceSelector, actionSelector = null) 
       borderRadius: style.borderRadius,
       boxShadow: style.boxShadow,
       backdropFilter: style.backdropFilter || style.webkitBackdropFilter || "none",
+      position: style.position,
+      zIndex: style.zIndex,
+      display: style.display,
       minHeight: style.minHeight,
       action: actionStyle ? {
         backgroundColor: actionStyle.backgroundColor,
@@ -265,24 +302,43 @@ async function captureEntryState(cdp, name) {
   await writeFile(path.join(entryOutputDir, `${name}.png`), Buffer.from(shot.data, "base64"));
 }
 
-function collectAuthenticatedSurfaceViolations(violations, label, surface, { shadowColor = "rgb(204, 255, 61)", requireAction = true } = {}) {
+function collectV2AuthenticatedSurfaceViolations(violations, label, surface, { requireAction = true } = {}) {
   const expect = (condition, detail) => { if (!condition) violations.push(`${label}: ${detail}`); };
   expect(Boolean(surface), "surface missing");
   if (!surface) return;
-  expect(surface.backgroundColor === "rgb(244, 241, 233)", `Paper background expected, got ${surface.backgroundColor}`);
-  expect(surface.color === "rgb(17, 19, 17)", `Ink foreground expected, got ${surface.color}`);
-  expect(surface.borderTopWidth === "1px" && surface.borderTopStyle === "solid" && surface.borderTopColor === "rgb(17, 19, 17)", `1px Ink hard border expected, got ${surface.borderTopWidth} ${surface.borderTopStyle} ${surface.borderTopColor}`);
-  expect(surface.borderRadius === "0px", `zero radius expected, got ${surface.borderRadius}`);
+  expect(surface.backgroundColor === "rgb(9, 19, 33)", `V2 field background expected, got ${surface.backgroundColor}`);
+  expect(surface.color === "rgb(242, 246, 253)", `V2 light foreground expected, got ${surface.color}`);
+  expect(surface.borderTopWidth === "1px" && surface.borderTopStyle === "solid" && surface.borderTopColor === "rgba(135, 164, 205, 0.34)", `V2 strong border expected, got ${surface.borderTopWidth} ${surface.borderTopStyle} ${surface.borderTopColor}`);
+  expect(surface.borderRadius === "18px", `18px V2 dialog radius expected, got ${surface.borderRadius}`);
   expect(surface.backdropFilter === "none", `no blur expected, got ${surface.backdropFilter}`);
-  expect(surface.boxShadow.includes("10px 10px 0px") && surface.boxShadow.includes(shadowColor), `10px hard offset ${shadowColor} expected, got ${surface.boxShadow}`);
+  expect(surface.boxShadow.includes("0px 28px 90px"), `V2 deep dialog shadow expected, got ${surface.boxShadow}`);
   if (!requireAction) return;
   expect(Boolean(surface.action), "primary action missing");
   if (!surface.action) return;
-  expect(surface.action.backgroundColor === "rgb(204, 255, 61)", `Acid CTA expected, got ${surface.action.backgroundColor}`);
-  expect(surface.action.color === "rgb(17, 19, 17)", `Ink CTA label expected, got ${surface.action.color}`);
-  expect(surface.action.borderTopWidth === "1px" && surface.action.borderTopStyle === "solid" && surface.action.borderTopColor === "rgb(17, 19, 17)", `1px Ink CTA border expected, got ${surface.action.borderTopWidth} ${surface.action.borderTopStyle} ${surface.action.borderTopColor}`);
-  expect(surface.action.borderRadius === "0px", `zero-radius CTA expected, got ${surface.action.borderRadius}`);
+  expect(surface.action.backgroundColor === "rgb(52, 120, 255)", `V2 cobalt CTA expected, got ${surface.action.backgroundColor}`);
+  expect(surface.action.color === "rgb(255, 255, 255)", `V2 white CTA label expected, got ${surface.action.color}`);
+  expect(surface.action.borderTopWidth === "1px" && surface.action.borderTopStyle === "solid" && surface.action.borderTopColor === "rgba(52, 120, 255, 0.56)", `V2 cobalt CTA border expected, got ${surface.action.borderTopWidth} ${surface.action.borderTopStyle} ${surface.action.borderTopColor}`);
+  expect(surface.action.borderRadius === "12px", `12px V2 CTA radius expected, got ${surface.action.borderRadius}`);
   expect(Number.parseFloat(surface.action.minHeight) >= 44, `44px touch target expected, got ${surface.action.minHeight}`);
+}
+
+function collectV2ReleaseSurfaceViolations(violations, label, surface) {
+  const expect = (condition, detail) => { if (!condition) violations.push(`${label}: ${detail}`); };
+  expect(Boolean(surface), "surface missing");
+  if (!surface) return;
+  expect(surface.position === "fixed" && surface.zIndex === "1000" && surface.display === "flex", `fixed V2 overlay layer expected, got ${surface.position}/${surface.zIndex}/${surface.display}`);
+  expect(surface.backgroundImage.includes("rgb(13, 24, 39)") && surface.backgroundImage.includes("rgb(5, 13, 25)"), `V2 dark gradient expected, got ${surface.backgroundImage}`);
+  expect(surface.color === "rgb(242, 246, 253)", `V2 light foreground expected, got ${surface.color}`);
+  expect(surface.borderTopWidth === "1px" && surface.borderTopStyle === "solid" && surface.borderTopColor === "rgba(135, 164, 205, 0.28)", `V2 release border expected, got ${surface.borderTopWidth} ${surface.borderTopStyle} ${surface.borderTopColor}`);
+  expect(surface.borderRadius === "12px", `12px V2 release radius expected, got ${surface.borderRadius}`);
+  expect(surface.boxShadow.includes("0px 18px 48px"), `V2 release depth expected, got ${surface.boxShadow}`);
+  expect(Boolean(surface.action), "release action missing");
+  if (!surface.action) return;
+  expect(surface.action.backgroundColor === "rgb(52, 120, 255)", `V2 release cobalt action expected, got ${surface.action.backgroundColor}`);
+  expect(surface.action.color === "rgb(3, 9, 20)", `V2 release contrast-safe ink expected, got ${surface.action.color}`);
+  expect(surface.action.borderTopWidth === "1px" && surface.action.borderTopStyle === "solid" && surface.action.borderTopColor === "rgb(106, 153, 255)", `V2 release action border expected, got ${surface.action.borderTopWidth} ${surface.action.borderTopStyle} ${surface.action.borderTopColor}`);
+  expect(surface.action.borderRadius === "9px", `9px V2 release action radius expected, got ${surface.action.borderRadius}`);
+  expect(Number.parseFloat(surface.action.minHeight) >= 44, `44px release touch target expected, got ${surface.action.minHeight}`);
 }
 
 function collectAugust15EntrySurfaceViolations(violations, label, surface, { release = false, requireAction = false } = {}) {
@@ -375,7 +431,7 @@ try {
       body: Buffer.from('{"error":"auth_required"}').toString("base64")
     });
     await waitForExpression(cdp, `document.querySelector(${JSON.stringify(publicSelector)})`, `${width}x${height} public marketing after guest session result`);
-    await evaluate(cdp, "window.postMessage({ type: 'lp-start', mode: 'login' }, '*')");
+    await clickMarketingIframeAction(cdp, "login");
     await waitForExpression(cdp, "document.querySelector('.lpLoginForm')", `${width}x${height} real public login form`);
     await evaluate(cdp, "document.querySelector('.lpLoginForm').requestSubmit()");
     const loginRequestId = await waitForSignal(loginRequestPaused, `${width}x${height} web login request`);
@@ -411,14 +467,51 @@ try {
     break entryLifecycleValidation;
   }
 
-  await setViewport(cdp, 1440, 900);
-  process.stdout.write("authenticated shell browser: desktop mounted\n");
-  assert.equal(await evaluate(cdp, "Boolean(document.querySelector('.authenticatedAppFrame.kordynSystem > .appShell.kordynSystem'))"), true, "desktop product shell and its sibling overlays must share an authenticated Kordyn inheritance frame");
-  await trustedClick(cdp, "[data-zero-base-family=operations]");
-  await waitForExpression(cdp, "document.querySelector('[data-zero-base-shell=desktop]').dataset.zeroBaseFamily==='operations' && document.querySelector('[data-product-workspace=operations]')", "zero-base Operations production overview");
-  await trustedClick(cdp, ".zbSubnav [data-zero-base-view=recovery]");
-  await waitForExpression(cdp, "document.querySelector('[data-product-workspace=\"operations\"] .opxRecoveryTruth > button')", "Operations production recovery action");
-  await trustedClick(cdp, "[data-product-workspace='operations'] .opxRecoveryTruth > button");
+  await evaluate(cdp, "sessionStorage.setItem('kordyn_ui_version', 'v2')");
+  expectedAuthenticatedMode = "v2";
+  try {
+    await setViewport(cdp, 1440, 900);
+  } catch (error) {
+    if (externalAppUrl) {
+      throw new Error("External KORDYN_APP_URL must be built with VITE_ALLOW_KORDYN_V2_PREVIEW=true so the runner can validate legacy entry → v2 authenticated contracts.", { cause: error });
+    }
+    throw error;
+  }
+  process.stdout.write("authenticated shell browser: legacy entry → v2 authenticated contracts; desktop mounted\n");
+  assert.equal(await evaluate(cdp, "Boolean(document.querySelector('.authenticatedAppFrame.kordynSystem > [data-kordyn-v2-root=\"desktop\"]'))"), true, "desktop product shell and its sibling overlays must share an authenticated Kordyn inheritance frame");
+  const desktopFoundation = await evaluate(cdp, `(() => {
+    const shell = document.querySelector('[data-kordyn-v2-shell="desktop"]');
+    const tools = [...shell.querySelectorAll('[data-kordyn-v2-context-trigger],[data-kordyn-v2-proof-trigger],[data-kordyn-v2-ai-support-trigger]')];
+    return {
+      document: [document.documentElement.clientWidth, document.documentElement.scrollWidth],
+      shell: [shell.clientWidth, shell.scrollWidth],
+      tools: tools.map((node) => node.hasAttribute('data-kordyn-v2-context-trigger') ? 'Context' : node.hasAttribute('data-kordyn-v2-proof-trigger') ? 'Proof' : 'AI support')
+    };
+  })()`);
+  assert.deepEqual(desktopFoundation.document, [1440, 1440], "1440px V2 desktop has no document overflow");
+  assert.ok(desktopFoundation.shell[1] <= desktopFoundation.shell[0] + 1, "1440px V2 desktop shell has no horizontal overflow");
+  assert.deepEqual(desktopFoundation.tools, ["Context", "Proof", "AI support"], "current V2 maps the former Objects/Context/Trace rail to selected-object Context, Proof and read-only AI support");
+
+  await trustedClick(cdp, "[data-kordyn-v2-context-trigger]");
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-overlay=\"context\"]')?.contains(document.activeElement)", "V2 Context overlay focus");
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab" });
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab" });
+  assert.equal(await evaluate(cdp, "document.querySelector('[data-kordyn-v2-overlay=\"context\"]')?.contains(document.activeElement)"), true, "V2 Context traps focus");
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape" });
+  await waitForExpression(cdp, "!document.querySelector('[data-kordyn-v2-overlay]') && document.activeElement === document.querySelector('[data-kordyn-v2-context-trigger]')", "V2 Context Escape close and focus return");
+
+  await trustedClick(cdp, "[data-kordyn-v2-ai-support-trigger]");
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-ai-support-panel]')?.contains(document.activeElement)", "V2 AI support overlay focus");
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape" });
+  await waitForExpression(cdp, "!document.querySelector('[data-kordyn-v2-ai-support-panel]') && document.activeElement === document.querySelector('[data-kordyn-v2-ai-support-trigger]')", "V2 AI support Escape close and focus return");
+
+  await trustedClick(cdp, "[data-kordyn-v2-domain-target=governance]");
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=\"desktop\"]')?.dataset.kordynV2Domain === 'governance'", "V2 Governance domain");
+  await trustedClick(cdp, "[data-kordyn-v2-workspace-target=recovery]");
+  await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-governance-workspace=\"recovery\"]')", "V2 Governance recovery workspace");
+  await trustedClick(cdp, ".kordynV2RecoveryActions > button:nth-of-type(1)");
   await waitForExpression(cdp, "document.querySelector('.cfmHead')", "authenticated ConfirmHost");
   process.stdout.write("authenticated shell browser: confirm mounted\n");
   const overlayFonts = await evaluate(cdp, `(() => {
@@ -436,7 +529,7 @@ try {
   assertFontStack(overlayFonts.sans, "Inter, Helvetica Neue, Arial, sans-serif", "authenticated product sans token");
   assertFontStack(overlayFonts.display, "Avenir Next, Helvetica Neue, Arial, sans-serif", "authenticated product display token");
   assertFontStack(overlayFonts.mono, "SFMono-Regular, Roboto Mono, Space Mono, ui-monospace, monospace", "authenticated product mono token");
-  collectAuthenticatedSurfaceViolations(visualViolations, "authenticated ordinary ConfirmHost", await readSurfaceContract(cdp, ".authenticatedAppFrame.kordynSystem .cfmCard--ordinary", ".authenticatedAppFrame.kordynSystem .cfmOk"));
+  collectV2AuthenticatedSurfaceViolations(visualViolations, "authenticated ordinary ConfirmHost", await readSurfaceContract(cdp, ".authenticatedAppFrame.kordynSystem .cfmCard--ordinary", ".authenticatedAppFrame.kordynSystem .cfmOk"));
   assert.equal(await evaluate(cdp, "document.activeElement?.classList.contains('cfmCancel')"), true, "ordinary ConfirmHost initially focuses the safe cancel action");
   await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab" });
   await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab" });
@@ -453,42 +546,61 @@ try {
   await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
   await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape" });
   await waitForExpression(cdp, "!document.querySelector('.cfmCard')", "ordinary ConfirmHost Escape close");
-  await waitForExpression(cdp, "document.activeElement?.matches('[data-product-workspace=\"operations\"] .opxRecoveryTruth > button')", "ordinary ConfirmHost focus return");
+  await waitForExpression(cdp, "document.activeElement?.matches('.kordynV2RecoveryActions > button:nth-of-type(1)')", "ordinary ConfirmHost focus return");
 
   await evaluate(cdp, "window.dispatchEvent(new Event('focus'))");
   await waitForExpression(cdp, "document.querySelector('.authenticatedAppFrame.kordynSystem .releaseUpdateNotice')", "production release mismatch notice");
   const releaseFont = await evaluate(cdp, "getComputedStyle(document.querySelector('.authenticatedAppFrame.kordynSystem .releaseUpdateNotice')).fontFamily");
   assertFontStack(releaseFont, "Inter, Helvetica Neue, Arial, sans-serif", "ReleaseUpdateNotice zero-base product sans stack");
-  collectAugust15EntrySurfaceViolations(visualViolations, "authenticated ReleaseUpdateNotice", await readSurfaceContract(cdp, ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice", ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice button"), { release: true, requireAction: true });
+  collectV2ReleaseSurfaceViolations(visualViolations, "authenticated ReleaseUpdateNotice", await readSurfaceContract(cdp, ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice", ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice button"));
 
-  const viewportProof = ["1440x900:desktop"];
+  const viewportProof = ["1440x900:desktop,tools=Context/Proof/AI-support,overflow=0"];
   await setViewport(cdp, 1180, 820);
+  const desktop1180Overflow = await evaluate(cdp, "document.documentElement.scrollWidth-document.documentElement.clientWidth");
+  assert.equal(desktop1180Overflow, 0, "1180px V2 desktop has no horizontal overflow");
   await evaluate(cdp, "window.dispatchEvent(new Event('focus'))");
   await waitForExpression(cdp, "document.querySelector('.authenticatedAppFrame.kordynSystem .releaseUpdateNotice')", "1180px production release mismatch notice");
-  collectAugust15EntrySurfaceViolations(visualViolations, "1180x820 authenticated ReleaseUpdateNotice", await readSurfaceContract(cdp, ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice", ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice button"), { release: true, requireAction: true });
-  viewportProof.push("1180x820:desktop");
+  collectV2ReleaseSurfaceViolations(visualViolations, "1180x820 authenticated ReleaseUpdateNotice", await readSurfaceContract(cdp, ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice", ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice button"));
+  viewportProof.push("1180x820:desktop,overflow=0");
 
   for (const [width, height] of [[390, 844], [430, 932]]) {
     await setViewport(cdp, width, height);
-    await evaluate(cdp, "window.dispatchEvent(new Event('focus'))");
-    await waitForExpression(cdp, "document.querySelector('.authenticatedAppFrame.kordynSystem .releaseUpdateNotice')", `${width}px production release mismatch notice`);
-    collectAugust15EntrySurfaceViolations(visualViolations, `${width}x${height} authenticated ReleaseUpdateNotice`, await readSurfaceContract(cdp, ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice", ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice button"), { release: true, requireAction: true });
     process.stdout.write(`authenticated shell browser: ${width}x${height} mounted\n`);
     const geometry = await evaluate(cdp, `(() => {
-      const tools = document.querySelector('.mShellTools');
-      const tab = document.querySelector('.mNativeTabbar');
-      const buttons = [...tools.querySelectorAll(':scope > .mShellToolButton')];
-      const rect = (node) => { const value = node.getBoundingClientRect(); return { left: value.left, top: value.top, right: value.right, bottom: value.bottom, width: value.width, height: value.height }; };
-      return { tools: rect(tools), tab: rect(tab), buttons: buttons.map(rect), scrollWidth: tools.scrollWidth, clientWidth: tools.clientWidth, scrollHeight: tools.scrollHeight, clientHeight: tools.clientHeight };
+      const shell = document.querySelector('[data-kordyn-v2-shell="mobile"]');
+      const nav = shell.querySelector('[data-kordyn-v2-mobile-navigation]');
+      const visibleButtons = [...shell.querySelectorAll('button:not([disabled])')].filter((node) => node.getClientRects().length && !node.closest('[inert]'));
+      return {
+        document: [document.documentElement.clientWidth, document.documentElement.scrollWidth],
+        shell: [shell.clientWidth, shell.scrollWidth],
+        navCount: nav.querySelectorAll(':scope > button').length,
+        supportCount: shell.querySelectorAll('[data-kordyn-v2-ai-support-trigger]').length,
+        evidenceCount: shell.querySelectorAll('[data-kordyn-v2-context-trigger],[data-kordyn-v2-proof-trigger]').length,
+        selectedId: shell.dataset.kordynV2SelectedId,
+        undersized: visibleButtons.map((node) => { const rect=node.getBoundingClientRect(); return { label:node.textContent.trim().slice(0,30), width:rect.width, height:rect.height }; }).filter((row) => row.width < 44 || row.height < 44)
+      };
     })()`);
     process.stdout.write(`authenticated shell browser geometry ${width}x${height} ${JSON.stringify(geometry)}\n`);
-    assert.equal(geometry.buttons.length, 3, `${width}px exposes Objects, Context and Trace exactly once`);
-    assert.ok(geometry.buttons.every((button) => Math.abs(button.top - geometry.buttons[0].top) < 0.5 && Math.abs(button.bottom - geometry.buttons[0].bottom) < 0.5), `${width}px keeps all three tools in one row`);
-    assert.ok(geometry.buttons.every((button) => button.height >= 44), `${width}px keeps every tool target at least 44px high`);
-    assert.ok(geometry.buttons.at(-1).right <= geometry.tools.right + 0.5, `${width}px tools stay inside the row horizontally`);
-    assert.ok(geometry.buttons[0].bottom <= geometry.tab.top + 0.5, `${width}px tools do not intrude into the tab bar`);
-    assert.ok(geometry.scrollWidth <= geometry.clientWidth && geometry.scrollHeight <= geometry.clientHeight, `${width}px tool row does not overflow`);
-    viewportProof.push(`${width}x${height}:${geometry.buttons.map((button) => `${button.width}x${button.height}`).join('/')}`);
+    assert.deepEqual(geometry.document, [width, width], `${width}px V2 mobile has no document overflow`);
+    assert.ok(geometry.shell[1] <= geometry.shell[0] + 1, `${width}px V2 mobile shell has no horizontal overflow`);
+    assert.equal(geometry.navCount, 4, `${width}px exposes four distinct current V2 domain destinations`);
+    assert.equal(geometry.supportCount, 1, `${width}px exposes one read-only AI support entry`);
+    assert.equal(geometry.evidenceCount, geometry.selectedId === "none" ? 0 : 2, `${width}px only exposes Context and Proof when a canonical object is selected`);
+    assert.deepEqual(geometry.undersized, [], `${width}px keeps visible mobile controls at least 44x44`);
+
+    await trustedClick(cdp, "[data-kordyn-v2-ai-support-trigger]");
+    await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-mobile-sheet=\"support\"]')?.contains(document.activeElement)", `${width}px V2 AI support sheet focus`);
+    await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab" });
+    await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab" });
+    assert.equal(await evaluate(cdp, "document.querySelector('[data-kordyn-v2-mobile-sheet=\"support\"]')?.contains(document.activeElement)"), true, `${width}px V2 AI support sheet traps focus`);
+    await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
+    await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape" });
+    await waitForExpression(cdp, "!document.querySelector('[data-kordyn-v2-mobile-sheet]') && document.activeElement === document.querySelector('[data-kordyn-v2-ai-support-trigger]')", `${width}px V2 AI support Escape close and focus return`);
+
+    await evaluate(cdp, "window.dispatchEvent(new Event('focus'))");
+    await waitForExpression(cdp, "document.querySelector('.authenticatedAppFrame.kordynSystem .releaseUpdateNotice')", `${width}px production release mismatch notice`);
+    collectV2ReleaseSurfaceViolations(visualViolations, `${width}x${height} authenticated ReleaseUpdateNotice`, await readSurfaceContract(cdp, ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice", ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice button"));
+    viewportProof.push(`${width}x${height}:mobile,nav=4,support=1,evidence=${geometry.evidenceCount},overflow=0,targets=44`);
 
     if (width === 390) {
       const stopListeningForUpdatedRelease = cdp.on("Fetch.requestPaused", (params) => {
@@ -504,36 +616,29 @@ try {
         }).catch(() => {});
       });
       await cdp.send("Fetch.enable", { patterns: [{ urlPattern: "*api/health?release_check=*", requestStage: "Request" }] });
+      const releaseInteraction = await evaluate(cdp, `(() => {
+        const button = document.querySelector('.authenticatedAppFrame.kordynSystem .releaseUpdateNotice button');
+        const notice = button?.closest('.releaseUpdateNotice');
+        const rect = button?.getBoundingClientRect();
+        const hit = rect ? document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) : null;
+        return { button:button?.outerHTML, notice:notice?.outerHTML.slice(0,240), rect:rect&&{left:rect.left,top:rect.top,right:rect.right,bottom:rect.bottom}, hit:hit?.outerHTML?.slice(0,240), noticeStyle:notice&&{position:getComputedStyle(notice).position,zIndex:getComputedStyle(notice).zIndex,display:getComputedStyle(notice).display} };
+      })()`);
+      process.stdout.write(`authenticated shell browser release interaction ${JSON.stringify(releaseInteraction)}\n`);
       await trustedClick(cdp, ".authenticatedAppFrame.kordynSystem .releaseUpdateNotice button");
-      await waitForExpression(cdp, "document.querySelector('.mShell2.kordynSystem') && !document.querySelector('.releaseUpdateNotice')", "production MobileApp after release refresh");
+      await waitForExpression(cdp, "document.querySelector('.authenticatedAppFrame.kordynSystem > [data-kordyn-v2-root=\"mobile\"]') && !document.querySelector('.releaseUpdateNotice')", "production MobileApp after release refresh");
       await evaluate(cdp, "window.dispatchEvent(new Event('focus'))");
       await new Promise((resolve) => setTimeout(resolve, 250));
       assert.equal(await evaluate(cdp, "Boolean(document.querySelector('.releaseUpdateNotice'))"), false, "release refresh converges the production client/server version before work resumes");
-      await trustedClick(cdp, "[data-zero-base-mobile-root-target=more]");
-      await waitForExpression(cdp, "document.querySelector('[data-zero-base-mobile-surface=more-hub]')", "zero-base MobileApp More hub");
-      await trustedClick(cdp, "[data-zero-base-mobile-family-target=operations]");
-      await waitForExpression(cdp, "document.querySelector('.mOperationsNative') && document.querySelector('[data-zero-base-mobile-local-nav=operations]')", "zero-base MobileApp Operations");
-      await trustedClick(cdp, "[data-zero-base-mobile-view-target=recovery]");
-      await waitForExpression(cdp, "document.querySelector('.mOperationsNative .mOpsRail')", "zero-base MobileApp Operations recovery");
-      const recoveryInteraction = await evaluate(cdp, `(() => {
-        const target = document.querySelector('[data-zero-base-mobile-view-target=recovery]');
-        target?.scrollIntoView({ block: 'center', inline: 'center' });
-        const rect = target?.getBoundingClientRect();
-        const hit = rect ? document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) : null;
-        const rail = document.querySelector('[data-zero-base-mobile-local-nav=operations] nav');
-        const railRect = rail?.getBoundingClientRect();
-        const notice = document.querySelector('.releaseUpdateNotice')?.getBoundingClientRect();
-        const overlaps = rect && notice ? !(notice.right <= rect.left || notice.left >= rect.right || notice.bottom <= rect.top || notice.top >= rect.bottom) : false;
-        return { hitTarget: hit === target || target?.contains(hit), overlaps, rail: rail && { left:railRect.left, right:railRect.right, scrollWidth:rail.scrollWidth, clientWidth:rail.clientWidth }, documentWidth:document.documentElement.scrollWidth };
-      })()`);
-      assert.equal(recoveryInteraction.overlaps, false, "release refresh restores unobstructed MobileApp Operations controls");
-      assert.equal(recoveryInteraction.hitTarget, true, "MobileApp Recovery remains a trusted touch target after release refresh");
-      assert.ok(recoveryInteraction.rail.left >= 0 && recoveryInteraction.rail.right <= 390, "MobileApp Operations family rail remains bounded at 390px");
-      assert.equal(recoveryInteraction.documentWidth, 390, "MobileApp Operations local scrolling never creates document overflow");
-      await waitForExpression(cdp, "document.querySelector('.mOpsRecoveryTruth > button')", "production MobileApp reconciliation action");
-      await trustedClick(cdp, ".mOpsRecoveryTruth > button");
+      await trustedClick(cdp, "[data-kordyn-v2-domain-target=governance]");
+      await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-shell=\"mobile\"]')?.dataset.kordynV2Domain === 'governance'", "V2 mobile Governance domain");
+      await trustedClick(cdp, "[data-kordyn-v2-workspace-target=runs]");
+      await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-governance-mobile=\"runs\"]')", "V2 mobile Governance runs");
+      await trustedClick(cdp, ".kordynV2GovernanceMobile[data-kordyn-v2-governance-mobile=\"runs\"] > .kordynV2MobilePrimary");
+      await waitForExpression(cdp, "document.querySelector('[data-kordyn-v2-governance-mobile=\"recovery\"]')", "V2 mobile Governance recovery");
+      assert.equal(await evaluate(cdp, "document.documentElement.scrollWidth"), 390, "V2 mobile recovery never creates document overflow");
+      await trustedClick(cdp, "[data-kordyn-v2-governance-mobile=\"recovery\"] > .kordynV2MobilePrimary");
       await waitForExpression(cdp, "document.querySelector('.cfmCard--ordinary')", "production MobileApp ordinary ConfirmHost");
-      collectAuthenticatedSurfaceViolations(visualViolations, "390x844 production MobileApp ordinary ConfirmHost", await readSurfaceContract(cdp, ".authenticatedAppFrame.kordynSystem .cfmCard--ordinary", ".authenticatedAppFrame.kordynSystem .cfmOk"));
+      collectV2AuthenticatedSurfaceViolations(visualViolations, "390x844 production MobileApp ordinary ConfirmHost", await readSurfaceContract(cdp, ".authenticatedAppFrame.kordynSystem .cfmCard--ordinary", ".authenticatedAppFrame.kordynSystem .cfmOk"));
       assert.equal(await evaluate(cdp, "document.activeElement?.classList.contains('cfmCancel')"), true, "MobileApp ordinary ConfirmHost initially focuses cancel");
       await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab" });
       await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab" });
@@ -550,7 +655,7 @@ try {
       await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
       await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape" });
       await waitForExpression(cdp, "!document.querySelector('.cfmCard')", "MobileApp ordinary ConfirmHost Escape close");
-      await waitForExpression(cdp, "document.activeElement?.matches('.mOpsRecoveryTruth > button')", "MobileApp ordinary ConfirmHost focus return");
+      await waitForExpression(cdp, "document.activeElement?.matches('[data-kordyn-v2-governance-mobile=\"recovery\"] > .kordynV2MobilePrimary')", "MobileApp ordinary ConfirmHost focus return");
       stopListeningForUpdatedRelease();
       await cdp.send("Fetch.disable");
     }
@@ -584,7 +689,7 @@ try {
   assert.equal(await evaluate(cdp, "document.querySelector('.publicAppFrame').classList.contains('kordynSystem')"), false, "login and marketing inheritance must not be opted into the authenticated Kordyn scope");
   assert.match(await evaluate(cdp, "getComputedStyle(document.querySelector('.publicAppFrame .releaseUpdateNotice')).fontFamily"), /Public Sans/, "public overlay uses the zero-base public font inheritance");
   assert.deepEqual(await readSurfaceContract(cdp, ".publicAppFrame .releaseUpdateNotice", ".publicAppFrame .releaseUpdateNotice button"), {
-    backgroundColor: "rgb(255, 253, 249)", color: "rgb(38, 33, 26)", borderTopWidth: "1px", borderTopStyle: "solid", borderTopColor: "rgba(180, 122, 39, 0.28)", borderRadius: "14px", boxShadow: "rgba(44, 31, 15, 0.18) 0px 12px 36px 0px", backdropFilter: "blur(12px)", minHeight: "0px",
+    backgroundColor: "rgb(255, 253, 249)", backgroundImage: "none", color: "rgb(38, 33, 26)", borderTopWidth: "1px", borderTopStyle: "solid", borderTopColor: "rgba(180, 122, 39, 0.28)", borderRadius: "14px", boxShadow: "rgba(44, 31, 15, 0.18) 0px 12px 36px 0px", backdropFilter: "blur(12px)", position: "fixed", zIndex: "220", display: "flex", minHeight: "0px",
     action: { backgroundColor: "rgb(231, 120, 47)", color: "rgb(255, 255, 255)", borderTopWidth: "0px", borderTopStyle: "none", borderTopColor: "rgb(255, 255, 255)", borderRadius: "10px", minHeight: "44px" }
   }, "public login and marketing release notice must use the August 15 warm visual contract");
   stopListeningForPublicCore();
