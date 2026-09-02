@@ -38,7 +38,17 @@ const ResearchCenter = lazyNamed(() => import("./workspacePages.jsx"), "Research
 const RiskCenter = lazyNamed(() => import("./workspacePages.jsx"), "RiskCenter");
 const OperationsCenter = lazyNamed(() => import("./workspacePages.jsx"), "OperationsCenter");
 const SettingsConcept = lazyNamed(() => import("./workspacePages.jsx"), "SettingsConcept");
-const August15AuthenticatedShell = lazyNamed(() => import("./aug15/App.jsx"), "August15AuthenticatedShell");
+let august15EntryPromise;
+export function loadAugust15AuthenticatedEntry(importer = () => import("./aug15/App.jsx")) {
+  if (!august15EntryPromise) {
+    august15EntryPromise = importer();
+    august15EntryPromise.catch(() => {
+      if (august15EntryPromise) august15EntryPromise = undefined;
+    });
+  }
+  return august15EntryPromise;
+}
+const August15AuthenticatedShell = lazyNamed(loadAugust15AuthenticatedEntry, "August15AuthenticatedShell");
 const kordynV2StyleNodes = new Set();
 const loadKordynV2Root = async () => {
   const existingStyleNodes = new Set(document.head.querySelectorAll('link[rel="stylesheet"], style'));
@@ -361,10 +371,10 @@ function App() {
   const { data, loading, action, toast, authRequired, login, registerAccount, notify, download, refresh, ensureSection, apiBase, setApiBase, connectionError, busy, isNativeApp, publicInfo } = useApi();
   const uiVersion = useLegacyAfterV2Failure ? "legacy" : uiVersionRef.current;
   useEffect(() => {
-    if (uiVersion !== "legacy" || authRequired || loading || productStylesState === "ready") return undefined;
+    if (uiVersion !== "legacy" || productStylesState === "ready") return undefined;
     let current = true;
     setProductStylesState("loading");
-    import("./aug15/App.jsx")
+    loadAugust15AuthenticatedEntry()
       .then(() => { if (current) setProductStylesState("ready"); })
       .catch(() => { if (current) setProductStylesState("failed"); });
     return () => { current = false; };

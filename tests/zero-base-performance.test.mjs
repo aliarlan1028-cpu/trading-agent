@@ -41,6 +41,9 @@ test("authenticated product-style loading can reach ready and retry without canc
   assert.match(main, /productStylesAttempt/);
   assert.match(main, /\[authRequired,\s*loading,\s*productStylesAttempt,\s*uiVersion\]/);
   assert.doesNotMatch(main, /\[authRequired,\s*loading,\s*productStylesState\]/);
+  assert.match(main, /export function loadAugust15AuthenticatedEntry/);
+  assert.match(main, /const August15AuthenticatedShell = lazyNamed\(loadAugust15AuthenticatedEntry, "August15AuthenticatedShell"\)/);
+  assert.match(main, /loadAugust15AuthenticatedEntry\(\)\n\s*\.then/);
   assert.match(main, /setProductStylesAttempt\(\(attempt\)\s*=>\s*attempt\s*\+\s*1\)/);
 });
 
