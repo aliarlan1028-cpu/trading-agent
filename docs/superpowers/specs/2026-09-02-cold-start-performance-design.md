@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-02
 
-**Status:** Implemented and verified on 2026-09-03
+**Status:** Implemented and verified on 2026-09-03 after final review fixes
 
 **Scope:** Web public entry, authenticated Web entry, iOS/Capacitor startup, static asset build and cache policy
 
