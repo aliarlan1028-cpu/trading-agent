@@ -53,6 +53,7 @@ async function exists(url) {
 const app = await readFile(new URL("../src/aug15/App.jsx", import.meta.url), "utf8");
 const workspaces = await readFile(new URL("../src/aug15/workspacePages.jsx", import.meta.url), "utf8");
 const cockpit = await readFile(new URL("../src/aug15/tradingCockpit.jsx", import.meta.url), "utf8").catch(() => "");
+const overviewSource = await readFile(new URL("../src/aug15/tradingCockpit/OverviewPage.jsx", import.meta.url), "utf8").catch(() => "");
 const cockpitCss = await readFile(new URL("../src/aug15/tradingCockpit.css", import.meta.url), "utf8").catch(() => "");
 const browserHarness = await readFile(new URL("./trading-cockpit-browser.jsx", import.meta.url), "utf8").catch(() => "");
 const browserRunner = await readFile(new URL("./run-trading-cockpit-browser.mjs", import.meta.url), "utf8").catch(() => "");
@@ -78,12 +79,10 @@ test("all five canonical trading routes render inside one shared cockpit shell",
 
 test("reference-driven pages expose distinct real product landmarks and honest empty states", () => {
   for (const landmark of [
-    "data-cockpit-page=\"overview\"",
     "data-cockpit-page=\"market\"",
     "data-cockpit-page=\"positions\"",
     "data-cockpit-page=\"execution\"",
     "data-cockpit-page=\"ledger\"",
-    "data-cockpit-region=\"portfolio-hero\"",
     "region=\"market-chart\"",
     "region=\"position-table\"",
     "data-cockpit-region=\"review-workbench\"",
@@ -94,6 +93,17 @@ test("reference-driven pages expose distinct real product landmarks and honest e
   assert.match(cockpit, /buildExecutionView/);
   assert.match(cockpit, /TradingViewChart/);
   assert.doesNotMatch(cockpit, /72,450|8,234|\+12\.4%|0\.0007/);
+});
+
+test("overview page exposes the complete reference composition as dedicated regions", () => {
+  assert.match(overviewSource, /data-cockpit-page="overview"/);
+  for (const region of [
+    "portfolio-hero", "dual-notice", "overview-market", "ai-market-read",
+    "portfolio-allocation", "recent-trades", "agent-activity", "strategy-footer"
+  ]) assert.match(overviewSource, new RegExp(`(?:data-cockpit-region|region)=["'{]+${region}`));
+  assert.match(overviewSource, /buildOverviewPresentation/);
+  assert.match(overviewSource, /TradingViewChart/);
+  assert.doesNotMatch(overviewSource, /72,450|8,234|\+12\.4%|0\.0007/);
 });
 
 test("cockpit visual tokens and responsive contracts match the approved reference family", () => {
@@ -194,6 +204,7 @@ test("browser fixture is dense, synthetic, and serves the real K-line schema", (
 test("production sources never import the synthetic cockpit fixture", async () => {
   const productionSources = await Promise.all([
     "../src/aug15/tradingCockpit.jsx",
+    "../src/aug15/tradingCockpit/OverviewPage.jsx",
     "../src/aug15/workspacePages.jsx"
   ].map((url) => readFile(new URL(url, import.meta.url), "utf8")));
   productionSources.forEach((source) => assert.doesNotMatch(source, /trading-cockpit-browser/));

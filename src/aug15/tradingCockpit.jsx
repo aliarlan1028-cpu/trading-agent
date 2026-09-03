@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
 import {
-  Activity, AlertTriangle, Bot, Check, ChevronRight,
+  AlertTriangle, Bot, Check, ChevronRight,
   Clock3, Gauge, RefreshCw, Search, ShieldCheck, Sparkles,
-  Target, TrendingUp, WalletCards, X
+  Target, WalletCards, X
 } from "lucide-react";
 import { displayMoney, displayPct, formatDateTime, formatTime, humanize, localizeText, TradingViewChart } from "./lib.jsx";
 import { t } from "./i18n.js";
@@ -23,6 +23,7 @@ import {
   Tone
 } from "./tradingCockpit/shared.jsx";
 import { AreaTrend as MiniTrend } from "./tradingCockpit/visuals.jsx";
+import { OverviewPage } from "./tradingCockpit/OverviewPage.jsx";
 import "./tradingCockpit.css";
 
 // Presentation selectors centralize buildPositionView and buildExecutionView joins.
@@ -50,72 +51,9 @@ export function TradingCockpitShell({ data, active, onChange, ui, children }) {
   </div>;
 }
 
-function PortfolioHero({ data, positions }) {
-  const portfolio = data.portfolio || {};
-  const equity = portfolio.totalEquityUsdt;
-  const usedPct = finite(equity) && Number(equity) > 0 ? Math.max(0, Math.min(100, (number(equity) - number(portfolio.availableMarginUsdt)) / number(equity) * 100)) : null;
-  const [healthLabel, healthTone] = accountHealth(data);
-  return <section className="portfolioHero" data-cockpit-region="portfolio-hero">
-    <div className="portfolioIdentity"><div className="portfolioMark"><WalletCards/></div><span><small>{t("组合净值", "Portfolio equity")}</small><b>{finite(equity) ? `${money(equity)} USDT` : t("账户尚未同步", "Account not synced")}</b><em>{positions.length ? t(`${positions.length} 个持仓正在监控`, `${positions.length} positions monitored`) : t("当前空仓", "Currently flat")}</em></span></div>
-    <div className="portfolioHeroMetrics">
-      <Metric label={t("今日盈亏", "Today's PnL")} value={finite(portfolio.todayPnl) ? `${signedMoney(portfolio.todayPnl)} U` : "—"} detail={displayPct(portfolio.todayPnlPct, "—")} tone={number(portfolio.todayPnl) >= 0 ? "positive" : "negative"}/>
-      <Metric label={t("未实现盈亏", "Unrealized PnL")} value={finite(portfolio.unrealizedPnl) ? `${signedMoney(portfolio.unrealizedPnl)} U` : "—"} tone={number(portfolio.unrealizedPnl) >= 0 ? "positive" : "negative"}/>
-      <Metric label={t("可用保证金", "Available margin")} value={finite(portfolio.availableMarginUsdt) ? `${money(portfolio.availableMarginUsdt)} U` : "—"}/>
-      <Metric label={t("风险占用", "Risk usage")} value={usedPct == null ? "—" : `${usedPct.toFixed(1)}%`} detail={data.system?.remainingDailyLossUsdt == null ? t("预算未授权", "Budget not authorized") : `${money(data.system.remainingDailyLossUsdt)} U ${t("剩余", "remaining")}`}/>
-    </div>
-    <div className="portfolioRuntime"><span className={`runtimePulse ${healthTone}`}/><small>{t("AI 策略状态", "AI strategy status")}</small><b>{healthLabel}</b><p>{list(data.riskRules).filter((rule) => rule.enabled !== false).length} {t("条风控规则生效", "risk rules active")}</p></div>
-  </section>;
-}
-
 function SystemNotice({ notice, onOpen }) {
   const text = localizeText(notice?.message || notice?.title || t("系统正在等待新的交易事实。", "The system is waiting for new trading facts."));
   return <button type="button" className="cockpitNotice" onClick={onOpen}><span><Sparkles/><b>{t("系统动态", "System update")}</b><p>{text}</p></span><ChevronRight/></button>;
-}
-
-function OverviewPage({ data, ui }) {
-  const presentation = buildOverviewPresentation(data); const positionView = presentation.positions; const markets = presentation.markets;
-  const market = presentation.market;
-  const hasMarket = Boolean(market?.symbol);
-  const tradeFlow = presentation.tradeFlow;
-  const activities = presentation.activities;
-  const products = presentation.strategyProducts;
-  const confidence = finite(data.marketRegime?.global?.confidence) ? Math.max(0, Math.min(100, number(data.marketRegime.global.confidence))) : null;
-  return <div className="cockpitPage cockpitOverview" data-cockpit-page="overview">
-    <PortfolioHero data={data} positions={positionView.positions}/>
-    <SystemNotice notice={presentation.systemNotice} onOpen={() => ui.setActive("operationsCenter:notifications")}/>
-    <div className="overviewWorkspace">
-      <div className="overviewMainColumn">
-        <Panel title={market?.symbol || t("行情尚未同步", "Market data not synced")} meta={hasMarket ? t("实时市场 · 公开交易所数据", "Live market · public exchange data") : t("等待真实行情", "Awaiting live market data")} className="overviewChart" region="market-chart" action={<button type="button" className="cockpitTextButton" onClick={() => ui.setActive("market")}>{t("完整行情", "Full market")}<ChevronRight/></button>}>
-          <div className="marketQuote"><b>{finite(market?.price ?? market?.last) ? money(market.price ?? market.last) : t("待同步", "Pending")}</b><Tone tone={number(market?.changePct ?? market?.change24hPct) >= 0 ? "positive" : "negative"}>{signedPct(market?.changePct ?? market?.change24hPct)}</Tone><span>{t("24h 高", "24h H")} {money(market?.high24h ?? market?.high)} · {t("低", "L")} {money(market?.low24h ?? market?.low)}</span></div>
-          <div className="overviewChartBox">{hasMarket ? <TradingViewChart symbol={market.symbol} interval="60"/> : <CockpitEmpty icon={Search} title={t("行情尚未同步", "Market data not synced")} detail={t("同步真实行情后才加载图表。", "The chart loads after live market data is available.")}/>}</div>
-        </Panel>
-        <Panel title={t("最近交易流水", "Recent trade flow")} meta={`${tradeFlow.length} ${t("条真实记录", "real records")}`} className="overviewTradeFlow" action={<button type="button" className="cockpitTextButton" onClick={() => ui.setActive("tradeLedger")}>{t("查看全部", "View all")}<ChevronRight/></button>}>
-          <DataTable compact label={t("最近交易流水", "Recent trade flow")} rows={tradeFlow.slice(0, 5)} emptyTitle={t("暂无交易活动", "No trade activity")} columns={[
-            { key: "time", label: t("时间", "Time"), render: (row) => formatTime(row.createdAt || row.updatedAt) },
-            { key: "symbol", label: t("交易对", "Pair") },
-            { key: "side", label: t("方向", "Side"), render: (row) => <Tone tone={sideTone(row.side || row.direction)}>{humanize(row.side || row.direction, "—")}</Tone> },
-            { key: "quantity", label: t("数量", "Qty"), render: (row) => row.quantity ?? row.size ?? "—" },
-            { key: "status", label: t("状态", "Status"), render: (row) => <Tone tone={statusTone(row.status)}>{humanize(row.status, t("已记录", "Recorded"))}</Tone> }
-          ]}/>
-        </Panel>
-      </div>
-      <aside className="overviewSideColumn">
-        <Panel title={t("AI 市场判断", "AI Market Read")} meta={t("解释判断，不替代风控裁决", "Explains the read; never replaces risk controls")} className="overviewInsight">
-          <div className="aiReadLead"><div className="aiConfidenceRing" style={{ "--value": confidence ?? 0 }}><span><b>{confidence == null ? "—" : Math.round(confidence)}</b><small>{t("置信度", "confidence")}</small></span></div><span><small>{t("当前市场状态", "Current market state")}</small><b>{localizeText(data.marketRegime?.global?.label || t("等待行情形成判断", "Awaiting market evidence"))}</b><em>{market?.symbol ? `${market.symbol} · 4H` : t("行情尚未同步", "Market data not synced")}</em></span></div>
-          <div className="aiReadList"><article><TrendingUp/><span><small>{t("趋势与结构", "Trend & structure")}</small><p>{localizeText(data.marketRegime?.global?.summary || data.marketRegime?.summary || t("数据尚不足，AI 不猜测方向。", "Insufficient evidence; AI will not guess direction."))}</p></span></article><article><Target/><span><small>{t("当前参考价格", "Reference price")}</small><p>{finite(market?.price ?? market?.last) ? `${money(market.price ?? market.last)} · ${market.symbol}` : t("等待实时行情", "Awaiting live market")}</p></span></article><article><AlertTriangle/><span><small>{t("事件与风险", "Event & risk")}</small><p>{localizeText(presentation.marketNotice?.title || t("暂无新的高影响事件", "No new high-impact event"))}</p></span></article></div>
-          <div className="aiReadPrompt"><Sparkles/><p>{localizeText(data.marketRegime?.summary || t("真实行情形成后，AI 会在这里给出可追溯的观察建议。", "Once live evidence forms, AI provides a traceable observation here."))}</p></div>
-          <button type="button" className="cockpitPrimaryButton" onClick={() => ui.setActive("chat")}>{t("查看详细分析", "Open analysis")}<ChevronRight/></button>
-        </Panel>
-        <Panel title={t("资产组合", "Portfolio")} meta={`${positionView.positions.length} ${t("个持仓", "positions")}`} className="overviewPortfolio" action={<button type="button" className="cockpitTextButton" onClick={() => ui.setActive("positions")}>{t("持仓详情", "Position detail")}<ChevronRight/></button>}>
-          <div className="portfolioCompact"><div className="allocationRing" style={{ "--value": Math.min(100, positionView.marginUsdt / Math.max(1, number(data.portfolio?.totalEquityUsdt)) * 100) }}><span><b>{positionView.positions.length}</b><small>{t("持仓", "positions")}</small></span></div><div>{positionView.positions.slice(0, 4).map((position) => <article key={position.id || position.positionId || position.instId || position.symbol}><span><b>{position.symbol}</b><small>{humanize(position.direction || position.side, "—")}</small></span><strong className={number(position.unrealizedPnl ?? position.pnl) >= 0 ? "positiveText" : "negativeText"}>{signedMoney(position.unrealizedPnl ?? position.pnl)} U</strong></article>)}{!positionView.positions.length && <p className="inlineEmpty">{t("当前空仓，组合图将在真实持仓出现后更新。", "Currently flat; allocation updates when a real position appears.")}</p>}</div></div>
-        </Panel>
-        <Panel title={t("系统与 Agent 活动", "System & Agent activity")} meta={t("真实运行轨迹", "Real runtime traces")} className="activityStrip">
-          {activities.length ? <div className="activityRows">{activities.slice(0, 4).map((row, index) => <article key={row.id || index}><span className={`activityDot ${statusTone(row.status)}`}/><div><b>{localizeText(row.goal || row.name || row.handler || t("系统任务", "System task"))}</b><small>{formatDateTime(row.completedAt || row.createdAt || row.startedAt)} · {humanize(row.status, t("已记录", "Recorded"))}</small></div><Tone tone={statusTone(row.status)}>{humanize(row.status, "—")}</Tone></article>)}</div> : <CockpitEmpty icon={Activity} title={t("暂无运行轨迹", "No runtime trace")} detail={t("Agent 或系统任务运行后会在这里出现。", "Agent and system runs appear here when they execute.")}/>}
-        </Panel>
-      </aside>
-    </div>
-    <footer className="strategyFooter"><span><ShieldCheck/><b>{t("策略与风控", "Strategy & risk")}</b><em>{products.length ? t(`${products.length} 个策略产品已登记`, `${products.length} strategy products registered`) : t("尚无已登记策略产品", "No strategy product registered")}</em></span><button type="button" onClick={() => ui.setActive("strategyLib")}>{t("打开策略库", "Open strategy registry")}<ChevronRight/></button></footer>
-  </div>;
 }
 
 function MarketPage({ data, action }) {

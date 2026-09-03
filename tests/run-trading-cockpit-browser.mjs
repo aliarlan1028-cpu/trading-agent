@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import WebSocket from "ws";
@@ -10,7 +10,12 @@ const chromeBinary = process.env.CHROME_BIN || "/Applications/Google Chrome.app/
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const cdpCommandTimeoutMs = 15_000;
 const viewports = [[1440, 1080], [1280, 960], [1024, 768]];
-const views = ["overview", "market", "positions", "execution", "ledger"];
+const allViews = ["overview", "market", "positions", "execution", "ledger"];
+const requestedViews = String(process.env.KORDYN_COCKPIT_VIEWS || "").split(",").map((value) => value.trim()).filter(Boolean);
+const views = requestedViews.length ? requestedViews.filter((view) => allViews.includes(view)) : allViews;
+const outputDir = process.env.KORDYN_COCKPIT_OUTPUT_DIR ? path.resolve(process.env.KORDYN_COCKPIT_OUTPUT_DIR) : "";
+const emptyMode = process.env.KORDYN_COCKPIT_EMPTY === "1";
+assert.ok(views.length, "KORDYN_COCKPIT_VIEWS must name at least one canonical cockpit view");
 
 function withCdpCommandTimeout(promise, method) {
   let timeout;
@@ -151,6 +156,7 @@ const vitePort = await freePort();
 const cdpPort = await freePort();
 const profile = await mkdtemp(path.join(os.tmpdir(), "trading-cockpit-browser-"));
 const baseUrl = `http://127.0.0.1:${vitePort}`;
+if (outputDir) await mkdir(outputDir, { recursive: true });
 let vite;
 let chrome;
 let cdp;
@@ -176,20 +182,30 @@ try {
   for (const [width, height] of viewports) {
     for (const view of views) {
       await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, screenWidth: width, screenHeight: height, deviceScaleFactor: 1, mobile: false });
-      await cdp.send("Page.navigate", { url: `${baseUrl}/tests/trading-cockpit-browser.html?view=${view}` });
+      await cdp.send("Page.navigate", { url: `${baseUrl}/tests/trading-cockpit-browser.html?view=${view}${emptyMode ? "&empty=1" : ""}` });
       await waitForExpression(cdp, `document.querySelector('[data-cockpit-page="${view}"]')`, `${width}x${height} ${view} cockpit page`);
       const chartSelector = `[data-cockpit-page="${view}"] [data-cockpit-region="market-chart"]`;
-      if (["overview", "market"].includes(view)) await waitForExpression(cdp, `(() => { const region = document.querySelector(${JSON.stringify(chartSelector)}); const kline = window.__cockpitKlineFixture; return Boolean(region && kline?.requests > 0 && kline.symbols.includes("BTC/USDT") && region.querySelector(".tvChart canvas")); })()`, `${width}x${height} ${view} fixture-backed chart`);
-      const facts = await evaluate(cdp, `(() => { const region = document.querySelector(${JSON.stringify(chartSelector)}); const kline = window.__cockpitKlineFixture || {}; return ({ fixture: document.documentElement.dataset.fixtureKind, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, regionCharts: region?.querySelectorAll(".tvChart canvas").length || 0, klineRequests: kline.requests || 0, klineSymbols: kline.symbols || [], page: document.querySelector('[data-cockpit-page]')?.dataset.cockpitPage }); })()`);
+      if (!emptyMode && ["overview", "market"].includes(view)) await waitForExpression(cdp, `(() => { const region = document.querySelector(${JSON.stringify(chartSelector)}); const kline = window.__cockpitKlineFixture; return Boolean(region && kline?.requests > 0 && kline.symbols.includes("BTC/USDT") && region.querySelector(".tvChart canvas")); })()`, `${width}x${height} ${view} fixture-backed chart`);
+      const facts = await evaluate(cdp, `(() => { const region = document.querySelector(${JSON.stringify(chartSelector)}); const kline = window.__cockpitKlineFixture || {}; const main = document.querySelector('[data-cockpit-page="overview"] .overviewPrimary'); const rail = document.querySelector('[data-cockpit-page="overview"] .overviewRail'); const lastRegion = document.querySelector('[data-cockpit-page="overview"] [data-cockpit-region="strategy-footer"]'); const canvas = region?.querySelector('.tvChart canvas'); const overviewRegions = Object.fromEntries([...document.querySelectorAll('[data-cockpit-page="overview"] [data-cockpit-region]')].map((node) => { const rect = node.getBoundingClientRect(); return [node.dataset.cockpitRegion, { top: Math.round(rect.top * 100) / 100, height: Math.round(rect.height * 100) / 100 }]; })); return ({ fixture: document.documentElement.dataset.fixtureKind, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, regionCharts: region?.querySelectorAll(".tvChart canvas").length || 0, chartVisible: Boolean(canvas && canvas.getBoundingClientRect().width > 0 && canvas.getBoundingClientRect().height > 0), mainRailRatio: main && rail ? main.getBoundingClientRect().width / rail.getBoundingClientRect().width : null, lastRegionTop: lastRegion?.getBoundingClientRect().top ?? null, overviewRegions, klineRequests: kline.requests || 0, klineSymbols: kline.symbols || [], page: document.querySelector('[data-cockpit-page]')?.dataset.cockpitPage }); })()`);
       assert.equal(facts.fixture, "production-shaped-synthetic", `${width}x${height} ${view} uses the marked test-only fixture`);
       assert.equal(facts.page, view, `${width}x${height} renders the requested real cockpit view`);
       assert.equal(facts.overflow, 0, `${width}x${height} ${view} has no document overflow`);
-      if (["overview", "market"].includes(view)) {
+      if (!emptyMode && ["overview", "market"].includes(view)) {
         assert.ok(facts.klineRequests > 0, `${width}x${height} ${view} intercepted a K-line request`);
         assert.ok(facts.klineSymbols.includes("BTC/USDT"), `${width}x${height} ${view} intercepted its BTC/USDT fixture candles`);
         assert.ok(facts.regionCharts >= 1, `${width}x${height} ${view} renders fixture candles in its market-chart region`);
+        assert.equal(facts.chartVisible, true, `${width}x${height} ${view} chart canvas is visible`);
       }
-      results.push({ width, height, view, charts: facts.regionCharts, klineRequests: facts.klineRequests, overflow: facts.overflow });
+      if (view === "overview" && width === 1440) {
+        process.stdout.write(`trading cockpit overview geometry ${JSON.stringify({ mainRailRatio: facts.mainRailRatio, lastRegionTop: facts.lastRegionTop, regions: facts.overviewRegions })}\n`);
+        assert.ok(facts.mainRailRatio >= 1.30 && facts.mainRailRatio <= 1.55, `1440 overview main/rail ratio ${facts.mainRailRatio} is within 1.30–1.55`);
+        assert.ok(facts.lastRegionTop != null && facts.lastRegionTop < 1070, `1440 overview final region begins before 1070px (received ${facts.lastRegionTop})`);
+      }
+      if (outputDir) {
+        const shot = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false, fromSurface: true });
+        await writeFile(path.join(outputDir, `${view}-${width}x${height}${emptyMode ? "-empty" : ""}.png`), Buffer.from(shot.data, "base64"));
+      }
+      results.push({ width, height, view, charts: facts.regionCharts, klineRequests: facts.klineRequests, overflow: facts.overflow, mainRailRatio: facts.mainRailRatio, lastRegionTop: facts.lastRegionTop, overviewRegions: facts.overviewRegions });
     }
   }
   console.log(`trading cockpit browser PASS ${JSON.stringify(results)}`);
