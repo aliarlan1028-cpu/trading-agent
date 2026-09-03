@@ -1,8 +1,8 @@
 [Unit]
-Description=Weekly safe Docker build-cache cleanup for KORDYN
+Description=Daily safe Docker build-cache cleanup for KORDYN
 
 [Timer]
-OnCalendar=Sun *-*-* 04:30:00 Asia/Shanghai
+OnCalendar=*-*-* 04:30:00 Asia/Shanghai
 RandomizedDelaySec=30m
 Persistent=true
 AccuracySec=1m
