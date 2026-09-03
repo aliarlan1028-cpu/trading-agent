@@ -123,6 +123,42 @@ test("overview identifies last-valid facts so loading can retain only real conte
   assert.equal(initial.hasLastValidFacts, false);
 });
 
+test("overview recognizes every rendered last-valid fact without accepting empty shells", () => {
+  const truthfulCases = [
+    ["notification", { notifications: [{ id: "n-1", title: "Account reconciliation complete" }] }],
+    ["automation boundary", { automationState: { mode: "observe", label: "Observe only" } }],
+    ["kill switch", { system: { killSwitch: true } }],
+    ["daily-loss boundary", { system: { remainingDailyLossUsdt: 0 } }],
+    ["Agent activity", { agentRuns: [{ id: "run-1", goal: "Refresh market evidence", status: "completed" }] }],
+    ["job activity", { jobRuns: [{ id: "job-1", name: "Reconcile account", status: "completed" }] }],
+    ["market notice", { events: [{ id: "event-1", title: "Employment report window" }] }],
+    ["strategy product", { strategyCatalog: { products: [{ id: "trend-v3" }] } }],
+    ["risk rule", { riskRules: [{ id: "rule-1", enabled: true }] }]
+  ];
+  for (const [label, facts] of truthfulCases) {
+    const model = buildOverviewPresentation({ resourceState: { cockpit: "loading" }, ...facts });
+    assert.equal(model.hasLastValidFacts, true, `${label} retains the loading body`);
+  }
+
+  const emptyCases = [
+    {},
+    { notifications: [null, {}, { id: "n-empty", title: "   " }] },
+    { automationState: { mode: "", label: " ", detail: null } },
+    { system: {} },
+    { system: { killSwitch: false, remainingDailyLossUsdt: "\t" } },
+    { agentRuns: [null, {}, { id: "run-empty" }], jobRuns: ["bad", { id: "job-empty", name: " " }] },
+    { marketRegime: {} },
+    { marketRegime: { summary: " ", global: {} } },
+    { events: [null, {}, { title: " " }] },
+    { strategyCatalog: { products: [{}, { id: " " }] } },
+    { riskRules: [{}, { enabled: true }] }
+  ];
+  for (const facts of emptyCases) {
+    const model = buildOverviewPresentation({ resourceState: { cockpit: "loading" }, ...facts });
+    assert.equal(model.hasLastValidFacts, false, `empty or malformed facts block the loading body: ${JSON.stringify(facts)}`);
+  }
+});
+
 test("overview never infers a loaded cockpit resource from a core market symbol", () => {
   const model = buildOverviewPresentation({
     markets: [{ symbol: "BTC/USDT", price: 100 }],

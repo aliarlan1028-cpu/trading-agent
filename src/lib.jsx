@@ -1480,15 +1480,17 @@ export function InsightNote() {
 const KLINE_TF = { "1m": "1m", "5m": "5m", "15m": "15m", "1H": "1h", "4H": "4h", "1D": "1d", "1": "1m", "5": "5m", "15": "15m", "60": "1h", "240": "4h", D: "1d" };
 const KLINE_SECONDS = { "1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400 };
 const OKX_BAR = { "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1H", "4h": "4H", "1d": "1D" };
+const loadTradingChartLibrary = () => import("lightweight-charts");
 // K 线图：lightweight-charts + 【直连 OKX 公有 WebSocket 的 candle 频道】。
 // 图表价格不再经我们后端中转（少一跳、少延迟），而是客户端直接订阅 OKX candle{bar}，
 // 拿到的就是 OKX 正在形成的这根蜡烛的实时 OHLC——与 OKX 自家图表同源同速。
 // 若客户端直连 OKX 被网络限制，退回后端 SSE 实时价（onLivePrice）驱动。导出名保持 TradingViewChart。
-export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePrice = null, showVolume = false }) {
+export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePrice = null, showVolume = false, chartLibraryLoader = loadTradingChartLibrary }) {
   const holder = useRef(null);
   const seriesRef = useRef(null);
   const lastBarRef = useRef(null);
   const lastOkxRef = useRef(0);
+  const failChartRef = useRef(null);
   const [status, setStatus] = useState("loading");
   const [volumeStatus, setVolumeStatus] = useState(showVolume ? "loading" : "disabled");
   const tf = KLINE_TF[interval] || "1h";
@@ -1501,12 +1503,43 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
     let pingTimer = null;
     let reconnectTimer = null;
     let refetchTimer = null;
+    let failed = false;
     setStatus("loading");
     setVolumeStatus(showVolume ? "loading" : "disabled");
     seriesRef.current = null;
     lastBarRef.current = null;
     const okxBar = OKX_BAR[tf] || "1H";
     const instId = `${String(symbol).replace("/", "-").toUpperCase()}-SWAP`;
+
+    const teardownChart = () => {
+      if (pingTimer) clearInterval(pingTimer);
+      pingTimer = null;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+      if (refetchTimer) clearInterval(refetchTimer);
+      refetchTimer = null;
+      if (ws) {
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onclose = null;
+        ws.onerror = null;
+        try { ws.close(); } catch { /* noop */ }
+      }
+      ws = null;
+      if (chart) { try { chart.remove(); } catch { /* noop */ } }
+      chart = null;
+      seriesRef.current = null;
+      lastBarRef.current = null;
+      if (holder.current) { try { holder.current.replaceChildren(); } catch { /* noop */ } }
+    };
+    const failChart = () => {
+      if (disposed || failed) return;
+      failed = true;
+      teardownChart();
+      setStatus("error");
+      setVolumeStatus(showVolume ? "error" : "disabled");
+    };
+    failChartRef.current = failChart;
 
     const fetchRows = async () => {
       try {
@@ -1529,8 +1562,11 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
       if (!Number.isFinite(time) || !Number.isFinite(bar.close)) return;
       const last = lastBarRef.current;
       if (last && time < last.time) return; // 防回退
-      lastOkxRef.current = Date.now();
-      try { series.update(bar); lastBarRef.current = bar; } catch { /* noop */ }
+      try {
+        series.update(bar);
+        lastBarRef.current = bar;
+        lastOkxRef.current = Date.now();
+      } catch { failChart(); }
     };
     // tickers 频道 ~100ms 推一次最新价（OKX 自家价格显示同源），驱动当前蜡烛收/高/低逐 tick 动。
     const applyTickerPrice = (lastPx) => {
@@ -1538,16 +1574,19 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
       const bar = lastBarRef.current;
       const p = Number(lastPx);
       if (!series || !bar || !Number.isFinite(p) || p <= 0) return;
-      lastOkxRef.current = Date.now();
       const next = { time: bar.time, open: bar.open, high: Math.max(bar.high, p), low: Math.min(bar.low, p), close: p };
-      try { series.update(next); lastBarRef.current = next; } catch { /* noop */ }
+      try {
+        series.update(next);
+        lastBarRef.current = next;
+        lastOkxRef.current = Date.now();
+      } catch { failChart(); }
     };
     const scheduleReconnect = () => {
-      if (reconnectTimer || disposed) return;
+      if (reconnectTimer || disposed || failed) return;
       reconnectTimer = setTimeout(() => { reconnectTimer = null; connectOkx(); }, 3000);
     };
     function connectOkx() {
-      if (disposed) return;
+      if (disposed || failed) return;
       try { ws = new WebSocket("wss://ws.okx.com:8443/ws/v5/public"); } catch { scheduleReconnect(); return; }
       ws.onopen = () => {
         try { ws.send(JSON.stringify({ op: "subscribe", args: [{ channel: `candle${okxBar}`, instId }, { channel: "tickers", instId }] })); } catch { /* noop */ }
@@ -1577,7 +1616,7 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
       try {
         const canvasContext = document.createElement("canvas").getContext("2d");
         if (!canvasContext) throw new Error("Canvas 2D context unavailable");
-        const lc = await import("lightweight-charts");
+        const lc = await chartLibraryLoader();
         if (disposed || !holder.current) return;
         holder.current.innerHTML = "";
         chart = lc.createChart(holder.current, {
@@ -1613,48 +1652,36 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
         setStatus("ok");
         connectOkx(); // 直连 OKX 实时 candle（App 端也试；连不上时由 onLivePrice 兜底驱动）
         // 兜底：每 30s 拉一次真实 K 线纠正历史（直连挂了也不至于冻结）。
-        refetchTimer = setInterval(async () => {
-          const result = await fetchRows();
-          const fresh = result.rows;
-          if (disposed || !seriesRef.current || !fresh.length) return;
-          const freshCandles = fresh.map(({ time, open, high, low, close }) => ({ time, open, high, low, close }));
-          const live = lastBarRef.current;
-          if (live && freshCandles[freshCandles.length - 1].time <= live.time) {
-            seriesRef.current.setData(freshCandles.filter((b) => b.time < live.time).concat([live]));
-          } else {
-            seriesRef.current.setData(freshCandles);
-            lastBarRef.current = freshCandles[freshCandles.length - 1];
-          }
-          if (volumeSeries) {
-            const freshVolume = fresh.filter((row) => Number.isFinite(row.volume)).map((row) => ({ time: row.time, value: row.volume, color: row.close >= row.open ? "rgba(31, 122, 80, .26)" : "rgba(196, 63, 40, .24)" }));
-            if (freshVolume.length) volumeSeries.setData(freshVolume);
-          }
-        }, 30000);
-      } catch {
-        if (disposed) return;
-        if (refetchTimer) clearInterval(refetchTimer);
-        refetchTimer = null;
-        if (ws) { try { ws.close(); } catch { /* noop */ } }
-        ws = null;
-        if (chart) { try { chart.remove(); } catch { /* noop */ } }
-        chart = null;
-        seriesRef.current = null;
-        lastBarRef.current = null;
-        if (holder.current) { try { holder.current.replaceChildren(); } catch { /* noop */ } }
-        setStatus("error");
-        setVolumeStatus(showVolume ? "error" : "disabled");
-      }
+        const refetch = async () => {
+          try {
+            const result = await fetchRows();
+            const fresh = result.rows;
+            if (disposed || failed || !seriesRef.current) return;
+            if (result.error) throw result.error;
+            if (!fresh.length) return;
+            const freshCandles = fresh.map(({ time, open, high, low, close }) => ({ time, open, high, low, close }));
+            const live = lastBarRef.current;
+            if (live && freshCandles[freshCandles.length - 1].time <= live.time) {
+              seriesRef.current.setData(freshCandles.filter((b) => b.time < live.time).concat([live]));
+            } else {
+              seriesRef.current.setData(freshCandles);
+              lastBarRef.current = freshCandles[freshCandles.length - 1];
+            }
+            if (volumeSeries) {
+              const freshVolume = fresh.filter((row) => Number.isFinite(row.volume)).map((row) => ({ time: row.time, value: row.volume, color: row.close >= row.open ? "rgba(31, 122, 80, .26)" : "rgba(196, 63, 40, .24)" }));
+              if (freshVolume.length) volumeSeries.setData(freshVolume);
+            }
+          } catch { failChart(); }
+        };
+        refetchTimer = setInterval(() => { void refetch(); }, 30000);
+      } catch { failChart(); }
     })();
     return () => {
       disposed = true;
-      if (pingTimer) clearInterval(pingTimer);
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      if (refetchTimer) clearInterval(refetchTimer);
-      if (ws) { try { ws.close(); } catch { /* noop */ } }
-      if (chart) { try { chart.remove(); } catch { /* noop */ } }
-      seriesRef.current = null;
+      if (failChartRef.current === failChart) failChartRef.current = null;
+      teardownChart();
     };
-  }, [symbol, interval, showVolume]);
+  }, [symbol, interval, showVolume, chartLibraryLoader]);
 
   // 兜底：直连 OKX 静默(>3s)时，用后端 SSE 实时价驱动当前蜡烛（网络限制客户端直连 OKX 的情况）。
   useEffect(() => {
@@ -1669,7 +1696,8 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
       const bar = bucket > last.time
         ? { time: bucket, open: p, high: p, low: p, close: p }
         : { time: last.time, open: last.open, high: Math.max(last.high, p), low: Math.min(last.low, p), close: p };
-      try { series.update(bar); lastBarRef.current = bar; } catch { /* noop */ }
+      try { series.update(bar); lastBarRef.current = bar; }
+      catch { failChartRef.current?.(); }
     };
     if (livePrice != null) applyPrice(symbol, livePrice);
     return onLivePrice(applyPrice);

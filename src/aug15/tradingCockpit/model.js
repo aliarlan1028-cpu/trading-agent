@@ -4,6 +4,7 @@ const rows = (value) => Array.isArray(value) ? value : [];
 const objectRows = (value) => rows(value).filter((row) => row && typeof row === "object" && !Array.isArray(row));
 const hasOwn = (value, key) => Boolean(value && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, key));
 const finiteNumber = (value) => value !== null && value !== undefined && (typeof value !== "string" || value.trim() !== "") && Number.isFinite(Number(value));
+const nonBlankText = (value) => typeof value === "string" && value.trim() !== "";
 const timeOf = (row) => row && typeof row === "object" ? new Date(row.updatedAt ?? row.completedAt ?? row.createdAt ?? 0).getTime() || 0 : 0;
 const byNewest = (a, b) => timeOf(b) - timeOf(a);
 const byOldest = (a, b) => timeOf(a) - timeOf(b);
@@ -33,6 +34,22 @@ function marketVolumeOf(market) {
   return { kind: "unavailable", value: null, unit: null };
 }
 
+function isRenderableNotice(row) {
+  return Boolean(row && typeof row === "object" && [row.message, row.summary, row.title].some(nonBlankText));
+}
+
+function isRenderableActivity(row) {
+  if (!row || typeof row !== "object" || !nonBlankText(String(row.id ?? ""))) return false;
+  return [row.service, row.handler, row.name, row.goal, row.detail, row.status].some(nonBlankText) || timeOf(row) > 0;
+}
+
+function hasRenderableMarketRegime(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const global = value.global && typeof value.global === "object" && !Array.isArray(value.global) ? value.global : {};
+  return [value.summary, value.label, global.summary, global.label].some(nonBlankText)
+    || finiteNumber(value.confidence) || finiteNumber(global.confidence);
+}
+
 export function cockpitObjectId(row = {}) {
   const safe = row && typeof row === "object" ? row : {};
   return safe.id ?? safe.positionId ?? safe.instId ?? safe.orderId ?? safe.executionOrderId ?? safe.fillId ?? safe.tradeLifecycleId ?? safe.symbol ?? null;
@@ -52,8 +69,8 @@ export function buildOverviewTradeFlow(data = {}) {
 
 export function buildOverviewPresentation(data = {}) {
   const positions = buildPositionPresentation(data);
-  const markets = buildMarketRows(data);
-  const activeMarket = data.activeMarket?.symbol ? data.activeMarket : null;
+  const markets = buildMarketRows(data).filter((row) => nonBlankText(row?.symbol));
+  const activeMarket = nonBlankText(data.activeMarket?.symbol) ? data.activeMarket : null;
   const market = activeMarket ?? markets[0] ?? null;
   const resourceState = cockpitResourceState(data.resourceState?.cockpit);
   const systemNoticeAvailable = hasOwn(data, "notifications") || Boolean(data.automationState && typeof data.automationState === "object");
@@ -61,10 +78,10 @@ export function buildOverviewPresentation(data = {}) {
   const strategyCatalogAvailable = Boolean(data.strategyCatalog && typeof data.strategyCatalog === "object" && hasOwn(data.strategyCatalog, "products"));
   const riskRulesAvailable = hasOwn(data, "riskRules");
   const portfolioRisk = data.portfolioRisk && typeof data.portfolioRisk === "object"
-    && (finiteNumber(data.portfolioRisk.utilizationPct) || data.portfolioRisk.status != null)
+    && (finiteNumber(data.portfolioRisk.utilizationPct) || nonBlankText(data.portfolioRisk.status))
     ? {
         utilizationPct: finiteNumber(data.portfolioRisk.utilizationPct) ? Number(data.portfolioRisk.utilizationPct) : null,
-        status: data.portfolioRisk.status == null ? null : String(data.portfolioRisk.status)
+        status: nonBlankText(data.portfolioRisk.status) ? data.portfolioRisk.status.trim() : null
       }
     : null;
   const accountSnapshots = objectRows(data.accountSnapshots)
@@ -72,10 +89,28 @@ export function buildOverviewPresentation(data = {}) {
     .sort(byOldest);
   const tradeFlow = buildOverviewTradeFlow(data);
   const portfolio = data.portfolio ?? {};
+  const notification = objectRows(data.notifications).find(isRenderableNotice) ?? null;
+  const automation = data.automationState && typeof data.automationState === "object" && !Array.isArray(data.automationState)
+    && [data.automationState.label, data.automationState.detail].some(nonBlankText)
+    ? data.automationState
+    : null;
+  const systemNotice = notification ?? (automation ? { title: automation.detail ?? automation.label } : null);
+  const marketNotice = objectRows(data.events).find(isRenderableNotice) ?? null;
+  const activities = [...objectRows(data.agentRuns), ...objectRows(data.jobRuns)].filter(isRenderableActivity).sort(byNewest);
+  const strategyProducts = objectRows(data.strategyCatalog?.products)
+    .filter((row) => [row.id, row.versionId, row.name].some((value) => nonBlankText(String(value ?? ""))));
+  const riskRules = objectRows(data.riskRules)
+    .filter((row) => [row.id, row.ruleId, row.key, row.name].some((value) => nonBlankText(String(value ?? ""))));
   const hasPortfolioFact = ["totalEquityUsdt", "todayPnl", "todayPnlPct", "unrealizedPnl", "availableMarginUsdt", "netValueCny"]
     .some((key) => finiteNumber(portfolio?.[key]));
-  const hasLastValidFacts = hasPortfolioFact || Boolean(portfolioRisk) || Boolean(market) || positions.positions.length > 0
-    || tradeFlow.length > 0 || accountSnapshots.length > 0 || Boolean(data.marketRegime && typeof data.marketRegime === "object");
+  const hasSystemFact = data.system && typeof data.system === "object" && !Array.isArray(data.system)
+    && (data.system.killSwitch === true || finiteNumber(data.system.remainingDailyLossUsdt));
+  const hasPositionFact = positions.positions.some((row) => nonBlankText(String(cockpitObjectId(row) ?? "")));
+  const hasTradeFact = tradeFlow.some((row) => nonBlankText(String(cockpitObjectId(row) ?? "")));
+  const hasLastValidFacts = hasPortfolioFact || Boolean(portfolioRisk) || Boolean(market) || hasPositionFact
+    || hasTradeFact || accountSnapshots.length > 0 || hasRenderableMarketRegime(data.marketRegime)
+    || Boolean(systemNotice) || Boolean(marketNotice) || Boolean(hasSystemFact) || activities.length > 0
+    || strategyProducts.length > 0 || riskRules.length > 0;
   return {
     portfolio,
     portfolioRisk,
@@ -89,12 +124,12 @@ export function buildOverviewPresentation(data = {}) {
     hasPositions: positions.positions.length > 0,
     hasAllocatablePositions: positions.positions.some((row) => finiteNumber(row.notionalUsdt) && Number(row.notionalUsdt) > 0),
     tradeFlow,
-    systemNotice: objectRows(data.notifications)[0] ?? (data.automationState ? { title: data.automationState.detail ?? data.automationState.label } : null),
-    marketNotice: objectRows(data.events)[0] ?? null,
+    systemNotice,
+    marketNotice,
     aiRead: data.marketRegime ?? null,
-    activities: [...objectRows(data.agentRuns), ...objectRows(data.jobRuns)].filter((row) => row.id != null).sort(byNewest),
-    strategyProducts: objectRows(data.strategyCatalog?.products),
-    activeRiskRuleCount: objectRows(data.riskRules).filter((row) => row.enabled === true).length,
+    activities,
+    strategyProducts,
+    activeRiskRuleCount: riskRules.filter((row) => row.enabled === true).length,
     collectionState: {
       systemNotice: systemNoticeAvailable ? "loaded" : "unavailable",
       marketNotice: hasOwn(data, "events") ? "loaded" : "unavailable",

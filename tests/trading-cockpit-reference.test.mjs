@@ -279,6 +279,30 @@ test("overview renders loading with last-valid facts but blocks initial loading 
   assert.doesNotMatch(unknown, /data-cockpit-region="portfolio-hero"/);
 });
 
+test("overview loading retains each truthful notice, boundary, and activity fact but rejects empty shells", () => {
+  const ui = { setActive() {}, ensureSection() {}, refresh() {} };
+  const retainedCases = [
+    ["notification", { notifications: [{ id: "n-1", title: "Account reconciliation complete" }] }, /Account reconciliation complete/],
+    ["kill switch", { system: { killSwitch: true } }, /overviewHeroRuntime/],
+    ["daily loss", { system: { remainingDailyLossUsdt: 12.5 } }, /12\.50 U/],
+    ["Agent activity", { agentRuns: [{ id: "run-1", goal: "Refresh market evidence", status: "completed" }] }, /Refresh market evidence/],
+    ["job activity", { jobRuns: [{ id: "job-1", name: "Reconcile account", status: "completed" }] }, /Reconcile account/]
+  ];
+  for (const [label, facts, renderedFact] of retainedCases) {
+    const html = render(OverviewPage, { data: { resourceState: { cockpit: "loading" }, ...facts }, ui });
+    assert.match(html, /data-overview-resource-state="loading"/, `${label} keeps the truthful loading banner`);
+    assert.match(html, /data-cockpit-region="portfolio-hero"/, `${label} retains the Overview body`);
+    assert.match(html, renderedFact, `${label} remains visible`);
+    assert.doesNotMatch(html, /class="tvChart"/, `${label} does not authorize current candles while loading`);
+  }
+
+  for (const facts of [{ system: {} }, { marketRegime: {} }, { system: {}, marketRegime: { global: {} } }]) {
+    const html = render(OverviewPage, { data: { resourceState: { cockpit: "loading" }, ...facts }, ui });
+    assert.match(html, /data-overview-resource-state="loading"/);
+    assert.doesNotMatch(html, /data-cockpit-region="portfolio-hero"/);
+  }
+});
+
 test("overview keeps blank PnL and risk numbers unavailable in rendered output", () => {
   const html = render(OverviewPage, {
     data: {

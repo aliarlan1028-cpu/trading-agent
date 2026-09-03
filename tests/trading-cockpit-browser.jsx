@@ -2,6 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { toPng } from "html-to-image";
 import { August15AuthenticatedShell } from "../src/aug15/App.jsx";
+import { TradingViewChart } from "../src/lib.jsx";
 import "../src/aug15/styles.css";
 
 // Test-only production-shaped synthetic fixture. Production never imports it.
@@ -13,6 +14,13 @@ const iso = (offset) => new Date(new Date(now).getTime() + offset * hour).toISOS
 const symbols = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "SUI/USDT", "ADA/USDT"];
 const prices = { "BTC/USDT": 114262.4, "ETH/USDT": 4382.18, "SOL/USDT": 219.84, "SUI/USDT": 4.26, "ADA/USDT": 1.03 };
 const round = (value, digits = 4) => Number(Number(value).toFixed(digits));
+const query = new URLSearchParams(location.search);
+const chartFailureMode = query.get("chart") || "";
+const chartLifecycleModes = new Set(["add-series-error", "candle-data-error", "fit-error", "refetch-candle-error", "refetch-volume-error", "update-error"]);
+const chartFailureFixture = { removals: 0, runtimeErrors: 0, unhandledRejections: 0, candleSetDataCalls: 0, volumeSetDataCalls: 0, updateCalls: 0 };
+window.__cockpitChartFailure = chartFailureFixture;
+window.addEventListener("error", () => { chartFailureFixture.runtimeErrors += 1; });
+window.addEventListener("unhandledrejection", (event) => { chartFailureFixture.unhandledRejections += 1; event.preventDefault(); });
 
 function fixtureCandles(symbol) {
   const base = prices[symbol] ?? prices["BTC/USDT"];
@@ -29,20 +37,71 @@ function fixtureCandles(symbol) {
 // This test-only inert implementation prevents network activity during capture.
 class InertCockpitWebSocket {
   static CONNECTING = 0; static OPEN = 1; static CLOSING = 2; static CLOSED = 3;
-  constructor(url) { this.url = url; this.readyState = InertCockpitWebSocket.CLOSED; this.protocol = ""; this.extensions = ""; }
+  constructor(url) {
+    this.url = url; this.readyState = InertCockpitWebSocket.CLOSED; this.protocol = ""; this.extensions = "";
+    if (chartFailureMode === "update-error") setTimeout(() => { this.readyState = InertCockpitWebSocket.OPEN; this.onopen?.(); }, 40);
+  }
   close() { this.readyState = InertCockpitWebSocket.CLOSED; }
-  send() {} addEventListener() {} removeEventListener() {}
+  send(payload) {
+    if (chartFailureMode === "update-error" && payload !== "ping") {
+      setTimeout(() => this.onmessage?.({ data: JSON.stringify({ arg: { channel: "tickers" }, data: [{ last: "115000" }] }) }), 10);
+    }
+  }
+  addEventListener() {} removeEventListener() {}
 }
 window.WebSocket = InertCockpitWebSocket;
 
 const nativeFetch = window.fetch.bind(window);
 const klineFixture = { requests: 0, symbols: [] };
-const query = new URLSearchParams(location.search);
 if (query.get("chart") === "init-error") {
   HTMLCanvasElement.prototype.getContext = function getContext() {
     throw new Error("synthetic chart initialization failure");
   };
 }
+if (["refetch-candle-error", "refetch-volume-error"].includes(chartFailureMode)) {
+  const nativeSetInterval = window.setInterval.bind(window);
+  window.setInterval = (callback, delay, ...args) => delay === 30000
+    ? window.setTimeout(callback, 50, ...args)
+    : nativeSetInterval(callback, delay, ...args);
+}
+
+const candleSeriesType = Symbol("CandlestickSeries");
+const volumeSeriesType = Symbol("HistogramSeries");
+const chartLibraryFixture = {
+  CandlestickSeries: candleSeriesType,
+  HistogramSeries: volumeSeriesType,
+  createChart(holder) {
+    const canvas = document.createElement("canvas");
+    holder.append(canvas);
+    return {
+      addSeries(type) {
+        if (chartFailureMode === "add-series-error") throw new Error("synthetic add-series failure");
+        const volume = type === volumeSeriesType;
+        return {
+          setData() {
+            const key = volume ? "volumeSetDataCalls" : "candleSetDataCalls";
+            chartFailureFixture[key] += 1;
+            if ((!volume && chartFailureMode === "candle-data-error")
+              || (!volume && chartFailureMode === "refetch-candle-error" && chartFailureFixture[key] > 1)
+              || (volume && chartFailureMode === "refetch-volume-error" && chartFailureFixture[key] > 1)) {
+              throw new Error(`synthetic ${volume ? "volume" : "candle"} data failure`);
+            }
+          },
+          update() {
+            chartFailureFixture.updateCalls += 1;
+            if (chartFailureMode === "update-error") throw new Error("synthetic live update failure");
+          }
+        };
+      },
+      priceScale() { return { applyOptions() {} }; },
+      timeScale() {
+        return { fitContent() { if (chartFailureMode === "fit-error") throw new Error("synthetic fit failure"); } };
+      },
+      remove() { chartFailureFixture.removals += 1; holder.replaceChildren(); }
+    };
+  }
+};
+const loadChartLibraryFixture = async () => chartLibraryFixture;
 window.__cockpitKlineFixture = klineFixture;
 window.fetch = async (input, init) => {
   const url = typeof input === "string" ? input : input.url;
@@ -121,7 +180,10 @@ const action = async (path, payload, method) => { window.__cockpitLastAction = {
 const captureUrl = location.href;
 history.replaceState(null, "", ({ overview: "/app/trade/overview", market: "/app/trade/market", positions: "/app/trade/positions", execution: "/app/trade/execution-review", ledger: "/app/trade/orders-fills" })[initialTab]);
 const api = { data, action, toast: "", busy: false, notify() {}, download() {}, refresh() {}, ensureSection() {}, connectionError: "" };
-createRoot(document.getElementById("root")).render(<August15AuthenticatedShell api={api} lang="zh" switchLang={() => {}}/>);
+const browserContent = chartLifecycleModes.has(chartFailureMode)
+  ? <div className="cockpitPage" data-cockpit-page="overview"><div data-cockpit-region="market-chart"><TradingViewChart symbol="BTC/USDT" interval="60" showVolume chartLibraryLoader={loadChartLibraryFixture}/></div></div>
+  : <August15AuthenticatedShell api={api} lang="zh" switchLang={() => {}}/>;
+createRoot(document.getElementById("root")).render(browserContent);
 
 const captureCockpitVisual = async () => {
   const node = document.querySelector(".appShell.cockpitMode"), cockpit = document.querySelector(".tradingCockpit"), width = Math.max(node.scrollWidth, cockpit.scrollWidth), height = Math.max(node.scrollHeight, cockpit.scrollHeight);
