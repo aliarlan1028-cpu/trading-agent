@@ -247,6 +247,56 @@ test("overview renderer survives production-shaped missing and malformed collect
   assert.doesNotMatch(failed, /class="tvChart"/);
 });
 
+test("overview renders loading with last-valid facts but blocks initial loading and terminal resource states", () => {
+  const ui = { setActive() {}, ensureSection() {}, refresh() {} };
+  const facts = {
+    portfolio: { totalEquityUsdt: 100, availableMarginUsdt: 80 },
+    portfolioRisk: { utilizationPct: 20, status: "ok" },
+    markets: [{ symbol: "BTC/USDT", price: 100 }],
+    activeMarket: { symbol: "BTC/USDT", price: 100 },
+    positions: [],
+    notifications: [],
+    accountSnapshots: []
+  };
+  const loadingWithFacts = render(OverviewPage, { data: { ...facts, resourceState: { cockpit: "loading" } }, ui });
+  assert.match(loadingWithFacts, /data-overview-resource-state="loading"/);
+  assert.match(loadingWithFacts, /data-cockpit-region="portfolio-hero"/);
+  assert.doesNotMatch(loadingWithFacts, /class="tvChart"/);
+
+  const initialLoading = render(OverviewPage, { data: { resourceState: { cockpit: "loading" } }, ui });
+  assert.match(initialLoading, /data-overview-resource-state="loading"/);
+  assert.doesNotMatch(initialLoading, /data-cockpit-region="portfolio-hero"/);
+
+  for (const state of ["failed", "forbidden", "disabled"]) {
+    const html = render(OverviewPage, { data: { ...facts, resourceState: { cockpit: state } }, ui });
+    assert.match(html, new RegExp(`data-overview-resource-state="${state}"`));
+    assert.doesNotMatch(html, /data-cockpit-region="portfolio-hero"/);
+  }
+
+  const unknown = render(OverviewPage, { data: { ...facts, resourceState: { cockpit: "future_state" } }, ui });
+  assert.match(unknown, /data-resource-state="not_loaded"/);
+  assert.match(unknown, /data-overview-resource-state="not_loaded"/);
+  assert.doesNotMatch(unknown, /data-cockpit-region="portfolio-hero"/);
+});
+
+test("overview keeps blank PnL and risk numbers unavailable in rendered output", () => {
+  const html = render(OverviewPage, {
+    data: {
+      resourceState: { cockpit: "loaded" },
+      portfolio: { totalEquityUsdt: 100, todayPnl: " ", todayPnlPct: "\t", unrealizedPnl: "\n", availableMarginUsdt: 80 },
+      portfolioRisk: { utilizationPct: "   ", status: "ok" },
+      markets: [{ symbol: "BTC/USDT", price: 100, changePct: " ", volume24h: "\t" }],
+      activeMarket: { symbol: "BTC/USDT", price: 100, changePct: " ", volume24h: "\t" },
+      positions: [{ positionId: "p-blank", symbol: "BTC/USDT", quantity: 1, notionalUsdt: 50, unrealizedPnl: " " }],
+      accountSnapshots: []
+    },
+    ui: { setActive() {}, ensureSection() {}, refresh() {} }
+  });
+  assert.doesNotMatch(html, /\+0\.00/);
+  assert.doesNotMatch(html, />0\.00%</);
+  assert.match(html, /cockpitChartUnavailable/);
+});
+
 test("overview browser gate covers resource states, readable text, and keyboard target geometry", () => {
   assert.match(browserRunner, /KORDYN_COCKPIT_STATE/);
   assert.match(browserRunner, /resourceState/);

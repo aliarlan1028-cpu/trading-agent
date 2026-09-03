@@ -1515,7 +1515,7 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
         const json = await res.json();
         const candles = Array.isArray(json.candles) ? json.candles : [];
         const rows = candles
-          .map((c) => ({ time: Math.floor(Number(c.time) / 1000), open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close), volume: c.volume == null || c.volume === "" ? null : Number(c.volume) }))
+          .map((c) => ({ time: Math.floor(Number(c.time) / 1000), open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close), volume: c.volume == null || c.volume === "" || (typeof c.volume === "string" && c.volume.trim() === "") ? null : Number(c.volume) }))
           .filter((c) => Number.isFinite(c.time) && Number.isFinite(c.close))
           .sort((a, b) => a.time - b.time);
         return { rows, error: null };
@@ -1574,59 +1574,76 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
       if (disposed || !holder.current) return;
       if (initial.error) { setStatus("error"); setVolumeStatus(showVolume ? "error" : "disabled"); return; }
       if (!rows.length) { setStatus("empty"); setVolumeStatus(showVolume ? "empty" : "disabled"); return; }
-      const lc = await import("lightweight-charts");
-      if (disposed || !holder.current) return;
-      setStatus("ok");
-      holder.current.innerHTML = "";
-      chart = lc.createChart(holder.current, {
-        autoSize: true,
-        layout: { background: { color: "#FBF9F5" }, textColor: "#8a8172", fontFamily: "SFMono-Regular, Roboto Mono, Space Mono, ui-monospace, monospace" },
-        grid: { vertLines: { color: "#EDE7DB" }, horzLines: { color: "#EDE7DB" } },
-        rightPriceScale: { borderColor: "#E3DCCE" },
-        timeScale: { borderColor: "#E3DCCE", timeVisible: true },
-        crosshair: { mode: 0 }
-      });
-      const series = chart.addSeries(lc.CandlestickSeries, {
-        upColor: "#1F7A50", downColor: "#C43F28", borderUpColor: "#1F7A50", borderDownColor: "#C43F28", wickUpColor: "#1F7A50", wickDownColor: "#C43F28"
-      });
-      const candleRows = rows.map(({ time, open, high, low, close }) => ({ time, open, high, low, close }));
-      series.setData(candleRows);
-      let volumeSeries = null;
-      if (showVolume) {
-        const volumeRows = rows.filter((row) => Number.isFinite(row.volume)).map((row) => ({
-          time: row.time,
-          value: row.volume,
-          color: row.close >= row.open ? "rgba(31, 122, 80, .26)" : "rgba(196, 63, 40, .24)"
-        }));
-        if (volumeRows.length) {
-          volumeSeries = chart.addSeries(lc.HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "volume" });
-          chart.priceScale("volume").applyOptions({ scaleMargins: { top: .82, bottom: 0 } });
-          volumeSeries.setData(volumeRows);
-          setVolumeStatus("ready");
-        } else setVolumeStatus("empty");
+      try {
+        const canvasContext = document.createElement("canvas").getContext("2d");
+        if (!canvasContext) throw new Error("Canvas 2D context unavailable");
+        const lc = await import("lightweight-charts");
+        if (disposed || !holder.current) return;
+        holder.current.innerHTML = "";
+        chart = lc.createChart(holder.current, {
+          autoSize: true,
+          layout: { background: { color: "#FBF9F5" }, textColor: "#8a8172", fontFamily: "SFMono-Regular, Roboto Mono, Space Mono, ui-monospace, monospace" },
+          grid: { vertLines: { color: "#EDE7DB" }, horzLines: { color: "#EDE7DB" } },
+          rightPriceScale: { borderColor: "#E3DCCE" },
+          timeScale: { borderColor: "#E3DCCE", timeVisible: true },
+          crosshair: { mode: 0 }
+        });
+        const series = chart.addSeries(lc.CandlestickSeries, {
+          upColor: "#1F7A50", downColor: "#C43F28", borderUpColor: "#1F7A50", borderDownColor: "#C43F28", wickUpColor: "#1F7A50", wickDownColor: "#C43F28"
+        });
+        const candleRows = rows.map(({ time, open, high, low, close }) => ({ time, open, high, low, close }));
+        series.setData(candleRows);
+        let volumeSeries = null;
+        if (showVolume) {
+          const volumeRows = rows.filter((row) => Number.isFinite(row.volume)).map((row) => ({
+            time: row.time,
+            value: row.volume,
+            color: row.close >= row.open ? "rgba(31, 122, 80, .26)" : "rgba(196, 63, 40, .24)"
+          }));
+          if (volumeRows.length) {
+            volumeSeries = chart.addSeries(lc.HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "volume" });
+            chart.priceScale("volume").applyOptions({ scaleMargins: { top: .82, bottom: 0 } });
+            volumeSeries.setData(volumeRows);
+            setVolumeStatus("ready");
+          } else setVolumeStatus("empty");
+        }
+        chart.timeScale().fitContent();
+        seriesRef.current = series;
+        lastBarRef.current = candleRows[candleRows.length - 1];
+        setStatus("ok");
+        connectOkx(); // 直连 OKX 实时 candle（App 端也试；连不上时由 onLivePrice 兜底驱动）
+        // 兜底：每 30s 拉一次真实 K 线纠正历史（直连挂了也不至于冻结）。
+        refetchTimer = setInterval(async () => {
+          const result = await fetchRows();
+          const fresh = result.rows;
+          if (disposed || !seriesRef.current || !fresh.length) return;
+          const freshCandles = fresh.map(({ time, open, high, low, close }) => ({ time, open, high, low, close }));
+          const live = lastBarRef.current;
+          if (live && freshCandles[freshCandles.length - 1].time <= live.time) {
+            seriesRef.current.setData(freshCandles.filter((b) => b.time < live.time).concat([live]));
+          } else {
+            seriesRef.current.setData(freshCandles);
+            lastBarRef.current = freshCandles[freshCandles.length - 1];
+          }
+          if (volumeSeries) {
+            const freshVolume = fresh.filter((row) => Number.isFinite(row.volume)).map((row) => ({ time: row.time, value: row.volume, color: row.close >= row.open ? "rgba(31, 122, 80, .26)" : "rgba(196, 63, 40, .24)" }));
+            if (freshVolume.length) volumeSeries.setData(freshVolume);
+          }
+        }, 30000);
+      } catch {
+        if (disposed) return;
+        if (refetchTimer) clearInterval(refetchTimer);
+        refetchTimer = null;
+        if (ws) { try { ws.close(); } catch { /* noop */ } }
+        ws = null;
+        if (chart) { try { chart.remove(); } catch { /* noop */ } }
+        chart = null;
+        seriesRef.current = null;
+        lastBarRef.current = null;
+        if (holder.current) { try { holder.current.replaceChildren(); } catch { /* noop */ } }
+        setStatus("error");
+        setVolumeStatus(showVolume ? "error" : "disabled");
       }
-      chart.timeScale().fitContent();
-      seriesRef.current = series;
-      lastBarRef.current = candleRows[candleRows.length - 1];
-      connectOkx(); // 直连 OKX 实时 candle（App 端也试；连不上时由 onLivePrice 兜底驱动）
-      // 兜底：每 30s 拉一次真实 K 线纠正历史（直连挂了也不至于冻结）。
-      refetchTimer = setInterval(async () => {
-        const result = await fetchRows();
-        const fresh = result.rows;
-        if (disposed || !seriesRef.current || !fresh.length) return;
-        const freshCandles = fresh.map(({ time, open, high, low, close }) => ({ time, open, high, low, close }));
-        const live = lastBarRef.current;
-        if (live && freshCandles[freshCandles.length - 1].time <= live.time) {
-          seriesRef.current.setData(freshCandles.filter((b) => b.time < live.time).concat([live]));
-        } else {
-          seriesRef.current.setData(freshCandles);
-          lastBarRef.current = freshCandles[freshCandles.length - 1];
-        }
-        if (volumeSeries) {
-          const freshVolume = fresh.filter((row) => Number.isFinite(row.volume)).map((row) => ({ time: row.time, value: row.volume, color: row.close >= row.open ? "rgba(31, 122, 80, .26)" : "rgba(196, 63, 40, .24)" }));
-          if (freshVolume.length) volumeSeries.setData(freshVolume);
-        }
-      }, 30000);
     })();
     return () => {
       disposed = true;

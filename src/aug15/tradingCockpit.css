@@ -246,8 +246,10 @@
 
 .overviewResourceState { min-height: 58px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 11px; padding: 10px 13px; border: 1px solid #ead3ae; border-radius: 8px; color: var(--cockpit-copy); background: #fffaf1; }
 .overviewResourceState.error, .overviewResourceState.failed, .overviewResourceState.forbidden { border-color: #efcbc5; background: #fff7f5; }
+.overviewResourceState.disabled { border-color: var(--cockpit-border); background: #f7f5f1; }
 .overviewResourceState > svg { width: 18px; height: 18px; color: var(--cockpit-warning); }
 .overviewResourceState.error > svg, .overviewResourceState.failed > svg, .overviewResourceState.forbidden > svg { color: var(--cockpit-negative); }
+.overviewResourceState.disabled > svg { color: var(--cockpit-text-3); }
 .overviewResourceState > div { display: grid; gap: 2px; }
 .overviewResourceState b { font-size: 12px; }
 .overviewResourceState span { color: var(--cockpit-text-3); font-size: 11px; }

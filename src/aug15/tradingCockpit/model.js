@@ -3,10 +3,17 @@ import { buildExecutionView, buildMarketRows, buildPositionView, findReviewTrade
 const rows = (value) => Array.isArray(value) ? value : [];
 const objectRows = (value) => rows(value).filter((row) => row && typeof row === "object" && !Array.isArray(row));
 const hasOwn = (value, key) => Boolean(value && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, key));
-const finiteNumber = (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
+const finiteNumber = (value) => value !== null && value !== undefined && (typeof value !== "string" || value.trim() !== "") && Number.isFinite(Number(value));
 const timeOf = (row) => row && typeof row === "object" ? new Date(row.updatedAt ?? row.completedAt ?? row.createdAt ?? 0).getTime() || 0 : 0;
 const byNewest = (a, b) => timeOf(b) - timeOf(a);
 const byOldest = (a, b) => timeOf(a) - timeOf(b);
+const cockpitResourceStates = new Set(["not_loaded", "loading", "loaded", "stale", "degraded", "error", "failed", "forbidden", "disabled"]);
+
+function cockpitResourceState(value) {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "ready") return "loaded";
+  return cockpitResourceStates.has(normalized) ? normalized : "not_loaded";
+}
 
 function positionNotional(position) {
   const authoritative = position.notional ?? position.notionalUsdt ?? position.marketValue;
@@ -48,8 +55,7 @@ export function buildOverviewPresentation(data = {}) {
   const markets = buildMarketRows(data);
   const activeMarket = data.activeMarket?.symbol ? data.activeMarket : null;
   const market = activeMarket ?? markets[0] ?? null;
-  const explicitResourceState = typeof data.resourceState?.cockpit === "string" ? data.resourceState.cockpit.trim().toLowerCase() : "";
-  const resourceState = explicitResourceState || "not_loaded";
+  const resourceState = cockpitResourceState(data.resourceState?.cockpit);
   const systemNoticeAvailable = hasOwn(data, "notifications") || Boolean(data.automationState && typeof data.automationState === "object");
   const activityAvailable = hasOwn(data, "agentRuns") || hasOwn(data, "jobRuns");
   const strategyCatalogAvailable = Boolean(data.strategyCatalog && typeof data.strategyCatalog === "object" && hasOwn(data.strategyCatalog, "products"));
@@ -64,8 +70,14 @@ export function buildOverviewPresentation(data = {}) {
   const accountSnapshots = objectRows(data.accountSnapshots)
     .filter((row) => finiteNumber(row.totalEquityUsdt) && timeOf(row) > 0)
     .sort(byOldest);
+  const tradeFlow = buildOverviewTradeFlow(data);
+  const portfolio = data.portfolio ?? {};
+  const hasPortfolioFact = ["totalEquityUsdt", "todayPnl", "todayPnlPct", "unrealizedPnl", "availableMarginUsdt", "netValueCny"]
+    .some((key) => finiteNumber(portfolio?.[key]));
+  const hasLastValidFacts = hasPortfolioFact || Boolean(portfolioRisk) || Boolean(market) || positions.positions.length > 0
+    || tradeFlow.length > 0 || accountSnapshots.length > 0 || Boolean(data.marketRegime && typeof data.marketRegime === "object");
   return {
-    portfolio: data.portfolio ?? {},
+    portfolio,
     portfolioRisk,
     resourceState,
     marketReady: resourceState === "loaded",
@@ -76,7 +88,7 @@ export function buildOverviewPresentation(data = {}) {
     allocation: positions.positions,
     hasPositions: positions.positions.length > 0,
     hasAllocatablePositions: positions.positions.some((row) => finiteNumber(row.notionalUsdt) && Number(row.notionalUsdt) > 0),
-    tradeFlow: buildOverviewTradeFlow(data),
+    tradeFlow,
     systemNotice: objectRows(data.notifications)[0] ?? (data.automationState ? { title: data.automationState.detail ?? data.automationState.label } : null),
     marketNotice: objectRows(data.events)[0] ?? null,
     aiRead: data.marketRegime ?? null,
@@ -90,6 +102,7 @@ export function buildOverviewPresentation(data = {}) {
       strategyProducts: strategyCatalogAvailable ? "loaded" : "unavailable",
       riskRules: riskRulesAvailable ? "loaded" : "unavailable"
     },
+    hasLastValidFacts,
     accountSnapshots
   };
 }

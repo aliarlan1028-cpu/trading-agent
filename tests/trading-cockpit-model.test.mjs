@@ -95,14 +95,32 @@ test("overview uses only authoritative portfolio risk utilization and status", (
   assert.equal(unavailable.portfolioRisk, null);
 });
 
-test("overview preserves market resource states and permits a current chart only when loaded", () => {
-  for (const state of ["loading", "error", "stale", "degraded"]) {
+test("overview normalizes the closed cockpit resource-state set and fails unknown values closed", () => {
+  for (const state of ["not_loaded", "loading", "stale", "degraded", "error", "failed", "forbidden", "disabled"]) {
     const model = buildOverviewPresentation({ resourceState: { cockpit: state }, markets: [{ symbol: "BTC/USDT", price: 100 }], positions: [] });
     assert.equal(model.resourceState, state);
     assert.equal(model.marketReady, false);
   }
   const loaded = buildOverviewPresentation({ resourceState: { cockpit: "loaded" }, markets: [{ symbol: "BTC/USDT", price: 100 }], positions: [] });
   assert.equal(loaded.marketReady, true);
+  const ready = buildOverviewPresentation({ resourceState: { cockpit: " READY " }, markets: [{ symbol: "BTC/USDT", price: 100 }], positions: [] });
+  assert.equal(ready.resourceState, "loaded");
+  assert.equal(ready.marketReady, true);
+  const unknown = buildOverviewPresentation({ resourceState: { cockpit: "future_state" }, markets: [{ symbol: "BTC/USDT", price: 100 }], positions: [] });
+  assert.equal(unknown.resourceState, "not_loaded");
+  assert.equal(unknown.marketReady, false);
+});
+
+test("overview identifies last-valid facts so loading can retain only real content", () => {
+  const retained = buildOverviewPresentation({
+    resourceState: { cockpit: "loading" },
+    portfolio: { totalEquityUsdt: 100 },
+    markets: [{ symbol: "BTC/USDT", price: 100 }],
+    positions: []
+  });
+  assert.equal(retained.hasLastValidFacts, true);
+  const initial = buildOverviewPresentation({ resourceState: { cockpit: "loading" } });
+  assert.equal(initial.hasLastValidFacts, false);
 });
 
 test("overview never infers a loaded cockpit resource from a core market symbol", () => {
@@ -130,6 +148,20 @@ test("overview preserves positions with unknown notional without calling the acc
   assert.equal(model.allocation[0].notionalUsdt, null);
   assert.equal(model.hasPositions, true);
   assert.equal(model.hasAllocatablePositions, false);
+});
+
+test("overview rejects whitespace-only numeric facts instead of coercing them to zero", () => {
+  const model = buildOverviewPresentation({
+    resourceState: { cockpit: "loaded" },
+    portfolioRisk: { utilizationPct: "   ", status: "ok" },
+    markets: [{ symbol: "BTC/USDT", volume24h: "\t" }],
+    positions: [{ positionId: "p-blank", symbol: "BTC/USDT", quantity: 1, markPrice: "  ", unrealizedPnl: " " }],
+    accountSnapshots: [{ id: "s-blank", createdAt: "2026-09-03T08:00:00Z", totalEquityUsdt: "\n" }]
+  });
+  assert.deepEqual(model.portfolioRisk, { utilizationPct: null, status: "ok" });
+  assert.deepEqual(model.marketVolume, { kind: "unavailable", value: null, unit: null });
+  assert.equal(model.allocation[0].notionalUsdt, null);
+  assert.deepEqual(model.accountSnapshots, []);
 });
 
 test("overview counts only explicitly enabled risk rules", () => {

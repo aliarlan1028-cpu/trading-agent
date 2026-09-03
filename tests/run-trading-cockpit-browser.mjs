@@ -17,9 +17,12 @@ const outputDir = process.env.KORDYN_COCKPIT_OUTPUT_DIR ? path.resolve(process.e
 const emptyMode = process.env.KORDYN_COCKPIT_EMPTY === "1";
 const enrichedMode = process.env.KORDYN_COCKPIT_ENRICHED === "1";
 const stateMode = String(process.env.KORDYN_COCKPIT_STATE || "").trim().toLowerCase();
-const resourceStates = new Set(["loading", "error", "stale", "degraded"]);
-const chartStates = new Set(["chart-error", "chart-empty"]);
-assert.ok(!stateMode || resourceStates.has(stateMode) || chartStates.has(stateMode), `Unsupported KORDYN_COCKPIT_STATE: ${stateMode}`);
+const resourceStateModes = new Set(["not_loaded", "loading", "loaded", "ready", "stale", "degraded", "error", "failed", "forbidden", "disabled", "unknown"]);
+const chartStatusByMode = new Map([["chart-error", "error"], ["chart-empty", "empty"], ["chart-init-error", "error"]]);
+const retainedBodyModes = new Set(["loading", "stale", "degraded"]);
+const expectedResourceState = stateMode === "ready" ? "loaded" : stateMode === "unknown" ? "not_loaded" : stateMode || "loaded";
+const regularChartMode = !stateMode || ["loaded", "ready"].includes(stateMode);
+assert.ok(!stateMode || resourceStateModes.has(stateMode) || chartStatusByMode.has(stateMode), `Unsupported KORDYN_COCKPIT_STATE: ${stateMode}`);
 assert.ok(views.length, "KORDYN_COCKPIT_VIEWS must name at least one canonical cockpit view");
 
 function withCdpCommandTimeout(promise, method) {
@@ -190,16 +193,17 @@ try {
       const fixtureParams = new URLSearchParams({ view });
       if (emptyMode) fixtureParams.set("empty", "1");
       if (enrichedMode) fixtureParams.set("enriched", "1");
-      if (resourceStates.has(stateMode)) fixtureParams.set("resource", stateMode);
+      if (resourceStateModes.has(stateMode)) fixtureParams.set("resource", stateMode);
       if (stateMode === "chart-error") fixtureParams.set("chart", "error");
       if (stateMode === "chart-empty") fixtureParams.set("chart", "empty");
+      if (stateMode === "chart-init-error") fixtureParams.set("chart", "init-error");
       await cdp.send("Page.navigate", { url: `${baseUrl}/tests/trading-cockpit-browser.html?${fixtureParams}` });
       await waitForExpression(cdp, `document.querySelector('[data-cockpit-page="${view}"]')`, `${width}x${height} ${view} cockpit page`);
       const chartSelector = `[data-cockpit-page="${view}"] [data-cockpit-region="market-chart"]`;
-      if (!emptyMode && !resourceStates.has(stateMode) && ["overview", "market"].includes(view)) {
-        const readyExpression = chartStates.has(stateMode)
-          ? `(() => { const chart = document.querySelector(${JSON.stringify(`${chartSelector} .tvChart`)}); return chart?.dataset.chartStatus === ${JSON.stringify(stateMode.replace("chart-", ""))}; })()`
-          : `(() => { const region = document.querySelector(${JSON.stringify(chartSelector)}); const kline = window.__cockpitKlineFixture; const chart = region?.querySelector(".tvChart"); return Boolean(region && kline?.requests > 0 && kline.symbols.includes("BTC/USDT") && chart?.querySelector("canvas") && chart.dataset.volumeSeries === "ready"); })()`;
+      if (!emptyMode && (regularChartMode || chartStatusByMode.has(stateMode)) && ["overview", "market"].includes(view)) {
+        const readyExpression = chartStatusByMode.has(stateMode)
+          ? `(() => { const chart = document.querySelector(${JSON.stringify(`${chartSelector} .tvChart`)}); return chart?.dataset.chartStatus === ${JSON.stringify(chartStatusByMode.get(stateMode))}; })()`
+          : `(() => { const region = document.querySelector(${JSON.stringify(chartSelector)}); const kline = window.__cockpitKlineFixture; const chart = region?.querySelector(".tvChart"); const expectedVolume = ${JSON.stringify(view === "overview" ? "ready" : "disabled")}; return Boolean(region && kline?.requests > 0 && kline.symbols.includes("BTC/USDT") && chart?.querySelector("canvas") && chart.dataset.volumeSeries === expectedVolume); })()`;
         await waitForExpression(cdp, readyExpression, `${width}x${height} ${view} fixture-backed chart state`);
       }
       const facts = await evaluate(cdp, `(() => { const page = document.querySelector('[data-cockpit-page]'); const region = document.querySelector(${JSON.stringify(chartSelector)}); const chart = region?.querySelector('.tvChart'); const kline = window.__cockpitKlineFixture || {}; const main = document.querySelector('[data-cockpit-page="overview"] .overviewPrimary'); const rail = document.querySelector('[data-cockpit-page="overview"] .overviewRail'); const lastRegion = document.querySelector('[data-cockpit-page="overview"] [data-cockpit-region="strategy-footer"]'); const canvas = chart?.querySelector('canvas'); const overviewRegions = Object.fromEntries([...document.querySelectorAll('[data-cockpit-page="overview"] [data-cockpit-region]')].map((node) => { const rect = node.getBoundingClientRect(); return [node.dataset.cockpitRegion, { top: Math.round(rect.top * 100) / 100, height: Math.round(rect.height * 100) / 100 }]; })); const targets = page?.dataset.cockpitPage === 'overview' ? [...page.querySelectorAll('button, a[href], input, select, [tabindex]:not([tabindex="-1"])')].filter((node) => !node.disabled && getComputedStyle(node).display !== 'none') : []; const targetFacts = targets.map((node) => { const rect = node.getBoundingClientRect(); const style = getComputedStyle(node); return { label: node.getAttribute('aria-label') || node.textContent?.trim() || node.className, width: rect.width, height: rect.height, minWidth: style.minWidth, minHeight: style.minHeight, size: Math.min(rect.width, rect.height) }; }).filter((row) => Number.isFinite(row.size)); const targetSizes = targetFacts.map((row) => row.size); const smallestTarget = targetFacts.sort((a, b) => a.size - b.size)[0] || null; const readableText = page?.dataset.cockpitPage === 'overview' ? [...page.querySelectorAll('small, p, time, em, th, td, button, .cockpitTone')].filter((node) => !node.matches('.overviewMarketQuote > div > b, .overviewHeroEquity b, .overviewHeroFact b, .overviewAiLead b, .cockpitGauge b')) : []; const textFacts = readableText.filter((node) => getComputedStyle(node).display !== 'none').map((node) => ({ label: node.textContent?.trim() || node.className, size: Number.parseFloat(getComputedStyle(node).fontSize) })).filter((row) => Number.isFinite(row.size)); const textSizes = textFacts.map((row) => row.size); const smallestText = textFacts.sort((a, b) => a.size - b.size)[0] || null; const fixtureFields = window.__cockpitFixtureFields || []; return ({ fixture: document.documentElement.dataset.fixtureKind, fixtureFields, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, resourceState: page?.dataset.resourceState || null, statePanel: page?.querySelector('[data-overview-resource-state]')?.dataset.overviewResourceState || null, regionCharts: region?.querySelectorAll(".tvChart canvas").length || 0, chartVisible: Boolean(canvas && canvas.getBoundingClientRect().width > 0 && canvas.getBoundingClientRect().height > 0), chartStatus: chart?.dataset.chartStatus || null, volumeSeries: chart?.dataset.volumeSeries || null, minKeyboardTargetPx: targetSizes.length ? Math.min(...targetSizes) : null, smallestTarget, minOverviewTextPx: textSizes.length ? Math.min(...textSizes) : null, maxOverviewTextPx: textSizes.length ? Math.max(...textSizes) : null, smallestText, mainRailRatio: main && rail ? main.getBoundingClientRect().width / rail.getBoundingClientRect().width : null, lastRegionTop: lastRegion?.getBoundingClientRect().top ?? null, overviewRegions, klineRequests: kline.requests || 0, klineSymbols: kline.symbols || [], page: page?.dataset.cockpitPage }); })()`);
@@ -210,29 +214,33 @@ try {
         for (const field of ["notifications", "portfolioRisk", "accountSnapshots"]) assert.equal(facts.fixtureFields.includes(field), true, `${width}x${height} production-shaped cockpit fixture includes ${field}`);
         for (const field of ["events", "agentRuns", "jobRuns", "riskRules", "strategyCatalog"]) assert.equal(facts.fixtureFields.includes(field), enrichedMode, `${width}x${height} cockpit fixture ${enrichedMode ? "includes opt-in" : "omits"} ${field}`);
       }
-      if (!emptyMode && !resourceStates.has(stateMode) && !chartStates.has(stateMode) && ["overview", "market"].includes(view)) {
+      if (!emptyMode && regularChartMode && ["overview", "market"].includes(view)) {
         assert.ok(facts.klineRequests > 0, `${width}x${height} ${view} intercepted a K-line request`);
         assert.ok(facts.klineSymbols.includes("BTC/USDT"), `${width}x${height} ${view} intercepted its BTC/USDT fixture candles`);
         assert.ok(facts.regionCharts >= 1, `${width}x${height} ${view} renders fixture candles in its market-chart region`);
         assert.equal(facts.chartVisible, true, `${width}x${height} ${view} chart canvas is visible`);
-        if (view === "overview") assert.equal(facts.volumeSeries, "ready", `${width}x${height} overview renders fetched per-candle volume`);
+        assert.equal(facts.volumeSeries, view === "overview" ? "ready" : "disabled", `${width}x${height} ${view} exposes its ${view === "overview" ? "opt-in" : "default-off"} volume contract`);
       }
-      if (resourceStates.has(stateMode) && view === "overview") {
-        assert.equal(facts.resourceState, stateMode, `${width}x${height} overview exposes ${stateMode} resource state`);
-        assert.equal(facts.statePanel, stateMode, `${width}x${height} overview renders its ${stateMode} state boundary`);
-        assert.equal(facts.klineRequests, 0, `${width}x${height} ${stateMode} overview does not request a current chart`);
-        assert.equal(facts.regionCharts, 0, `${width}x${height} ${stateMode} overview does not mount a current chart`);
+      if (resourceStateModes.has(stateMode) && view === "overview") {
+        assert.equal(facts.resourceState, expectedResourceState, `${width}x${height} overview normalizes ${stateMode} to ${expectedResourceState}`);
+        assert.equal(facts.statePanel, ["loaded", "ready"].includes(stateMode) ? null : expectedResourceState, `${width}x${height} overview renders the expected ${stateMode} state boundary`);
+        if (!["loaded", "ready"].includes(stateMode)) {
+          assert.equal(facts.klineRequests, 0, `${width}x${height} ${stateMode} overview does not request a current chart`);
+          assert.equal(facts.regionCharts, 0, `${width}x${height} ${stateMode} overview does not mount a current chart`);
+          assert.equal(Boolean(facts.overviewRegions["portfolio-hero"]), retainedBodyModes.has(stateMode), `${width}x${height} ${stateMode} overview ${retainedBodyModes.has(stateMode) ? "retains" : "blocks"} last-valid body facts`);
+        }
       }
-      if (chartStates.has(stateMode) && view === "overview") {
-        assert.equal(facts.chartStatus, stateMode.replace("chart-", ""), `${width}x${height} overview exposes honest ${stateMode} status`);
-        assert.equal(facts.volumeSeries, stateMode.replace("chart-", ""), `${width}x${height} overview propagates ${stateMode} to its volume layer`);
+      if (chartStatusByMode.has(stateMode) && view === "overview") {
+        assert.equal(facts.chartStatus, chartStatusByMode.get(stateMode), `${width}x${height} overview exposes honest ${stateMode} status`);
+        assert.equal(facts.volumeSeries, chartStatusByMode.get(stateMode), `${width}x${height} overview propagates ${stateMode} to its volume layer`);
+        if (stateMode === "chart-init-error") assert.equal(facts.regionCharts, 0, `${width}x${height} overview removes the partially initialized chart`);
       }
-      if (view === "overview" && width === 1440 && !resourceStates.has(stateMode)) {
+      if (view === "overview" && width === 1440 && (!resourceStateModes.has(stateMode) || ["loaded", "ready"].includes(stateMode))) {
         process.stdout.write(`trading cockpit overview geometry ${JSON.stringify({ mainRailRatio: facts.mainRailRatio, lastRegionTop: facts.lastRegionTop, regions: facts.overviewRegions })}\n`);
         assert.ok(facts.mainRailRatio >= 1.30 && facts.mainRailRatio <= 1.55, `1440 overview main/rail ratio ${facts.mainRailRatio} is within 1.30–1.55`);
         assert.ok(facts.lastRegionTop != null && facts.lastRegionTop < 1070, `1440 overview final region begins before 1070px (received ${facts.lastRegionTop})`);
       }
-      if (view === "overview" && !resourceStates.has(stateMode)) {
+      if (view === "overview" && (!resourceStateModes.has(stateMode) || ["loaded", "ready"].includes(stateMode) || retainedBodyModes.has(stateMode))) {
         assert.ok(facts.minKeyboardTargetPx >= 36, `${width}x${height} overview keyboard target minimum ${facts.minKeyboardTargetPx}px is at least 36px: ${JSON.stringify(facts.smallestTarget)}`);
         assert.ok(facts.minOverviewTextPx >= 11 && facts.maxOverviewTextPx <= 13, `${width}x${height} overview copy/table text ${facts.minOverviewTextPx}–${facts.maxOverviewTextPx}px stays within 11–13px: ${JSON.stringify(facts.smallestText)}`);
       }

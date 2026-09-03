@@ -32,7 +32,7 @@ import {
 } from "./shared.jsx";
 import { AreaTrend, DonutChart, GaugeChart } from "./visuals.jsx";
 
-const finite = (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
+const finite = (value) => value !== null && value !== undefined && (typeof value !== "string" || value.trim() !== "") && Number.isFinite(Number(value));
 const money = (value, fallback = "—") => finite(value) ? displayMoney(Number(value), 2, fallback) : fallback;
 const signedMoney = (value, fallback = "—") => finite(value) ? `${Number(value) >= 0 ? "+" : ""}${money(value, fallback)}` : fallback;
 const signedPct = (value, fallback = "—") => finite(value) ? `${Number(value) >= 0 ? "+" : ""}${Number(value).toFixed(2)}%` : fallback;
@@ -88,7 +88,7 @@ function PortfolioHero({ model, data }) {
       </div>
     </div>
     <div className="overviewHeroMetrics">
-      <HeroFact label={t("今日盈亏", "Today's PnL")} value={finite(model.portfolio.todayPnl) ? signedMoney(model.portfolio.todayPnl) : "—"} detail={displayPct(model.portfolio.todayPnlPct, "—")} tone={valueTone(model.portfolio.todayPnl)}/>
+      <HeroFact label={t("今日盈亏", "Today's PnL")} value={finite(model.portfolio.todayPnl) ? signedMoney(model.portfolio.todayPnl) : "—"} detail={finite(model.portfolio.todayPnlPct) ? displayPct(model.portfolio.todayPnlPct, "—") : "—"} tone={valueTone(model.portfolio.todayPnl)}/>
       <HeroFact label={t("未实现盈亏", "Unrealized PnL")} value={finite(model.portfolio.unrealizedPnl) ? signedMoney(model.portfolio.unrealizedPnl) : "—"} detail={t("真实持仓合计", "Live position total")} tone={valueTone(model.portfolio.unrealizedPnl)}/>
       <div className="overviewHeroRisk">
         <small>{t("风险使用率", "Risk usage")}</small>
@@ -140,11 +140,13 @@ function OverviewMarket({ model, onOpen }) {
   const hasCurrentMarket = hasMarket && model.marketReady;
   const resourceLabel = model.resourceState === "loaded"
     ? t("已同步市场事实", "Synced market facts")
-    : model.resourceState === "stale"
-      ? t("最后有效行情 · 数据已陈旧", "Last valid market · stale")
-      : model.resourceState === "degraded"
-        ? t("最后有效行情 · 服务降级", "Last valid market · degraded")
-        : t("当前行情不可用", "Current market unavailable");
+    : model.resourceState === "loading"
+      ? t("最后有效行情 · 正在刷新", "Last valid market · refreshing")
+      : model.resourceState === "stale"
+        ? t("最后有效行情 · 数据已陈旧", "Last valid market · stale")
+        : model.resourceState === "degraded"
+          ? t("最后有效行情 · 服务降级", "Last valid market · degraded")
+          : t("当前行情不可用", "Current market unavailable");
   const volume = model.marketVolume;
   const volumeLabel = volume.kind === "quote" ? t("24h 成交额", "24h turnover") : volume.kind === "base" ? t("24h 基础币成交量", "24h base volume") : t("24h 成交量", "24h volume");
   const volumeValue = volume.value == null ? t("未提供", "Unavailable") : `${money(volume.value)}${volume.unit ? ` ${volume.unit}` : ""}`;
@@ -264,15 +266,16 @@ function StrategyFooter({ model, data, onOpen }) {
   </footer>;
 }
 
-function OverviewResourceState({ state, onRetry }) {
+function OverviewResourceState({ state, onRetry, retainsFacts = false }) {
   const content = {
     not_loaded: [t("驾驶舱尚未加载", "Cockpit not loaded"), t("打开驾驶舱后会请求真实账户与市场事实。", "Real account and market facts load when the Cockpit opens.")],
-    loading: [t("驾驶舱正在加载", "Loading Cockpit"), t("正在读取当前账户与市场事实，空白不代表数据为零。", "Loading current account and market facts; blank values do not mean zero.")],
+    loading: [t("驾驶舱正在加载", "Loading Cockpit"), retainsFacts ? t("下方保留上一份有效事实；当前图表等待刷新完成。", "The last valid facts remain below; the current chart waits for refresh.") : t("正在读取当前账户与市场事实，空白不代表数据为零。", "Loading current account and market facts; blank values do not mean zero.")],
     error: [t("驾驶舱加载失败", "Cockpit failed to load"), t("当前事实不可用，请重试驾驶舱请求。", "Current facts are unavailable. Retry the Cockpit request.")],
     failed: [t("驾驶舱加载失败", "Cockpit failed to load"), t("当前事实不可用，请重试驾驶舱请求。", "Current facts are unavailable. Retry the Cockpit request.")],
     stale: [t("驾驶舱数据已陈旧", "Cockpit data is stale"), t("下方保留最后有效事实；当前图表不会重新请求。", "The last valid facts remain below; the current chart is not requested.")],
     degraded: [t("驾驶舱服务降级", "Cockpit service degraded"), t("部分事实不可用；下方只保留最后有效内容。", "Some facts are unavailable; only last-valid content remains below.")],
-    forbidden: [t("驾驶舱需要权限", "Cockpit permission required"), t("当前身份无权读取这组交易事实。", "The current identity cannot read these trading facts.")]
+    forbidden: [t("驾驶舱需要权限", "Cockpit permission required"), t("当前身份无权读取这组交易事实。", "The current identity cannot read these trading facts.")],
+    disabled: [t("驾驶舱已停用", "Cockpit disabled"), t("当前环境未启用交易驾驶舱数据源。", "The Trading Cockpit data source is disabled in this environment.")]
   }[state] || [t("驾驶舱状态不可用", "Cockpit state unavailable"), t("当前资源状态无法确认。", "The current resource state cannot be confirmed.")];
   return <section className={`overviewResourceState ${state}`} data-overview-resource-state={state} role={["error", "failed"].includes(state) ? "alert" : "status"}>
     <AlertTriangle aria-hidden="true"/>
@@ -283,14 +286,14 @@ function OverviewResourceState({ state, onRetry }) {
 
 export function OverviewPage({ data, ui }) {
   const model = buildOverviewPresentation(data);
-  const retainsLastValid = ["stale", "degraded"].includes(model.resourceState);
-  const blocked = ["not_loaded", "loading", "error", "failed", "forbidden"].includes(model.resourceState);
+  const retainsLastValid = ["stale", "degraded"].includes(model.resourceState) || (model.resourceState === "loading" && model.hasLastValidFacts);
+  const blocked = ["not_loaded", "error", "failed", "forbidden", "disabled"].includes(model.resourceState) || (model.resourceState === "loading" && !model.hasLastValidFacts);
   const reload = () => ui?.ensureSection?.("cockpit", { force: true }) ?? ui?.refresh?.(true);
   if (blocked) return <div className="cockpitPage cockpitOverview" data-cockpit-page="overview" data-resource-state={model.resourceState}>
     <OverviewResourceState state={model.resourceState} onRetry={reload}/>
   </div>;
   return <div className="cockpitPage cockpitOverview" data-cockpit-page="overview" data-resource-state={model.resourceState}>
-    {retainsLastValid && <OverviewResourceState state={model.resourceState} onRetry={reload}/>}
+    {retainsLastValid && <OverviewResourceState state={model.resourceState} onRetry={reload} retainsFacts/>}
     <PortfolioHero model={model} data={data}/>
     <DualNotice system={model.systemNotice} market={model.marketNotice} states={model.collectionState} ui={ui}/>
     <div className="overviewGrid">

@@ -38,6 +38,11 @@ window.WebSocket = InertCockpitWebSocket;
 const nativeFetch = window.fetch.bind(window);
 const klineFixture = { requests: 0, symbols: [] };
 const query = new URLSearchParams(location.search);
+if (query.get("chart") === "init-error") {
+  HTMLCanvasElement.prototype.getContext = function getContext() {
+    throw new Error("synthetic chart initialization failure");
+  };
+}
 window.__cockpitKlineFixture = klineFixture;
 window.fetch = async (input, init) => {
   const url = typeof input === "string" ? input : input.url;
@@ -108,7 +113,8 @@ const enrichment = {
 if (query.get("enriched") === "1") Object.assign(data, enrichment);
 if (query.get("empty") === "1") Object.assign(data, { portfolio: {}, portfolioRisk: { utilizationPct: null, status: "no_equity" }, markets: [], activeMarket: null, watchlist: [], marketRegime: null, notifications: [], positions: [], executionOrders: [], fills: [], closedTradeLifecycles: [], reviews: [], accountSnapshots: [] });
 const requestedResourceState = query.get("resource");
-if (["loading", "error", "stale", "degraded"].includes(requestedResourceState)) data.resourceState.cockpit = requestedResourceState;
+if (["not_loaded", "loading", "ready", "error", "failed", "forbidden", "disabled", "stale", "degraded"].includes(requestedResourceState)) data.resourceState.cockpit = requestedResourceState;
+if (requestedResourceState === "unknown") data.resourceState.cockpit = "future_state";
 window.__cockpitFixtureFields = Object.keys(data);
 const initialTab = ["overview", "market", "positions", "execution", "ledger"].includes(query.get("view")) ? query.get("view") : "overview";
 const action = async (path, payload, method) => { window.__cockpitLastAction = { path, payload, method }; return {}; };
