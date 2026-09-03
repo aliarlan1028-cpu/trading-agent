@@ -8,8 +8,17 @@ import WebSocket from "ws";
 
 const chromeBinary = process.env.CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const cdpCommandTimeoutMs = 15_000;
 const viewports = [[1440, 1080], [1280, 960], [1024, 768]];
 const views = ["overview", "market", "positions", "execution", "ledger"];
+
+function withCdpCommandTimeout(promise, method) {
+  let timeout;
+  return new Promise((resolve, reject) => {
+    timeout = setTimeout(() => reject(new Error(`CDP command timed out: ${method}`)), cdpCommandTimeoutMs);
+    promise.then((result) => { clearTimeout(timeout); resolve(result); }, (error) => { clearTimeout(timeout); reject(error); });
+  });
+}
 
 async function freePort() {
   return await new Promise((resolve, reject) => {
@@ -42,28 +51,62 @@ function connectCdp(url) {
   const socket = new WebSocket(url);
   const pending = new Map();
   let requestId = 0;
+  let opened = false;
+  let terminalError = null;
+  let resolveReady;
+  let rejectReady;
+  const toError = (cause, fallback) => cause instanceof Error ? cause : new Error(fallback);
+  const rejectPending = (cause) => {
+    terminalError ||= toError(cause, "CDP socket closed");
+    for (const request of pending.values()) {
+      clearTimeout(request.timeout);
+      request.reject(terminalError);
+    }
+    pending.clear();
+  };
   const ready = new Promise((resolve, reject) => {
-    socket.once("open", resolve);
-    socket.once("error", reject);
+    resolveReady = resolve;
+    rejectReady = reject;
+  });
+  socket.on("open", () => { opened = true; resolveReady(); });
+  socket.on("error", (error) => {
+    if (!opened) rejectReady(error);
+    rejectPending(error);
+  });
+  socket.on("close", (code, reason) => {
+    const error = new Error(`CDP socket closed (${code})${reason ? `: ${reason}` : ""}`);
+    if (!opened) rejectReady(error);
+    rejectPending(error);
   });
   socket.on("message", (payload) => {
     const message = JSON.parse(payload.toString());
     const request = pending.get(message.id);
     if (!request) return;
     pending.delete(message.id);
+    clearTimeout(request.timeout);
     if (message.error) request.reject(new Error(message.error.message));
     else request.resolve(message.result);
   });
   return {
     async send(method, params = {}) {
-      await ready;
+      await withCdpCommandTimeout(ready, method);
+      if (terminalError) throw terminalError;
       const id = ++requestId;
       return await new Promise((resolve, reject) => {
-        pending.set(id, { resolve, reject });
-        socket.send(JSON.stringify({ id, method, params }));
+        const timeout = setTimeout(() => {
+          pending.delete(id);
+          reject(new Error(`CDP command timed out: ${method}`));
+        }, cdpCommandTimeoutMs);
+        pending.set(id, { resolve, reject, timeout });
+        try { socket.send(JSON.stringify({ id, method, params })); }
+        catch (error) {
+          clearTimeout(timeout);
+          pending.delete(id);
+          reject(error);
+        }
       });
     },
-    close() { socket.close(); }
+    close() { rejectPending(new Error("CDP socket closed by runner")); socket.close(); }
   };
 }
 
@@ -135,13 +178,18 @@ try {
       await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, screenWidth: width, screenHeight: height, deviceScaleFactor: 1, mobile: false });
       await cdp.send("Page.navigate", { url: `${baseUrl}/tests/trading-cockpit-browser.html?view=${view}` });
       await waitForExpression(cdp, `document.querySelector('[data-cockpit-page="${view}"]')`, `${width}x${height} ${view} cockpit page`);
-      await waitForExpression(cdp, "!document.body.innerText.includes('加载 K 线') && !document.body.innerText.includes('Loading candlesticks')", `${width}x${height} ${view} chart load`);
-      const facts = await evaluate(cdp, "(() => ({ fixture: document.documentElement.dataset.fixtureKind, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, charts: document.querySelectorAll('.tvChart canvas').length, page: document.querySelector('[data-cockpit-page]')?.dataset.cockpitPage }))()");
+      const chartSelector = `[data-cockpit-page="${view}"] [data-cockpit-region="market-chart"]`;
+      if (["overview", "market"].includes(view)) await waitForExpression(cdp, `(() => { const region = document.querySelector(${JSON.stringify(chartSelector)}); const kline = window.__cockpitKlineFixture; return Boolean(region && kline?.requests > 0 && kline.symbols.includes("BTC/USDT") && region.querySelector(".tvChart canvas")); })()`, `${width}x${height} ${view} fixture-backed chart`);
+      const facts = await evaluate(cdp, `(() => { const region = document.querySelector(${JSON.stringify(chartSelector)}); const kline = window.__cockpitKlineFixture || {}; return ({ fixture: document.documentElement.dataset.fixtureKind, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, regionCharts: region?.querySelectorAll(".tvChart canvas").length || 0, klineRequests: kline.requests || 0, klineSymbols: kline.symbols || [], page: document.querySelector('[data-cockpit-page]')?.dataset.cockpitPage }); })()`);
       assert.equal(facts.fixture, "production-shaped-synthetic", `${width}x${height} ${view} uses the marked test-only fixture`);
       assert.equal(facts.page, view, `${width}x${height} renders the requested real cockpit view`);
       assert.equal(facts.overflow, 0, `${width}x${height} ${view} has no document overflow`);
-      if (["overview", "market"].includes(view)) assert.ok(facts.charts >= 1, `${width}x${height} ${view} renders at least one real chart canvas`);
-      results.push({ width, height, view, charts: facts.charts, overflow: facts.overflow });
+      if (["overview", "market"].includes(view)) {
+        assert.ok(facts.klineRequests > 0, `${width}x${height} ${view} intercepted a K-line request`);
+        assert.ok(facts.klineSymbols.includes("BTC/USDT"), `${width}x${height} ${view} intercepted its BTC/USDT fixture candles`);
+        assert.ok(facts.regionCharts >= 1, `${width}x${height} ${view} renders fixture candles in its market-chart region`);
+      }
+      results.push({ width, height, view, charts: facts.regionCharts, klineRequests: facts.klineRequests, overflow: facts.overflow });
     }
   }
   console.log(`trading cockpit browser PASS ${JSON.stringify(results)}`);

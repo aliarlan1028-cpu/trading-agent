@@ -36,10 +36,14 @@ class InertCockpitWebSocket {
 window.WebSocket = InertCockpitWebSocket;
 
 const nativeFetch = window.fetch.bind(window);
+const klineFixture = { requests: 0, symbols: [] };
+window.__cockpitKlineFixture = klineFixture;
 window.fetch = async (input, init) => {
   const url = typeof input === "string" ? input : input.url;
   if (url.includes("/api/market/klines")) {
     const symbol = new URL(url, location.origin).searchParams.get("symbol") || "BTC/USDT";
+    klineFixture.requests += 1;
+    klineFixture.symbols.push(symbol);
     return new Response(JSON.stringify({ candles: fixtureCandles(symbol) }), { status: 200, headers: { "content-type": "application/json" } });
   }
   return nativeFetch(input, init);

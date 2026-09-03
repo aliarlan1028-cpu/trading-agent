@@ -8,6 +8,7 @@ const workspaces = await readFile(new URL("../src/aug15/workspacePages.jsx", imp
 const cockpit = await readFile(new URL("../src/aug15/tradingCockpit.jsx", import.meta.url), "utf8").catch(() => "");
 const cockpitCss = await readFile(new URL("../src/aug15/tradingCockpit.css", import.meta.url), "utf8").catch(() => "");
 const browserHarness = await readFile(new URL("./trading-cockpit-browser.jsx", import.meta.url), "utf8").catch(() => "");
+const browserRunner = await readFile(new URL("./run-trading-cockpit-browser.mjs", import.meta.url), "utf8").catch(() => "");
 
 test("desktop cockpit owns an immersive shell without changing the other authenticated workspaces", () => {
   assert.match(app, /const immersiveCockpit = active === "cockpit"/);
@@ -89,6 +90,25 @@ test("production sources never import the synthetic cockpit fixture", async () =
     "../src/aug15/workspacePages.jsx"
   ].map((url) => readFile(new URL(url, import.meta.url), "utf8")));
   productionSources.forEach((source) => assert.doesNotMatch(source, /trading-cockpit-browser/));
+});
+
+test("browser gate proves the requested market region consumed synthetic K-lines", () => {
+  assert.match(browserHarness, /window\.__cockpitKlineFixture/);
+  assert.match(browserHarness, /requests:\s*0/);
+  assert.match(browserHarness, /klineFixture\.requests \+= 1/);
+  assert.match(browserRunner, /klineRequests/);
+  assert.match(browserRunner, /regionCharts/);
+  assert.match(browserRunner, /\[data-cockpit-region="market-chart"\]/);
+  assert.match(browserRunner, /facts\.klineRequests > 0/);
+  assert.match(browserRunner, /facts\.regionCharts >= 1/);
+});
+
+test("browser CDP transport bounds commands and rejects pending work on disconnect", () => {
+  assert.match(browserRunner, /const cdpCommandTimeoutMs =/);
+  assert.match(browserRunner, /CDP command timed out/);
+  assert.match(browserRunner, /socket\.on\("close"/);
+  assert.match(browserRunner, /socket\.on\("error"/);
+  assert.match(browserRunner, /rejectPending/);
 });
 
 test("review-to-trade resolution never matches two missing identities", () => {
