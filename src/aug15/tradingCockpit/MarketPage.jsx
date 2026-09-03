@@ -35,7 +35,7 @@ function eventEvidence(event) {
   const detail = text(event.summary) || text(event.description) || text(event.sourceName) || text(event.source);
   const status = text(event.importance) || text(event.impact);
   const date = text(event.due) || text(event.startAt) || text(event.createdAt);
-  return title || detail || status || date ? { ...event, title, detail, status, date } : null;
+  return title || detail ? { ...event, title, detail, status, date } : null;
 }
 
 function resourceStateOf(data) {

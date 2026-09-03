@@ -326,6 +326,8 @@ try {
         assert.ok(facts.klineQueries.every((row) => row.symbol === row.symbol.trim()), `${width}x${height} market chart requests use trimmed identities`);
         const selectorSymbols = await evaluate(cdp, `[...document.querySelectorAll('[data-market-symbol-select] option')].map((node) => node.value)`);
         assert.deepEqual(selectorSymbols, ["BTC/USDT", "ETH/USDT"], `${width}x${height} selector contains only normalized canonical identities`);
+        const eventRows = await evaluate(cdp, `document.querySelectorAll('[data-cockpit-region="event-catalysts"] .marketEventRows article').length`);
+        assert.equal(eventRows, 0, `${width}x${height} severity-only and date-only shells do not render as event catalysts`);
       }
       if (outputDir && view === "market" && !emptyMode && regularChartMode) {
         const beforeCaptureReset = await evaluate(cdp, "window.__cockpitKlineFixture?.requests || 0");

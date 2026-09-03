@@ -180,6 +180,60 @@ test("market loading retains a real event but rejects an empty event shell as ev
   assert.doesNotMatch(emptyShell, /(?:Market event|Recorded)/);
 });
 
+test("market rejects an importance-only event as catalyst evidence", () => {
+  const ui = { ensureSection() {}, refresh() {} };
+  const loading = render(MarketPage, {
+    data: { resourceState: { cockpit: "loading" }, events: [{ id: "severity-shell", importance: "high", impact: 90 }] },
+    ui
+  });
+  assert.match(loading, /data-market-resource-state="loading"/);
+  assert.doesNotMatch(loading, /data-cockpit-region="market-header"/);
+
+  const loaded = render(MarketPage, {
+    data: { resourceState: { cockpit: "loaded" }, markets: [], activeMarket: null, watchlist: [], events: [{ id: "severity-shell", importance: "high", impact: 90 }] },
+    ui
+  });
+  assert.match(loaded, /(?:暂无已记录事件|No recorded events)/);
+  assert.doesNotMatch(loaded, /class="marketEventRows"/);
+});
+
+test("market rejects a date-only event as catalyst evidence", () => {
+  const ui = { ensureSection() {}, refresh() {} };
+  const loading = render(MarketPage, {
+    data: { resourceState: { cockpit: "loading" }, events: [{ id: "date-shell", due: "2026-09-05T00:00:00Z", startAt: "2026-09-05T00:00:00Z" }] },
+    ui
+  });
+  assert.match(loading, /data-market-resource-state="loading"/);
+  assert.doesNotMatch(loading, /data-cockpit-region="market-header"/);
+
+  const loaded = render(MarketPage, {
+    data: { resourceState: { cockpit: "loaded" }, markets: [], activeMarket: null, watchlist: [], events: [{ id: "date-shell", createdAt: "2026-09-05T00:00:00Z" }] },
+    ui
+  });
+  assert.match(loaded, /(?:暂无已记录事件|No recorded events)/);
+  assert.doesNotMatch(loaded, /class="marketEventRows"/);
+});
+
+test("market accepts a title-only event as descriptive catalyst evidence", () => {
+  const html = render(MarketPage, {
+    data: { resourceState: { cockpit: "loading" }, events: [{ id: "title-only", shortTitle: "FOMC decision" }] },
+    ui: { ensureSection() {}, refresh() {} }
+  });
+  assert.match(html, /data-cockpit-region="market-header"/);
+  assert.match(html, /FOMC decision/);
+  assert.match(html, /class="marketEventRows"/);
+});
+
+test("market accepts a detail-only event as descriptive catalyst evidence", () => {
+  const html = render(MarketPage, {
+    data: { resourceState: { cockpit: "loading" }, events: [{ id: "detail-only", summary: "Official policy guidance updated" }] },
+    ui: { ensureSection() {}, refresh() {} }
+  });
+  assert.match(html, /data-cockpit-region="market-header"/);
+  assert.match(html, /Official policy guidance updated/);
+  assert.match(html, /class="marketEventRows"/);
+});
+
 test("market event renderer filters malformed shells without inventing catalyst facts", () => {
   const html = render(MarketPage, {
     data: {

@@ -186,7 +186,15 @@ if (query.get("marketCase") === "malformed") Object.assign(data, {
   ],
   activeMarket: { ...fixtureMarket("BTC/USDT", 0), symbol: " BTC/USDT " },
   watchlist: [" ", "/USDT", "BTC/", {}, [], " BTC/USDT ", "ETH/USDT"],
-  events: [null, {}, [], "event", { title: " " }]
+  events: [
+    null,
+    {},
+    [],
+    "event",
+    { title: " " },
+    { id: "severity-shell", importance: "high", impact: "systemic" },
+    { id: "date-shell", due: iso(12), createdAt: iso(-12) }
+  ]
 });
 if (query.get("marketCase") === "mismatched") Object.assign(data, {
   markets: [fixtureMarket("BTC/USDT", 0), fixtureMarket("ETH/USDT", 1)],
