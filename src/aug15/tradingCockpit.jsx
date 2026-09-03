@@ -125,6 +125,7 @@ function SystemNotice({ notice, onOpen }) {
 function OverviewPage({ data, ui }) {
   const presentation = buildOverviewPresentation(data); const positionView = presentation.positions; const markets = presentation.markets;
   const market = presentation.market;
+  const hasMarket = Boolean(market?.symbol);
   const tradeFlow = presentation.tradeFlow;
   const activities = presentation.activities;
   const products = presentation.strategyProducts;
@@ -134,9 +135,9 @@ function OverviewPage({ data, ui }) {
     <SystemNotice notice={presentation.systemNotice} onOpen={() => ui.setActive("operationsCenter:notifications")}/>
     <div className="overviewWorkspace">
       <div className="overviewMainColumn">
-        <Panel title={market?.symbol || t("行情尚未同步", "Market data not synced")} meta={market ? t("实时市场 · 公开交易所数据", "Live market · public exchange data") : t("等待真实行情", "Awaiting live market data")} className="overviewChart" region="market-chart" action={<button type="button" className="cockpitTextButton" onClick={() => ui.setActive("market")}>{t("完整行情", "Full market")}<ChevronRight/></button>}>
+        <Panel title={market?.symbol || t("行情尚未同步", "Market data not synced")} meta={hasMarket ? t("实时市场 · 公开交易所数据", "Live market · public exchange data") : t("等待真实行情", "Awaiting live market data")} className="overviewChart" region="market-chart" action={<button type="button" className="cockpitTextButton" onClick={() => ui.setActive("market")}>{t("完整行情", "Full market")}<ChevronRight/></button>}>
           <div className="marketQuote"><b>{finite(market?.price ?? market?.last) ? money(market.price ?? market.last) : t("待同步", "Pending")}</b><Tone tone={number(market?.changePct ?? market?.change24hPct) >= 0 ? "positive" : "negative"}>{signedPct(market?.changePct ?? market?.change24hPct)}</Tone><span>{t("24h 高", "24h H")} {money(market?.high24h ?? market?.high)} · {t("低", "L")} {money(market?.low24h ?? market?.low)}</span></div>
-          <div className="overviewChartBox">{market ? <TradingViewChart symbol={market.symbol} interval="60"/> : <CockpitEmpty icon={Search} title={t("行情尚未同步", "Market data not synced")} detail={t("同步真实行情后才加载图表。", "The chart loads after live market data is available.")}/>}</div>
+          <div className="overviewChartBox">{hasMarket ? <TradingViewChart symbol={market.symbol} interval="60"/> : <CockpitEmpty icon={Search} title={t("行情尚未同步", "Market data not synced")} detail={t("同步真实行情后才加载图表。", "The chart loads after live market data is available.")}/>}</div>
         </Panel>
         <Panel title={t("最近交易流水", "Recent trade flow")} meta={`${tradeFlow.length} ${t("条真实记录", "real records")}`} className="overviewTradeFlow" action={<button type="button" className="cockpitTextButton" onClick={() => ui.setActive("tradeLedger")}>{t("查看全部", "View all")}<ChevronRight/></button>}>
           <DataTable compact rows={tradeFlow.slice(0, 5)} emptyTitle={t("暂无交易活动", "No trade activity")} columns={[

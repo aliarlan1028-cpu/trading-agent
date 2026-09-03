@@ -20,9 +20,10 @@ export function buildOverviewTradeFlow(data = {}) {
 export function buildOverviewPresentation(data = {}) {
   const positions = buildPositionPresentation(data);
   const markets = buildMarketRows(data);
+  const activeMarket = data.activeMarket?.symbol ? data.activeMarket : null;
   return {
     portfolio: data.portfolio ?? {},
-    market: data.activeMarket ?? markets[0] ?? null,
+    market: activeMarket ?? markets[0] ?? null,
     markets,
     positions,
     allocation: positions.positions,

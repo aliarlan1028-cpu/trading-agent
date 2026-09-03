@@ -40,6 +40,11 @@ test("overview preserves an unavailable market instead of inventing a default sy
   assert.deepEqual(model.markets, []);
 });
 
+test("overview rejects an identity-less active market instead of mounting it as current", () => {
+  const model = buildOverviewPresentation({ activeMarket: {}, markets: [], positions: [] });
+  assert.equal(model.market, null);
+});
+
 test("position protection is joined only from the matching plan or order", () => {
   const model = buildPositionPresentation({
     positions: [{ positionId: "p-1", symbol: "BTC/USDT", executionOrderId: "o-1", quantity: 1 }],
