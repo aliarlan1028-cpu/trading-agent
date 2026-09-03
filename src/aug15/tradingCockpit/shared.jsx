@@ -58,7 +58,7 @@ export function CockpitTable({ columns, rows = [], selectedId, onSelect, emptyTi
   }
 
   return <div className="cockpitTableWrap" data-cockpit-region={region}>
-    <table className={`cockpitTable ${compact ? "compact" : ""}`} aria-label={label || emptyTitle || t("交易数据", "Trading data")}>
+    <table className={`cockpitTable ${compact ? "compact" : ""}`} aria-label={label || t("交易数据", "Trading data")}>
       <thead><tr>{columns.map((column) => <th scope="col" key={column.key}>{column.label}</th>)}</tr></thead>
       <tbody>{rows.map((row, index) => {
         const id = row.id || row.orderId || `${row.symbol || "row"}-${index}`;

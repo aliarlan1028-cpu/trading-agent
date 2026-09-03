@@ -1,7 +1,50 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { access, readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { findReviewTrade } from "../src/viewData.js";
+
+const require = createRequire(import.meta.url);
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const cacheDir = path.join(rootDir, "node_modules", ".cache");
+const componentBundle = path.join(cacheDir, `trading-cockpit-primitives-${process.pid}.cjs`);
+fs.mkdirSync(cacheDir, { recursive: true });
+process.on("exit", () => {
+  try { fs.rmSync(componentBundle, { force: true }); } catch { /* noop */ }
+});
+require("esbuild").buildSync({
+  stdin: {
+    contents: `
+      export { CockpitTable } from "./src/aug15/tradingCockpit/shared.jsx";
+      export { AreaTrend, BreadthBars, DistributionPlot, DonutChart, GaugeChart } from "./src/aug15/tradingCockpit/visuals.jsx";
+      export { createElement } from "react";
+      export { renderToStaticMarkup } from "react-dom/server";
+    `,
+    resolveDir: rootDir,
+    loader: "jsx"
+  },
+  bundle: true,
+  format: "cjs",
+  platform: "node",
+  jsx: "automatic",
+  external: ["react", "react-dom", "react-dom/server", "react/jsx-runtime", "lucide-react"],
+  outfile: componentBundle,
+  logLevel: "silent"
+});
+const {
+  AreaTrend,
+  BreadthBars,
+  CockpitTable,
+  DistributionPlot,
+  DonutChart,
+  GaugeChart,
+  createElement,
+  renderToStaticMarkup
+} = require(componentBundle);
+const render = (Component, props) => renderToStaticMarkup(createElement(Component, props));
 
 async function exists(url) {
   try { await access(url); return true; } catch { return false; }
@@ -83,6 +126,51 @@ test("cockpit primitives live in dedicated shared and visual modules", async () 
   ]) assert.equal(await exists(new URL(modulePath, import.meta.url)), true);
 
   assert.doesNotMatch(cockpit, /function (?:Panel|Metric|MiniTrend|DataTable)\(/);
+});
+
+test("cockpit visuals reject null and blank financial values instead of coercing them to zero", () => {
+  for (const value of [null, "", " "]) {
+    assert.match(render(GaugeChart, { value, label: "Risk" }), /cockpitChartUnavailable/);
+  }
+  assert.match(render(AreaTrend, { values: [null, ""], label: "Equity" }), /cockpitChartUnavailable/);
+  assert.match(render(DistributionPlot, { values: [null, ""], label: "Returns" }), /cockpitChartUnavailable/);
+  assert.match(render(BreadthBars, { items: [{ label: "Up", value: null }, { label: "Down", value: "" }], ariaLabel: "Breadth" }), /cockpitChartUnavailable/);
+  assert.match(render(DonutChart, { segments: [], value: "—", label: "Allocation", ariaLabel: "Allocation unavailable" }), /cockpitChartUnavailable/);
+});
+
+test("cockpit visuals tolerate explicit null collections and malformed collection entries", () => {
+  for (const [Component, props] of [
+    [DonutChart, { segments: null, value: "—", label: "Allocation", ariaLabel: "Allocation unavailable" }],
+    [AreaTrend, { values: null, label: "Equity" }],
+    [DistributionPlot, { values: null, label: "Returns" }],
+    [BreadthBars, { items: null, ariaLabel: "Breadth" }]
+  ]) {
+    assert.doesNotThrow(() => render(Component, props));
+    assert.match(render(Component, props), /cockpitChartUnavailable/);
+  }
+
+  assert.doesNotThrow(() => render(DonutChart, {
+    segments: [null, { value: 2, color: "#21875a" }],
+    value: "2",
+    label: "Positions",
+    ariaLabel: "Position allocation"
+  }));
+  assert.doesNotThrow(() => render(BreadthBars, {
+    items: [null, { label: "Advancing", value: 25 }],
+    ariaLabel: "Market breadth"
+  }));
+});
+
+test("a populated cockpit table uses a data-purpose name, never its empty-state title", () => {
+  const props = {
+    columns: [{ key: "symbol", label: "Pair" }],
+    rows: [{ id: "row-1", symbol: "BTC/USDT" }],
+    emptyTitle: "No orders"
+  };
+  const fallback = render(CockpitTable, props);
+  assert.match(fallback, /aria-label="(?:交易数据|Trading data)"/);
+  assert.doesNotMatch(fallback, /aria-label="No orders"/);
+  assert.match(render(CockpitTable, { ...props, label: "Active orders" }), /aria-label="Active orders"/);
 });
 
 test("the authenticated browser harness can prove honest empty states without production writes", () => {

@@ -1,10 +1,20 @@
 import React from "react";
 import { t } from "../i18n.js";
 
+function finiteNumber(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value !== "string" || !value.trim()) return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 function normalizedSegments(segments = []) {
-  const clean = segments.filter((segment) => Number(segment.value) > 0);
-  const total = clean.reduce((sum, segment) => sum + Number(segment.value), 0);
-  return clean.map((segment) => ({ ...segment, pct: total ? Number(segment.value) / total * 100 : 0 }));
+  const clean = (Array.isArray(segments) ? segments : [])
+    .filter((segment) => segment && typeof segment === "object" && typeof segment.color === "string" && segment.color.trim())
+    .map((segment) => ({ ...segment, value: finiteNumber(segment.value) }))
+    .filter((segment) => segment.value !== null && segment.value > 0);
+  const total = clean.reduce((sum, segment) => sum + segment.value, 0);
+  return clean.map((segment) => ({ ...segment, pct: total ? segment.value / total * 100 : 0 }));
 }
 
 function conicGradient(segments = []) {
@@ -18,7 +28,7 @@ function conicGradient(segments = []) {
 }
 
 function lineGeometry(values = [], width = 100, height = 36) {
-  const clean = values.map(Number).filter(Number.isFinite);
+  const clean = (Array.isArray(values) ? values : []).map(finiteNumber).filter((value) => value !== null);
   if (clean.length < 2) return null;
   const min = Math.min(...clean);
   const max = Math.max(...clean);
@@ -29,17 +39,19 @@ function lineGeometry(values = [], width = 100, height = 36) {
 }
 
 export function DonutChart({ segments, value, label, ariaLabel }) {
-  const gradient = conicGradient(segments);
+  const clean = normalizedSegments(segments);
+  if (!clean.length) return <span className="cockpitChartUnavailable">{t("数据不足", "Insufficient data")}</span>;
+  const gradient = conicGradient(clean);
   return <div className="cockpitDonut" role="img" aria-label={ariaLabel} style={{ background: gradient }}>
     <span><b>{value}</b><small>{label}</small></span>
   </div>;
 }
 
 export function GaugeChart({ value, min = 0, max = 100, label, detail, tone = "positive", ariaLabel }) {
-  const numericValue = Number(value);
-  const numericMin = Number(min);
-  const numericMax = Number(max);
-  if (![numericValue, numericMin, numericMax].every(Number.isFinite) || numericMax <= numericMin) {
+  const numericValue = finiteNumber(value);
+  const numericMin = finiteNumber(min);
+  const numericMax = finiteNumber(max);
+  if ([numericValue, numericMin, numericMax].includes(null) || numericMax <= numericMin) {
     return <span className="cockpitChartUnavailable">{t("数据不足", "Insufficient data")}</span>;
   }
   const pct = Math.max(0, Math.min(100, (numericValue - numericMin) / (numericMax - numericMin) * 100));
@@ -68,7 +80,7 @@ export function AreaTrend({ values, tone = "positive", label, height }) {
 }
 
 export function DistributionPlot({ values = [], label, tone = "brand", formatValue = (value) => value }) {
-  const clean = values.map(Number).filter(Number.isFinite);
+  const clean = (Array.isArray(values) ? values : []).map(finiteNumber).filter((value) => value !== null);
   if (!clean.length) return <span className="cockpitChartUnavailable">{t("数据不足", "Insufficient data")}</span>;
   const min = Math.min(...clean);
   const max = Math.max(...clean);
@@ -82,11 +94,14 @@ export function DistributionPlot({ values = [], label, tone = "brand", formatVal
 }
 
 export function BreadthBars({ items = [], ariaLabel, formatValue = (value) => `${value}%` }) {
-  const clean = items.filter((item) => Number.isFinite(Number(item.value)));
+  const clean = (Array.isArray(items) ? items : [])
+    .filter((item) => item && typeof item === "object")
+    .map((item) => ({ ...item, value: finiteNumber(item.value) }))
+    .filter((item) => item.value !== null);
   if (!clean.length) return <span className="cockpitChartUnavailable">{t("数据不足", "Insufficient data")}</span>;
   return <div className="cockpitBreadthBars" role="img" aria-label={ariaLabel}>
     {clean.map((item, index) => {
-      const value = Number(item.value);
+      const value = item.value;
       const width = Math.max(0, Math.min(100, value));
       return <div className={item.tone || "neutral"} key={item.id || item.label || index}>
         <span><b>{item.label}</b><em>{formatValue(value, item)}</em></span>
