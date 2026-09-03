@@ -243,7 +243,7 @@ const initialTab = ["overview", "market", "positions", "execution", "ledger"].in
 const action = async (path, payload, method) => { window.__cockpitLastAction = { path, payload, method }; return {}; };
 const captureUrl = location.href;
 const requestedReviewId = query.has("reviewId") ? query.get("reviewId") : null;
-const initialPath = initialTab === "execution" && requestedReviewId !== null
+const initialPath = query.get("historyCase") === "1" ? "/app" : initialTab === "execution" && requestedReviewId !== null
   ? `/app/trade/reviews/${encodeURIComponent(requestedReviewId)}`
   : ({ overview: "/app/trade/overview", market: "/app/trade/market", positions: "/app/trade/positions", execution: "/app/trade/execution-review", ledger: "/app/trade/orders-fills" })[initialTab];
 history.replaceState(null, "", initialPath);

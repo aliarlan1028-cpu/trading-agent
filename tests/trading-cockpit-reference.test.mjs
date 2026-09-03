@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { findReviewTrade } from "../src/viewData.js";
 import {
   cockpitPathForRoute,
+  cockpitRouteFromHistory,
   cockpitRouteFromPath,
   syncCockpitHistory
 } from "../src/cockpitUrlState.js";
@@ -261,6 +262,31 @@ test("cockpit URL state scopes review restoration without rewriting unknown rout
   const calls = [];
   assert.equal(syncCockpitHistory("unknown-route", { history: { pushState: (...args) => calls.push(args) }, location: { pathname: "/custom", search: "", hash: "" } }), false);
   assert.deepEqual(calls, []);
+});
+
+test("cockpit history exits through app root and restores safe popstate routes", () => {
+  const calls = [];
+  const history = {
+    state: { retained: true },
+    pushState: (...args) => calls.push(["push", ...args]),
+    replaceState: (...args) => calls.push(["replace", ...args])
+  };
+  const cockpitLocation = { pathname: "/app/trade/overview", search: "?tenant=owner", hash: "#trace", protocol: "https:" };
+
+  assert.equal(syncCockpitHistory("riskOverview", { history, location: cockpitLocation }), true);
+  assert.deepEqual(calls[0], ["push", { retained: true, kordynRoute: "riskOverview" }, "", "/app?tenant=owner#trace"]);
+  assert.equal(cockpitRouteFromHistory("/app", { kordynRoute: "riskOverview" }), "riskOverview");
+  assert.equal(cockpitRouteFromHistory("/app/", null), "chat");
+  assert.equal(cockpitRouteFromHistory("/app", { kordynRoute: { unsafe: true } }), "chat");
+  assert.equal(cockpitRouteFromHistory("/app", { kordynRoute: " ../outside " }), "chat");
+  assert.equal(cockpitRouteFromHistory("/outside", { kordynRoute: "chat" }), null);
+
+  const externalCalls = [];
+  assert.equal(syncCockpitHistory("chat", {
+    history: { pushState: (...args) => externalCalls.push(args) },
+    location: { pathname: "/outside", search: "", hash: "", protocol: "https:" }
+  }), false);
+  assert.deepEqual(externalCalls, []);
 });
 
 test("review survives malformed collections and preserves retained versus terminal resource states", () => {

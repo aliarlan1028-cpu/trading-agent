@@ -22,6 +22,10 @@ const reviewIdentity = (route = "") => {
   return identity || null;
 };
 
+const historyRouteToken = (value) => typeof value === "string"
+  && value.trim() === value
+  && /^[A-Za-z][A-Za-z0-9:_-]*$/.test(value);
+
 export function cockpitPathForRoute(route = "") {
   const identity = reviewIdentity(route);
   if (identity) return `${APP_TRADE_ROOT}/reviews/${encodeURIComponent(identity)}`;
@@ -44,12 +48,20 @@ export function cockpitRouteFromPath(pathname = "") {
   return PATH_ROUTES.get(path) || null;
 }
 
+export function cockpitRouteFromHistory(pathname = "", state = null) {
+  const cockpitRoute = cockpitRouteFromPath(pathname);
+  if (cockpitRoute) return cockpitRoute;
+  if (normalizePath(pathname) !== "/app") return null;
+  return historyRouteToken(state?.kordynRoute) ? state.kordynRoute : "chat";
+}
+
 export function syncCockpitHistory(route, {
   history = globalThis.history,
   location = globalThis.location,
   mode = "push"
 } = {}) {
-  const path = cockpitPathForRoute(route);
+  let path = cockpitPathForRoute(route);
+  if (!path && cockpitRouteFromPath(location?.pathname) && historyRouteToken(route)) path = "/app";
   if (!path || !history || !location || mode === "none") return false;
   if (location.protocol === "capacitor:" || globalThis.document?.documentElement?.classList?.contains("nativeApp")) return false;
   const href = `${path}${location.search || ""}${location.hash || ""}`;

@@ -198,6 +198,47 @@ try {
   await cdp.send("Page.enable");
   await cdp.send("Runtime.enable");
 
+  let historyFacts = null;
+  const runHistoryGate = !emptyMode && !enrichedMode && !stateMode && !marketCase && !positionCase && !reviewCase;
+  if (runHistoryGate) {
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1080, screenWidth: 1440, screenHeight: 1080, deviceScaleFactor: 1, mobile: false });
+    await cdp.send("Page.navigate", { url: `${baseUrl}/tests/trading-cockpit-browser.html?view=overview&historyCase=1` });
+    await waitForExpression(cdp, `location.pathname === '/app' && document.querySelector('[data-classic-view="chat"]')`, "history gate starts at app root in AI chat");
+    const steps = [await evaluate(cdp, `({ step: 'start', path: location.pathname, view: document.querySelector('.appShell')?.dataset.classicView || '' })`)];
+
+    await evaluate(cdp, `document.querySelector('[data-classic-target="cockpit"]')?.click()`);
+    await waitForExpression(cdp, `location.pathname === '/app/trade/overview' && document.querySelector('[data-cockpit-page="overview"]')`, "history gate enters real cockpit");
+    steps.push(await evaluate(cdp, `({ step: 'enter', path: location.pathname, view: document.querySelector('.appShell')?.dataset.classicView || '' })`));
+
+    await evaluate(cdp, `history.back()`);
+    await waitForExpression(cdp, `location.pathname === '/app' && document.querySelector('[data-classic-view="chat"]')`, "Back restores AI chat UI");
+    steps.push(await evaluate(cdp, `({ step: 'back', path: location.pathname, view: document.querySelector('.appShell')?.dataset.classicView || '' })`));
+
+    await evaluate(cdp, `history.forward()`);
+    await waitForExpression(cdp, `location.pathname === '/app/trade/overview' && document.querySelector('[data-cockpit-page="overview"]')`, "Forward restores cockpit UI");
+    steps.push(await evaluate(cdp, `({ step: 'forward', path: location.pathname, view: document.querySelector('.appShell')?.dataset.classicView || '' })`));
+
+    await evaluate(cdp, `document.querySelector('.cockpitBrand')?.click()`);
+    await waitForExpression(cdp, `location.pathname === '/app' && document.querySelector('[data-classic-view="chat"]')`, "cockpit brand exits to AI chat and app root");
+    steps.push(await evaluate(cdp, `({ step: 'brand-exit', path: location.pathname, view: document.querySelector('.appShell')?.dataset.classicView || '' })`));
+    await evaluate(cdp, `history.back()`);
+    await waitForExpression(cdp, `location.pathname === '/app/trade/overview' && document.querySelector('[data-cockpit-page="overview"]')`, "Back returns from brand exit to cockpit");
+    await evaluate(cdp, `history.forward()`);
+    await waitForExpression(cdp, `location.pathname === '/app' && document.querySelector('[data-classic-view="chat"]')`, "Forward restores brand destination");
+
+    await evaluate(cdp, `history.back()`);
+    await waitForExpression(cdp, `document.querySelector('[data-cockpit-page="overview"]')`, "settings exit starts in cockpit");
+    await evaluate(cdp, `document.querySelector('.cockpitIconButton[aria-label="系统设置"]')?.click()`);
+    await waitForExpression(cdp, `location.pathname === '/app' && document.querySelector('[data-classic-view="systemSettings"]')`, "settings exit clears cockpit URL and preserves UI destination");
+    steps.push(await evaluate(cdp, `({ step: 'settings-exit', path: location.pathname, view: document.querySelector('.appShell')?.dataset.classicView || '', route: document.querySelector('.appShell')?.dataset.classicCapability || '' })`));
+    await evaluate(cdp, `history.back()`);
+    await waitForExpression(cdp, `location.pathname === '/app/trade/overview' && document.querySelector('[data-cockpit-page="overview"]')`, "Back restores cockpit after settings exit");
+    await evaluate(cdp, `history.forward()`);
+    await waitForExpression(cdp, `location.pathname === '/app' && document.querySelector('[data-classic-view="systemSettings"]')`, "Forward restores settings UI from history state");
+    steps.push(await evaluate(cdp, `({ step: 'settings-forward', path: location.pathname, view: document.querySelector('.appShell')?.dataset.classicView || '', route: document.querySelector('.appShell')?.dataset.classicCapability || '' })`));
+    historyFacts = steps;
+  }
+
   const results = [];
   for (const [width, height] of viewports) {
     for (const view of views) {
@@ -542,7 +583,7 @@ try {
       results.push({ width, height, view, charts: facts.regionCharts, klineRequests: facts.klineRequests, overflow: facts.overflow, resourceState: facts.resourceState, chartStatus: facts.chartStatus, volumeSeries: facts.volumeSeries, chartRemovals: facts.chartRemovals, chartRuntimeErrors: facts.chartRuntimeErrors, chartUnhandledRejections: facts.chartUnhandledRejections, minKeyboardTargetPx: facts.minKeyboardTargetPx, minMarketTargetPx: facts.minMarketTargetPx, minOverviewTextPx: facts.minOverviewTextPx, maxOverviewTextPx: facts.maxOverviewTextPx, mainRailRatio: facts.mainRailRatio, marketChartWorkspaceRatio: facts.marketChartWorkspaceRatio, marketCanonicalSymbol: facts.marketCanonicalSymbol, marketRegions: marketStateFacts?.regions, positionStateFacts, positionActionFacts, reviewStateFacts, reviewInteractionFacts, lastRegionTop: facts.lastRegionTop, overviewRegions: facts.overviewRegions });
     }
   }
-  console.log(`trading cockpit browser PASS ${JSON.stringify(results)}`);
+  console.log(`trading cockpit browser PASS ${JSON.stringify({ historyFacts, results })}`);
 } finally {
   cdp?.close();
   await stop(chrome);

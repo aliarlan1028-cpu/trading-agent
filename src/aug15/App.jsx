@@ -30,7 +30,7 @@ import { isNativeApp } from "./lib.jsx";
 import { ConfirmHost } from "./confirm.jsx";
 import { hasNewWebRelease, normalizeRelease } from "./releaseUpdate.js";
 import { resolveDesktopRoute } from "../productArchitecture.js";
-import { cockpitRouteFromPath, syncCockpitHistory } from "../cockpitUrlState.js";
+import { cockpitRouteFromHistory, cockpitRouteFromPath, syncCockpitHistory } from "../cockpitUrlState.js";
 import { useDialogFocus } from "../useDialogFocus.js";
 import {
   buildShellSearchIndex,
@@ -464,9 +464,10 @@ export function August15AuthenticatedShell({ api, lang, switchLang }) {
     if (data) ensureSection(active);
   }, [active, Boolean(data)]);
   useEffect(() => {
-    const applyCockpitLocation = () => {
-      const route = cockpitRouteFromPath(window.location.pathname);
-      if (route) navigate(route, { syncHistory: false });
+    const applyCockpitLocation = (event) => {
+      const route = cockpitRouteFromHistory(window.location.pathname, event.state);
+      const safeRoute = route && resolveDesktopRoute(route).recognized ? route : route ? "chat" : null;
+      if (safeRoute) navigate(safeRoute, { syncHistory: false });
     };
     window.addEventListener("popstate", applyCockpitLocation);
     return () => window.removeEventListener("popstate", applyCockpitLocation);
