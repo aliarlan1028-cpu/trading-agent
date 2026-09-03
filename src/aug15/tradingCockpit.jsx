@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
-  Activity, AlertTriangle, Bell, Bot, Check, ChevronRight,
-  Clock3, Gauge, Layers3, RefreshCw, Search, Settings, ShieldCheck, Sparkles,
+  Activity, AlertTriangle, Bot, Check, ChevronRight,
+  Clock3, Gauge, RefreshCw, Search, ShieldCheck, Sparkles,
   Target, TrendingUp, WalletCards, X
 } from "lucide-react";
 import { displayMoney, displayPct, formatDateTime, formatTime, humanize, localizeText, TradingViewChart } from "./lib.jsx";
@@ -14,6 +14,15 @@ import {
   buildReviewPresentation,
   buildSelectedExecutionStages
 } from "./tradingCockpit/model.js";
+import {
+  CockpitEmpty,
+  CockpitHeader,
+  CockpitMetric as Metric,
+  CockpitPanel as Panel,
+  CockpitTable as DataTable,
+  Tone
+} from "./tradingCockpit/shared.jsx";
+import { AreaTrend as MiniTrend } from "./tradingCockpit/visuals.jsx";
 import "./tradingCockpit.css";
 
 // Presentation selectors centralize buildPositionView and buildExecutionView joins.
@@ -27,49 +36,6 @@ const signedPct = (value, fallback = "—") => finite(value) ? `${Number(value) 
 const sideTone = (value) => /short|sell|空|卖/i.test(String(value || "")) ? "negative" : /long|buy|多|买/i.test(String(value || "")) ? "positive" : "neutral";
 const statusTone = (value) => /fail|error|reject|cancel|liquid|异常|失败|拒绝|取消/i.test(String(value || "")) ? "negative" : /pending|wait|pause|review|待|暂停|警告/i.test(String(value || "")) ? "warning" : /fill|complete|active|success|approved|已|运行/i.test(String(value || "")) ? "positive" : "neutral";
 
-const TABS = [
-  ["overview", "总览", "Overview"],
-  ["market", "行情", "Market"],
-  ["positions", "持仓", "Positions"],
-  ["execution", "执行与复盘", "Execution & Review"],
-  ["ledger", "委托与成交", "Orders & Fills"]
-];
-
-function Tone({ children, tone = "neutral", className = "" }) {
-  return <span className={`cockpitTone ${tone} ${className}`.trim()}>{children}</span>;
-}
-
-function Metric({ label, value, detail, tone = "", strong = false }) {
-  return <div className={`cockpitMetric ${tone} ${strong ? "strong" : ""}`.trim()}><small>{label}</small><b>{value}</b>{detail && <span>{detail}</span>}</div>;
-}
-
-function Panel({ title, meta, action, className = "", children, region }) {
-  return <section className={`cockpitPanel ${className}`.trim()} data-cockpit-region={region}>
-    {(title || action) && <header className="cockpitPanelHead"><div><h2>{title}</h2>{meta && <span>{meta}</span>}</div>{action}</header>}
-    {children}</section>;
-}
-
-function CockpitEmpty({ icon: Icon = Layers3, title, detail }) {
-  return <div className="cockpitEmpty"><Icon aria-hidden="true"/><b>{title}</b>{detail && <p>{detail}</p>}</div>;
-}
-
-function MiniTrend({ values, tone = "accent", height = 80 }) {
-  const clean = list(values).map(Number).filter(Number.isFinite);
-  if (clean.length < 2) return <div className="cockpitTrendEmpty" style={{ height }}>{t("等待形成趋势", "Awaiting trend")}</div>;
-  const min = Math.min(...clean); const max = Math.max(...clean); const range = max - min || 1;
-  const points = clean.map((value, index) => `${(index / (clean.length - 1)) * 100},${height - 6 - ((value - min) / range) * (height - 12)}`).join(" ");
-  return <svg className={`cockpitMiniTrend ${tone}`} viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" aria-hidden="true"><polyline points={points} fill="none" stroke="currentColor" strokeWidth="1.8" vectorEffect="non-scaling-stroke"/></svg>;
-}
-
-function DataTable({ columns, rows, selectedId, onSelect, emptyTitle, emptyDetail, compact = false, region }) {
-  if (!rows.length) return <CockpitEmpty title={emptyTitle || t("暂无数据", "No data")} detail={emptyDetail || t("真实数据产生后会自动显示。", "Real data appears automatically when available.")} />;
-  return <div className="cockpitTableWrap" data-cockpit-region={region}><table className={`cockpitTable ${compact ? "compact" : ""}`}><thead><tr>{columns.map((column) => <th key={column.key}>{column.label}</th>)}</tr></thead><tbody>{rows.map((row, index) => {
-    const id = row.id || row.orderId || `${row.symbol || "row"}-${index}`;
-    const active = selectedId != null && String(id) === String(selectedId);
-    return <tr key={id} className={active ? "selected" : ""} tabIndex={onSelect ? 0 : undefined} aria-selected={onSelect ? active : undefined} onClick={onSelect ? () => onSelect(row) : undefined} onKeyDown={onSelect ? (event) => { if (["Enter", " "].includes(event.key)) { event.preventDefault(); onSelect(row); } } : undefined}>{columns.map((column) => <td key={column.key}>{column.render ? column.render(row) : (row[column.key] ?? "—")}</td>)}</tr>;
-  })}</tbody></table></div>;
-}
-
 function accountHealth(data) {
   if (data.system?.killSwitch) return [t("紧急停止", "Emergency stop"), "negative"];
   if (data.automationState?.label) return [localizeText(data.automationState.label), statusTone(data.automationState.mode)];
@@ -77,25 +43,9 @@ function accountHealth(data) {
 }
 
 export function TradingCockpitShell({ data, active, onChange, ui, children }) {
-  const accounts = list(data.exchangeAccounts);
-  const okx = accounts.find((item) => String(item.exchange).toUpperCase() === "OKX") || {};
   const [healthLabel, healthTone] = accountHealth(data);
-  const unread = list(data.notifications).filter((item) => !item.read).length;
-  const user = localizeText(data.user?.name || t("账户", "Account"));
   return <div className="tradingCockpit" data-cockpit-shell="desktop" data-cockpit-view={active}>
-    <header className="cockpitHeader">
-      <button type="button" className="cockpitBrand" onClick={() => ui.setActive("chat")} aria-label={t("返回 AI 交易员", "Back to AI Trader")}>
-        <img src="/kordyn-logo.svg" alt=""/><span><b>{t("交易驾驶舱", "Trading Cockpit")}</b><small>KORDYN</small></span>
-      </button>
-      <nav className="cockpitTabs" aria-label={t("交易驾驶舱页面", "Trading cockpit pages")}>{TABS.map(([id, zh, en]) => <button type="button" key={id} className={active === id ? "active" : ""} aria-current={active === id ? "page" : undefined} onClick={() => onChange(id)}>{t(zh, en)}</button>)}</nav>
-      <div className="cockpitHeaderActions">
-        <button type="button" className="cockpitSystemStatus" onClick={() => ui.setActive("riskOverview")}><span className={healthTone}/><b>{healthLabel}</b></button>
-        <button type="button" className="cockpitExchange" onClick={() => ui.setActive("systemSettings:exchange")}><i className={okx.connected || okx.tradingAvailable ? "online" : ""}/><span><b>OKX</b><small>{okx.connected || okx.tradingAvailable ? t("已连接", "Connected") : t("待连接", "Pending")}</small></span></button>
-        <button type="button" className="cockpitIconButton" aria-label={t("通知", "Notifications")} onClick={() => ui.setActive("operationsCenter:notifications")}><Bell/>{unread > 0 && <em>{unread > 99 ? "99+" : unread}</em>}</button>
-        <button type="button" className="cockpitIconButton" aria-label={t("系统设置", "Settings")} onClick={() => ui.setActive("systemSettings")}><Settings/></button>
-        <button type="button" className="cockpitAvatar" onClick={() => ui.setActive("systemSettings")} aria-label={t("账户设置", "Account settings")}>{data.user?.avatar ? <img src={data.user.avatar} alt=""/> : user.slice(0, 1).toUpperCase()}</button>
-      </div>
-    </header>
+    <CockpitHeader data={data} active={active} onChange={onChange} ui={ui} healthLabel={healthLabel} healthTone={healthTone}/>
     <main className="cockpitCanvas">{children}</main>
   </div>;
 }
@@ -216,7 +166,7 @@ function PositionsPage({ data }) {
         { key: "pnl", label: t("未实现盈亏", "Unrealized"), render: (row) => <strong className={number(row.unrealizedPnl ?? row.pnl) >= 0 ? "positiveText" : "negativeText"}>{signedMoney(row.unrealizedPnl ?? row.pnl)} U</strong> },
         { key: "leverage", label: t("杠杆", "Lev"), render: (row) => finite(row.leverage) ? `${row.leverage}x` : "—" },
         { key: "liq", label: t("强平价", "Liq"), render: (row) => money(row.liquidationPrice) }
-      ]}/></Panel><Panel title={t("组合净值趋势", "Portfolio equity trend")} meta={t("真实账户快照", "Real account snapshots")}><MiniTrend values={list(data.accountSnapshots).map((row) => row.totalEquityUsdt)} height={118}/></Panel></section>
+      ]}/></Panel><Panel title={t("组合净值趋势", "Portfolio equity trend")} meta={t("真实账户快照", "Real account snapshots")}><MiniTrend values={list(data.accountSnapshots).map((row) => row.totalEquityUsdt)} label={t("组合净值趋势", "Portfolio equity trend")} height={118}/></Panel></section>
       <aside className="positionRisk"><Panel title={t("风险健康", "Risk health")}><div className="healthScore"><div className="allocationRing" style={{ "--value": marginPct == null ? 0 : 100 - marginPct }}><span><b>{marginPct == null ? "—" : `${Math.round(100 - marginPct)}%`}</b><small>{t("健康度", "health")}</small></span></div></div><div className="healthChecks"><span><Check/>{t("持仓事实已核对", "Position facts reconciled")}<b>{positions.length}</b></span><span><ShieldCheck/>{t("强平距离", "Liquidation distance")}<b>{positions.some((row) => finite(row.liqDistancePct) && number(row.liqDistancePct) < 12) ? t("需关注", "Attention") : t("正常", "Normal")}</b></span><span><Gauge/>{t("保证金安全", "Margin safety")}<b>{marginPct == null ? "—" : `${(100 - marginPct).toFixed(1)}%`}</b></span></div></Panel><Panel title={t("集中度", "Concentration")}><div className="riskList">{positions.slice().sort((a, b) => b.notionalUsdt - a.notionalUsdt).slice(0, 3).map((row) => <span key={row.id}><b>{row.symbol}</b><em>{view.exposureUsdt ? `${(row.notionalUsdt / view.exposureUsdt * 100).toFixed(1)}%` : "—"}</em></span>)}{!positions.length && <p className="inlineEmpty">{t("空仓，无集中度风险。", "Flat; no concentration risk.")}</p>}</div></Panel></aside>
     </div>
   </div>;
@@ -242,7 +192,7 @@ function ReviewPage({ data, initialReviewId, onReviewSelect }) {
         {selected ? <><div className="reviewResult"><span><small>{t("净交易结果", "Net result")}</small><b className={number(pnl) >= 0 ? "positiveText" : "negativeText"}>{finite(pnl) ? `${signedMoney(pnl)} USDT` : "—"}</b></span><div><Tone tone={sideTone(selected.direction || selected.side)}>{humanize(selected.direction || selected.side, t("已平仓", "Closed"))}</Tone><Tone tone={statusTone(selected.status)}>{humanize(selected.status)}</Tone></div></div><div className="reviewFacts"><span>{t("归因", "Attribution")}<b>{localizeText(selected.attribution || t("待归因", "Pending"))}</b></span><span>{t("费用", "Fees")}<b>{finite(selected.totalFeeUsdt ?? selected.feesUsdt) ? `${money(selected.totalFeeUsdt ?? selected.feesUsdt)} U` : "—"}</b></span><span>{t("持仓时长", "Hold time")}<b>{selected.holdMinutes ? `${selected.holdMinutes}m` : "—"}</b></span><span>{t("置信度", "Confidence")}<b>{finite(selected.confidence) ? `${selected.confidence}%` : "—"}</b></span></div><div className="reviewNarrative"><section><h3>{t("结果概述", "Outcome")}</h3><p>{localizeText(selected.summary || t("等待成交事实回补与结果汇总。", "Awaiting fill facts and outcome summary."))}</p></section><details open><summary>{t("判断与根因", "Analysis & root cause")}</summary><p>{localizeText(selected.deepReflection || selected.rootCause || selected.notes || t("深度归因仍在队列中。", "Deep attribution is still queued."))}</p></details><details><summary>{t("下一次如何改进", "What changes next time")}</summary><p>{localizeText(selected.improvement || selected.lesson || t("等待形成可执行的改进结论。", "Awaiting an actionable improvement."))}</p></details><details><summary>{t("学习证据", "Learning evidence")}</summary><p>{t("只有后续交易明确采用且达到同类对照样本门槛后，系统才会显示效果证据；写过复盘不等于已经证明有效。", "Effect evidence appears only after later trades explicitly apply the lesson and comparable sample thresholds are met; a written review is not proof of efficacy.")}</p></details></div></> : <CockpitEmpty title={t("选择一笔交易", "Select a trade")} detail={t("在左侧选择真实复盘查看完整证据。", "Select a real review on the left to inspect its evidence.")}/>}
       </Panel>
     </div>
-    <div className="reviewBottom"><Panel title={t("收益与持仓分布", "Return & hold distribution")}><MiniTrend values={execution.closedTrades.map((row) => row.netRealizedPnl)} height={96}/></Panel><Panel title={t("行为观察", "Behavior observations")}><div className="behaviorRows">{list(behavior.flags).slice(0, 3).map((flag, index) => <span key={flag.key || index}><AlertTriangle/><b>{localizeText(flag.title || flag.detail)}</b><small>{localizeText(flag.detail)}</small></span>)}{!list(behavior.flags).length && <p className="inlineEmpty">{t("暂无稳定的重复行为模式。", "No stable repeated behavior pattern yet.")}</p>}</div></Panel><Panel title={t("下一步", "Next actions")}><div className="nextActions"><span><Check/><p>{t("继续完成待复盘交易", "Complete pending reviews")}</p></span><span><Check/><p>{t("只在同类样本达标后评估改进", "Evaluate improvements only after comparable samples mature")}</p></span><span><Check/><p>{t("由 Owner 决定是否发布", "Owner decides whether to publish")}</p></span></div></Panel></div>
+    <div className="reviewBottom"><Panel title={t("收益与持仓分布", "Return & hold distribution")}><MiniTrend values={execution.closedTrades.map((row) => row.netRealizedPnl)} label={t("收益与持仓分布", "Return and hold distribution")} height={96}/></Panel><Panel title={t("行为观察", "Behavior observations")}><div className="behaviorRows">{list(behavior.flags).slice(0, 3).map((flag, index) => <span key={flag.key || index}><AlertTriangle/><b>{localizeText(flag.title || flag.detail)}</b><small>{localizeText(flag.detail)}</small></span>)}{!list(behavior.flags).length && <p className="inlineEmpty">{t("暂无稳定的重复行为模式。", "No stable repeated behavior pattern yet.")}</p>}</div></Panel><Panel title={t("下一步", "Next actions")}><div className="nextActions"><span><Check/><p>{t("继续完成待复盘交易", "Complete pending reviews")}</p></span><span><Check/><p>{t("只在同类样本达标后评估改进", "Evaluate improvements only after comparable samples mature")}</p></span><span><Check/><p>{t("由 Owner 决定是否发布", "Owner decides whether to publish")}</p></span></div></Panel></div>
   </div>;
 }
 

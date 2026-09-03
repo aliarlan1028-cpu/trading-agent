@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 import { findReviewTrade } from "../src/viewData.js";
+
+async function exists(url) {
+  try { await access(url); return true; } catch { return false; }
+}
 
 const app = await readFile(new URL("../src/aug15/App.jsx", import.meta.url), "utf8");
 const workspaces = await readFile(new URL("../src/aug15/workspacePages.jsx", import.meta.url), "utf8");
@@ -51,12 +55,18 @@ test("reference-driven pages expose distinct real product landmarks and honest e
 
 test("cockpit visual tokens and responsive contracts match the approved reference family", () => {
   for (const token of [
-    "--cockpit-accent",
+    "--cockpit-canvas",
+    "--cockpit-surface",
+    "--cockpit-text",
+    "--cockpit-text-2",
+    "--cockpit-text-3",
+    "--cockpit-brand",
     "--cockpit-positive",
     "--cockpit-negative",
+    "--cockpit-warning",
     "--cockpit-border",
-    "--cockpit-surface",
-    "--cockpit-muted"
+    "--cockpit-hairline",
+    "--cockpit-radius"
   ]) assert.match(cockpitCss, new RegExp(token));
   assert.match(cockpitCss, /\.tradingCockpit/);
   assert.match(cockpitCss, /@media \(max-width: 1280px\)/);
@@ -64,6 +74,15 @@ test("cockpit visual tokens and responsive contracts match the approved referenc
   assert.match(cockpitCss, /:focus-visible/);
   assert.doesNotMatch(cockpitCss, /!important/);
   assert.doesNotMatch(cockpitCss, /#[Cc][Cc][Ff][Ff]3[Dd]|box-shadow:\s*\d+px\s+\d+px\s+0/);
+});
+
+test("cockpit primitives live in dedicated shared and visual modules", async () => {
+  for (const modulePath of [
+    "../src/aug15/tradingCockpit/shared.jsx",
+    "../src/aug15/tradingCockpit/visuals.jsx"
+  ]) assert.equal(await exists(new URL(modulePath, import.meta.url)), true);
+
+  assert.doesNotMatch(cockpit, /function (?:Panel|Metric|MiniTrend|DataTable)\(/);
 });
 
 test("the authenticated browser harness can prove honest empty states without production writes", () => {
