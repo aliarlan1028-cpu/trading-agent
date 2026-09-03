@@ -264,6 +264,28 @@ test("cockpit URL state scopes review restoration without rewriting unknown rout
   assert.deepEqual(calls, []);
 });
 
+test("every desktop cockpit alias owns one truthful canonical URL", () => {
+  const aliases = new Map([
+    ["cockpit", "/app/trade/overview"],
+    ["marketAccount", "/app/trade/overview"],
+    ["market", "/app/trade/market"],
+    ["positions", "/app/trade/positions"],
+    ["portfolioProtection", "/app/trade/positions"],
+    ["signalHub", "/app/trade/execution-review"],
+    ["tradeJournal", "/app/trade/execution-review"],
+    ["executionReview", "/app/trade/execution-review"],
+    ["tradeReviewDetail", "/app/trade/execution-review"],
+    ["labReviews", "/app/trade/execution-review"],
+    ["ownerReviewWorkspace", "/app/trade/execution-review"],
+    ["tradeLedger", "/app/trade/orders-fills"],
+    ["tradeOrders", "/app/trade/orders-fills"],
+    ["tradeFills", "/app/trade/orders-fills"]
+  ]);
+  for (const [route, path] of aliases) {
+    assert.equal(cockpitPathForRoute(route), path, `${route} canonicalizes to ${path}`);
+  }
+});
+
 test("cockpit history exits through app root and restores safe popstate routes", () => {
   const calls = [];
   const history = {
@@ -275,14 +297,30 @@ test("cockpit history exits through app root and restores safe popstate routes",
 
   assert.equal(syncCockpitHistory("riskOverview", { history, location: cockpitLocation }), true);
   assert.deepEqual(calls[0], ["push", { retained: true, kordynRoute: "riskOverview" }, "", "/app?tenant=owner#trace"]);
-  assert.equal(cockpitRouteFromHistory("/app", { kordynRoute: "riskOverview" }), "riskOverview");
+  const recognizedNonCockpit = new Set(["chat", "riskOverview", "systemSettings"]);
+  const historyOptions = { isRecognizedRoute: (route) => recognizedNonCockpit.has(route) };
+  assert.equal(cockpitRouteFromHistory("/app", { kordynRoute: "riskOverview" }, historyOptions), "riskOverview");
+  assert.equal(cockpitRouteFromHistory("/app", { kordynRoute: "systemSettings" }, historyOptions), "systemSettings");
   assert.equal(cockpitRouteFromHistory("/app/", null), "chat");
   assert.equal(cockpitRouteFromHistory("/app", { kordynRoute: { unsafe: true } }), "chat");
   assert.equal(cockpitRouteFromHistory("/app", { kordynRoute: " ../outside " }), "chat");
+  assert.equal(cockpitRouteFromHistory("/app", { kordynRoute: "retiredCockpitAlias" }, historyOptions), "chat");
+  for (const forgedRoute of [
+    "cockpit", "market", "marketAccount", "positions", "portfolioProtection",
+    "signalHub", "tradeJournal", "executionReview", "tradeReviewDetail", "labReviews",
+    "ownerReviewWorkspace", "tradeLedger", "tradeOrders", "tradeFills",
+    "tradeReviewDetail:review-18"
+  ]) {
+    assert.equal(cockpitRouteFromHistory("/app", { kordynRoute: forgedRoute }, historyOptions), "chat", `${forgedRoute} cannot restore cockpit under /app`);
+  }
   assert.equal(cockpitRouteFromHistory("/outside", { kordynRoute: "chat" }), null);
 
   const externalCalls = [];
   assert.equal(syncCockpitHistory("chat", {
+    history: { pushState: (...args) => externalCalls.push(args) },
+    location: { pathname: "/outside", search: "", hash: "", protocol: "https:" }
+  }), false);
+  assert.equal(syncCockpitHistory("marketAccount", {
     history: { pushState: (...args) => externalCalls.push(args) },
     location: { pathname: "/outside", search: "", hash: "", protocol: "https:" }
   }), false);

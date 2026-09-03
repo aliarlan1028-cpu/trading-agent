@@ -236,7 +236,41 @@ try {
     await evaluate(cdp, `history.forward()`);
     await waitForExpression(cdp, `location.pathname === '/app' && document.querySelector('[data-classic-view="systemSettings"]')`, "Forward restores settings UI from history state");
     steps.push(await evaluate(cdp, `({ step: 'settings-forward', path: location.pathname, view: document.querySelector('.appShell')?.dataset.classicView || '', route: document.querySelector('.appShell')?.dataset.classicCapability || '' })`));
-    historyFacts = steps;
+
+    await evaluate(cdp, `document.querySelector('[data-classic-target="chat"]')?.click()`);
+    await waitForExpression(cdp, `location.pathname === '/app' && document.querySelector('[data-classic-view="chat"]')`, "alias gate starts from app-root chat");
+    const aliasCases = [
+      { query: "synthetic-okx", objectId: "synthetic-okx", objectType: "Account", route: "marketAccount", path: "/app/trade/overview", page: "overview" },
+      { query: "plan-0", objectId: "plan-0", objectType: "Trade plan", route: "signalHub", path: "/app/trade/execution-review", page: "execution" },
+      { query: "ord-00", objectId: "ord-00", objectType: "Execution", route: "executionReview", path: "/app/trade/execution-review", page: "execution" },
+      { query: "review-00", objectId: "review-00", objectType: "Review", route: "labReviews", path: "/app/trade/execution-review", page: "execution" },
+      { query: "tradeReviewDetail", featureRoute: "tradeReviewDetail", route: "tradeReviewDetail", path: "/app/trade/execution-review", page: "execution" },
+      { query: "ownerReviewWorkspace", featureRoute: "ownerReviewWorkspace", route: "ownerReviewWorkspace", path: "/app/trade/execution-review", page: "execution" },
+      { query: "tradeLedger", featureRoute: "tradeLedger", route: "tradeLedger", path: "/app/trade/orders-fills", page: "ledger" }
+    ];
+    const aliasFacts = [];
+    for (const aliasCase of aliasCases) {
+      await evaluate(cdp, `(() => { const input = document.querySelector('[aria-label="全局搜索"]'); if (!input) return false; const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; setter.call(input, ${JSON.stringify(aliasCase.query)}); input.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+      const resultExpression = aliasCase.featureRoute
+        ? `(() => [...document.querySelectorAll('#august15-search-results [role="option"]')].some((node) => node.querySelector('code')?.textContent === ${JSON.stringify(aliasCase.featureRoute)}))()`
+        : `Boolean(document.querySelector('#august15-search-results [data-shell-object-id=${JSON.stringify(aliasCase.objectId)}][data-shell-object-type=${JSON.stringify(aliasCase.objectType)}]'))`;
+      await waitForExpression(cdp, resultExpression, `${aliasCase.route} production search result`);
+      await evaluate(cdp, aliasCase.featureRoute
+        ? `([...document.querySelectorAll('#august15-search-results [role="option"]')].find((node) => node.querySelector('code')?.textContent === ${JSON.stringify(aliasCase.featureRoute)}))?.click()`
+        : `document.querySelector('#august15-search-results [data-shell-object-id=${JSON.stringify(aliasCase.objectId)}][data-shell-object-type=${JSON.stringify(aliasCase.objectType)}]')?.click()`);
+      await waitForExpression(cdp, `location.pathname === ${JSON.stringify(aliasCase.path)} && document.querySelector('[data-cockpit-page=${JSON.stringify(aliasCase.page)}]')`, `${aliasCase.route} canonical cockpit destination`);
+      aliasFacts.push({ requestedRoute: aliasCase.route, ...await evaluate(cdp, `({ activeRoute: document.querySelector('.appShell')?.dataset.classicCapability || '', path: location.pathname, page: document.querySelector('[data-cockpit-page]')?.dataset.cockpitPage || '' })`) });
+      await evaluate(cdp, `document.querySelector('.cockpitBrand')?.click()`);
+      await waitForExpression(cdp, `location.pathname === '/app' && document.querySelector('[data-classic-view="chat"]')`, `${aliasCase.route} returns to app-root chat`);
+    }
+
+    const forgedFacts = [];
+    for (const forgedRoute of ["marketAccount", "tradeReviewDetail:review-18", "retiredCockpitAlias"]) {
+      await evaluate(cdp, `(() => { const state = { kordynRoute: ${JSON.stringify(forgedRoute)} }; history.replaceState(state, '', '/app'); window.dispatchEvent(new PopStateEvent('popstate', { state })); })()`);
+      await waitForExpression(cdp, `location.pathname === '/app' && document.querySelector('[data-classic-view="chat"]') && document.querySelector('.appShell')?.dataset.classicCapability === 'chat'`, `${forgedRoute} fails closed at app root`);
+      forgedFacts.push(await evaluate(cdp, `({ stateRoute: history.state?.kordynRoute || '', path: location.pathname, view: document.querySelector('.appShell')?.dataset.classicView || '', route: document.querySelector('.appShell')?.dataset.classicCapability || '' })`));
+    }
+    historyFacts = { steps, aliasFacts, forgedFacts };
   }
 
   const results = [];

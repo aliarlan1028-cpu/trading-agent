@@ -446,6 +446,8 @@ export function August15App() {
   return <August15AuthenticatedShell api={api} lang={lang} switchLang={switchLang} />;
 }
 
+const isRecognizedHistoryRoute = (route) => resolveDesktopRoute(route).recognized;
+
 export function August15AuthenticatedShell({ api, lang, switchLang }) {
   const initialCockpitRoute = cockpitRouteFromPath(globalThis.location?.pathname);
   const initialCockpitResolution = initialCockpitRoute ? resolveDesktopRoute(initialCockpitRoute) : null;
@@ -465,7 +467,7 @@ export function August15AuthenticatedShell({ api, lang, switchLang }) {
   }, [active, Boolean(data)]);
   useEffect(() => {
     const applyCockpitLocation = (event) => {
-      const route = cockpitRouteFromHistory(window.location.pathname, event.state);
+      const route = cockpitRouteFromHistory(window.location.pathname, event.state, { isRecognizedRoute: isRecognizedHistoryRoute });
       const safeRoute = route && resolveDesktopRoute(route).recognized ? route : route ? "chat" : null;
       if (safeRoute) navigate(safeRoute, { syncHistory: false });
     };

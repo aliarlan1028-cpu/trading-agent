@@ -2,13 +2,28 @@ const APP_TRADE_ROOT = "/app/trade";
 
 const ROUTE_PATHS = Object.freeze({
   cockpit: `${APP_TRADE_ROOT}/overview`,
+  marketAccount: `${APP_TRADE_ROOT}/overview`,
   market: `${APP_TRADE_ROOT}/market`,
   positions: `${APP_TRADE_ROOT}/positions`,
+  portfolioProtection: `${APP_TRADE_ROOT}/positions`,
+  signalHub: `${APP_TRADE_ROOT}/execution-review`,
   tradeJournal: `${APP_TRADE_ROOT}/execution-review`,
-  tradeLedger: `${APP_TRADE_ROOT}/orders-fills`
+  executionReview: `${APP_TRADE_ROOT}/execution-review`,
+  tradeReviewDetail: `${APP_TRADE_ROOT}/execution-review`,
+  labReviews: `${APP_TRADE_ROOT}/execution-review`,
+  ownerReviewWorkspace: `${APP_TRADE_ROOT}/execution-review`,
+  tradeLedger: `${APP_TRADE_ROOT}/orders-fills`,
+  tradeOrders: `${APP_TRADE_ROOT}/orders-fills`,
+  tradeFills: `${APP_TRADE_ROOT}/orders-fills`
 });
 
-const PATH_ROUTES = new Map(Object.entries(ROUTE_PATHS).map(([route, path]) => [path, route]));
+const PATH_ROUTES = new Map([
+  [`${APP_TRADE_ROOT}/overview`, "cockpit"],
+  [`${APP_TRADE_ROOT}/market`, "market"],
+  [`${APP_TRADE_ROOT}/positions`, "positions"],
+  [`${APP_TRADE_ROOT}/execution-review`, "tradeJournal"],
+  [`${APP_TRADE_ROOT}/orders-fills`, "tradeLedger"]
+]);
 
 const normalizePath = (pathname = "") => {
   const clean = String(pathname || "").split(/[?#]/, 1)[0].replace(/\/+$/, "");
@@ -48,11 +63,13 @@ export function cockpitRouteFromPath(pathname = "") {
   return PATH_ROUTES.get(path) || null;
 }
 
-export function cockpitRouteFromHistory(pathname = "", state = null) {
+export function cockpitRouteFromHistory(pathname = "", state = null, { isRecognizedRoute } = {}) {
   const cockpitRoute = cockpitRouteFromPath(pathname);
   if (cockpitRoute) return cockpitRoute;
   if (normalizePath(pathname) !== "/app") return null;
-  return historyRouteToken(state?.kordynRoute) ? state.kordynRoute : "chat";
+  const stateRoute = state?.kordynRoute;
+  if (!historyRouteToken(stateRoute) || cockpitPathForRoute(stateRoute)) return "chat";
+  return typeof isRecognizedRoute === "function" && isRecognizedRoute(stateRoute) ? stateRoute : "chat";
 }
 
 export function syncCockpitHistory(route, {
@@ -60,8 +77,11 @@ export function syncCockpitHistory(route, {
   location = globalThis.location,
   mode = "push"
 } = {}) {
+  const currentPath = normalizePath(location?.pathname);
+  const currentCockpitRoute = cockpitRouteFromPath(currentPath);
+  if (currentPath !== "/app" && !currentCockpitRoute) return false;
   let path = cockpitPathForRoute(route);
-  if (!path && cockpitRouteFromPath(location?.pathname) && historyRouteToken(route)) path = "/app";
+  if (!path && currentCockpitRoute && historyRouteToken(route)) path = "/app";
   if (!path || !history || !location || mode === "none") return false;
   if (location.protocol === "capacitor:" || globalThis.document?.documentElement?.classList?.contains("nativeApp")) return false;
   const href = `${path}${location.search || ""}${location.hash || ""}`;
