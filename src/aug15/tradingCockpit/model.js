@@ -5,6 +5,7 @@ const objectRows = (value) => rows(value).filter((row) => row && typeof row === 
 const hasOwn = (value, key) => Boolean(value && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, key));
 const finiteNumber = (value) => value !== null && value !== undefined && (typeof value !== "string" || value.trim() !== "") && Number.isFinite(Number(value));
 const nonBlankText = (value) => typeof value === "string" && value.trim() !== "";
+const normalizedIdentity = (value) => typeof value === "string" && value.trim() ? value.trim() : Number.isFinite(value) ? String(value) : null;
 const timeOf = (row) => row && typeof row === "object" ? new Date(row.updatedAt ?? row.completedAt ?? row.createdAt ?? 0).getTime() || 0 : 0;
 const byNewest = (a, b) => timeOf(b) - timeOf(a);
 const byOldest = (a, b) => timeOf(a) - timeOf(b);
@@ -167,14 +168,17 @@ export function buildPositionPresentation(data = {}) {
   return {
     ...base,
     positions: base.positions.map((position) => {
-      const executionOrderId = position.executionOrderId ?? null;
-      const positionId = position.positionId ?? null;
-      const order = orders.find((row) =>
-        (executionOrderId != null && String(row.id ?? "") === String(executionOrderId)) ||
-        (positionId != null && String(row.positionId ?? "") === String(positionId))
-      ) ?? null;
-      const planId = order?.tradePlanId ?? order?.planId ?? position.tradePlanId ?? position.planId;
-      const plan = plans.find((row) => planId != null && String(row.id) === String(planId)) ?? null;
+      const executionOrderId = normalizedIdentity(position.executionOrderId);
+      const positionId = normalizedIdentity(position.positionId);
+      const orderMatches = executionOrderId
+        ? orders.filter((row) => normalizedIdentity(row.id) === executionOrderId)
+        : positionId
+          ? orders.filter((row) => normalizedIdentity(row.positionId) === positionId)
+          : [];
+      const order = orderMatches.length === 1 ? orderMatches[0] : null;
+      const planId = [order?.tradePlanId, order?.planId, position.tradePlanId, position.planId].map(normalizedIdentity).find(Boolean) ?? null;
+      const planMatches = planId ? plans.filter((row) => normalizedIdentity(row.id) === planId) : [];
+      const plan = planMatches.length === 1 ? planMatches[0] : null;
       return {
         ...position,
         id: cockpitObjectId(position),

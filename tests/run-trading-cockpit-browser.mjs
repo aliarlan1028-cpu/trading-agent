@@ -32,7 +32,7 @@ const regularChartMode = !stateMode || ["loaded", "ready"].includes(stateMode);
 const marketIntervalSequence = ["1h", "4h", "1D"];
 assert.ok(!stateMode || resourceStateModes.has(stateMode) || chartStatusByMode.has(stateMode), `Unsupported KORDYN_COCKPIT_STATE: ${stateMode}`);
 assert.ok(!marketCase || ["malformed", "mismatched"].includes(marketCase), `Unsupported KORDYN_COCKPIT_MARKET_CASE: ${marketCase}`);
-assert.ok(!positionCase || positionCase === "malformed", `Unsupported KORDYN_COCKPIT_POSITION_CASE: ${positionCase}`);
+assert.ok(!positionCase || ["malformed", "partial"].includes(positionCase), `Unsupported KORDYN_COCKPIT_POSITION_CASE: ${positionCase}`);
 assert.ok(views.length, "KORDYN_COCKPIT_VIEWS must name at least one canonical cockpit view");
 
 function withCdpCommandTimeout(promise, method) {
@@ -274,6 +274,9 @@ try {
         const tableRegion = page?.querySelector('[data-cockpit-region="position-table"]');
         const trendRegion = page?.querySelector('[data-cockpit-region="portfolio-pnl-trend"]');
         const trend = trendRegion?.querySelector('.cockpitAreaTrend');
+        const allocationRegion = page?.querySelector('[data-cockpit-region="position-allocation"]');
+        const longShortRegion = page?.querySelector('[data-cockpit-region="long-short"]');
+        const concentrationRegion = page?.querySelector('[data-cockpit-region="concentration"]');
         return {
           state: page?.dataset.resourceState || null,
           statePanel: page?.querySelector('[data-position-resource-state]')?.dataset.positionResourceState || null,
@@ -281,8 +284,12 @@ try {
           rowCount: page?.querySelectorAll('[data-position-id]').length || 0,
           positionOnlyText: positionRow?.textContent || '',
           positionOnlyExecution: positionRow?.dataset.executionId || null,
-          wrongProtectionVisible: /13\.37|14\.88/.test(positionRow?.textContent || ''),
+          wrongProtectionVisible: /13\.37|14\.88/.test(tableRegion?.textContent || ''),
           exitCount: page?.querySelectorAll('[data-position-exit]').length || 0,
+          allocationText: allocationRegion?.textContent || '',
+          longShortText: longShortRegion?.textContent || '',
+          concentrationText: concentrationRegion?.textContent || '',
+          lastAction: window.__cockpitLastAction || null,
           tableHeight: tableRegion?.getBoundingClientRect().height || 0,
           trendWidthRatio: trendRegion && trend ? trend.getBoundingClientRect().width / trendRegion.getBoundingClientRect().width : null,
           columnPct: totalWidth ? columns.map((value) => value / totalWidth * 100) : [],
@@ -394,9 +401,19 @@ try {
           assert.equal(positionStateFacts.exitCount, 0, `${width}x${height} empty positions renders no exit action`);
           assert.ok(positionStateFacts.tableHeight > 0 && positionStateFacts.tableHeight < 260, `${width}x${height} empty positions uses a compact table state (${positionStateFacts.tableHeight}px)`);
         } else if (positionCase === "malformed") {
-          assert.equal(positionStateFacts.rowCount, 0, `${width}x${height} malformed positions renders no identity-less row`);
+          assert.equal(positionStateFacts.rowCount, 3, `${width}x${height} malformed action fixture retains only its three identity-bearing position facts`);
           assert.equal(positionStateFacts.exitCount, 0, `${width}x${height} malformed positions cannot authorize an exit`);
           assert.equal(positionStateFacts.wrongProtectionVisible, false, `${width}x${height} malformed positions does not render unrelated protection`);
+          assert.equal(positionStateFacts.lastAction, null, `${width}x${height} malformed and ambiguous executions issue no request`);
+        } else if (positionCase === "partial") {
+          assert.equal(positionStateFacts.rowCount, 2, `${width}x${height} partial positions retains both real rows`);
+          assert.equal(positionStateFacts.exitCount, 0, `${width}x${height} partial positions exposes no unrelated action`);
+          assert.match(positionStateFacts.allocationText, /持仓分布不完整/, `${width}x${height} partial allocation is explicitly incomplete`);
+          assert.match(positionStateFacts.longShortText, /多空分布不完整/, `${width}x${height} partial long-short composition is explicitly incomplete`);
+          assert.doesNotMatch(positionStateFacts.longShortText, /100\.0%/, `${width}x${height} partial long-short does not turn known remainder into 100%`);
+          assert.match(positionStateFacts.concentrationText, /集中度数据不完整/, `${width}x${height} partial concentration is explicitly incomplete`);
+          assert.doesNotMatch(positionStateFacts.concentrationText, /空仓，无集中度风险/, `${width}x${height} partial concentration is not mislabeled flat`);
+          assert.equal(positionStateFacts.lastAction, null, `${width}x${height} partial fixture issues no request`);
         } else {
           for (const region of requiredRegions) assert.ok(positionStateFacts.regions.includes(region), `${width}x${height} positions renders ${region}`);
           assert.equal(positionStateFacts.positionOnlyExecution, "ord-00", `${width}x${height} positionId-only row resolves the exact position-linked execution, not colliding order id ord-04`);

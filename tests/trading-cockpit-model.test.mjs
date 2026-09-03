@@ -266,6 +266,71 @@ test("position protection is joined only from the matching plan or order", () =>
   assert.deepEqual(model.positions[0].takeProfits, [120]);
 });
 
+test("position protection never falls back when an explicit execution id is missing", () => {
+  const model = buildPositionPresentation({
+    positions: [{ positionId: "p-1", executionOrderId: "missing-order", symbol: "BTC/USDT", quantity: 1 }],
+    executionOrders: [{ id: "fallback-order", positionId: "p-1", tradePlanId: "fallback-plan" }],
+    tradePlans: [{ id: "fallback-plan", stopLoss: 13.37, takeProfit: [14.88] }]
+  });
+  assert.equal(model.positions[0].stopLoss, null);
+  assert.deepEqual(model.positions[0].takeProfits, []);
+});
+
+test("position protection rejects duplicate explicit execution identities", () => {
+  const model = buildPositionPresentation({
+    positions: [{ positionId: "p-1", executionOrderId: "duplicate-order", symbol: "BTC/USDT", quantity: 1 }],
+    executionOrders: [
+      { id: "duplicate-order", tradePlanId: "first-plan" },
+      { id: "duplicate-order", tradePlanId: "second-plan" }
+    ],
+    tradePlans: [
+      { id: "first-plan", stopLoss: 91 },
+      { id: "second-plan", stopLoss: 92 }
+    ]
+  });
+  assert.equal(model.positions[0].stopLoss, null);
+});
+
+test("position protection rejects duplicate position-linked executions", () => {
+  const model = buildPositionPresentation({
+    positions: [{ positionId: "duplicate-position", symbol: "BTC/USDT", quantity: 1 }],
+    executionOrders: [
+      { id: "first-order", positionId: "duplicate-position", tradePlanId: "first-plan" },
+      { id: "second-order", positionId: "duplicate-position", tradePlanId: "second-plan" }
+    ],
+    tradePlans: [
+      { id: "first-plan", stopLoss: 91 },
+      { id: "second-plan", stopLoss: 92 }
+    ]
+  });
+  assert.equal(model.positions[0].stopLoss, null);
+});
+
+test("position protection rejects duplicate and blank plan identities", () => {
+  const duplicate = buildPositionPresentation({
+    positions: [{ positionId: "p-duplicate-plan", symbol: "BTC/USDT", quantity: 1 }],
+    executionOrders: [{ id: "order-1", positionId: "p-duplicate-plan", tradePlanId: "duplicate-plan" }],
+    tradePlans: [{ id: "duplicate-plan", stopLoss: 91 }, { id: "duplicate-plan", stopLoss: 92 }]
+  });
+  const blank = buildPositionPresentation({
+    positions: [{ positionId: "p-blank-plan", executionOrderId: " ", symbol: "ETH/USDT", quantity: 1 }],
+    executionOrders: [{ id: "order-2", positionId: "p-blank-plan", tradePlanId: " " }],
+    tradePlans: [{ id: "", stopLoss: 13.37 }, { id: " ", stopLoss: 14.88 }]
+  });
+  assert.equal(duplicate.positions[0].stopLoss, null);
+  assert.equal(blank.positions[0].stopLoss, null);
+});
+
+test("position protection uses one unique position fallback and one unique plan", () => {
+  const model = buildPositionPresentation({
+    positions: [{ positionId: "unique-position", symbol: "SOL/USDT", quantity: 1 }],
+    executionOrders: [{ id: "unique-order", positionId: "unique-position", tradePlanId: "unique-plan" }],
+    tradePlans: [{ id: "unique-plan", stopLoss: 88, takeProfit: [123] }]
+  });
+  assert.equal(model.positions[0].stopLoss, 88);
+  assert.deepEqual(model.positions[0].takeProfits, [123]);
+});
+
 test("execution stages never borrow evidence from another order", () => {
   const stages = buildSelectedExecutionStages({
     executionOrders: [{ id: "o-1", tradePlanId: "p-1" }, { id: "o-2", tradePlanId: "p-2" }],

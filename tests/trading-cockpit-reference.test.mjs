@@ -206,6 +206,79 @@ test("positions keeps absent financial and protection facts unavailable", () => 
   assert.doesNotMatch(html, /(?:市价平仓|Close at market)/);
 });
 
+test("positions authorizes exits only from one exact execution with a canonical id", () => {
+  const html = render(PositionsPage, {
+    data: {
+      resourceState: { cockpit: "loaded" },
+      positions: [
+        { positionId: "p-explicit", executionOrderId: "alias-explicit", symbol: "BTC/USDT", direction: "long", notionalUsdt: 100 },
+        { positionId: "p-fallback", symbol: "ETH/USDT", direction: "short", notionalUsdt: 80 },
+        { positionId: "p-ambiguous", symbol: "SOL/USDT", direction: "long", notionalUsdt: 60 }
+      ],
+      executionOrders: [
+        { orderId: "alias-explicit", positionId: "p-explicit", status: "protecting" },
+        { orderId: "alias-fallback", positionId: "p-fallback", status: "protecting" },
+        { id: "ambiguous-one", positionId: "p-ambiguous", status: "protecting" },
+        { id: "ambiguous-two", positionId: "p-ambiguous", status: "protecting" }
+      ],
+      tradePlans: [], accountSnapshots: [], portfolio: {}, portfolioRisk: {}
+    },
+    action() {},
+    ui: {}
+  });
+  assert.equal((html.match(/data-position-exit/g) || []).length, 0);
+  assert.doesNotMatch(html, /(?:市价平仓|Close at market)/);
+});
+
+test("positions labels partial composition instead of calculating a known-row remainder", () => {
+  const partial = render(PositionsPage, {
+    data: {
+      resourceState: { cockpit: "loaded" },
+      positions: [
+        { positionId: "known-long", symbol: "BTC/USDT", direction: "long", notionalUsdt: 100, unrealizedPnl: 2 },
+        { positionId: "unknown-composition", symbol: "ETH/USDT", quantity: 1, unrealizedPnl: -1 }
+      ],
+      executionOrders: [], tradePlans: [], accountSnapshots: [], portfolio: {}, portfolioRisk: {}
+    },
+    action() {},
+    ui: {}
+  });
+  const allocation = partial.match(/<section[^>]*data-cockpit-region="position-allocation"[^]*?<\/section>/)?.[0] || "";
+  const longShort = partial.match(/<section[^>]*data-cockpit-region="long-short"[^]*?<\/section>/)?.[0] || "";
+  const concentration = partial.match(/<section[^>]*data-cockpit-region="concentration"[^]*?<\/section>/)?.[0] || "";
+  assert.match(allocation, /(?:持仓分布不完整|Position allocation incomplete)/);
+  assert.match(longShort, /(?:多空分布不完整|Long \/ short distribution incomplete)/);
+  assert.doesNotMatch(longShort, /100\.0%/);
+  assert.match(concentration, /(?:集中度数据不完整|Concentration data incomplete)/);
+  assert.doesNotMatch(concentration, /(?:空仓，无集中度风险|Flat; no concentration risk)/);
+
+  const flat = render(PositionsPage, {
+    data: { resourceState: { cockpit: "loaded" }, positions: [], executionOrders: [], tradePlans: [], accountSnapshots: [], portfolio: {}, portfolioRisk: {} },
+    action() {}, ui: {}
+  });
+  assert.match(flat, /(?:当前空仓，暂无持仓分布|Currently flat; no position allocation)/);
+  assert.match(flat, /(?:当前空仓，暂无方向敞口|Currently flat; no directional exposure)/);
+});
+
+test("positions requires every notional-bearing row to have a valid direction", () => {
+  const html = render(PositionsPage, {
+    data: {
+      resourceState: { cockpit: "loaded" },
+      positions: [
+        { positionId: "known-long", symbol: "BTC/USDT", direction: "long", notionalUsdt: 100 },
+        { positionId: "unknown-side", symbol: "ETH/USDT", notionalUsdt: 100 }
+      ],
+      executionOrders: [], tradePlans: [], accountSnapshots: [], portfolio: {}, portfolioRisk: {}
+    },
+    action() {}, ui: {}
+  });
+  const longShort = html.match(/<section[^>]*data-cockpit-region="long-short"[^]*?<\/section>/)?.[0] || "";
+  const concentration = html.match(/<section[^>]*data-cockpit-region="concentration"[^]*?<\/section>/)?.[0] || "";
+  assert.match(longShort, /(?:多空分布不完整|Long \/ short distribution incomplete)/);
+  assert.doesNotMatch(longShort, /100\.0%/);
+  assert.match(concentration, /(?:集中度数据不完整|Concentration data incomplete)/);
+});
+
 test("positions empty and malformed inputs cannot fabricate rows, metrics, protection, or actions", () => {
   const base = { resourceState: { cockpit: "loaded" }, portfolio: {}, portfolioRisk: {}, executionOrders: [], tradePlans: [], accountSnapshots: [] };
   const empty = render(PositionsPage, { data: { ...base, positions: [] }, action() {}, ui: {} });

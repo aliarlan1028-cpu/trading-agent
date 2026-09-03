@@ -42,13 +42,13 @@ function uniqueExecutionFor(position, executionOrders) {
   const positionId = identity(position.positionId);
   const candidates = list(executionOrders).filter((row) => row && typeof row === "object");
   const matches = executionOrderId
-    ? candidates.filter((row) => identity(row.id ?? row.orderId ?? row.executionOrderId) === executionOrderId)
+    ? candidates.filter((row) => identity(row.id) === executionOrderId)
     : positionId
       ? candidates.filter((row) => identity(row.positionId) === positionId)
       : [];
   if (matches.length !== 1) return null;
   const match = matches[0];
-  return identity(match.id ?? match.orderId ?? match.executionOrderId) ? match : null;
+  return identity(match.id) ? match : null;
 }
 
 function allocationRows(positions) {
@@ -124,23 +124,23 @@ function AccountConstraints({ data, positions, utilization }) {
   </section>;
 }
 
-function PositionAllocation({ rows, total }) {
+function PositionAllocation({ rows, total, hasPositions, complete }) {
   const segments = rows.map((row, index) => ({ value: row.value, color: ALLOCATION_COLORS[index % ALLOCATION_COLORS.length] }));
   return <CockpitPanel className="positionAllocationPanel" region="position-allocation" title={t("持仓分布", "Position allocation")} meta={t("按真实名义价值", "By live notional")}>
-    {rows.length && total !== null ? <div className="positionAllocationBody">
+    {!hasPositions ? <CockpitEmpty icon={WalletCards} title={t("当前空仓，暂无持仓分布", "Currently flat; no position allocation")}/> : !complete ? <CockpitEmpty icon={WalletCards} title={t("持仓分布不完整", "Position allocation incomplete")} detail={t("部分持仓缺少正数名义价值，无法计算完整权重。", "Some positions lack positive notional, so complete weights are unavailable.")}/> : <div className="positionAllocationBody">
       <DonutChart segments={segments} value={money(total)} label="USDT" ariaLabel={t("按名义价值计算的持仓分布", "Position allocation by notional")}/>
       <div className="positionAllocationRows">{rows.slice(0, 6).map((row, index) => <span key={row.symbol}><i style={{ background: ALLOCATION_COLORS[index % ALLOCATION_COLORS.length] }}/><b>{row.symbol}</b><em>{(row.value / total * 100).toFixed(1)}%</em><small>{money(row.value)} U</small></span>)}</div>
-    </div> : <CockpitEmpty icon={WalletCards} title={t("暂无可计算配置", "No calculable allocation")} detail={t("真实持仓名义价值同步后显示资产权重。", "Asset weights appear after live position notional is available.")}/>}
+    </div>}
   </CockpitPanel>;
 }
 
-function LongShort({ positions }) {
-  const known = positions.map((row) => ({ tone: sideTone(row.direction ?? row.side ?? row.posSide), value: numeric(row.notionalUsdt) })).filter((row) => row.value !== null && row.value > 0 && row.tone !== "neutral");
+function LongShort({ positions, complete }) {
+  const known = complete ? positions.map((row) => ({ tone: sideTone(row.direction ?? row.side ?? row.posSide), value: numeric(row.notionalUsdt) })) : [];
   const long = known.filter((row) => row.tone === "positive").reduce((sum, row) => sum + row.value, 0);
   const short = known.filter((row) => row.tone === "negative").reduce((sum, row) => sum + row.value, 0);
   const total = long + short;
   return <CockpitPanel className="positionLongShort" region="long-short" title={t("多空分布", "Long / short")} meta={t("按名义价值", "By notional")}>
-    {total > 0 ? <div className="positionLongShortBody"><div><span style={{ width: `${long / total * 100}%` }}/><i style={{ width: `${short / total * 100}%` }}/></div><p><span><small>{t("多头", "Long")}</small><b className="positiveText">{(long / total * 100).toFixed(1)}%</b></span><span><small>{t("空头", "Short")}</small><b className="negativeText">{(short / total * 100).toFixed(1)}%</b></span></p></div> : <CockpitEmpty icon={Layers3} title={t("方向敞口不可用", "Directional exposure unavailable")}/>}
+    {!positions.length ? <CockpitEmpty icon={Layers3} title={t("当前空仓，暂无方向敞口", "Currently flat; no directional exposure")}/> : !complete ? <CockpitEmpty icon={Layers3} title={t("多空分布不完整", "Long / short distribution incomplete")} detail={t("部分持仓缺少正数名义价值或有效方向。", "Some positions lack positive notional or a valid side.")}/> : <div className="positionLongShortBody"><div><span style={{ width: `${long / total * 100}%` }}/><i style={{ width: `${short / total * 100}%` }}/></div><p><span><small>{t("多头", "Long")}</small><b className="positiveText">{(long / total * 100).toFixed(1)}%</b></span><span><small>{t("空头", "Short")}</small><b className="negativeText">{(short / total * 100).toFixed(1)}%</b></span></p></div>}
   </CockpitPanel>;
 }
 
@@ -168,7 +168,7 @@ function PositionTable({ positions, executionOrders, action, actionsEnabled }) {
         const targets = list(row.takeProfits).map(numeric).filter((value) => value !== null);
         const pnl = numeric(row.unrealizedPnl ?? row.pnl ?? row.upl);
         const marginRatio = numeric(row.marginRatio ?? row.marginRatioPct);
-        return <tbody key={rowId} data-position-id={rowId} data-execution-id={identity(execution?.id ?? execution?.orderId ?? execution?.executionOrderId) ?? undefined}>
+        return <tbody key={rowId} data-position-id={rowId} data-execution-id={identity(execution?.id) ?? undefined}>
           <tr className="positionPrimaryRow">
             <td><span className="positionSymbol"><b>{identity(row.symbol ?? row.instId) ?? t("不可用", "Unavailable")}</b><Tone tone={sideTone(row.direction ?? row.side ?? row.posSide)}>{humanize(row.direction ?? row.side ?? row.posSide, t("方向不可用", "Side unavailable"))}</Tone><small>{row.source === "execution_engine" ? t("AI 托管", "AI-managed") : t("外部 / 手动", "External / manual")}</small></span></td>
             <td>{finite(row.quantity ?? row.size ?? row.pos ?? row.qty) ? String(row.quantity ?? row.size ?? row.pos ?? row.qty) : t("不可用", "Unavailable")}</td>
@@ -178,7 +178,7 @@ function PositionTable({ positions, executionOrders, action, actionsEnabled }) {
             <td>{finite(row.leverage) ? `${Number(row.leverage)}x` : t("不可用", "Unavailable")}</td>
             <td>{money(row.liquidationPrice ?? row.liqPx)}</td>
             <td>{finite(row.margin ?? row.initialMargin) ? `${money(row.margin ?? row.initialMargin)} U` : t("不可用", "Unavailable")}</td>
-            <td>{exit ? <button type="button" className="positionExitButton" data-position-exit data-execution-id={identity(execution.id ?? execution.orderId ?? execution.executionOrderId)} onClick={() => requestExecutionExit(action, execution, "manual_ui")}>{exit.label}</button> : <span className="positionNoAction">{t("无可用操作", "No available action")}</span>}</td>
+            <td>{exit ? <button type="button" className="positionExitButton" data-position-exit data-execution-id={identity(execution.id)} onClick={() => requestExecutionExit(action, execution, "manual_ui")}>{exit.label}</button> : <span className="positionNoAction">{t("无可用操作", "No available action")}</span>}</td>
           </tr>
           <tr className="positionProtectionRow"><td colSpan="9"><div>
             <span><small>{t("止损", "Stop loss")}</small><b>{stop === null ? t("未登记", "Not registered") : money(stop)}</b></span>
@@ -220,14 +220,14 @@ function MarginSafety({ utilization, positions }) {
   </CockpitPanel>;
 }
 
-function Concentration({ rows, total, positions }) {
+function Concentration({ rows, total, positions, complete }) {
   const top = rows[0] ?? null;
   const topThree = total && rows.length ? rows.slice(0, 3).reduce((sum, row) => sum + row.value, 0) / total * 100 : null;
-  const long = positions.filter((row) => sideTone(row.direction ?? row.side ?? row.posSide) === "positive").reduce((sum, row) => sum + (numeric(row.notionalUsdt) ?? 0), 0);
-  const short = positions.filter((row) => sideTone(row.direction ?? row.side ?? row.posSide) === "negative").reduce((sum, row) => sum + (numeric(row.notionalUsdt) ?? 0), 0);
+  const long = complete ? positions.filter((row) => sideTone(row.direction ?? row.side ?? row.posSide) === "positive").reduce((sum, row) => sum + numeric(row.notionalUsdt), 0) : null;
+  const short = complete ? positions.filter((row) => sideTone(row.direction ?? row.side ?? row.posSide) === "negative").reduce((sum, row) => sum + numeric(row.notionalUsdt), 0) : null;
   const balance = long > 0 && short > 0 ? Math.max(long, short) / Math.min(long, short) : null;
   return <CockpitPanel className="positionConcentration" region="concentration" title={t("集中度", "Concentration")}>
-    {top && total ? <div className="positionConcentrationBody"><span><small>{t("最大持仓", "Largest position")}</small><b>{top.symbol}</b><em>{(top.value / total * 100).toFixed(1)}%</em></span><span><small>{t("前三持仓", "Top three")}</small><b>{percent(topThree)}</b></span><span><small>{t("多空比", "Long / short ratio")}</small><b>{finite(balance) ? Number(balance).toFixed(2) : t("不可用", "Unavailable")}</b></span></div> : <CockpitEmpty icon={ShieldCheck} title={t("空仓，无集中度风险", "Flat; no concentration risk")}/>}
+    {!positions.length ? <CockpitEmpty icon={ShieldCheck} title={t("空仓，无集中度风险", "Flat; no concentration risk")}/> : !complete ? <CockpitEmpty icon={ShieldCheck} title={t("集中度数据不完整", "Concentration data incomplete")} detail={t("部分持仓缺少正数名义价值或有效方向。", "Some positions lack positive notional or a valid side.")}/> : <div className="positionConcentrationBody"><span><small>{t("最大持仓", "Largest position")}</small><b>{top.symbol}</b><em>{(top.value / total * 100).toFixed(1)}%</em></span><span><small>{t("前三持仓", "Top three")}</small><b>{percent(topThree)}</b></span><span><small>{t("多空比", "Long / short ratio")}</small><b>{finite(balance) ? Number(balance).toFixed(2) : t("不可用", "Unavailable")}</b></span></div>}
   </CockpitPanel>;
 }
 
@@ -245,6 +245,8 @@ export function PositionsPage({ data = {}, action, ui = {} }) {
   };
   const utilization = numeric(risk.utilizationPct) ?? (numeric(portfolio.totalEquityUsdt) > 0 && totals.margin !== null ? Math.max(0, Math.min(100, totals.margin / Number(portfolio.totalEquityUsdt) * 100)) : null);
   const allocations = allocationRows(positions);
+  const allocationComplete = positions.length > 0 && positions.every((row) => identity(row.symbol ?? row.instId) && numeric(row.notionalUsdt) > 0);
+  const compositionComplete = allocationComplete && positions.every((row) => sideTone(row.direction ?? row.side ?? row.posSide) !== "neutral");
   const hasFacts = positions.length > 0 || snapshots.length > 0 || [portfolio.totalEquityUsdt, portfolio.availableMarginUsdt, risk.utilizationPct].some(finite);
   const retainsFacts = ["stale", "degraded"].includes(state) || (state === "loading" && hasFacts);
   const blocked = ["not_loaded", "error", "failed", "forbidden", "disabled"].includes(state) || (state === "loading" && !hasFacts);
@@ -256,8 +258,8 @@ export function PositionsPage({ data = {}, action, ui = {} }) {
     <AccountConstraints data={data} positions={positions} utilization={utilization}/>
     <div className="positionWorkspace">
       <aside className="positionAnalytics" aria-label={t("持仓分析", "Position analytics")}>
-        <PositionAllocation rows={allocations} total={totals.notional}/>
-        <LongShort positions={positions}/>
+        <PositionAllocation rows={allocations} total={totals.notional} hasPositions={positions.length > 0} complete={allocationComplete}/>
+        <LongShort positions={positions} complete={compositionComplete}/>
         <PnlDistribution positions={positions}/>
       </aside>
       <section className="positionCore" aria-label={t("持仓明细与趋势", "Position details and trend")}>
@@ -267,7 +269,7 @@ export function PositionsPage({ data = {}, action, ui = {} }) {
       <aside className="positionRisk" aria-label={t("风险证据", "Risk evidence")}>
         <RiskHealth positions={positions} utilization={utilization}/>
         <MarginSafety positions={positions} utilization={utilization}/>
-        <Concentration rows={allocations} total={totals.notional} positions={positions}/>
+        <Concentration rows={allocations} total={totals.notional} positions={positions} complete={compositionComplete}/>
       </aside>
     </div>
   </div>;

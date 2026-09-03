@@ -205,9 +205,30 @@ if (query.get("marketCase") === "mismatched") Object.assign(data, {
 if (query.get("positionCase") === "malformed") Object.assign(data, {
   portfolio: {},
   portfolioRisk: {},
-  positions: [null, "bad", {}, { id: "", symbol: "", status: "protecting" }, { symbol: " ", status: "protecting" }],
-  executionOrders: [{ id: "", positionId: "", status: "protecting" }, { symbol: "BTC/USDT", status: "protecting" }],
+  positions: [
+    null, "bad", {},
+    { positionId: "malformed-explicit", executionOrderId: "alias-explicit", symbol: "BTC/USDT", direction: "long", notionalUsdt: 100 },
+    { positionId: "malformed-fallback", symbol: "ETH/USDT", direction: "short", notionalUsdt: 80 },
+    { positionId: "malformed-ambiguous", symbol: "SOL/USDT", direction: "long", notionalUsdt: 60 }
+  ],
+  executionOrders: [
+    { orderId: "alias-explicit", positionId: "malformed-explicit", tradePlanId: "wrong-malformed", status: "protecting" },
+    { orderId: "alias-fallback", positionId: "malformed-fallback", status: "protecting" },
+    { id: "ambiguous-one", positionId: "malformed-ambiguous", status: "protecting" },
+    { id: "ambiguous-two", positionId: "malformed-ambiguous", status: "protecting" }
+  ],
   tradePlans: [{ id: "wrong-malformed", stopLoss: 13.37, takeProfit: [14.88] }],
+  accountSnapshots: []
+});
+if (query.get("positionCase") === "partial") Object.assign(data, {
+  portfolio: {},
+  portfolioRisk: {},
+  positions: [
+    { positionId: "partial-known", symbol: "BTC/USDT", direction: "long", notionalUsdt: 100, unrealizedPnl: 2 },
+    { positionId: "partial-unknown", symbol: "ETH/USDT", quantity: 1, unrealizedPnl: -1 }
+  ],
+  executionOrders: [],
+  tradePlans: [],
   accountSnapshots: []
 });
 const requestedResourceState = query.get("resource");
