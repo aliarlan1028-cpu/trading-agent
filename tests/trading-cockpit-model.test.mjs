@@ -348,6 +348,101 @@ test("execution stages fail closed when the selected order has no identity", () 
   assert.equal(stages.find((stage) => stage.id === "fill").done, false);
 });
 
+test("execution stages require one canonical selected order in the authoritative collection", () => {
+  const cases = [
+    {
+      label: "blank identity",
+      data: { executionOrders: [{ id: " ", status: "open" }], fills: [{ id: "fill-blank", executionOrderId: " " }] },
+      selected: { id: " ", status: "open" }
+    },
+    {
+      label: "missing authoritative order",
+      data: { executionOrders: [{ id: "order-other", status: "open" }], fills: [{ id: "fill-selected", executionOrderId: "order-selected" }] },
+      selected: { id: "order-selected", status: "open" }
+    },
+    {
+      label: "duplicate authoritative identity",
+      data: { executionOrders: [{ id: "order-duplicate", status: "open" }, { id: "order-duplicate", status: "filled" }] },
+      selected: { id: "order-duplicate", status: "open" }
+    }
+  ];
+  for (const { label, data, selected } of cases) {
+    const stages = buildSelectedExecutionStages(data, selected);
+    for (const stage of stages) assert.equal(stage.done, false, `${label} keeps ${stage.id} incomplete`);
+  }
+});
+
+test("execution stages accept multiple exact fills but never sibling symbol evidence", () => {
+  const stages = buildSelectedExecutionStages({
+    executionOrders: [
+      { id: "order-selected", symbol: "BTC/USDT", status: "open" },
+      { id: "order-sibling", symbol: "BTC/USDT", status: "filled" }
+    ],
+    fills: [
+      { id: "fill-one", executionOrderId: "order-selected", symbol: "BTC/USDT" },
+      { id: "fill-two", orderId: "order-selected", symbol: "BTC/USDT" },
+      { id: "fill-sibling", executionOrderId: "order-sibling", symbol: "BTC/USDT" }
+    ]
+  }, { id: "order-selected", symbol: "BTC/USDT", status: "open" });
+  const fill = stages.find((stage) => stage.id === "fill");
+  assert.equal(fill.done, true);
+  assert.equal(fill.detail, "2");
+});
+
+test("execution signal requires one exact plan identity", () => {
+  const base = { executionOrders: [{ id: "order-selected", tradePlanId: "plan-selected", status: "open" }] };
+  const unique = buildSelectedExecutionStages({ ...base, tradePlans: [{ id: "plan-selected", signal: "recorded-signal" }] }, base.executionOrders[0]);
+  assert.deepEqual(unique.find((stage) => stage.id === "signal"), { id: "signal", done: true, detail: "recorded-signal" });
+
+  for (const tradePlans of [
+    [{ id: "plan-other", signal: "wrong" }],
+    [{ id: "plan-selected", signal: "first" }, { id: "plan-selected", signal: "second" }]
+  ]) {
+    const signal = buildSelectedExecutionStages({ ...base, tradePlans }, base.executionOrders[0]).find((stage) => stage.id === "signal");
+    assert.deepEqual(signal, { id: "signal", done: false, detail: null });
+  }
+});
+
+test("execution risk uses exact order evidence before any plan fallback", () => {
+  const order = { id: "order-selected", tradePlanId: "plan-selected", status: "open" };
+  const stages = buildSelectedExecutionStages({
+    executionOrders: [order],
+    tradePlans: [{ id: "plan-selected", signal: "recorded" }],
+    riskChecks: [
+      { id: "risk-plan-earlier", tradePlanId: "plan-selected", status: "passed", summary: "weaker plan pass" },
+      { id: "risk-exact", executionOrderId: "order-selected", tradePlanId: "plan-selected", status: "blocked", summary: "exact order block" }
+    ]
+  }, order);
+  assert.deepEqual(stages.find((stage) => stage.id === "risk"), { id: "risk", done: false, detail: "exact order block" });
+});
+
+test("execution risk plan fallback fails closed for sibling ownership or ambiguous evidence", () => {
+  const selected = { id: "order-selected", tradePlanId: "plan-shared", status: "open" };
+  const plan = { id: "plan-shared", signal: "recorded" };
+  const sibling = buildSelectedExecutionStages({
+    executionOrders: [selected, { id: "order-sibling", tradePlanId: "plan-shared", status: "filled" }],
+    tradePlans: [plan],
+    riskChecks: [{ id: "risk-plan", tradePlanId: "plan-shared", status: "passed", summary: "shared plan pass" }]
+  }, selected);
+  assert.deepEqual(sibling.find((stage) => stage.id === "risk"), { id: "risk", done: false, detail: null });
+
+  const ambiguous = buildSelectedExecutionStages({
+    executionOrders: [selected],
+    tradePlans: [plan],
+    riskChecks: [
+      { id: "risk-plan-a", tradePlanId: "plan-shared", status: "passed", summary: "first" },
+      { id: "risk-plan-b", tradePlanId: "plan-shared", status: "passed", summary: "second" }
+    ]
+  }, selected);
+  assert.deepEqual(ambiguous.find((stage) => stage.id === "risk"), { id: "risk", done: false, detail: null });
+
+  const unique = buildSelectedExecutionStages({
+    executionOrders: [selected], tradePlans: [plan],
+    riskChecks: [{ id: "risk-plan-only", tradePlanId: "plan-shared", status: "passed", summary: "unique plan pass" }]
+  }, selected);
+  assert.deepEqual(unique.find((stage) => stage.id === "risk"), { id: "risk", done: true, detail: "unique plan pass" });
+});
+
 test("position protection fails closed when no order or position link exists", () => {
   const model = buildPositionPresentation({
     positions: [{ instId: "BTC-USDT-SWAP", quantity: 1 }],

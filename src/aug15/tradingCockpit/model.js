@@ -144,19 +144,53 @@ export function buildOverviewPresentation(data = {}) {
 }
 
 export function buildSelectedExecutionStages(data = {}, order = {}) {
-  const orderId = String(order.id ?? order.orderId ?? "");
-  const planId = String(order.tradePlanId ?? order.planId ?? "");
-  const plan = rows(data.tradePlans).find((row) => String(row.id) === planId) ?? null;
-  const risk = rows(data.riskChecks).find((row) => (orderId && String(row.executionOrderId ?? "") === orderId) || (planId && String(row.tradePlanId ?? row.planId ?? "") === planId)) ?? null;
-  const fills = orderId ? rows(data.fills).filter((row) => String(row.orderId ?? row.executionOrderId ?? "") === orderId) : [];
-  const protectedOrder = /stop|protect|take_profit|止损|止盈/i.test(String(order.type ?? order.kind ?? order.purpose ?? ""));
+  const orderIdentity = (row) => normalizedIdentity(row?.id)
+    ?? normalizedIdentity(row?.executionOrderId)
+    ?? normalizedIdentity(row?.orderId);
+  const planIdentity = (row) => normalizedIdentity(row?.tradePlanId)
+    ?? normalizedIdentity(row?.planId);
+  const selectedId = orderIdentity(order);
+  const authoritativeOrders = objectRows(data.executionOrders);
+  const orderMatches = selectedId
+    ? authoritativeOrders.filter((row) => orderIdentity(row) === selectedId)
+    : [];
+  const selected = orderMatches.length === 1 ? orderMatches[0] : null;
+
+  if (!selected) {
+    return ["signal", "risk", "routing", "order", "fill", "protection"]
+      .map((id) => ({ id, done: false, detail: null }));
+  }
+
+  const planId = planIdentity(selected);
+  const planMatches = planId
+    ? objectRows(data.tradePlans).filter((row) => normalizedIdentity(row.id) === planId)
+    : [];
+  const plan = planMatches.length === 1 ? planMatches[0] : null;
+  const riskChecks = objectRows(data.riskChecks);
+  const exactRiskMatches = riskChecks.filter((row) => normalizedIdentity(row.executionOrderId) === selectedId);
+  let risk = exactRiskMatches.length === 1 ? exactRiskMatches[0] : null;
+  if (!exactRiskMatches.length && plan && planId) {
+    const planOwners = authoritativeOrders.filter((row) => planIdentity(row) === planId);
+    const planRiskMatches = riskChecks.filter((row) => (
+      !normalizedIdentity(row.executionOrderId)
+      && planIdentity(row) === planId
+    ));
+    if (planOwners.length === 1 && orderIdentity(planOwners[0]) === selectedId && planRiskMatches.length === 1) {
+      risk = planRiskMatches[0];
+    }
+  }
+  const fills = objectRows(data.fills).filter((row) => {
+    const fillOrderId = normalizedIdentity(row.executionOrderId) ?? normalizedIdentity(row.orderId);
+    return fillOrderId === selectedId;
+  });
+  const protectedOrder = /stop|protect|take_profit|止损|止盈/i.test(String(selected.type ?? selected.kind ?? selected.purpose ?? ""));
   return [
     { id: "signal", done: Boolean(plan), detail: plan?.signal ?? plan?.strategy ?? null },
-    { id: "risk", done: /pass|approved/i.test(String(risk?.status ?? "")), detail: risk?.summary ?? null },
-    { id: "routing", done: Boolean(order.exchange ?? order.venue), detail: order.exchange ?? order.venue ?? null },
-    { id: "order", done: Boolean(orderId), detail: order.status ?? null },
+    { id: "risk", done: /pass|approved|allowed/i.test(String(risk?.status ?? risk?.decision ?? risk?.result ?? "")), detail: risk?.summary ?? risk?.reason ?? null },
+    { id: "routing", done: Boolean(selected.exchange ?? selected.venue), detail: selected.exchange ?? selected.venue ?? null },
+    { id: "order", done: true, detail: selected.status ?? null },
     { id: "fill", done: fills.length > 0, detail: fills.length ? String(fills.length) : null },
-    { id: "protection", done: protectedOrder, detail: protectedOrder ? order.type ?? order.kind : null }
+    { id: "protection", done: protectedOrder, detail: protectedOrder ? selected.type ?? selected.kind : null }
   ];
 }
 

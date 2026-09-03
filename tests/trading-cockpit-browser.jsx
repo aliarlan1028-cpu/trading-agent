@@ -142,7 +142,8 @@ const executionOrders = Array.from({ length: 32 }, (_, index) => {
 
 const fills = Array.from({ length: 24 }, (_, index) => {
   const order = executionOrders[index], price = round(order.price * (1 + (index % 3 - 1) * .0002)), fee = round(-Math.max(1.2, order.price * order.quantity * .00035), 4);
-  return { id: `fill-${String(index).padStart(2, "0")}`, fillId: `fill-${String(index).padStart(2, "0")}`, orderId: order.id, executionOrderId: order.id, symbol: order.symbol, side: order.side, direction: order.side, quantity: order.quantity, size: order.quantity, fillSz: order.quantity, price, fillPx: price, fee, feeUsdt: fee, liquidity: index % 2 ? "taker" : "maker", execType: index % 2 ? "taker" : "maker", exchange: "OKX", venue: "OKX", createdAt: iso(-96 + index * 2 + .1), updatedAt: iso(-96 + index * 2 + .1) };
+  const kind = index % 4 === 3 ? "close" : "entry";
+  return { id: `fill-${String(index).padStart(2, "0")}`, fillId: `fill-${String(index).padStart(2, "0")}`, orderId: order.id, executionOrderId: order.id, symbol: order.symbol, side: order.side, direction: order.side, quantity: order.quantity, size: order.quantity, fillSz: order.quantity, price, fillPx: price, fee, feeUsdt: fee, liquidity: index % 2 ? "taker" : "maker", execType: index % 2 ? "taker" : "maker", kind, reduceOnly: kind === "close", exchange: "OKX", venue: "OKX", createdAt: iso(-96 + index * 2 + .1), updatedAt: iso(-96 + index * 2 + .1) };
 });
 
 const closedTradeLifecycles = Array.from({ length: 27 }, (_, index) => {
@@ -234,6 +235,24 @@ if (query.get("positionCase") === "partial") Object.assign(data, {
 if (query.get("reviewCase") === "malformed") Object.assign(data, {
   closedTradeLifecycles: [null, "bad", {}, { id: "trade-safe", symbol: "BTC/USDT", netRealizedPnl: 2, holdMinutes: 20 }],
   reviews: [null, "bad", {}, { id: "", type: "trade" }, { id: "review-safe", type: "trade", tradeLifecycleId: "trade-safe", symbol: "BTC/USDT", status: "completed", summary: "Synthetic valid review among malformed rows." }]
+});
+if (query.get("ledgerCase") === "adversarial") Object.assign(data, {
+  executionOrders: [
+    { id: "ledger-selected", symbol: "BTC/USDT", side: "buy", status: "open", createdAt: iso(-1), updatedAt: iso(-1) },
+    { id: "ledger-sibling", symbol: "BTC/USDT", side: "buy", status: "filled", tradePlanId: "ledger-sibling-plan", exchange: "OKX", createdAt: iso(-2), updatedAt: iso(-2) }
+  ],
+  fills: [{ id: "ledger-sibling-fill", fillId: "ledger-sibling-fill", executionOrderId: "ledger-sibling", symbol: "BTC/USDT", side: "buy", quantity: 1, price: prices["BTC/USDT"], feeUsdt: -1, liquidity: "maker", kind: "entry", reduceOnly: false, exchange: "OKX", createdAt: iso(-1.8) }],
+  tradePlans: [{ id: "ledger-sibling-plan", signal: "sibling-only-signal", strategy: "sibling-only-strategy" }],
+  riskChecks: [{ id: "ledger-sibling-risk", executionOrderId: "ledger-sibling", tradePlanId: "ledger-sibling-plan", status: "passed", summary: "sibling-only-risk" }]
+});
+if (query.get("ledgerCase") === "malformed") Object.assign(data, {
+  executionOrders: [{}, { id: "", status: "open" }, { id: "ledger-duplicate", symbol: "BTC/USDT", status: "open" }, { id: "ledger-duplicate", symbol: "ETH/USDT", status: "filled" }, { id: "ledger-valid", symbol: "SOL/USDT", side: "sell", status: "open", createdAt: iso(-1) }],
+  fills: [{}, { id: "", executionOrderId: "ledger-valid" }, { id: "ledger-fill-valid", executionOrderId: "ledger-valid", symbol: "SOL/USDT", side: "sell", quantity: 2, price: prices["SOL/USDT"], feeUsdt: -0.1, liquidity: "taker", kind: "entry", exchange: "OKX", createdAt: iso(-.9) }],
+  tradePlans: [{}, { id: "" }],
+  riskChecks: [{}, { id: "" }]
+});
+if (query.get("ledgerCase") === "long") Object.assign(data, {
+  notifications: [{ id: "ledger-long-notice", unread: true, title: "Synthetic long execution notice preserves a production-shaped but deliberately verbose reconciliation message so containment can be verified without exposing any production event, credential, or account fact.", createdAt: iso(-1) }]
 });
 const requestedResourceState = query.get("resource");
 if (["not_loaded", "loading", "ready", "error", "failed", "forbidden", "disabled", "stale", "degraded"].includes(requestedResourceState)) data.resourceState.cockpit = requestedResourceState;

@@ -20,6 +20,7 @@ const stateMode = String(process.env.KORDYN_COCKPIT_STATE || "").trim().toLowerC
 const marketCase = String(process.env.KORDYN_COCKPIT_MARKET_CASE || "").trim().toLowerCase();
 const positionCase = String(process.env.KORDYN_COCKPIT_POSITION_CASE || "").trim().toLowerCase();
 const reviewCase = String(process.env.KORDYN_COCKPIT_REVIEW_CASE || "").trim().toLowerCase();
+const ledgerCase = String(process.env.KORDYN_COCKPIT_LEDGER_CASE || "").trim().toLowerCase();
 const resourceStateModes = new Set(["not_loaded", "loading", "loaded", "ready", "stale", "degraded", "error", "failed", "forbidden", "disabled", "unknown"]);
 const chartStatusByMode = new Map([
   ["chart-error", "error"], ["chart-empty", "empty"], ["chart-init-error", "error"],
@@ -35,6 +36,7 @@ assert.ok(!stateMode || resourceStateModes.has(stateMode) || chartStatusByMode.h
 assert.ok(!marketCase || ["malformed", "mismatched"].includes(marketCase), `Unsupported KORDYN_COCKPIT_MARKET_CASE: ${marketCase}`);
 assert.ok(!positionCase || ["malformed", "partial"].includes(positionCase), `Unsupported KORDYN_COCKPIT_POSITION_CASE: ${positionCase}`);
 assert.ok(!reviewCase || ["malformed"].includes(reviewCase), `Unsupported KORDYN_COCKPIT_REVIEW_CASE: ${reviewCase}`);
+assert.ok(!ledgerCase || ["adversarial", "malformed", "long"].includes(ledgerCase), `Unsupported KORDYN_COCKPIT_LEDGER_CASE: ${ledgerCase}`);
 assert.ok(views.length, "KORDYN_COCKPIT_VIEWS must name at least one canonical cockpit view");
 
 function withCdpCommandTimeout(promise, method) {
@@ -199,7 +201,7 @@ try {
   await cdp.send("Runtime.enable");
 
   let historyFacts = null;
-  const runHistoryGate = !emptyMode && !enrichedMode && !stateMode && !marketCase && !positionCase && !reviewCase;
+  const runHistoryGate = !emptyMode && !enrichedMode && !stateMode && !marketCase && !positionCase && !reviewCase && !ledgerCase;
   if (runHistoryGate) {
     await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1080, screenWidth: 1440, screenHeight: 1080, deviceScaleFactor: 1, mobile: false });
     await cdp.send("Page.navigate", { url: `${baseUrl}/tests/trading-cockpit-browser.html?view=overview&historyCase=1` });
@@ -293,6 +295,7 @@ try {
       if (marketCase) fixtureParams.set("marketCase", marketCase);
       if (positionCase) fixtureParams.set("positionCase", positionCase);
       if (reviewCase) fixtureParams.set("reviewCase", reviewCase);
+      if (ledgerCase) fixtureParams.set("ledgerCase", ledgerCase);
       await cdp.send("Page.navigate", { url: `${baseUrl}/tests/trading-cockpit-browser.html?${fixtureParams}` });
       await waitForExpression(cdp, `document.querySelector('[data-cockpit-page="${view}"]')`, `${width}x${height} ${view} cockpit page`);
       const chartSelector = `[data-cockpit-page="${view}"] [data-cockpit-region="market-chart"]`;
@@ -400,6 +403,40 @@ try {
         await waitForExpression(cdp, `document.querySelector('[data-review-detail-id]')?.dataset.reviewDetailId === ${JSON.stringify(pageTwoId)}`, `${width}x${height} review restoration after fail-closed check`);
         reviewInteractionFacts = { before, after, filterTarget, filteredFacts, restored, invalid };
       }
+      let ledgerInteractionFacts = null;
+      if (view === "ledger" && !emptyMode && !["adversarial", "malformed"].includes(ledgerCase) && (!resourceStateModes.has(stateMode) || ["loaded", "ready"].includes(stateMode))) {
+        await evaluate(cdp, `document.querySelector('[data-order-page-next]')?.click()`);
+        await waitForExpression(cdp, `document.querySelector('[data-order-page="2"]')`, `${width}x${height} ledger order page two`);
+        const pageTwoOrderId = await evaluate(cdp, `document.querySelector('[data-order-page="2"] [data-order-select]')?.dataset.orderSelect || ''`);
+        assert.ok(pageTwoOrderId, `${width}x${height} ledger order page two contains a canonical order`);
+        await evaluate(cdp, `document.querySelector('[data-order-select=${JSON.stringify(pageTwoOrderId)}]')?.focus()`);
+        await evaluate(cdp, `document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }))`);
+        await waitForExpression(cdp, `document.querySelector('[data-order-detail-id]')?.dataset.orderDetailId === ${JSON.stringify(pageTwoOrderId)}`, `${width}x${height} ledger keyboard order selection`);
+
+        const selectedSymbol = await evaluate(cdp, `document.querySelector('[data-order-detail-id]')?.dataset.orderDetailSymbol || ''`);
+        const symbolTarget = await evaluate(cdp, `(() => { const selected = document.querySelector('[data-order-detail-id]')?.dataset.orderDetailSymbol || ''; const select = document.querySelector('[data-order-filter="symbol"]'); const target = [...(select?.options || [])].map((option) => option.value).find((value) => value && value !== 'all' && value !== selected) || ''; if (select && target) { select.value = target; select.dispatchEvent(new Event('change', { bubbles: true })); } return target; })()`);
+        assert.ok(symbolTarget && symbolTarget !== selectedSymbol, `${width}x${height} ledger fixture exposes an excluding order symbol`);
+        await waitForExpression(cdp, `document.querySelector('[data-cockpit-page="ledger"]')?.dataset.selectedOrderId === '' && !document.querySelector('[data-order-detail-id]')`, `${width}x${height} ledger filter clears excluded detail`);
+        await evaluate(cdp, `(() => { const select = document.querySelector('[data-order-filter="symbol"]'); select.value = 'all'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+        await waitForExpression(cdp, `document.querySelector('[data-order-page="1"]')`, `${width}x${height} ledger order filter resets pagination`);
+        await waitForExpression(cdp, `Boolean(document.querySelector('[data-order-detail-id]'))`, `${width}x${height} ledger order filter restores a valid default selection`);
+
+        await evaluate(cdp, `(() => { const select = document.querySelector('[data-order-filter="status"]'); select.value = 'working'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+        await waitForExpression(cdp, `document.querySelectorAll('[data-order-id]').length > 0 && [...document.querySelectorAll('[data-order-id]')].every((node) => node.dataset.orderStatusFamily === 'working')`, `${width}x${height} ledger working-order filter`);
+        await evaluate(cdp, `(() => { const select = document.querySelector('[data-order-filter="status"]'); select.value = 'all'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+
+        await evaluate(cdp, `document.querySelector('[data-fill-page-next]')?.click()`);
+        await waitForExpression(cdp, `document.querySelector('[data-fill-page="2"]')`, `${width}x${height} ledger fill page two`);
+        await evaluate(cdp, `(() => { const select = document.querySelector('[data-fill-filter="liquidity"]'); select.value = 'taker'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+        await waitForExpression(cdp, `document.querySelector('[data-fill-page="1"]') && document.querySelectorAll('[data-fill-id]').length > 0 && [...document.querySelectorAll('[data-fill-id]')].every((node) => node.dataset.fillLiquidity === 'taker')`, `${width}x${height} ledger liquidity filter`);
+        await evaluate(cdp, `(() => { const select = document.querySelector('[data-fill-filter="liquidity"]'); select.value = 'all'; select.dispatchEvent(new Event('change', { bubbles: true })); const intent = document.querySelector('[data-fill-filter="intent"]'); intent.value = 'reduce'; intent.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+        await waitForExpression(cdp, `document.querySelectorAll('[data-fill-id]').length > 0 && [...document.querySelectorAll('[data-fill-id]')].every((node) => node.dataset.fillIntent === 'reduce')`, `${width}x${height} ledger reduce-fill filter`);
+        await evaluate(cdp, `(() => { const intent = document.querySelector('[data-fill-filter="intent"]'); intent.value = 'all'; intent.dispatchEvent(new Event('change', { bubbles: true })); const side = document.querySelector('[data-fill-filter="side"]'); side.value = 'sell'; side.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+        await waitForExpression(cdp, `document.querySelectorAll('[data-fill-id]').length > 0 && [...document.querySelectorAll('[data-fill-id]')].every((node) => /sell|short|空|卖/i.test(node.textContent || ''))`, `${width}x${height} ledger fill-side filter`);
+        await evaluate(cdp, `(() => { const side = document.querySelector('[data-fill-filter="side"]'); side.value = 'all'; side.dispatchEvent(new Event('change', { bubbles: true })); const row = document.querySelector('[data-order-select]'); row?.click(); return row?.dataset.orderSelect || ''; })()`);
+        await waitForExpression(cdp, `Boolean(document.querySelector('[data-order-detail-id]'))`, `${width}x${height} ledger detail restoration`);
+        ledgerInteractionFacts = { pageTwoOrderId, selectedSymbol, symbolTarget };
+      }
       const facts = await evaluate(cdp, `(() => { const page = document.querySelector('[data-cockpit-page]'); const region = document.querySelector(${JSON.stringify(chartSelector)}); const chart = region?.querySelector('.tvChart'); const kline = window.__cockpitKlineFixture || {}; const lifecycle = window.__cockpitChartFailure || {}; const main = document.querySelector('[data-cockpit-page="overview"] .overviewPrimary'); const rail = document.querySelector('[data-cockpit-page="overview"] .overviewRail'); const lastRegion = document.querySelector('[data-cockpit-page="overview"] [data-cockpit-region="strategy-footer"]'); const marketWorkspace = document.querySelector('[data-cockpit-page="market"] .marketWorkspace'); const marketChartWorkspace = document.querySelector('[data-cockpit-page="market"] [data-cockpit-region="market-chart-workspace"]'); const marketInterval = document.querySelector('[data-market-interval][aria-pressed="true"]'); marketInterval?.focus(); const marketFocusedStyle = marketInterval ? getComputedStyle(marketInterval) : null; const canvas = chart?.querySelector('canvas'); const overviewRegions = Object.fromEntries([...document.querySelectorAll('[data-cockpit-page="overview"] [data-cockpit-region]')].map((node) => { const rect = node.getBoundingClientRect(); return [node.dataset.cockpitRegion, { top: Math.round(rect.top * 100) / 100, height: Math.round(rect.height * 100) / 100 }]; })); const targets = ['overview', 'market'].includes(page?.dataset.cockpitPage) ? [...page.querySelectorAll('button, a[href], input, select, [tabindex]:not([tabindex="-1"])')].filter((node) => !node.disabled && !node.closest('.tvChart') && getComputedStyle(node).display !== 'none') : []; const targetFacts = targets.map((node) => { const rect = node.getBoundingClientRect(); const style = getComputedStyle(node); return { label: node.getAttribute('aria-label') || node.textContent?.trim() || node.className, tag: node.tagName, className: node.className, width: rect.width, height: rect.height, minWidth: style.minWidth, minHeight: style.minHeight, size: Math.min(rect.width, rect.height) }; }).filter((row) => Number.isFinite(row.size)); const targetSizes = targetFacts.map((row) => row.size); const smallestTarget = targetFacts.sort((a, b) => a.size - b.size)[0] || null; const readableText = page?.dataset.cockpitPage === 'overview' ? [...page.querySelectorAll('small, p, time, em, th, td, button, .cockpitTone')].filter((node) => !node.matches('.overviewMarketQuote > div > b, .overviewHeroEquity b, .overviewHeroFact b, .overviewAiLead b, .cockpitGauge b')) : []; const textFacts = readableText.filter((node) => getComputedStyle(node).display !== 'none').map((node) => ({ label: node.textContent?.trim() || node.className, size: Number.parseFloat(getComputedStyle(node).fontSize) })).filter((row) => Number.isFinite(row.size)); const textSizes = textFacts.map((row) => row.size); const smallestText = textFacts.sort((a, b) => a.size - b.size)[0] || null; const fixtureFields = window.__cockpitFixtureFields || []; return ({ fixture: document.documentElement.dataset.fixtureKind, fixtureFields, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, resourceState: page?.dataset.resourceState || null, statePanel: page?.querySelector('[data-overview-resource-state]')?.dataset.overviewResourceState || page?.querySelector('[data-market-resource-state]')?.dataset.marketResourceState || null, regionCharts: region?.querySelectorAll(".tvChart canvas").length || 0, chartVisible: Boolean(canvas && canvas.getBoundingClientRect().width > 0 && canvas.getBoundingClientRect().height > 0), chartStatus: chart?.dataset.chartStatus || null, volumeSeries: chart?.dataset.volumeSeries || null, chartRemovals: lifecycle.removals || 0, chartRuntimeErrors: lifecycle.runtimeErrors || 0, chartUnhandledRejections: lifecycle.unhandledRejections || 0, candleSetDataCalls: lifecycle.candleSetDataCalls || 0, volumeSetDataCalls: lifecycle.volumeSetDataCalls || 0, chartUpdateCalls: lifecycle.updateCalls || 0, minKeyboardTargetPx: targetSizes.length ? Math.min(...targetSizes) : null, minMarketTargetPx: page?.dataset.cockpitPage === 'market' && targetSizes.length ? Math.min(...targetSizes) : null, smallestTarget, minOverviewTextPx: textSizes.length ? Math.min(...textSizes) : null, maxOverviewTextPx: textSizes.length ? Math.max(...textSizes) : null, smallestText, mainRailRatio: main && rail ? main.getBoundingClientRect().width / rail.getBoundingClientRect().width : null, lastRegionTop: lastRegion?.getBoundingClientRect().top ?? null, overviewRegions, marketActiveIntervals: document.querySelectorAll('[data-market-interval][aria-pressed="true"]').length, marketChartWorkspaceRatio: marketWorkspace && marketChartWorkspace ? marketChartWorkspace.getBoundingClientRect().width / marketWorkspace.getBoundingClientRect().width : null, marketCanonicalSymbol: page?.dataset.marketSymbol || null, marketFocusedOutline: marketFocusedStyle ? marketFocusedStyle.outlineStyle + ' ' + marketFocusedStyle.outlineWidth : null, klineRequests: kline.requests || 0, klineSymbols: kline.symbols || [], klineQueries: kline.queries || [], page: page?.dataset.cockpitPage }); })()`);
       const marketStateFacts = view === "market" ? await evaluate(cdp, `(() => { const page = document.querySelector('[data-cockpit-page="market"]'); const regions = [...page.querySelectorAll('[data-cockpit-region]')].map((node) => node.dataset.cockpitRegion); return { regions, symbolSelectDisabled: Boolean(page.querySelector('[data-market-symbol-select]')?.disabled), hasChartLoadingText: /加载 K 线|Loading candlesticks/.test(page.textContent || '') }; })()`) : null;
       const positionStateFacts = view === "positions" ? await evaluate(cdp, `(() => {
@@ -454,6 +491,43 @@ try {
           minTargetPx: targetFacts.length ? Math.min(...targetFacts.map((row) => row.size)) : null,
           focusActive: document.activeElement === focused,
           focusOutline: focusStyle ? focusStyle.outlineStyle + ' ' + focusStyle.outlineWidth : null
+        };
+      })()`) : null;
+      if (view === "ledger" && await evaluate(cdp, `Boolean(document.querySelector('[data-order-select]'))`)) {
+        await evaluate(cdp, `(() => { document.activeElement?.blur(); const row = document.querySelector('[data-order-select]'); row.focus(); row.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', code: 'ArrowDown', bubbles: true })); })()`);
+        await waitForExpression(cdp, `document.querySelector('[data-order-select]')?.classList.contains('focusVisible')`, `${width}x${height} ledger focus indicator`);
+      }
+      const ledgerStateFacts = view === "ledger" ? await evaluate(cdp, `(() => {
+        const page = document.querySelector('[data-cockpit-page="ledger"]');
+        const workspace = page?.querySelector('.ledgerWorkbenchV2');
+        const columns = workspace ? [...workspace.children].slice(0, 2).map((node) => node.getBoundingClientRect().width) : [];
+        const totalWidth = columns.reduce((sum, value) => sum + value, 0);
+        const targets = page ? [...page.querySelectorAll('button, a[href], input, select, [tabindex]:not([tabindex="-1"])')].filter((node) => !node.disabled && getComputedStyle(node).display !== 'none') : [];
+        const targetFacts = targets.map((node) => { const rect = node.getBoundingClientRect(); return { label: node.getAttribute('aria-label') || node.textContent?.trim() || node.className, size: Math.min(rect.width, rect.height) }; }).filter((row) => Number.isFinite(row.size));
+        const focused = page?.querySelector('[data-order-select]'); const focusStyle = focused ? getComputedStyle(focused) : null;
+        return {
+          state: page?.dataset.resourceState || null,
+          statePanel: page?.querySelector('[data-ledger-resource-state]')?.dataset.ledgerResourceState || null,
+          regions: [...(page?.querySelectorAll('[data-cockpit-region]') || [])].map((node) => node.dataset.cockpitRegion),
+          orderRowCount: page?.querySelectorAll('[data-order-id]').length || 0,
+          fillRowCount: page?.querySelectorAll('[data-fill-id]').length || 0,
+          selectedId: page?.dataset.selectedOrderId || '',
+          detailId: page?.querySelector('[data-order-detail-id]')?.dataset.orderDetailId || '',
+          stageStates: Object.fromEntries([...(page?.querySelectorAll('[data-execution-stage]') || [])].map((node) => [node.dataset.executionStage, node.dataset.stageState])),
+          exitCount: page?.querySelectorAll('[data-order-exit]').length || 0,
+          siblingTextVisible: /sibling-only-signal|sibling-only-risk|ledger-sibling-fill/.test([
+            page?.querySelector('[data-cockpit-region="order-detail"]')?.textContent,
+            page?.querySelector('[data-cockpit-region="execution-timeline"]')?.textContent
+          ].filter(Boolean).join(' ')),
+          columnPct: totalWidth ? columns.map((value) => value / totalWidth * 100) : [],
+          minTargetPx: targetFacts.length ? Math.min(...targetFacts.map((row) => row.size)) : null,
+          smallestTarget: targetFacts.sort((a, b) => a.size - b.size)[0] || null,
+          focusActive: document.activeElement === focused,
+          focusOutline: focusStyle ? focusStyle.outlineStyle + ' ' + focusStyle.outlineWidth : null,
+          focusShadow: focusStyle?.boxShadow || null,
+          workbenchHeight: workspace?.getBoundingClientRect().height || 0,
+          fillLedgerHeight: page?.querySelector('[data-cockpit-region="fill-ledger"]')?.getBoundingClientRect().height || 0,
+          longTextContained: [...(page?.querySelectorAll('[data-cockpit-region="execution-notices"] article') || [])].every((node) => node.scrollWidth <= node.clientWidth + 1)
         };
       })()`) : null;
       assert.equal(facts.fixture, "production-shaped-synthetic", `${width}x${height} ${view} uses the marked test-only fixture`);
@@ -612,6 +686,43 @@ try {
           }
         }
       }
+      if (view === "ledger") {
+        const requiredRegions = ["execution-hero", "execution-notices", "order-filters", "order-list", "order-detail", "execution-timeline", "fill-filters", "fill-ledger"];
+        if (resourceStateModes.has(stateMode) && !["loaded", "ready"].includes(stateMode)) {
+          assert.equal(ledgerStateFacts.state, expectedResourceState, `${width}x${height} ledger normalizes ${stateMode} to ${expectedResourceState}`);
+          assert.equal(ledgerStateFacts.statePanel, expectedResourceState, `${width}x${height} ledger renders its ${stateMode} state boundary`);
+          assert.equal(ledgerStateFacts.exitCount, 0, `${width}x${height} ${stateMode} ledger exposes no execution action`);
+          assert.equal(ledgerStateFacts.regions.includes("execution-hero"), retainedBodyModes.has(stateMode), `${width}x${height} ${stateMode} ledger ${retainedBodyModes.has(stateMode) ? "retains" : "blocks"} last-valid facts`);
+        } else if (emptyMode) {
+          assert.equal(ledgerStateFacts.orderRowCount, 0, `${width}x${height} empty ledger renders no fabricated order`);
+          assert.equal(ledgerStateFacts.fillRowCount, 0, `${width}x${height} empty ledger renders no fabricated fill`);
+          assert.equal(ledgerStateFacts.detailId, "", `${width}x${height} empty ledger renders no fabricated detail`);
+          assert.equal(ledgerStateFacts.exitCount, 0, `${width}x${height} empty ledger renders no exit action`);
+          assert.ok(ledgerStateFacts.workbenchHeight > 0 && ledgerStateFacts.workbenchHeight < 370, `${width}x${height} empty ledger uses a compact workbench (${ledgerStateFacts.workbenchHeight}px)`);
+        } else if (ledgerCase === "malformed") {
+          assert.equal(ledgerStateFacts.orderRowCount, 1, `${width}x${height} malformed ledger retains only one canonical unique order`);
+          assert.equal(ledgerStateFacts.fillRowCount, 1, `${width}x${height} malformed ledger retains only one canonical unique fill`);
+          assert.equal(ledgerStateFacts.selectedId, "ledger-valid", `${width}x${height} malformed ledger selects only the unique canonical order`);
+          assert.equal(ledgerStateFacts.detailId, "ledger-valid", `${width}x${height} malformed ledger detail follows the unique canonical order`);
+          assert.equal(ledgerStateFacts.exitCount, 0, `${width}x${height} malformed ledger exposes no execution action`);
+        } else if (ledgerCase === "adversarial") {
+          assert.equal(ledgerStateFacts.selectedId, "ledger-selected", `${width}x${height} adversarial ledger selects the newest exact order`);
+          assert.equal(ledgerStateFacts.detailId, "ledger-selected", `${width}x${height} adversarial detail stays on the exact selected order`);
+          for (const stage of ["signal", "risk", "routing", "fill", "protection"]) assert.equal(ledgerStateFacts.stageStates[stage], "incomplete", `${width}x${height} selected ${stage} stage cannot borrow sibling evidence`);
+          assert.equal(ledgerStateFacts.siblingTextVisible, false, `${width}x${height} selected detail/timeline hides sibling-only facts`);
+        } else {
+          for (const region of requiredRegions) assert.ok(ledgerStateFacts.regions.includes(region), `${width}x${height} ledger renders ${region}`);
+          assert.ok(ledgerInteractionFacts, `${width}x${height} ledger completes filter, pagination, and keyboard selection interactions`);
+          assert.ok(ledgerStateFacts.minTargetPx >= 36, `${width}x${height} ledger control target ${ledgerStateFacts.minTargetPx}px is at least 36px: ${JSON.stringify(ledgerStateFacts.smallestTarget)}`);
+          assert.equal(ledgerStateFacts.focusActive, true, `${width}x${height} ledger order receives keyboard focus`);
+          assert.notEqual(ledgerStateFacts.focusShadow, "none", `${width}x${height} ledger rows have a visible focus ring: ${JSON.stringify(ledgerStateFacts)}`);
+          if (ledgerCase === "long") assert.equal(ledgerStateFacts.longTextContained, true, `${width}x${height} ledger long notice content stays contained`);
+          if (width === 1440) {
+            const expected = [53, 47];
+            ledgerStateFacts.columnPct.forEach((value, index) => assert.ok(Math.abs(value - expected[index]) <= 8, `1440 ledger column ${index + 1} is ${value.toFixed(2)}%, near ${expected[index]}%`));
+          }
+        }
+      }
       if (outputDir && view === "market" && !emptyMode && regularChartMode) {
         const beforeCaptureReset = await evaluate(cdp, "window.__cockpitKlineFixture?.requests || 0");
         await evaluate(cdp, `(() => { const select = document.querySelector('[data-market-symbol-select]'); if (!select) return false; select.value = 'BTC/USDT'; select.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
@@ -622,7 +733,7 @@ try {
         const shot = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false, fromSurface: true });
         await writeFile(path.join(outputDir, `${view}-${width}x${height}${emptyMode ? "-empty" : stateMode ? `-${stateMode}` : enrichedMode ? "-enriched" : ""}.png`), Buffer.from(shot.data, "base64"));
       }
-      results.push({ width, height, view, charts: facts.regionCharts, klineRequests: facts.klineRequests, overflow: facts.overflow, resourceState: facts.resourceState, chartStatus: facts.chartStatus, volumeSeries: facts.volumeSeries, chartRemovals: facts.chartRemovals, chartRuntimeErrors: facts.chartRuntimeErrors, chartUnhandledRejections: facts.chartUnhandledRejections, minKeyboardTargetPx: facts.minKeyboardTargetPx, minMarketTargetPx: facts.minMarketTargetPx, minOverviewTextPx: facts.minOverviewTextPx, maxOverviewTextPx: facts.maxOverviewTextPx, mainRailRatio: facts.mainRailRatio, marketChartWorkspaceRatio: facts.marketChartWorkspaceRatio, marketCanonicalSymbol: facts.marketCanonicalSymbol, marketRegions: marketStateFacts?.regions, positionStateFacts, positionActionFacts, reviewStateFacts, reviewInteractionFacts, lastRegionTop: facts.lastRegionTop, overviewRegions: facts.overviewRegions });
+      results.push({ width, height, view, charts: facts.regionCharts, klineRequests: facts.klineRequests, overflow: facts.overflow, resourceState: facts.resourceState, chartStatus: facts.chartStatus, volumeSeries: facts.volumeSeries, chartRemovals: facts.chartRemovals, chartRuntimeErrors: facts.chartRuntimeErrors, chartUnhandledRejections: facts.chartUnhandledRejections, minKeyboardTargetPx: facts.minKeyboardTargetPx, minMarketTargetPx: facts.minMarketTargetPx, minOverviewTextPx: facts.minOverviewTextPx, maxOverviewTextPx: facts.maxOverviewTextPx, mainRailRatio: facts.mainRailRatio, marketChartWorkspaceRatio: facts.marketChartWorkspaceRatio, marketCanonicalSymbol: facts.marketCanonicalSymbol, marketRegions: marketStateFacts?.regions, positionStateFacts, positionActionFacts, reviewStateFacts, reviewInteractionFacts, ledgerStateFacts, ledgerInteractionFacts, lastRegionTop: facts.lastRegionTop, overviewRegions: facts.overviewRegions });
     }
   }
   console.log(`trading cockpit browser PASS ${JSON.stringify({ historyFacts, results })}`);

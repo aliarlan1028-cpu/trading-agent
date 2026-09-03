@@ -21,6 +21,8 @@ const positionsModulePath = path.join(rootDir, "src/aug15/tradingCockpit/Positio
 const positionsModuleExists = fs.existsSync(positionsModulePath);
 const reviewModulePath = path.join(rootDir, "src/aug15/tradingCockpit/ReviewPage.jsx");
 const reviewModuleExists = fs.existsSync(reviewModulePath);
+const ledgerModulePath = path.join(rootDir, "src/aug15/tradingCockpit/LedgerPage.jsx");
+const ledgerModuleExists = fs.existsSync(ledgerModulePath);
 fs.mkdirSync(cacheDir, { recursive: true });
 process.on("exit", () => {
   try { fs.rmSync(componentBundle, { force: true }); } catch { /* noop */ }
@@ -38,6 +40,9 @@ require("esbuild").buildSync({
       ${reviewModuleExists
         ? 'export { ReviewPage } from "./src/aug15/tradingCockpit/ReviewPage.jsx";'
         : "export const ReviewPage = undefined;"}
+      ${ledgerModuleExists
+        ? 'export { LedgerPage } from "./src/aug15/tradingCockpit/LedgerPage.jsx";'
+        : "export const LedgerPage = undefined;"}
       export { createElement } from "react";
       export { renderToStaticMarkup } from "react-dom/server";
     `,
@@ -60,6 +65,7 @@ const {
   DonutChart,
   GaugeChart,
   MarketPage,
+  LedgerPage,
   OverviewPage,
   PositionsPage,
   ReviewPage,
@@ -79,6 +85,7 @@ const overviewSource = await readFile(new URL("../src/aug15/tradingCockpit/Overv
 const marketSource = await readFile(new URL("../src/aug15/tradingCockpit/MarketPage.jsx", import.meta.url), "utf8").catch(() => "");
 const positionsSource = await readFile(new URL("../src/aug15/tradingCockpit/PositionsPage.jsx", import.meta.url), "utf8").catch(() => "");
 const reviewSource = await readFile(new URL("../src/aug15/tradingCockpit/ReviewPage.jsx", import.meta.url), "utf8").catch(() => "");
+const ledgerSource = await readFile(new URL("../src/aug15/tradingCockpit/LedgerPage.jsx", import.meta.url), "utf8").catch(() => "");
 const cockpitCss = await readFile(new URL("../src/aug15/tradingCockpit.css", import.meta.url), "utf8").catch(() => "");
 const librarySource = await readFile(new URL("../src/lib.jsx", import.meta.url), "utf8").catch(() => "");
 const browserHarness = await readFile(new URL("./trading-cockpit-browser.jsx", import.meta.url), "utf8").catch(() => "");
@@ -104,7 +111,7 @@ test("all five canonical trading routes render inside one shared cockpit shell",
 });
 
 test("reference-driven pages expose distinct real product landmarks and honest empty states", () => {
-  const pageSources = `${cockpit}\n${marketSource}\n${overviewSource}\n${positionsSource}\n${reviewSource}`;
+  const pageSources = `${cockpit}\n${marketSource}\n${overviewSource}\n${positionsSource}\n${reviewSource}\n${ledgerSource}`;
   for (const landmark of [
     "data-cockpit-page=\"market\"",
     "data-cockpit-page=\"positions\"",
@@ -172,6 +179,125 @@ test("review page exposes the complete reference workbench without mislabeled an
   assert.match(reviewSource, /buildReviewPresentation/);
   assert.match(reviewSource, /onReviewSelect/);
   assert.doesNotMatch(reviewSource, /profitFactor[^\n]+平均盈亏比/);
+});
+
+test("ledger page exposes all eight reference regions and preserves production actions", () => {
+  assert.equal(ledgerModuleExists, true);
+  assert.match(ledgerSource, /data-cockpit-page="ledger"/);
+  for (const region of [
+    "execution-hero", "execution-notices", "order-filters", "order-list",
+    "order-detail", "execution-timeline", "fill-filters", "fill-ledger"
+  ]) assert.match(ledgerSource, new RegExp(`(?:data-cockpit-region|region)=["'{]+${region}`));
+  assert.match(ledgerSource, /buildLedgerPresentation/);
+  assert.match(ledgerSource, /buildSelectedExecutionStages/);
+  assert.match(ledgerSource, /executionExitAction/);
+  assert.match(ledgerSource, /requestExecutionExit/);
+  assert.match(ledgerSource, /ui\.setActive\("chat"\)/);
+  assert.doesNotMatch(ledgerSource, /Awaiting approval|待审批/);
+});
+
+test("ledger hero reports the six truthful execution metrics from loaded facts", () => {
+  assert.ok(LedgerPage, "LedgerPage must be independently renderable");
+  const html = render(LedgerPage, {
+    data: {
+      resourceState: { cockpit: "loaded" },
+      executionOrders: [
+        { id: "order-filled", status: "filled", createdAt: "2026-09-03T08:00:00Z" },
+        { id: "order-working", status: "open", createdAt: "2026-09-03T07:00:00Z" },
+        { id: "order-blocked", status: "risk_blocked", createdAt: "2026-09-03T06:00:00Z" }
+      ],
+      fills: [{ id: "fill-one", executionOrderId: "order-filled", feeUsdt: -0.75 }],
+      tradePlans: [], riskChecks: []
+    },
+    action() {}, ui: { setActive() {}, refresh() {} }
+  });
+  const hero = html.match(/<section[^>]*data-cockpit-region="execution-hero"[^]*?<\/section>/)?.[0] || "";
+  for (const label of ["全部委托", "进行中", "已成交", "拒绝 / 风控阻断", "成交成功率", "手续费"]) assert.match(hero, new RegExp(label));
+  for (const value of ["3", "1", "1", "1", "33\.3%", "-0\.75"]) assert.match(hero, new RegExp(value));
+  assert.doesNotMatch(hero, /待审批/);
+});
+
+test("ledger selected-order stages never borrow sibling facts and reject ambiguous identities", () => {
+  assert.ok(LedgerPage, "LedgerPage must be independently renderable");
+  const html = render(LedgerPage, {
+    data: {
+      resourceState: { cockpit: "loaded" },
+      executionOrders: [
+        { id: "order-selected", symbol: "BTC/USDT", side: "buy", status: "open", createdAt: "2026-09-03T09:00:00Z" },
+        { id: "order-sibling", symbol: "BTC/USDT", side: "buy", status: "filled", tradePlanId: "plan-sibling", exchange: "OKX", createdAt: "2026-09-03T08:00:00Z" }
+      ],
+      fills: [{ id: "fill-sibling", executionOrderId: "order-sibling", symbol: "BTC/USDT", feeUsdt: -0.2 }],
+      tradePlans: [{ id: "plan-sibling", signal: "sibling-only-signal" }],
+      riskChecks: [{ id: "risk-sibling", executionOrderId: "order-sibling", tradePlanId: "plan-sibling", status: "passed", summary: "sibling-only-risk" }]
+    },
+    action() {}, ui: { setActive() {}, refresh() {} }
+  });
+  assert.match(html, /data-selected-order-id="order-selected"/);
+  const timeline = html.match(/<section[^>]*data-cockpit-region="execution-timeline"[^]*?<\/section>/)?.[0] || "";
+  for (const stage of ["signal", "risk", "routing", "fill", "protection"]) {
+    assert.match(timeline, new RegExp(`data-execution-stage="${stage}"[^>]*data-stage-state="incomplete"`));
+  }
+  assert.doesNotMatch(timeline, /sibling-only-signal|sibling-only-risk|fill-sibling/);
+
+  const ambiguous = render(LedgerPage, {
+    data: {
+      resourceState: { cockpit: "loaded" },
+      executionOrders: [
+        { id: "duplicate", symbol: "SOL/USDT", status: "open" },
+        { id: "duplicate", symbol: "ETH/USDT", status: "filled" },
+        { id: " ", symbol: "ADA/USDT", status: "open" }
+      ],
+      fills: [], tradePlans: [], riskChecks: []
+    },
+    action() {}, ui: { setActive() {}, refresh() {} }
+  });
+  assert.match(ambiguous, /data-selected-order-id=""/);
+  assert.doesNotMatch(ambiguous, /data-order-id=/);
+});
+
+test("ledger keeps retained facts visible but blocks actions and terminal stale facts", () => {
+  assert.ok(LedgerPage, "LedgerPage must be independently renderable");
+  const facts = {
+    executionOrders: [{ id: "state-order", symbol: "ETH/USDT", status: "protecting", createdAt: "2026-09-03T08:00:00Z" }],
+    fills: [], tradePlans: [], riskChecks: []
+  };
+  const loaded = render(LedgerPage, { data: { ...facts, resourceState: { cockpit: "loaded" } }, action() {}, ui: { setActive() {}, refresh() {} } });
+  assert.match(loaded, /data-order-exit="close_position"/);
+  for (const state of ["loading", "stale", "degraded"]) {
+    const html = render(LedgerPage, { data: { ...facts, resourceState: { cockpit: state } }, action() {}, ui: { setActive() {}, refresh() {} } });
+    assert.match(html, new RegExp(`data-ledger-resource-state="${state}"`));
+    assert.match(html, /data-order-id="state-order"/);
+    assert.doesNotMatch(html, /data-order-exit/);
+  }
+  for (const state of ["error", "failed", "forbidden", "disabled"]) {
+    const html = render(LedgerPage, { data: { ...facts, resourceState: { cockpit: state } }, action() {}, ui: { setActive() {}, refresh() {} } });
+    assert.match(html, new RegExp(`data-ledger-resource-state="${state}"`));
+    assert.doesNotMatch(html, /data-order-id="state-order"/);
+  }
+  const initial = render(LedgerPage, { data: { resourceState: { cockpit: "loading" } }, action() {}, ui: { setActive() {}, refresh() {} } });
+  assert.match(initial, /data-ledger-resource-state="loading"/);
+  assert.doesNotMatch(initial, /data-cockpit-region="execution-hero"/);
+});
+
+test("ledger empty and malformed collections never fabricate order or fill rows", () => {
+  assert.ok(LedgerPage, "LedgerPage must be independently renderable");
+  const empty = render(LedgerPage, { data: { resourceState: { cockpit: "loaded" }, executionOrders: [], fills: [], tradePlans: [], riskChecks: [] }, action() {}, ui: { setActive() {}, refresh() {} } });
+  assert.match(empty, /(?:暂无委托|No orders)/);
+  assert.match(empty, /(?:暂无成交|No fills)/);
+  assert.doesNotMatch(empty, /data-order-id=/);
+  assert.doesNotMatch(empty, /data-fill-id=/);
+
+  const malformed = render(LedgerPage, {
+    data: {
+      resourceState: { cockpit: "loaded" },
+      executionOrders: [null, "bad", {}, { id: "", status: "open" }, { id: "order-valid", symbol: "SUI/USDT", status: "open" }],
+      fills: [null, "bad", {}, { id: "", executionOrderId: "order-valid" }, { id: "fill-valid", executionOrderId: "order-valid", symbol: "SUI/USDT" }],
+      tradePlans: [null], riskChecks: [null]
+    },
+    action() {}, ui: { setActive() {}, refresh() {} }
+  });
+  assert.equal((malformed.match(/data-order-id=/g) || []).length, 1);
+  assert.equal((malformed.match(/data-fill-id=/g) || []).length, 1);
 });
 
 test("review deep link selects an exact canonical review and matched lifecycle facts", () => {
