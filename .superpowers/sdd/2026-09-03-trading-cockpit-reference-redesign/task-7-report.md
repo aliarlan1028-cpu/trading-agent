@@ -203,14 +203,14 @@ Implementation commit: `4236e40`
 
 ### TDD evidence
 
-After the URL-helper scaffold, the focused run produced exactly the two intended behavioral failures: resource `loaded` rendered `正常`, and an earlier execution-order match beat an explicit lifecycle identity. The implementation then made the focused model/reference/protected-deep-link set green:
+After the URL-helper scaffold, the focused run produced exactly the two intended behavioral failures: resource `loaded` rendered `正常`, and an earlier execution-order match beat an explicit lifecycle identity. The implementation then made the tracked model/reference set and the protected shared-checkout deep-link test green:
 
 ```text
 node --test tests/trading-cockpit-model.test.mjs tests/trading-cockpit-reference.test.mjs tests/aug15-review-deep-link.test.mjs
-PASS: 82/82
+PASS: 86/86
 ```
 
-The protected `tests/aug15-review-deep-link.test.mjs` remained read-only.
+The protected, untracked `tests/aug15-review-deep-link.test.mjs` remained read-only and was run only in the shared checkout; it was not present in or claimed as evidence from the clean archive.
 
 ### Exact committed-tree proof
 
@@ -226,7 +226,7 @@ archive: /tmp/trading-task7-4236e40.2eXle5
 From that archive:
 
 ```text
-node --test tests/trading-cockpit-model.test.mjs tests/trading-cockpit-reference.test.mjs tests/aug15-review-deep-link.test.mjs
+node --test tests/trading-cockpit-model.test.mjs tests/trading-cockpit-reference.test.mjs
 PASS: 82/82
 
 KORDYN_COCKPIT_VIEWS=execution node tests/run-trading-cockpit-browser.mjs
@@ -280,3 +280,91 @@ PASS: no output
 - `tests/trading-cockpit-reference.test.mjs`
 
 The pre-existing broader `src/appUrlState.js`, its tests, protected deep-link test, product-architecture work, mobile work, and other dirty files remain unstaged. No backend/API/trading/auth changes were made. The independent review's deferred minor—remaining 9–10px detail copy—remains intentionally assigned to Task 9 visual convergence; Critical and Important findings from this round are resolved.
+
+## Fix round 2 — coherent browser history and real-shell navigation
+
+Date: 2026-09-04
+
+Reviewed base: `6721dc4`
+
+Implementation commit: `6e3368f`
+
+### Blocking findings resolved
+
+- The scoped cockpit URL helper now restores a safe `event.state.kordynRoute` at `/app`, defaults a state-less `/app` pop to `chat`, and ignores unknown external/non-app paths. Safe history tokens are limited to trimmed identifier-shaped route names; malformed values fail closed.
+- Leaving a recognized `/app/trade/...` cockpit URL for a non-cockpit in-memory destination pushes `/app` plus that destination in history state. The requested destination is preserved while the stale cockpit URL is removed.
+- The real `August15AuthenticatedShell` browser gate starts at `/app`, enters Cockpit, verifies Back/Forward URL and rendered-view identity, exits through the cockpit brand, and separately exits through system settings before verifying Back/Forward again.
+- Existing review page-two selection, filtered-detail synchronization, callback URL, deep-link reload restoration, invalid-ID fail-closed behavior, geometry, focus, and viewport coverage remain in the same production-shell browser gate.
+
+### TDD evidence
+
+The helper/source test was written before implementation and failed because `cockpitRouteFromHistory` did not exist. The real-shell browser RED then reached the first history stage and timed out because the prior broad URL behavior rewrote `/app` to `/app/ai/dialog` instead of retaining the scoped `/app` contract.
+
+After implementation, the focused shared-checkout run passed:
+
+```text
+node --test tests/trading-cockpit-model.test.mjs tests/trading-cockpit-reference.test.mjs tests/aug15-review-deep-link.test.mjs
+PASS: 87/87
+```
+
+The final four tests above are from the protected, untracked `tests/aug15-review-deep-link.test.mjs`; that file was read-only, shared-checkout-only evidence and is not in the archive.
+
+### Exact committed-tree proof
+
+The implementation commit was exported without working-tree files:
+
+```text
+task7_archive=$(mktemp -d /tmp/trading-task7-6e3368f.XXXXXX)
+git archive 6e3368f | tar -x -C "$task7_archive"
+ln -s '/Users/ely/Desktop/Trading Agent/node_modules' "$task7_archive/node_modules"
+archive: /tmp/trading-task7-6e3368f.eHRu7y
+```
+
+Only tracked archive tests were named and run:
+
+```text
+node --test tests/trading-cockpit-model.test.mjs tests/trading-cockpit-reference.test.mjs
+PASS: 83/83
+
+KORDYN_COCKPIT_VIEWS=execution node tests/run-trading-cockpit-browser.mjs
+PASS: 1440×1080, 1280×960, 1024×768; real-shell history, review selection/filter/reload, and cleanup PASS
+
+npm run build
+PASS: 1,823 modules transformed; built in 1.87s
+```
+
+The archived history facts were: `/app` rendered `chat`; entry pushed `/app/trade/overview` and rendered `cockpit`; Back restored `/app` and `chat`; Forward restored the cockpit URL/UI; the brand exit produced `/app` and `chat`; the settings exit produced `/app` and `systemSettings`; settings Back/Forward restored both URL and view identity.
+
+### Shared-checkout regression gates
+
+```text
+npm test
+PASS: 2,343/2,343, 0 failures; isolated data root cleaned
+
+node tests/run-trading-cockpit-browser.mjs
+PASS: all five views × 1440/1280/1024; history interactions and cleanup PASS
+
+npm run lint
+PASS
+
+npm run build
+PASS: 1,824 modules transformed; built in 1.44s
+
+node /Users/ely/.codex/skills/impeccable/scripts/detect.mjs --json src/aug15/App.jsx src/cockpitUrlState.js
+PASS: [] (run once)
+
+git diff --check && git diff --cached --check
+PASS: no output
+```
+
+The shared build's extra transformed module belongs to the pre-existing dirty checkout; the exact archive build above is the committed-tree authority.
+
+### Exact implementation file list
+
+- `src/aug15/App.jsx`
+- `src/cockpitUrlState.js`
+- `tests/run-trading-cockpit-browser.mjs`
+- `tests/trading-cockpit-browser.jsx`
+- `tests/trading-cockpit-reference.test.mjs`
+
+Only the narrow App history hunk was committed. The broader pre-existing App precursor, product-architecture, mobile, settings/risk/research work, visual artifacts, and all other dirty files remain untouched and unstaged. The deferred typography Minor remains assigned to Task 9; no blocking finding remains from fix round 2.
