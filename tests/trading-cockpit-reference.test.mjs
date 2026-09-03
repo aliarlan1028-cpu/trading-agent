@@ -56,6 +56,7 @@ const app = await readFile(new URL("../src/aug15/App.jsx", import.meta.url), "ut
 const workspaces = await readFile(new URL("../src/aug15/workspacePages.jsx", import.meta.url), "utf8");
 const cockpit = await readFile(new URL("../src/aug15/tradingCockpit.jsx", import.meta.url), "utf8").catch(() => "");
 const overviewSource = await readFile(new URL("../src/aug15/tradingCockpit/OverviewPage.jsx", import.meta.url), "utf8").catch(() => "");
+const marketSource = await readFile(new URL("../src/aug15/tradingCockpit/MarketPage.jsx", import.meta.url), "utf8").catch(() => "");
 const cockpitCss = await readFile(new URL("../src/aug15/tradingCockpit.css", import.meta.url), "utf8").catch(() => "");
 const librarySource = await readFile(new URL("../src/lib.jsx", import.meta.url), "utf8").catch(() => "");
 const browserHarness = await readFile(new URL("./trading-cockpit-browser.jsx", import.meta.url), "utf8").catch(() => "");
@@ -81,6 +82,7 @@ test("all five canonical trading routes render inside one shared cockpit shell",
 });
 
 test("reference-driven pages expose distinct real product landmarks and honest empty states", () => {
+  const pageSources = `${cockpit}\n${marketSource}\n${overviewSource}`;
   for (const landmark of [
     "data-cockpit-page=\"market\"",
     "data-cockpit-page=\"positions\"",
@@ -90,12 +92,12 @@ test("reference-driven pages expose distinct real product landmarks and honest e
     "region=\"position-table\"",
     "data-cockpit-region=\"review-workbench\"",
     "region=\"execution-timeline\""
-  ]) assert.match(cockpit, new RegExp(landmark));
-  assert.match(cockpit, /CockpitEmpty/);
+  ]) assert.match(pageSources, new RegExp(landmark));
+  assert.match(pageSources, /CockpitEmpty/);
   assert.match(cockpit, /buildPositionView/);
   assert.match(cockpit, /buildExecutionView/);
-  assert.match(cockpit, /TradingViewChart/);
-  assert.doesNotMatch(cockpit, /72,450|8,234|\+12\.4%|0\.0007/);
+  assert.match(pageSources, /TradingViewChart/);
+  assert.doesNotMatch(pageSources, /72,450|8,234|\+12\.4%|0\.0007/);
 });
 
 test("overview page exposes the complete reference composition as dedicated regions", () => {
@@ -107,6 +109,20 @@ test("overview page exposes the complete reference composition as dedicated regi
   assert.match(overviewSource, /buildOverviewPresentation/);
   assert.match(overviewSource, /TradingViewChart/);
   assert.doesNotMatch(overviewSource, /72,450|8,234|\+12\.4%|0\.0007/);
+});
+
+test("market page exposes the complete reference workspace with real supported controls", () => {
+  assert.match(marketSource, /data-cockpit-page="market"/);
+  for (const region of [
+    "market-header", "market-chart-workspace", "market-state", "watchlist",
+    "derivatives", "breadth", "event-catalysts", "ai-market-view", "market-ticker"
+  ]) assert.match(marketSource, new RegExp(`(?:data-cockpit-region|region)=["'{]+${region}`));
+  assert.match(marketSource, /buildMarketRows/);
+  assert.match(marketSource, /TradingViewChart/);
+  assert.match(marketSource, /\["1m",\s*"5m",\s*"15m",\s*"1h",\s*"4h",\s*"1D"\]/);
+  assert.match(marketSource, /aria-pressed/);
+  assert.doesNotMatch(marketSource, /showVolume|\b(?:indicator|save|screenshot|fullscreen)\b/i);
+  assert.doesNotMatch(marketSource, /72,450|8,234|\+12\.4%|0\.0007/);
 });
 
 test("cockpit visual tokens and responsive contracts match the approved reference family", () => {
@@ -329,12 +345,23 @@ test("overview browser gate covers resource states, readable text, and keyboard 
   assert.match(browserRunner, /volumeSeries/);
 });
 
+test("market browser gate exercises canonical symbol and interval changes with reference geometry", () => {
+  assert.match(browserHarness, /klineFixture\.queries\.push/);
+  assert.match(browserRunner, /marketIntervalSequence/);
+  assert.match(browserRunner, /marketActiveIntervals/);
+  assert.match(browserRunner, /marketChartWorkspaceRatio/);
+  assert.match(browserRunner, /marketCanonicalSymbol/);
+  assert.match(browserRunner, /marketFocusedOutline/);
+  assert.match(browserRunner, /facts\.minMarketTargetPx >= 36/);
+});
+
 test("production sources never import the synthetic cockpit fixture", async () => {
   const productionSources = await Promise.all([
     "../src/aug15/tradingCockpit.jsx",
     "../src/aug15/tradingCockpit/OverviewPage.jsx",
+    "../src/aug15/tradingCockpit/MarketPage.jsx",
     "../src/aug15/workspacePages.jsx"
-  ].map((url) => readFile(new URL(url, import.meta.url), "utf8")));
+  ].map((url) => readFile(new URL(url, import.meta.url), "utf8").catch(() => "")));
   productionSources.forEach((source) => assert.doesNotMatch(source, /trading-cockpit-browser/));
 });
 

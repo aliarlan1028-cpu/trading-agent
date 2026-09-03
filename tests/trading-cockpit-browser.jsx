@@ -52,7 +52,7 @@ class InertCockpitWebSocket {
 window.WebSocket = InertCockpitWebSocket;
 
 const nativeFetch = window.fetch.bind(window);
-const klineFixture = { requests: 0, symbols: [] };
+const klineFixture = { requests: 0, symbols: [], queries: [] };
 if (query.get("chart") === "init-error") {
   HTMLCanvasElement.prototype.getContext = function getContext() {
     throw new Error("synthetic chart initialization failure");
@@ -106,9 +106,12 @@ window.__cockpitKlineFixture = klineFixture;
 window.fetch = async (input, init) => {
   const url = typeof input === "string" ? input : input.url;
   if (url.includes("/api/market/klines")) {
-    const symbol = new URL(url, location.origin).searchParams.get("symbol") || "BTC/USDT";
+    const requestUrl = new URL(url, location.origin);
+    const symbol = requestUrl.searchParams.get("symbol") || "BTC/USDT";
+    const tf = requestUrl.searchParams.get("tf") || "";
     klineFixture.requests += 1;
     klineFixture.symbols.push(symbol);
+    klineFixture.queries.push({ symbol, tf });
     if (query.get("chart") === "error") return new Response(JSON.stringify({ error: "synthetic chart failure" }), { status: 503, headers: { "content-type": "application/json" } });
     if (query.get("chart") === "empty") return new Response(JSON.stringify({ candles: [] }), { status: 200, headers: { "content-type": "application/json" } });
     return new Response(JSON.stringify({ candles: fixtureCandles(symbol) }), { status: 200, headers: { "content-type": "application/json" } });

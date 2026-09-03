@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from "react";
 import {
-  AlertTriangle, Bot, Check, ChevronRight,
-  Clock3, Gauge, RefreshCw, Search, ShieldCheck, Sparkles,
-  Target, WalletCards, X
+  AlertTriangle, Check, ChevronRight,
+  Clock3, Gauge, ShieldCheck, Sparkles,
+  Target, WalletCards
 } from "lucide-react";
-import { displayMoney, displayPct, formatDateTime, formatTime, humanize, localizeText, TradingViewChart } from "./lib.jsx";
+import { displayMoney, displayPct, formatDateTime, formatTime, humanize, localizeText } from "./lib.jsx";
 import { t } from "./i18n.js";
 import { executionExitAction, requestExecutionExit } from "./executionExit.js";
 import {
@@ -24,6 +24,7 @@ import {
 } from "./tradingCockpit/shared.jsx";
 import { AreaTrend as MiniTrend } from "./tradingCockpit/visuals.jsx";
 import { OverviewPage } from "./tradingCockpit/OverviewPage.jsx";
+import { MarketPage } from "./tradingCockpit/MarketPage.jsx";
 import "./tradingCockpit.css";
 
 // Presentation selectors centralize buildPositionView and buildExecutionView joins.
@@ -54,34 +55,6 @@ export function TradingCockpitShell({ data, active, onChange, ui, children }) {
 function SystemNotice({ notice, onOpen }) {
   const text = localizeText(notice?.message || notice?.title || t("系统正在等待新的交易事实。", "The system is waiting for new trading facts."));
   return <button type="button" className="cockpitNotice" onClick={onOpen}><span><Sparkles/><b>{t("系统动态", "System update")}</b><p>{text}</p></span><ChevronRight/></button>;
-}
-
-function MarketPage({ data, action }) {
-  const markets = buildOverviewPresentation(data).markets; const watchlist = list(data.watchlist);
-  const symbols = [...new Set(markets.map((item) => item.symbol).filter(Boolean))];
-  const [symbol, setSymbol] = useState(symbols[0] || ""); const [interval, setInterval] = useState("1h");
-  useEffect(() => { if (!symbols.includes(symbol)) setSymbol(symbols[0] || ""); }, [symbol, symbols.join("|")]);
-  const market = markets.find((row) => row.symbol === symbol) || null;
-  const medium = list(data.mediumTermAnalytics?.symbols).find((item) => item.symbol === symbol);
-  const regime = data.marketRegime || {};
-  const intervals = [["1m", "1m"], ["5m", "5m"], ["15m", "15m"], ["1h", "60"], ["4h", "240"], ["1D", "D"]];
-  const watchRows = markets.filter((row) => !watchlist.length || watchlist.includes(row.symbol));
-  return <div className="cockpitPage cockpitMarket" data-cockpit-page="market">
-    <section className="marketHero"><div><select aria-label={t("选择交易对", "Select pair")} value={symbol} disabled={!symbols.length} onChange={(event) => setSymbol(event.target.value)}>{symbols.length ? symbols.map((name) => <option key={name}>{name}</option>) : <option value="">{t("行情尚未同步", "Market data not synced")}</option>}</select><span><b>{finite(market?.price ?? market?.last) ? money(market.price ?? market.last) : t("待同步", "Pending")}</b><Tone tone={number(market?.changePct ?? market?.change24hPct) >= 0 ? "positive" : "negative"}>{signedPct(market?.changePct ?? market?.change24hPct)}</Tone><small>{t("24h 高", "24h H")} {money(market?.high24h ?? market?.high)} · {t("低", "L")} {money(market?.low24h ?? market?.low)}</small></span></div><div className="marketHeroState"><small>{t("市场状态", "Market state")}</small><b>{localizeText(regime.global?.label || t("待评估", "Pending evaluation"))}</b><em>{regime.global?.confidence == null ? t("置信度待同步", "Confidence pending") : `${t("置信度", "Confidence")} ${regime.global.confidence}%`}</em></div><button type="button" className="cockpitSecondaryButton" onClick={() => action("/api/reconciler/run", { mode: "manual_ui" })}><RefreshCw/>{t("核对数据", "Reconcile")}</button></section>
-    <div className="marketWorkspace">
-      <Panel className="marketChartPanel" region="market-chart" title={t("价格与成交结构", "Price & volume structure")} meta={market ? t("真实 TradingView 行情", "Live TradingView market") : t("等待真实行情", "Awaiting live market data")} action={market && <div className="marketIntervals">{intervals.map(([label, value]) => <button type="button" className={interval === label ? "active" : ""} onClick={() => setInterval(label)} key={label}>{label}</button>)}</div>}><div className="marketChartBox">{market ? <TradingViewChart symbol={market.symbol} interval={intervals.find(([label]) => label === interval)?.[1] || "60"}/> : <CockpitEmpty icon={Search} title={t("行情尚未同步", "Market data not synced")} detail={t("同步真实行情后才加载图表。", "The chart loads after live market data is available.")}/>}</div></Panel>
-      <aside className="marketRail"><Panel title={t("市场状态", "Market state")}><div className="stateGauge"><Gauge/><span><b>{localizeText(regime.global?.label || t("证据不足", "Insufficient evidence"))}</b><p>{localizeText(regime.global?.summary || t("等待更多真实行情后再形成方向判断。", "Waiting for more live market evidence before forming a directional read."))}</p></span></div><div className="railFacts"><span>{t("市场广度", "Breadth")}<b>{finite(regime.global?.breadthPct) ? `${regime.global.breadthPct}%` : "—"}</b></span><span>{t("大户多空比", "Top trader L/S")}<b>{finite(regime.smartMoney?.topTraderLongShortRatio) ? number(regime.smartMoney.topTraderLongShortRatio).toFixed(2) : "—"}</b></span></div></Panel>
-        <Panel title={t("自选列表", "Watchlist")} meta={`${watchRows.length}`}><div className="watchRows">{watchRows.slice(0, 7).map((row) => <article key={row.symbol} className={`watchRow ${row.symbol === symbol ? "active" : ""}`.trim()}><button type="button" className="watchSelect" onClick={() => setSymbol(row.symbol)}><span><b>{row.symbol}</b><small>{money(row.price ?? row.last)}</small></span><em className={number(row.changePct ?? row.change24hPct) >= 0 ? "positiveText" : "negativeText"}>{signedPct(row.changePct ?? row.change24hPct)}</em></button>{watchlist.includes(row.symbol) && watchlist.length > 1 && <button type="button" className="watchRemove" aria-label={t("移除自选", "Remove from watchlist")} onClick={() => action(`/api/watchlist/${encodeURIComponent(row.symbol)}`, {}, "DELETE")}><X/></button>}</article>)}{!watchRows.length && <CockpitEmpty icon={Search} title={t("行情尚未同步", "Market data not synced")}/>}</div></Panel>
-      </aside>
-    </div>
-    <div className="marketFactsGrid">
-      <Panel title={t("衍生品", "Derivatives")}><div className="factMatrix"><span>{t("未平仓量", "Open interest")}<b>{money(market?.openInterest)}</b></span><span>{t("资金费率", "Funding rate")}<b>{finite(market?.fundingRate) ? signedPct(market.fundingRate) : "—"}</b></span><span>{t("24h 成交额", "24h turnover")}<b>{money(market?.volume24h ?? market?.volume)}</b></span></div></Panel>
-      <Panel title={t("中周期结构", "Medium-term structure")}><div className="factMatrix">{["15m", "1h", "4h"].map((window) => <span key={window}>{window}<b>{medium?.windows?.[window]?.status === "ok" ? humanize(medium.windows[window].leverageState) : t("样本积累中", "Building samples")}</b></span>)}</div></Panel>
-      <Panel title={t("事件窗口", "Event window")}><div className="eventCompact">{list(data.events).slice(0, 2).map((event, index) => <article key={event.id || index}><Clock3/><span><b>{localizeText(event.title)}</b><small>{formatDateTime(event.due || event.startAt)}</small></span></article>)}{!list(data.events).length && <p className="inlineEmpty">{t("暂无高影响事件", "No high-impact event")}</p>}</div></Panel>
-      <Panel title={t("AI 观察", "AI observation")}><div className="aiCompact"><Bot/><p>{localizeText(regime.summary || regime.global?.summary || t("当前没有足够证据形成可靠判断。", "There is not enough evidence for a reliable read."))}</p></div></Panel>
-    </div>
-    <footer className="marketTicker">{markets.slice(0, 8).map((row) => <button type="button" key={row.symbol} onClick={() => setSymbol(row.symbol)}><b>{row.symbol}</b><span>{money(row.price ?? row.last)}</span><em className={number(row.changePct ?? row.change24hPct) >= 0 ? "positiveText" : "negativeText"}>{signedPct(row.changePct ?? row.change24hPct)}</em></button>)}</footer>
-  </div>;
 }
 
 function PositionsPage({ data }) {
