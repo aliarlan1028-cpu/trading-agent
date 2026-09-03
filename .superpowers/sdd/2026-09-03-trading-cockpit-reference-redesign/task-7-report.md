@@ -368,3 +368,91 @@ The shared build's extra transformed module belongs to the pre-existing dirty ch
 - `tests/trading-cockpit-reference.test.mjs`
 
 Only the narrow App history hunk was committed. The broader pre-existing App precursor, product-architecture, mobile, settings/risk/research work, visual artifacts, and all other dirty files remain untouched and unstaged. The deferred typography Minor remains assigned to Task 9; no blocking finding remains from fix round 2.
+
+## Fix round 3 — canonical cockpit aliases and forged-state rejection
+
+Date: 2026-09-04
+
+Reviewed base: `28ecba3`
+
+Implementation commit: `6337510`
+
+### Important finding resolved
+
+- The scoped helper now centralizes every requested desktop alias that resolves into the Cockpit/Review workbench. `cockpit` and `marketAccount` map to overview; `market` to market; `positions` and `portfolioProtection` to positions; `signalHub`, `tradeJournal`, `executionReview`, `tradeReviewDetail`, `labReviews`, and `ownerReviewWorkspace` to the execution-review list; `tradeLedger`, `tradeOrders`, and `tradeFills` to orders-fills. `tradeReviewDetail:<id>` retains its encoded review-detail path.
+- Reverse path restoration remains deliberately canonical: overview → `cockpit`, market → `market`, positions → `positions`, execution-review → `tradeJournal`, and orders-fills → `tradeLedger`.
+- A Cockpit alias or review-detail identity forged into `/app` history state now resolves to `chat`, never to Cockpit under a noncanonical URL. Non-Cockpit restoration requires a syntactically valid token and the App's existing `resolveDesktopRoute` recognizer; stale/unknown tokens fail closed.
+- History synchronization is scoped to `/app` and already-recognized Cockpit paths. Calling it from an unknown/external path cannot rewrite that path, even with a known Cockpit alias.
+
+### TDD evidence
+
+The first helper RED run failed exactly two new tests:
+
+```text
+node --test tests/trading-cockpit-reference.test.mjs
+FAIL: 49/51 passed
+marketAccount returned no canonical path; retiredCockpitAlias was returned instead of chat
+```
+
+The real-shell RED clicked the production Account search result. Cockpit overview rendered, but the URL remained `/app`, so the canonical-destination assertion timed out; cleanup still passed. A second narrow RED proved a known Cockpit alias could rewrite `/outside` before the external-path guard was added.
+
+After implementation, shared focused verification passed:
+
+```text
+node --test tests/trading-cockpit-model.test.mjs tests/trading-cockpit-reference.test.mjs tests/aug15-review-deep-link.test.mjs
+PASS: 88/88
+```
+
+The last four tests are the protected, untracked deep-link file and are shared-checkout-only evidence.
+
+### Exact committed-tree proof
+
+```text
+task7_archive=$(mktemp -d /tmp/trading-task7-6337510.XXXXXX)
+git archive 6337510 | tar -x -C "$task7_archive"
+ln -s '/Users/ely/Desktop/Trading Agent/node_modules' "$task7_archive/node_modules"
+archive: /tmp/trading-task7-6337510.ZSjr9W
+```
+
+Only tracked archive tests were named:
+
+```text
+node --test tests/trading-cockpit-model.test.mjs tests/trading-cockpit-reference.test.mjs
+PASS: 84/84
+
+KORDYN_COCKPIT_VIEWS=execution node tests/run-trading-cockpit-browser.mjs
+PASS: 1440×1080, 1280×960, 1024×768; cleanup PASS
+
+npm run build
+PASS: 1,823 modules transformed; built in 1.72s
+```
+
+The archive's real `August15AuthenticatedShell` produced these canonical search/navigation facts: `marketAccount` → overview; `signalHub`, `executionReview`, `labReviews`, `tradeReviewDetail`, and `ownerReviewWorkspace` → execution-review; `tradeLedger` → orders-fills. Forged `/app` states for `marketAccount`, `tradeReviewDetail:review-18`, and a retired alias all rendered `chat` at `/app`. Existing Back/Forward, brand/settings exit, review page-two selection, filter synchronization, callback URL, reload restoration, invalid review, focus, geometry, and zero-overflow assertions remained green.
+
+### Shared-checkout regression gates
+
+```text
+npm test
+PASS: 2,344/2,344, 0 failures; isolated data root cleaned
+
+node tests/run-trading-cockpit-browser.mjs
+PASS: all five views × 1440/1280/1024; alias/history/review assertions and cleanup PASS
+
+npm run lint
+PASS
+
+node /Users/ely/.codex/skills/impeccable/scripts/detect.mjs --json src/aug15/App.jsx src/cockpitUrlState.js
+PASS: [] (run once)
+
+git diff --check && git diff --cached --check
+PASS: no output
+```
+
+### Exact implementation file list
+
+- `src/aug15/App.jsx`
+- `src/cockpitUrlState.js`
+- `tests/run-trading-cockpit-browser.mjs`
+- `tests/trading-cockpit-reference.test.mjs`
+
+The App commit contains only the recognizer callback and its popstate use. The broader App precursor and all product-architecture, mobile, settings/risk/research, visual-artifact, and other dirty work remain unstaged. The only remaining reviewed item is the deferred Task 9 typography Minor.
