@@ -30,6 +30,7 @@ import { isNativeApp } from "./lib.jsx";
 import { ConfirmHost } from "./confirm.jsx";
 import { hasNewWebRelease, normalizeRelease } from "./releaseUpdate.js";
 import { resolveDesktopRoute } from "../productArchitecture.js";
+import { cockpitRouteFromPath, syncCockpitHistory } from "../cockpitUrlState.js";
 import { useDialogFocus } from "../useDialogFocus.js";
 import {
   buildShellSearchIndex,
@@ -446,11 +447,15 @@ export function August15App() {
 }
 
 export function August15AuthenticatedShell({ api, lang, switchLang }) {
-  const [active, setActive] = useState("chat");
-  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState("dialog");
+  const initialCockpitRoute = cockpitRouteFromPath(globalThis.location?.pathname);
+  const initialCockpitResolution = initialCockpitRoute ? resolveDesktopRoute(initialCockpitRoute) : null;
+  const initialCockpitTab = initialCockpitResolution?.tab === "account" ? "overview" : initialCockpitResolution?.tab === "protection" ? "positions" : initialCockpitResolution?.tab;
+  const [active, setActive] = useState(initialCockpitRoute ? "cockpit" : "chat");
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState(["overview", "market", "positions", "execution", "ledger"].includes(initialCockpitTab) ? initialCockpitTab : initialCockpitRoute ? "execution" : "dialog");
   const [activeStrategyTab, setActiveStrategyTab] = useState("catalog");
   const [activeSettingsTab, setActiveSettingsTab] = useState("overview");
-  const [activeRoute, setActiveRoute] = useState("chat");
+  const [activeReviewId, setActiveReviewId] = useState(initialCockpitResolution?.objectId || "");
+  const [activeRoute, setActiveRoute] = useState(initialCockpitRoute || "chat");
   const [selectedShellObject, setSelectedShellObject] = useState(null);
   const [panel, setPanel] = useState("");
   const isMobileViewport = useIsMobileViewport();
@@ -458,8 +463,17 @@ export function August15AuthenticatedShell({ api, lang, switchLang }) {
   useEffect(() => {
     if (data) ensureSection(active);
   }, [active, Boolean(data)]);
-  function navigate(next) {
+  useEffect(() => {
+    const applyCockpitLocation = () => {
+      const route = cockpitRouteFromPath(window.location.pathname);
+      if (route) navigate(route, { syncHistory: false });
+    };
+    window.addEventListener("popstate", applyCockpitLocation);
+    return () => window.removeEventListener("popstate", applyCockpitLocation);
+  }, []);
+  function navigate(next, { syncHistory = true } = {}) {
     const requested = String(next || "chat");
+    if (!isNativeApp && syncHistory) syncCockpitHistory(requested);
     setActiveRoute(requested);
     const resolved = resolveDesktopRoute(requested);
     if (resolved.recognized) {
@@ -471,12 +485,13 @@ export function August15AuthenticatedShell({ api, lang, switchLang }) {
         return;
       }
       if (resolved.section === "cockpit") {
+        setActiveReviewId(resolved.objectId || "");
         setActiveWorkspaceTab(tab === "account" ? "overview" : tab === "protection" ? "positions" : ["overview", "market", "positions", "execution", "ledger"].includes(tab) ? tab : "overview");
         setActive("cockpit");
         return;
       }
       if (resolved.section === "researchCenter") {
-        if (["reviews", "owner"].includes(tab)) { setActiveWorkspaceTab("execution"); setActive("cockpit"); return; }
+        if (["reviews", "owner"].includes(tab)) { setActiveReviewId(resolved.objectId || ""); setActiveWorkspaceTab("execution"); setActive("cockpit"); return; }
         setActiveStrategyTab(resolved.strategyTab || "catalog");
         setActiveWorkspaceTab(tab === "map" ? "knowledge" : ["knowledge", "strategy", "capabilities"].includes(tab) ? tab : "knowledge");
         setActive("researchCenter");
@@ -531,26 +546,28 @@ export function August15AuthenticatedShell({ api, lang, switchLang }) {
   const content = useMemo(() => {
     if (!data) return null;
     if (active === "chat") return <AiTraderCenter key={`chat:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
-    if (active === "cockpit") return <TradingCenter key={`cockpit:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
+    if (active === "cockpit") return <TradingCenter key={`cockpit:${activeWorkspaceTab}:${activeReviewId}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} initialReviewId={activeReviewId} />;
     if (active === "researchCenter") return <ResearchCenter key={`research:${activeWorkspaceTab}:${activeStrategyTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} strategyInitialTab={activeStrategyTab} />;
     if (active === "riskCenter") return <RiskCenter key={`risk:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
     if (active === "operationsCenter") return <OperationsCenter key={`operations:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
     if (active === "systemSettings") return <SettingsConcept data={data} action={action} ui={ui} activeTab={activeSettingsTab} onTabChange={setActiveSettingsTab} />;
     return <AiTraderCenter data={data} action={action} ui={ui} />;
-  }, [active, activeSettingsTab, activeWorkspaceTab, activeStrategyTab, data, action, lang]);
+  }, [active, activeReviewId, activeSettingsTab, activeWorkspaceTab, activeStrategyTab, data, action, lang]);
 
   if (isNativeApp || isMobileViewport) {
     // key={lang}:切换语言时整树 remount,让 mobile.jsx 里的 t() 立即全量重渲染(同桌面外壳)。
     return <MobileApp key={lang} lang={lang} switchLang={switchLang} api={{ data, action, toast, busy, notify, download, refresh, ensureSection, connectionError }} />;
   }
 
+  const immersiveCockpit = active === "cockpit";
+
   return (
-    <div className="appShell" data-classic-shell="desktop" data-classic-view={active} data-classic-capability={activeRoute} data-shell-selected-object={selectedShellObject?.id || undefined} key={lang}>
-      <Sidebar active={active} setActive={navigate} data={data} lang={lang} switchLang={switchLang} />
-      <main className="mainArea">
-        <AppTopbar data={data} setActive={navigate} onObjectSelect={setSelectedShellObject} notify={notify} action={action} lang={lang} switchLang={switchLang} />
+    <div className={`appShell ${immersiveCockpit ? "cockpitMode" : ""}`} data-classic-shell="desktop" data-classic-view={active} data-classic-capability={activeRoute} data-shell-selected-object={selectedShellObject?.id || undefined} key={lang}>
+      {!immersiveCockpit && <Sidebar active={active} setActive={navigate} data={data} lang={lang} switchLang={switchLang} />}
+      <main className={`mainArea ${immersiveCockpit ? "cockpitMain" : ""}`}>
+        {!immersiveCockpit && <AppTopbar data={data} setActive={navigate} onObjectSelect={setSelectedShellObject} notify={notify} action={action} lang={lang} switchLang={switchLang} />}
         {/* 页面级独立 Suspense：切换懒加载页时只在内容区显骨架，不再冒泡到根 Suspense 把整站(含侧栏)闪白 */}
-        <div className={active === "chat" ? "content contentChat" : "content"}>
+        <div className={active === "chat" ? "content contentChat" : immersiveCockpit ? "content cockpitContent" : "content"}>
           <Suspense fallback={<PageSkeleton />}><div data-ai-surface={active === "chat" ? (["patrol", "chat:patrol"].includes(activeRoute) ? "patrol" : ["poster", "chat:poster"].includes(activeRoute) ? "poster" : "dialog") : undefined}>{content}</div></Suspense>
         </div>
       </main>

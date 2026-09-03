@@ -111,16 +111,28 @@ function ReviewResourceState({ state, retainsFacts, onRetry }) {
   </section>;
 }
 
-function ReviewHero({ data, presentation, behavior, resourceState }) {
+function reviewSystemHealth(data) {
+  const system = data?.system && typeof data.system === "object" ? data.system : {};
+  const raw = [system.apiHealth, system.health, system.status]
+    .find((value) => typeof value === "string" && value.trim());
+  if (!raw) return { label: unavailable(), tone: "" };
+  const value = raw.trim();
+  const tone = /healthy|normal|ready|running|ok|正常|运行/i.test(value)
+    ? "positive"
+    : /degraded|stale|pending|warning|降级|陈旧|待/i.test(value)
+      ? "warning"
+      : /failed|error|down|blocked|异常|失败|阻断/i.test(value) ? "negative" : "";
+  return { label: humanize(value, unavailable()), tone };
+}
+
+function ReviewHero({ data, presentation, behavior }) {
   const total = metricValue(data, presentation, behavior, "totalPnlUsdt");
   const trades = metricValue(data, presentation, behavior, "trades");
   const winRate = metricValue(data, presentation, behavior, "winRatePct");
   const expectancy = metricValue(data, presentation, behavior, "expectancyUsdt");
   const drawdown = metricValue(data, presentation, behavior, "maxDrawdownPct");
   const profitFactor = metricValue(data, presentation, behavior, "profitFactor");
-  const health = {
-    loaded: t("正常", "Healthy"), loading: t("加载中", "Loading"), stale: t("已陈旧", "Stale"), degraded: t("降级", "Degraded")
-  }[resourceState] ?? unavailable();
+  const health = reviewSystemHealth(data);
   return <section className="reviewHeroV2" data-cockpit-region="review-hero">
     <CockpitMetric strong label={t("净已实现盈亏", "Net realized PnL")} value={total === null ? unavailable() : `${signedMoney(total)} USDT`} tone={total === null ? "" : total >= 0 ? "positive" : "negative"}/>
     <CockpitMetric label={t("成交笔数", "Closed trades")} value={trades === null ? unavailable() : String(trades)}/>
@@ -128,7 +140,7 @@ function ReviewHero({ data, presentation, behavior, resourceState }) {
     <CockpitMetric label={t("单笔期望", "Expectancy")} value={expectancy === null ? unavailable() : `${signedMoney(expectancy)} U`}/>
     <CockpitMetric label={t("最大回撤", "Max drawdown")} value={percent(drawdown, 2)}/>
     <CockpitMetric label="Profit Factor" value={profitFactor === null ? unavailable() : profitFactor.toFixed(2)}/>
-    <CockpitMetric label={t("系统状态", "System health")} value={health} tone={resourceState === "loaded" ? "positive" : resourceState === "loading" ? "warning" : ""}/>
+    <CockpitMetric label={t("系统状态", "System health")} value={health.label} tone={health.tone}/>
   </section>;
 }
 
@@ -149,10 +161,10 @@ function ReviewFilters({ filters, setFilters, symbols, total }) {
   const update = (key, value) => setFilters((current) => ({ ...current, [key]: value }));
   return <div className="reviewFilters" data-cockpit-region="review-filters">
     <span><Target aria-hidden="true"/><b>{t("交易列表", "Trade list")}</b><small>{t(`${total} 笔匹配`, `${total} matches`)}</small></span>
-    <label>{t("状态", "Status")}<select value={filters.status} onChange={(event) => update("status", event.target.value)}><option value="all">{t("全部状态", "All statuses")}</option><option value="completed">{t("已完成", "Completed")}</option><option value="pending">{t("待完成", "Pending")}</option></select></label>
-    <label>{t("方向", "Side")}<select value={filters.direction} onChange={(event) => update("direction", event.target.value)}><option value="all">{t("全部方向", "All sides")}</option><option value="long">{t("做多", "Long")}</option><option value="short">{t("做空", "Short")}</option></select></label>
-    <label>{t("结果", "Result")}<select value={filters.result} onChange={(event) => update("result", event.target.value)}><option value="all">{t("全部结果", "All results")}</option><option value="win">{t("盈利", "Win")}</option><option value="loss">{t("亏损", "Loss")}</option><option value="flat">{t("持平", "Flat")}</option><option value="unavailable">{t("不可用", "Unavailable")}</option></select></label>
-    <label>{t("交易对", "Pair")}<select value={filters.symbol} onChange={(event) => update("symbol", event.target.value)}><option value="all">{t("全部交易对", "All pairs")}</option>{symbols.map((symbol) => <option value={symbol} key={symbol}>{symbol}</option>)}</select></label>
+    <label>{t("状态", "Status")}<select data-review-filter="status" value={filters.status} onChange={(event) => update("status", event.target.value)}><option value="all">{t("全部状态", "All statuses")}</option><option value="completed">{t("已完成", "Completed")}</option><option value="pending">{t("待完成", "Pending")}</option></select></label>
+    <label>{t("方向", "Side")}<select data-review-filter="direction" value={filters.direction} onChange={(event) => update("direction", event.target.value)}><option value="all">{t("全部方向", "All sides")}</option><option value="long">{t("做多", "Long")}</option><option value="short">{t("做空", "Short")}</option></select></label>
+    <label>{t("结果", "Result")}<select data-review-filter="result" value={filters.result} onChange={(event) => update("result", event.target.value)}><option value="all">{t("全部结果", "All results")}</option><option value="win">{t("盈利", "Win")}</option><option value="loss">{t("亏损", "Loss")}</option><option value="flat">{t("持平", "Flat")}</option><option value="unavailable">{t("不可用", "Unavailable")}</option></select></label>
+    <label>{t("交易对", "Pair")}<select data-review-filter="symbol" value={filters.symbol} onChange={(event) => update("symbol", event.target.value)}><option value="all">{t("全部交易对", "All pairs")}</option>{symbols.map((symbol) => <option value={symbol} key={symbol}>{symbol}</option>)}</select></label>
   </div>;
 }
 
@@ -292,11 +304,14 @@ export function ReviewPage({ data = {}, initialReviewId, onReviewSelect, ui = {}
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, pages);
   const pageRows = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-  const selected = reviews.find((row) => identity(row.id) === selectedId) ?? null;
+  const selected = filtered.find((row) => identity(row.id) === selectedId) ?? null;
+  useEffect(() => {
+    if (selectedId && !filtered.some((row) => identity(row.id) === selectedId)) setSelectedId("");
+  }, [filtered, selectedId]);
   useEffect(() => { if (page > pages) setPage(pages); }, [page, pages]);
   const select = (row) => {
     const id = identity(row?.id);
-    if (!id || !reviews.some((candidate) => identity(candidate.id) === id)) return;
+    if (!id || !filtered.some((candidate) => identity(candidate.id) === id)) return;
     setSelectedId(id);
     onReviewSelect?.(id);
   };
@@ -315,7 +330,7 @@ export function ReviewPage({ data = {}, initialReviewId, onReviewSelect, ui = {}
     )}
     {bodyVisible && <>
       <header className="reviewTitleV2"><div><h1>{t("执行与复盘", "Execution & Review")}</h1><p>{t("从真实平仓生命周期追溯结果、过程、行为与已记录改进。", "Trace real closed lifecycles through outcomes, process, behavior, and recorded improvements.")}</p></div><Tone tone={reviews.some((row) => !completed(row)) ? "warning" : reviews.length ? "positive" : "neutral"}>{t(`${reviews.length} 笔复盘`, `${reviews.length} reviews`)}</Tone></header>
-      <ReviewHero data={data} presentation={presentation} behavior={behavior} resourceState={state}/>
+      <ReviewHero data={data} presentation={presentation} behavior={behavior}/>
       <AiConclusion behavior={behavior} selected={selected} sampleCount={filtered.length}/>
       <ReviewFilters filters={filters} setFilters={changeFilters} symbols={symbols} total={filtered.length}/>
       <div className={`reviewWorkbench ${reviews.length ? "" : "empty"}`.trim()} data-cockpit-region="review-workbench">

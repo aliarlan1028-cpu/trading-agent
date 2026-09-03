@@ -6,6 +6,11 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { findReviewTrade } from "../src/viewData.js";
+import {
+  cockpitPathForRoute,
+  cockpitRouteFromPath,
+  syncCockpitHistory
+} from "../src/cockpitUrlState.js";
 
 const require = createRequire(import.meta.url);
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -227,6 +232,35 @@ test("review keeps unavailable analytics unavailable and never turns aggregate t
   assert.match(html, /(?:未记录逐时路径|No intratrade path recorded)/);
   assert.doesNotMatch(html, /data-review-path-samples="[1-9]/);
   assert.match(html, /(?:暂无已记录行动|No recorded next actions)/);
+});
+
+test("review system health is unavailable without a real health fact", () => {
+  const base = {
+    resourceState: { cockpit: "loaded" },
+    performance: { trades: 1, totalPnlUsdt: 3, winRatePct: 100, expectancyUsdt: 3, maxDrawdownPct: 1, profitFactor: 2 },
+    closedTradeLifecycles: [{ id: "trade-health", netRealizedPnl: 3 }],
+    reviews: [{ id: "review-health", type: "trade", tradeLifecycleId: "trade-health", status: "completed" }]
+  };
+  const unavailableHtml = render(ReviewPage, { data: base, ui: {} });
+  const unavailableHero = unavailableHtml.match(/<section[^>]*data-cockpit-region="review-hero"[^]*?<\/section>/)?.[0] || "";
+  assert.match(unavailableHero, /(?:系统状态|System health)[^]*?(?:不可用|Unavailable)/);
+  assert.doesNotMatch(unavailableHero, /(?:正常|Healthy)/);
+
+  const degradedHtml = render(ReviewPage, { data: { ...base, system: { apiHealth: "degraded" } }, ui: {} });
+  const degradedHero = degradedHtml.match(/<section[^>]*data-cockpit-region="review-hero"[^]*?<\/section>/)?.[0] || "";
+  assert.match(degradedHero, /(?:degraded|降级)/i);
+});
+
+test("cockpit URL state scopes review restoration without rewriting unknown routes", () => {
+  assert.equal(cockpitRouteFromPath("/app/trade/reviews/REV%3A389%2Falpha"), "tradeReviewDetail:REV:389/alpha");
+  assert.equal(cockpitPathForRoute("tradeReviewDetail:REV:389/alpha"), "/app/trade/reviews/REV%3A389%2Falpha");
+  assert.equal(cockpitRouteFromPath("/app/trade/execution-review"), "tradeJournal");
+  assert.equal(cockpitRouteFromPath("/app/settings/security"), null);
+  assert.equal(cockpitPathForRoute("unknown-route"), null);
+  assert.equal(cockpitRouteFromPath("/app/trade/reviews/%E0%A4%A"), null);
+  const calls = [];
+  assert.equal(syncCockpitHistory("unknown-route", { history: { pushState: (...args) => calls.push(args) }, location: { pathname: "/custom", search: "", hash: "" } }), false);
+  assert.deepEqual(calls, []);
 });
 
 test("review survives malformed collections and preserves retained versus terminal resource states", () => {
@@ -828,4 +862,23 @@ test("review-to-trade resolution never matches two missing identities", () => {
   ];
   assert.equal(findReviewTrade({ id: "review-orphan" }, trades), null);
   assert.equal(findReviewTrade({ tradeLifecycleId: "trade-btc" }, trades)?.netRealizedPnl, 284.62);
+});
+
+test("review-to-trade resolution uses strict unique identity precedence", () => {
+  const trades = [
+    { id: "trade-weak-first", executionOrderId: "exec-match", orderId: "order-match" },
+    { id: "trade-strong", executionOrderId: "exec-other", orderId: "order-other" },
+    { id: "trade-duplicate", executionOrderId: "exec-duplicate", orderId: "order-duplicate" },
+    { id: "trade-duplicate", executionOrderId: "exec-duplicate", orderId: "order-duplicate" }
+  ];
+
+  assert.equal(findReviewTrade({ tradeLifecycleId: "trade-strong", executionOrderId: "exec-match" }, trades)?.id, "trade-strong");
+  assert.equal(findReviewTrade({ tradeLifecycleId: "missing", executionOrderId: "exec-match", orderId: "order-match" }, trades), null);
+  assert.equal(findReviewTrade({ tradeLifecycleId: "trade-duplicate", executionOrderId: "exec-match" }, trades), null);
+  assert.equal(findReviewTrade({ executionOrderId: "missing", orderId: "order-match" }, trades), null);
+  assert.equal(findReviewTrade({ executionOrderId: "exec-duplicate", orderId: "order-match" }, trades), null);
+  assert.equal(findReviewTrade({ tradeLifecycleId: "  ", executionOrderId: "exec-match" }, trades)?.id, "trade-weak-first");
+  assert.equal(findReviewTrade({ executionOrderId: "", orderId: "order-other" }, trades)?.id, "trade-strong");
+  assert.equal(findReviewTrade({ orderId: "order-duplicate" }, trades), null);
+  assert.equal(findReviewTrade({ tradeLifecycleId: "", executionOrderId: " ", orderId: "" }, trades), null);
 });

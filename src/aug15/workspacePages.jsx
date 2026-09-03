@@ -7,6 +7,7 @@ import {
   RiskPostureConcept, RulesConcept, SettingsConcept, StrategyLibraryConcept,
   TasksConcept, TradingOverviewConcept
 } from "./conceptPages.jsx";
+import { TradingCockpitPage, TradingCockpitShell } from "./tradingCockpit.jsx";
 import { ChatKpiStrip } from "./chat.jsx";
 import { Eye, ShieldCheck } from "lucide-react";
 import { t } from "./i18n.js";
@@ -42,16 +43,14 @@ export function AiTraderCenter({ data, action, ui, initialTab = "dialog" }) {
   return <CenterShell title={t("AI 交易员","AI Trader")} subtitle="" tabs={TABS.ai} active={tab} onChange={setTab} inlineTabs tabsExtra={extra}>{page}</CenterShell>;
 }
 
-export function TradingCenter({ data, action, ui, initialTab = "overview" }) {
+export function TradingCenter({ data, action, ui, initialTab = "overview", initialReviewId = "" }) {
   const [tab, setTab] = useState(initialTab);
-  const pages = {
-    overview: <TradingOverviewConcept data={data} action={action} ui={ui}/>,
-    market: <MarketConcept data={data} action={action} ui={ui}/>,
-    positions: <PositionsConcept data={data} action={action} ui={ui}/>,
-    execution: <ExecutionReviewConcept data={data} action={action} ui={ui}/>,
-    ledger: <ExecutionLedgerConcept data={data} action={action} ui={ui}/>
-  };
-  return <CenterShell title={t("交易驾驶舱","Trading Cockpit")} subtitle={t("行情 · 账户 · 执行 · 复盘","Market · Account · Execution · Review")} tabs={TABS.trade} active={tab} onChange={setTab}>{pages[tab] || pages.overview}</CenterShell>;
+  const changeTab = (next) => { setTab(next); ui.setActive(({ overview: "cockpit", market: "market", positions: "positions", execution: "tradeJournal", ledger: "tradeLedger" })[next] || "cockpit"); };
+  return <TradingCockpitShell data={data} active={tab} onChange={changeTab} ui={ui}>
+    <div data-cockpit-view={tab}>
+      <TradingCockpitPage active={tab} data={data} action={action} ui={ui} initialReviewId={initialReviewId} onReviewSelect={(id) => ui.setActive(`tradeReviewDetail:${id}`)}/>
+    </div>
+  </TradingCockpitShell>;
 }
 
 export function ResearchCenter({ data, action, ui, initialTab = "knowledge", strategyInitialTab = "catalog" }) {

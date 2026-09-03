@@ -178,6 +178,24 @@ h3 {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.appShell.cockpitMode {
+  grid-template-columns: minmax(0, 1fr);
+  background: #fbfaf8;
+}
+
+.mainArea.cockpitMain {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.content.cockpitContent {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  padding: 0;
+  overflow: auto;
+  background: #fbfaf8;
+}
+
 .autoTradeBanner {
   margin: 4px 0 2px;
   padding: 9px 12px;

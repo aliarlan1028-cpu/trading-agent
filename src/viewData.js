@@ -41,6 +41,28 @@ export function netReviewResult(review = {}, trade = null) {
   return null;
 }
 
+export function findReviewTrade(review = {}, trades = []) {
+  const candidates = list(trades).filter((trade) => trade && typeof trade === "object" && !Array.isArray(trade));
+  const keys = [
+    ["tradeLifecycleId", "id"],
+    ["executionOrderId", "executionOrderId"],
+    ["orderId", "orderId"]
+  ];
+  for (const [reviewKey, tradeKey] of keys) {
+    const expected = review?.[reviewKey];
+    if (expected === null || expected === undefined || (typeof expected === "string" && !expected.trim())) continue;
+    const normalized = String(expected).trim();
+    const matches = candidates.filter((trade) => {
+      const actual = trade?.[tradeKey];
+      return actual !== null && actual !== undefined
+        && (typeof actual !== "string" || actual.trim())
+        && String(actual).trim() === normalized;
+    });
+    return matches.length === 1 ? matches[0] : null;
+  }
+  return null;
+}
+
 export function buildExecutionView(data = {}) {
   const orders = sortRecent(data.executionOrders);
   const fills = sortRecent(data.fills);
