@@ -20,6 +20,7 @@ require("esbuild").buildSync({
     contents: `
       export { CockpitTable } from "./src/aug15/tradingCockpit/shared.jsx";
       export { AreaTrend, BreadthBars, DistributionPlot, DonutChart, GaugeChart } from "./src/aug15/tradingCockpit/visuals.jsx";
+      export { OverviewPage } from "./src/aug15/tradingCockpit/OverviewPage.jsx";
       export { createElement } from "react";
       export { renderToStaticMarkup } from "react-dom/server";
     `,
@@ -41,6 +42,7 @@ const {
   DistributionPlot,
   DonutChart,
   GaugeChart,
+  OverviewPage,
   createElement,
   renderToStaticMarkup
 } = require(componentBundle);
@@ -55,6 +57,7 @@ const workspaces = await readFile(new URL("../src/aug15/workspacePages.jsx", imp
 const cockpit = await readFile(new URL("../src/aug15/tradingCockpit.jsx", import.meta.url), "utf8").catch(() => "");
 const overviewSource = await readFile(new URL("../src/aug15/tradingCockpit/OverviewPage.jsx", import.meta.url), "utf8").catch(() => "");
 const cockpitCss = await readFile(new URL("../src/aug15/tradingCockpit.css", import.meta.url), "utf8").catch(() => "");
+const librarySource = await readFile(new URL("../src/lib.jsx", import.meta.url), "utf8").catch(() => "");
 const browserHarness = await readFile(new URL("./trading-cockpit-browser.jsx", import.meta.url), "utf8").catch(() => "");
 const browserRunner = await readFile(new URL("./run-trading-cockpit-browser.mjs", import.meta.url), "utf8").catch(() => "");
 
@@ -199,6 +202,57 @@ test("browser fixture is dense, synthetic, and serves the real K-line schema", (
   assert.match(browserHarness, /Array\.from\(\{ length: 32 \}/);
   assert.match(browserHarness, /Array\.from\(\{ length: 24 \}/);
   assert.match(browserHarness, /Array\.from\(\{ length: 27 \}/);
+});
+
+test("overview browser fixture keeps production cockpit shape distinct from opt-in enrichment", () => {
+  assert.match(browserHarness, /query\.get\("enriched"\) === "1"/);
+  assert.match(browserHarness, /const enrichment =/);
+  assert.match(browserHarness, /resourceState:\s*\{\s*cockpit:\s*"loaded"\s*\}/);
+  assert.match(browserHarness, /query\.get\("resource"\)/);
+  assert.match(browserHarness, /query\.get\("chart"\)/);
+});
+
+test("overview enables the optional real candle-volume chart layer and honest chart statuses", () => {
+  assert.match(overviewSource, /showVolume/);
+  assert.match(librarySource, /showVolume\s*=\s*false/);
+  assert.match(librarySource, /HistogramSeries/);
+  assert.match(librarySource, /volume:\s*c\.volume == null/);
+  assert.match(librarySource, /data-volume-series/);
+  assert.match(librarySource, /status === "error"/);
+});
+
+test("overview renderer survives production-shaped missing and malformed collections", () => {
+  const props = {
+    data: {
+      resourceState: { cockpit: "loaded" },
+      portfolio: { totalEquityUsdt: 100, availableMarginUsdt: 99 },
+      portfolioRisk: { utilizationPct: 37, status: "ok" },
+      markets: [{ symbol: "BTC/USDT", price: 100, volume24h: 12 }],
+      activeMarket: { symbol: "BTC/USDT", price: 100, volume24h: 12 },
+      positions: [null, { positionId: "p-1", symbol: "BTC/USDT", quantity: 1 }],
+      fills: [null, { id: "f-1", kind: "trade_fill", executionOrderId: "o-1" }],
+      executionOrders: [null, { id: "o-1" }],
+      accountSnapshots: [null, { id: "s-1", createdAt: "2026-09-03T08:00:00Z", totalEquityUsdt: 100 }]
+    },
+    ui: { setActive() {}, ensureSection() {}, refresh() {} }
+  };
+  assert.doesNotThrow(() => render(OverviewPage, props));
+  const html = render(OverviewPage, props);
+  assert.match(html, /data-resource-state="loaded"/);
+  assert.match(html, /data-volume-series="loading"/);
+  assert.match(html, />37</);
+
+  const failed = render(OverviewPage, { ...props, data: { ...props.data, resourceState: { cockpit: "error" } } });
+  assert.match(failed, /data-overview-resource-state="error"/);
+  assert.doesNotMatch(failed, /class="tvChart"/);
+});
+
+test("overview browser gate covers resource states, readable text, and keyboard target geometry", () => {
+  assert.match(browserRunner, /KORDYN_COCKPIT_STATE/);
+  assert.match(browserRunner, /resourceState/);
+  assert.match(browserRunner, /minOverviewTextPx/);
+  assert.match(browserRunner, /minKeyboardTargetPx/);
+  assert.match(browserRunner, /volumeSeries/);
 });
 
 test("production sources never import the synthetic cockpit fixture", async () => {

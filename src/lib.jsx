@@ -1484,12 +1484,13 @@ const OKX_BAR = { "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1H", "4h": "4H", 
 // 图表价格不再经我们后端中转（少一跳、少延迟），而是客户端直接订阅 OKX candle{bar}，
 // 拿到的就是 OKX 正在形成的这根蜡烛的实时 OHLC——与 OKX 自家图表同源同速。
 // 若客户端直连 OKX 被网络限制，退回后端 SSE 实时价（onLivePrice）驱动。导出名保持 TradingViewChart。
-export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePrice = null }) {
+export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePrice = null, showVolume = false }) {
   const holder = useRef(null);
   const seriesRef = useRef(null);
   const lastBarRef = useRef(null);
   const lastOkxRef = useRef(0);
   const [status, setStatus] = useState("loading");
+  const [volumeStatus, setVolumeStatus] = useState(showVolume ? "loading" : "disabled");
   const tf = KLINE_TF[interval] || "1h";
   const barSeconds = KLINE_SECONDS[tf] || 3600;
 
@@ -1501,6 +1502,7 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
     let reconnectTimer = null;
     let refetchTimer = null;
     setStatus("loading");
+    setVolumeStatus(showVolume ? "loading" : "disabled");
     seriesRef.current = null;
     lastBarRef.current = null;
     const okxBar = OKX_BAR[tf] || "1H";
@@ -1509,13 +1511,15 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
     const fetchRows = async () => {
       try {
         const res = await fetch(apiUrl(`/api/market/klines?symbol=${encodeURIComponent(symbol)}&tf=${tf}&limit=200`));
+        if (!res.ok) throw new Error(`K-line API ${res.status}`);
         const json = await res.json();
         const candles = Array.isArray(json.candles) ? json.candles : [];
-        return candles
-          .map((c) => ({ time: Math.floor(Number(c.time) / 1000), open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close) }))
+        const rows = candles
+          .map((c) => ({ time: Math.floor(Number(c.time) / 1000), open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close), volume: c.volume == null || c.volume === "" ? null : Number(c.volume) }))
           .filter((c) => Number.isFinite(c.time) && Number.isFinite(c.close))
           .sort((a, b) => a.time - b.time);
-      } catch { return []; }
+        return { rows, error: null };
+      } catch (error) { return { rows: [], error }; }
     };
     const applyOkxCandle = (arr) => {
       const series = seriesRef.current;
@@ -1565,9 +1569,11 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
     }
 
     (async () => {
-      const rows = await fetchRows();
+      const initial = await fetchRows();
+      const rows = initial.rows;
       if (disposed || !holder.current) return;
-      if (!rows.length) { setStatus("empty"); return; }
+      if (initial.error) { setStatus("error"); setVolumeStatus(showVolume ? "error" : "disabled"); return; }
+      if (!rows.length) { setStatus("empty"); setVolumeStatus(showVolume ? "empty" : "disabled"); return; }
       const lc = await import("lightweight-charts");
       if (disposed || !holder.current) return;
       setStatus("ok");
@@ -1583,21 +1589,42 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
       const series = chart.addSeries(lc.CandlestickSeries, {
         upColor: "#1F7A50", downColor: "#C43F28", borderUpColor: "#1F7A50", borderDownColor: "#C43F28", wickUpColor: "#1F7A50", wickDownColor: "#C43F28"
       });
-      series.setData(rows);
+      const candleRows = rows.map(({ time, open, high, low, close }) => ({ time, open, high, low, close }));
+      series.setData(candleRows);
+      let volumeSeries = null;
+      if (showVolume) {
+        const volumeRows = rows.filter((row) => Number.isFinite(row.volume)).map((row) => ({
+          time: row.time,
+          value: row.volume,
+          color: row.close >= row.open ? "rgba(31, 122, 80, .26)" : "rgba(196, 63, 40, .24)"
+        }));
+        if (volumeRows.length) {
+          volumeSeries = chart.addSeries(lc.HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "volume" });
+          chart.priceScale("volume").applyOptions({ scaleMargins: { top: .82, bottom: 0 } });
+          volumeSeries.setData(volumeRows);
+          setVolumeStatus("ready");
+        } else setVolumeStatus("empty");
+      }
       chart.timeScale().fitContent();
       seriesRef.current = series;
-      lastBarRef.current = rows[rows.length - 1];
+      lastBarRef.current = candleRows[candleRows.length - 1];
       connectOkx(); // 直连 OKX 实时 candle（App 端也试；连不上时由 onLivePrice 兜底驱动）
       // 兜底：每 30s 拉一次真实 K 线纠正历史（直连挂了也不至于冻结）。
       refetchTimer = setInterval(async () => {
-        const fresh = await fetchRows();
+        const result = await fetchRows();
+        const fresh = result.rows;
         if (disposed || !seriesRef.current || !fresh.length) return;
+        const freshCandles = fresh.map(({ time, open, high, low, close }) => ({ time, open, high, low, close }));
         const live = lastBarRef.current;
-        if (live && fresh[fresh.length - 1].time <= live.time) {
-          seriesRef.current.setData(fresh.filter((b) => b.time < live.time).concat([live]));
+        if (live && freshCandles[freshCandles.length - 1].time <= live.time) {
+          seriesRef.current.setData(freshCandles.filter((b) => b.time < live.time).concat([live]));
         } else {
-          seriesRef.current.setData(fresh);
-          lastBarRef.current = fresh[fresh.length - 1];
+          seriesRef.current.setData(freshCandles);
+          lastBarRef.current = freshCandles[freshCandles.length - 1];
+        }
+        if (volumeSeries) {
+          const freshVolume = fresh.filter((row) => Number.isFinite(row.volume)).map((row) => ({ time: row.time, value: row.volume, color: row.close >= row.open ? "rgba(31, 122, 80, .26)" : "rgba(196, 63, 40, .24)" }));
+          if (freshVolume.length) volumeSeries.setData(freshVolume);
         }
       }, 30000);
     })();
@@ -1610,7 +1637,7 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
       if (chart) { try { chart.remove(); } catch { /* noop */ } }
       seriesRef.current = null;
     };
-  }, [symbol, interval]);
+  }, [symbol, interval, showVolume]);
 
   // 兜底：直连 OKX 静默(>3s)时，用后端 SSE 实时价驱动当前蜡烛（网络限制客户端直连 OKX 的情况）。
   useEffect(() => {
@@ -1632,9 +1659,9 @@ export function TradingViewChart({ symbol = "BTC/USDT", interval = "60", livePri
   }, [symbol, barSeconds]);
 
   return (
-    <div className="tvChart" style={{ position: "relative" }}>
+    <div className="tvChart" data-chart-status={status} data-volume-series={volumeStatus} style={{ position: "relative" }}>
       <div ref={holder} style={{ width: "100%", height: "100%" }} />
-      {status !== "ok" && <div className="chartEmpty tvOverlay">{status === "empty" ? t("同步 OKX 后显示真实 K 线", "Connect OKX to display live candlesticks") : t("加载 K 线…", "Loading candlesticks…")}</div>}
+      {status !== "ok" && <div className="chartEmpty tvOverlay" role={status === "error" ? "alert" : "status"}>{status === "empty" ? t("当前周期没有 K 线历史", "No candle history is available for this interval") : status === "error" ? t("K 线历史加载失败", "Candlestick history failed to load") : t("加载 K 线…", "Loading candlesticks…")}</div>}
     </div>
   );
 }

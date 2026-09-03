@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { projectOverviewSection } from "../server/overviewView.mjs";
 import {
   buildLedgerPresentation,
   buildOverviewPresentation,
@@ -21,6 +22,148 @@ test("overview shows a fill once instead of duplicating its order", () => {
     fills: [{ id: "f-1", orderId: "o-1", symbol: "BTC/USDT" }]
   });
   assert.deepEqual(rows.map((row) => row.id), ["f-1"]);
+});
+
+test("overview deduplicates production entry and close fills by executionOrderId and classifies their origin", () => {
+  const rows = buildOverviewTradeFlow({
+    executionOrders: [{ id: "o-1", symbol: "BTC/USDT", status: "filled" }, { id: "o-2", symbol: "ETH/USDT", status: "open" }],
+    fills: [
+      { id: "f-close", kind: "close", executionOrderId: "o-1", symbol: "BTC/USDT", createdAt: "2026-09-03T09:00:00Z" },
+      { id: "f-entry", kind: "entry", executionOrderId: "o-1", symbol: "BTC/USDT", createdAt: "2026-09-03T08:00:00Z" }
+    ]
+  });
+  assert.deepEqual(rows.map((row) => [row.id, row.kind, row.recordType]), [
+    ["f-close", "close", "fill"],
+    ["f-entry", "entry", "fill"],
+    ["o-2", undefined, "order"]
+  ]);
+});
+
+test("production cockpit projection omits cross-workspace enrichment", () => {
+  const payload = projectOverviewSection({
+    notifications: [],
+    events: [],
+    agentRuns: [],
+    jobRuns: [],
+    riskRules: [],
+    strategyCatalog: { products: [] },
+    portfolioRisk: { utilizationPct: 37, status: "ok" },
+    accountSnapshots: []
+  }, "cockpit");
+  assert.deepEqual(payload.resourceState, { cockpit: "loaded" });
+  assert.equal(Object.hasOwn(payload, "notifications"), true);
+  assert.equal(Object.hasOwn(payload, "portfolioRisk"), true);
+  assert.equal(Object.hasOwn(payload, "accountSnapshots"), true);
+  for (const field of ["events", "agentRuns", "jobRuns", "riskRules", "strategyCatalog"]) {
+    assert.equal(Object.hasOwn(payload, field), false, `${field} belongs to another workspace payload`);
+  }
+});
+
+test("overview distinguishes absent enrichment from loaded empty collections", () => {
+  const unavailable = buildOverviewPresentation({ markets: [], positions: [] });
+  assert.deepEqual(unavailable.collectionState, {
+    systemNotice: "unavailable",
+    marketNotice: "unavailable",
+    activities: "unavailable",
+    strategyProducts: "unavailable",
+    riskRules: "unavailable"
+  });
+
+  const empty = buildOverviewPresentation({
+    markets: [], positions: [], notifications: [], events: [], agentRuns: [], jobRuns: [],
+    strategyCatalog: { products: [] }, riskRules: []
+  });
+  assert.deepEqual(empty.collectionState, {
+    systemNotice: "loaded",
+    marketNotice: "loaded",
+    activities: "loaded",
+    strategyProducts: "loaded",
+    riskRules: "loaded"
+  });
+  assert.equal(empty.activeRiskRuleCount, 0);
+});
+
+test("overview uses only authoritative portfolio risk utilization and status", () => {
+  const available = buildOverviewPresentation({
+    portfolio: { totalEquityUsdt: 100, availableMarginUsdt: 1 },
+    portfolioRisk: { utilizationPct: 37, status: "no_positions" },
+    positions: [], markets: []
+  });
+  assert.deepEqual(available.portfolioRisk, { utilizationPct: 37, status: "no_positions" });
+
+  const unavailable = buildOverviewPresentation({ portfolio: { totalEquityUsdt: 100, availableMarginUsdt: 1 }, positions: [], markets: [] });
+  assert.equal(unavailable.portfolioRisk, null);
+});
+
+test("overview preserves market resource states and permits a current chart only when loaded", () => {
+  for (const state of ["loading", "error", "stale", "degraded"]) {
+    const model = buildOverviewPresentation({ resourceState: { cockpit: state }, markets: [{ symbol: "BTC/USDT", price: 100 }], positions: [] });
+    assert.equal(model.resourceState, state);
+    assert.equal(model.marketReady, false);
+  }
+  const loaded = buildOverviewPresentation({ resourceState: { cockpit: "loaded" }, markets: [{ symbol: "BTC/USDT", price: 100 }], positions: [] });
+  assert.equal(loaded.marketReady, true);
+});
+
+test("overview never infers a loaded cockpit resource from a core market symbol", () => {
+  const model = buildOverviewPresentation({
+    markets: [{ symbol: "BTC/USDT", price: 100 }],
+    activeMarket: { symbol: "BTC/USDT", price: 100 },
+    positions: []
+  });
+  assert.equal(model.resourceState, "not_loaded");
+  assert.equal(model.marketReady, false);
+});
+
+test("overview labels quote turnover and base volume with truthful units", () => {
+  const quote = buildOverviewPresentation({ markets: [{ symbol: "BTC/USDT", volume24h: 12, quoteTurnover24h: 340 }], positions: [] });
+  assert.deepEqual(quote.marketVolume, { kind: "quote", value: 340, unit: "USDT" });
+  const base = buildOverviewPresentation({ markets: [{ symbol: "BTC/USDT", volume24h: 12 }], positions: [] });
+  assert.deepEqual(base.marketVolume, { kind: "base", value: 12, unit: "BTC" });
+  const missing = buildOverviewPresentation({ markets: [{ symbol: "BTC/USDT" }], positions: [] });
+  assert.deepEqual(missing.marketVolume, { kind: "unavailable", value: null, unit: null });
+});
+
+test("overview preserves positions with unknown notional without calling the account flat", () => {
+  const model = buildOverviewPresentation({ positions: [{ positionId: "p-1", symbol: "BTC/USDT", quantity: 1 }], markets: [] });
+  assert.equal(model.allocation.length, 1);
+  assert.equal(model.allocation[0].notionalUsdt, null);
+  assert.equal(model.hasPositions, true);
+  assert.equal(model.hasAllocatablePositions, false);
+});
+
+test("overview counts only explicitly enabled risk rules", () => {
+  const model = buildOverviewPresentation({ riskRules: [{ id: "unknown" }, { id: "off", enabled: false }, { id: "on", enabled: true }], positions: [], markets: [] });
+  assert.equal(model.activeRiskRuleCount, 1);
+});
+
+test("overview sorts valid account snapshots chronologically for its hero trend", () => {
+  const model = buildOverviewPresentation({
+    accountSnapshots: [
+      { id: "new", createdAt: "2026-09-03T10:00:00Z", totalEquityUsdt: 103 },
+      null,
+      { id: "old", createdAt: "2026-09-03T08:00:00Z", totalEquityUsdt: 101 },
+      "malformed",
+      { id: "mid", createdAt: "2026-09-03T09:00:00Z", totalEquityUsdt: 102 }
+    ],
+    positions: [], markets: []
+  });
+  assert.deepEqual(model.accountSnapshots.map((row) => row.id), ["old", "mid", "new"]);
+});
+
+test("overview rejects malformed trade, position, and activity rows", () => {
+  assert.doesNotThrow(() => buildOverviewPresentation({
+    fills: [null, "bad", { id: "f-1", kind: "fill", executionOrderId: "o-1" }],
+    executionOrders: [null, 42, { id: "o-1" }],
+    positions: [null, "bad", { positionId: "p-1", symbol: "BTC/USDT", quantity: 1 }],
+    agentRuns: [null, "bad", { id: "run-1" }],
+    jobRuns: [undefined, { id: "job-1" }],
+    markets: []
+  }));
+  const model = buildOverviewPresentation({ fills: [null, {}], executionOrders: [null, {}], positions: [null, {}], agentRuns: [null, {}], jobRuns: [null, {}], markets: [] });
+  assert.deepEqual(model.tradeFlow, []);
+  assert.deepEqual(model.allocation, []);
+  assert.deepEqual(model.activities, []);
 });
 
 test("overview presentation keeps system and market notices distinct", () => {

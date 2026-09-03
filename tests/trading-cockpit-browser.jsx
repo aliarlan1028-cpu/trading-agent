@@ -37,6 +37,7 @@ window.WebSocket = InertCockpitWebSocket;
 
 const nativeFetch = window.fetch.bind(window);
 const klineFixture = { requests: 0, symbols: [] };
+const query = new URLSearchParams(location.search);
 window.__cockpitKlineFixture = klineFixture;
 window.fetch = async (input, init) => {
   const url = typeof input === "string" ? input : input.url;
@@ -44,6 +45,8 @@ window.fetch = async (input, init) => {
     const symbol = new URL(url, location.origin).searchParams.get("symbol") || "BTC/USDT";
     klineFixture.requests += 1;
     klineFixture.symbols.push(symbol);
+    if (query.get("chart") === "error") return new Response(JSON.stringify({ error: "synthetic chart failure" }), { status: 503, headers: { "content-type": "application/json" } });
+    if (query.get("chart") === "empty") return new Response(JSON.stringify({ candles: [] }), { status: 200, headers: { "content-type": "application/json" } });
     return new Response(JSON.stringify({ candles: fixtureCandles(symbol) }), { status: 200, headers: { "content-type": "application/json" } });
   }
   return nativeFetch(input, init);
@@ -51,7 +54,7 @@ window.fetch = async (input, init) => {
 
 const fixtureMarket = (symbol, index) => {
   const price = prices[symbol], changePct = [2.42, 1.86, -1.12, 3.74, .42][index];
-  return { id: `market-${symbol}`, symbol, price, last: price, changePct, change24hPct: changePct, high24h: round(price * 1.016), low24h: round(price * .973), volume24h: 1_830_000_000 - index * 211_000_000, quoteVolume: 1_830_000_000 - index * 211_000_000, openInterest: 2_743_000_000 - index * 330_000_000, fundingRate: [.0081, .0064, -.0032, .012, .0019][index], candles: fixtureCandles(symbol), updatedAt: now };
+  return { id: `market-${symbol}`, symbol, price, last: price, changePct, change24hPct: changePct, high24h: round(price * 1.016), low24h: round(price * .973), volume24h: 18_300 - index * 2_110, quoteTurnover24h: 1_830_000_000 - index * 211_000_000, openInterest: 2_743_000_000 - index * 330_000_000, fundingRate: [.0081, .0064, -.0032, .012, .0019][index], candles: fixtureCandles(symbol), updatedAt: now };
 };
 
 const positions = [
@@ -89,14 +92,24 @@ const realizedPnl = closedTradeLifecycles.reduce((total, row) => total + row.net
 const wins = closedTradeLifecycles.filter((row) => row.netRealizedPnl > 0).length;
 
 const data = {
-  user: { id: "synthetic-browser-user", name: "Ely", displayName: "Ely" }, exchangeAccounts: [{ id: "synthetic-okx", exchange: "OKX", connected: true, tradingAvailable: true, source: "synthetic_browser_fixture", updatedAt: now }], system: { killSwitch: false, remainingDailyLossUsdt: 1360, updatedAt: now }, automationState: { mode: "observe", label: "观察运行", detail: "Synthetic browser fixture; no production write is permitted.", updatedAt: now }, portfolio: { totalEquityUsdt: 72450.82, todayPnl: 826.42, todayPnlPct: 1.15, unrealizedPnl: 1024.96, availableMarginUsdt: 56540.13, updatedAt: now },
-  riskRules: ["r1", "r2", "r3", "r4"].map((id, index) => ({ id, enabled: true, name: `Synthetic risk rule ${index + 1}`, updatedAt: now })), notifications: [{ id: "n1", title: "Synthetic fixture: market observation updated.", unread: true, createdAt: iso(-1), updatedAt: iso(-1) }], events: [{ id: "e1", title: "Synthetic employment data window", due: iso(26), importance: "high", source: "synthetic_browser_fixture" }, { id: "e2", title: "Synthetic central-bank speech", due: iso(43), importance: "high", source: "synthetic_browser_fixture" }],
+  resourceState: { cockpit: "loaded" }, user: { id: "synthetic-browser-user", name: "Ely", displayName: "Ely" }, exchangeAccounts: [{ id: "synthetic-okx", exchange: "OKX", connected: true, tradingAvailable: true, source: "synthetic_browser_fixture", updatedAt: now }], system: { killSwitch: false, remainingDailyLossUsdt: 1360, updatedAt: now }, automationState: { mode: "observe", label: "观察运行", detail: "Synthetic browser fixture; no production write is permitted.", updatedAt: now }, portfolio: { totalEquityUsdt: 72450.82, todayPnl: 826.42, todayPnlPct: 1.15, unrealizedPnl: 1024.96, availableMarginUsdt: 56540.13, updatedAt: now }, portfolioRisk: { utilizationPct: 37, status: "ok", portfolioVolPct: 1.11, budgetPct: 3 },
+  notifications: [{ id: "n1", title: "Synthetic fixture: market observation updated.", unread: true, createdAt: iso(-1), updatedAt: iso(-1) }],
   markets: symbols.map(fixtureMarket), activeMarket: fixtureMarket("BTC/USDT", 0), watchlist: symbols, marketRegime: { summary: "Synthetic fixture: trend is positive while leverage remains observed.", global: { label: "趋势偏多 · 波动扩张", summary: "Synthetic market regime for browser-only visual validation.", confidence: 78, breadthPct: 64 }, smartMoney: { topTraderLongShortRatio: 1.36 }, updatedAt: now }, mediumTermAnalytics: { symbols: symbols.slice(0, 3).map((symbol) => ({ symbol, windows: { "15m": { status: "ok", leverageState: "long_build" }, "1h": { status: "ok", leverageState: "long_build_crowded" }, "4h": { status: "ok", leverageState: "stable_or_mixed" } }, updatedAt: now })) },
-  positions, accountSnapshots, tradePlans: Array.from({ length: 8 }, (_, index) => ({ id: `plan-${index}`, symbol: symbols[index % symbols.length], status: "approved", signal: "synthetic_fixture", strategy: "browser_validation", stopLoss: prices[symbols[index % symbols.length]] * .97, takeProfit: [prices[symbols[index % symbols.length]] * 1.02], createdAt: iso(-100 + index) })), riskChecks: executionOrders.map((order) => ({ id: `risk-${order.id}`, tradePlanId: order.tradePlanId, executionOrderId: order.id, status: "passed", summary: "Synthetic browser fixture risk gate passed.", createdAt: order.createdAt })), executionOrders, fills, closedTradeLifecycles, reviews, performance: { trades: closedTradeLifecycles.length, totalPnlUsdt: round(realizedPnl, 2), winRatePct: round(wins / closedTradeLifecycles.length * 100, 1), profitFactor: 2.14, avgPnlUsdt: round(realizedPnl / closedTradeLifecycles.length, 2), maxDrawdownPct: 4.6 }, behaviorProfile: { strengths: ["Synthetic fixture records deterministic entry and protection context."], flags: [{ key: "event", title: "Synthetic event timing", detail: "Synthetic fixture preserves a complete review shape for visual density." }] }, agentRuns: Array.from({ length: 6 }, (_, index) => ({ id: `run-${index}`, goal: `Synthetic browser validation run ${index + 1}`, status: index === 0 ? "running" : "completed", createdAt: iso(-index - .2), completedAt: index === 0 ? undefined : iso(-index - .1) })), jobRuns: Array.from({ length: 4 }, (_, index) => ({ id: `job-${index}`, name: `Synthetic reconciliation ${index + 1}`, status: "completed", createdAt: iso(-index - 1.5), completedAt: iso(-index - 1.4) })), strategyCatalog: { products: [{ id: "trend-v3", versionId: "trend-v3", deployment: { state: "active" } }, { id: "breakout-v2", versionId: "breakout-v2", deployment: { state: "live_probation" } }] }
+  positions, accountSnapshots, tradePlans: Array.from({ length: 8 }, (_, index) => ({ id: `plan-${index}`, symbol: symbols[index % symbols.length], status: "approved", signal: "synthetic_fixture", strategy: "browser_validation", stopLoss: prices[symbols[index % symbols.length]] * .97, takeProfit: [prices[symbols[index % symbols.length]] * 1.02], createdAt: iso(-100 + index) })), riskChecks: executionOrders.map((order) => ({ id: `risk-${order.id}`, tradePlanId: order.tradePlanId, executionOrderId: order.id, status: "passed", summary: "Synthetic browser fixture risk gate passed.", createdAt: order.createdAt })), executionOrders, fills, closedTradeLifecycles, reviews, performance: { trades: closedTradeLifecycles.length, totalPnlUsdt: round(realizedPnl, 2), winRatePct: round(wins / closedTradeLifecycles.length * 100, 1), profitFactor: 2.14, avgPnlUsdt: round(realizedPnl / closedTradeLifecycles.length, 2), maxDrawdownPct: 4.6 }, behaviorProfile: { strengths: ["Synthetic fixture records deterministic entry and protection context."], flags: [{ key: "event", title: "Synthetic event timing", detail: "Synthetic fixture preserves a complete review shape for visual density." }] }
 };
 
-const query = new URLSearchParams(location.search);
-if (query.get("empty") === "1") Object.assign(data, { portfolio: {}, markets: [], activeMarket: null, watchlist: [], events: [], positions: [], executionOrders: [], fills: [], closedTradeLifecycles: [], reviews: [], accountSnapshots: [], agentRuns: [], jobRuns: [], strategyCatalog: { products: [] } });
+const enrichment = {
+  riskRules: ["r1", "r2", "r3", "r4"].map((id, index) => ({ id, enabled: true, name: `Synthetic risk rule ${index + 1}`, updatedAt: now })),
+  events: [{ id: "e1", title: "Synthetic employment data window", due: iso(26), importance: "high", source: "synthetic_browser_fixture" }, { id: "e2", title: "Synthetic central-bank speech", due: iso(43), importance: "high", source: "synthetic_browser_fixture" }],
+  agentRuns: Array.from({ length: 6 }, (_, index) => ({ id: `run-${index}`, goal: `Synthetic browser validation run ${index + 1}`, status: index === 0 ? "running" : "completed", createdAt: iso(-index - .2), completedAt: index === 0 ? undefined : iso(-index - .1) })),
+  jobRuns: Array.from({ length: 4 }, (_, index) => ({ id: `job-${index}`, name: `Synthetic reconciliation ${index + 1}`, status: "completed", createdAt: iso(-index - 1.5), completedAt: iso(-index - 1.4) })),
+  strategyCatalog: { products: [{ id: "trend-v3", versionId: "trend-v3", deployment: { state: "active" } }, { id: "breakout-v2", versionId: "breakout-v2", deployment: { state: "live_probation" } }] }
+};
+if (query.get("enriched") === "1") Object.assign(data, enrichment);
+if (query.get("empty") === "1") Object.assign(data, { portfolio: {}, portfolioRisk: { utilizationPct: null, status: "no_equity" }, markets: [], activeMarket: null, watchlist: [], marketRegime: null, notifications: [], positions: [], executionOrders: [], fills: [], closedTradeLifecycles: [], reviews: [], accountSnapshots: [] });
+const requestedResourceState = query.get("resource");
+if (["loading", "error", "stale", "degraded"].includes(requestedResourceState)) data.resourceState.cockpit = requestedResourceState;
+window.__cockpitFixtureFields = Object.keys(data);
 const initialTab = ["overview", "market", "positions", "execution", "ledger"].includes(query.get("view")) ? query.get("view") : "overview";
 const action = async (path, payload, method) => { window.__cockpitLastAction = { path, payload, method }; return {}; };
 const captureUrl = location.href;

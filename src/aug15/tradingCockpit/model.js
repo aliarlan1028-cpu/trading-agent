@@ -1,19 +1,45 @@
-import { buildExecutionView, buildMarketRows, buildPositionView, findReviewTrade, netReviewResult, positionNotionalUsdt } from "../../viewData.js";
+import { buildExecutionView, buildMarketRows, buildPositionView, findReviewTrade, netReviewResult } from "../../viewData.js";
 
 const rows = (value) => Array.isArray(value) ? value : [];
+const objectRows = (value) => rows(value).filter((row) => row && typeof row === "object" && !Array.isArray(row));
+const hasOwn = (value, key) => Boolean(value && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, key));
 const finiteNumber = (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
-const timeOf = (row) => new Date(row.updatedAt ?? row.completedAt ?? row.createdAt ?? 0).getTime() || 0;
+const timeOf = (row) => row && typeof row === "object" ? new Date(row.updatedAt ?? row.completedAt ?? row.createdAt ?? 0).getTime() || 0 : 0;
 const byNewest = (a, b) => timeOf(b) - timeOf(a);
+const byOldest = (a, b) => timeOf(a) - timeOf(b);
+
+function positionNotional(position) {
+  const authoritative = position.notional ?? position.notionalUsdt ?? position.marketValue;
+  if (finiteNumber(authoritative)) return Math.abs(Number(authoritative));
+  const quantity = position.quantity ?? position.size ?? position.pos ?? position.qty;
+  const mark = position.markPrice ?? position.mark ?? position.price ?? position.entryPrice ?? position.entry;
+  return finiteNumber(quantity) && finiteNumber(mark) ? Math.abs(Number(quantity) * Number(mark)) : null;
+}
+
+function marketVolumeOf(market) {
+  if (!market || typeof market !== "object") return { kind: "unavailable", value: null, unit: null };
+  const quote = market.quoteTurnover24h ?? market.quoteVolume24h ?? market.turnover24h ?? market.quoteVolume;
+  const [baseUnit, quoteUnit] = String(market.symbol || "").split("/");
+  if (finiteNumber(quote)) return { kind: "quote", value: Number(quote), unit: quoteUnit || null };
+  const base = market.baseVolume24h ?? market.volume24h ?? market.volume;
+  if (finiteNumber(base)) return { kind: "base", value: Number(base), unit: baseUnit || null };
+  return { kind: "unavailable", value: null, unit: null };
+}
 
 export function cockpitObjectId(row = {}) {
-  return row.id ?? row.positionId ?? row.instId ?? row.orderId ?? row.tradeLifecycleId ?? row.symbol ?? null;
+  const safe = row && typeof row === "object" ? row : {};
+  return safe.id ?? safe.positionId ?? safe.instId ?? safe.orderId ?? safe.executionOrderId ?? safe.fillId ?? safe.tradeLifecycleId ?? safe.symbol ?? null;
 }
 
 export function buildOverviewTradeFlow(data = {}) {
-  const fills = Array.isArray(data.fills) ? data.fills : [];
-  const filledOrderIds = new Set(fills.map((row) => row.orderId).filter(Boolean).map(String));
-  const remainingOrders = (Array.isArray(data.executionOrders) ? data.executionOrders : [])
-    .filter((row) => !filledOrderIds.has(String(row.id)));
+  const fills = objectRows(data.fills)
+    .filter((row) => row.id != null || row.fillId != null)
+    .map((row) => ({ ...row, recordType: "fill" }));
+  const filledOrderIds = new Set(fills.map((row) => row.executionOrderId ?? row.orderId).filter((id) => id !== null && id !== undefined && id !== "").map(String));
+  const remainingOrders = objectRows(data.executionOrders)
+    .filter((row) => row.id != null || row.orderId != null || row.executionOrderId != null)
+    .filter((row) => !filledOrderIds.has(String(row.id ?? row.executionOrderId ?? row.orderId ?? "")))
+    .map((row) => ({ ...row, recordType: "order" }));
   return [...fills, ...remainingOrders].sort(byNewest);
 }
 
@@ -21,19 +47,50 @@ export function buildOverviewPresentation(data = {}) {
   const positions = buildPositionPresentation(data);
   const markets = buildMarketRows(data);
   const activeMarket = data.activeMarket?.symbol ? data.activeMarket : null;
+  const market = activeMarket ?? markets[0] ?? null;
+  const explicitResourceState = typeof data.resourceState?.cockpit === "string" ? data.resourceState.cockpit.trim().toLowerCase() : "";
+  const resourceState = explicitResourceState || "not_loaded";
+  const systemNoticeAvailable = hasOwn(data, "notifications") || Boolean(data.automationState && typeof data.automationState === "object");
+  const activityAvailable = hasOwn(data, "agentRuns") || hasOwn(data, "jobRuns");
+  const strategyCatalogAvailable = Boolean(data.strategyCatalog && typeof data.strategyCatalog === "object" && hasOwn(data.strategyCatalog, "products"));
+  const riskRulesAvailable = hasOwn(data, "riskRules");
+  const portfolioRisk = data.portfolioRisk && typeof data.portfolioRisk === "object"
+    && (finiteNumber(data.portfolioRisk.utilizationPct) || data.portfolioRisk.status != null)
+    ? {
+        utilizationPct: finiteNumber(data.portfolioRisk.utilizationPct) ? Number(data.portfolioRisk.utilizationPct) : null,
+        status: data.portfolioRisk.status == null ? null : String(data.portfolioRisk.status)
+      }
+    : null;
+  const accountSnapshots = objectRows(data.accountSnapshots)
+    .filter((row) => finiteNumber(row.totalEquityUsdt) && timeOf(row) > 0)
+    .sort(byOldest);
   return {
     portfolio: data.portfolio ?? {},
-    market: activeMarket ?? markets[0] ?? null,
+    portfolioRisk,
+    resourceState,
+    marketReady: resourceState === "loaded",
+    market,
+    marketVolume: marketVolumeOf(market),
     markets,
     positions,
     allocation: positions.positions,
+    hasPositions: positions.positions.length > 0,
+    hasAllocatablePositions: positions.positions.some((row) => finiteNumber(row.notionalUsdt) && Number(row.notionalUsdt) > 0),
     tradeFlow: buildOverviewTradeFlow(data),
-    systemNotice: rows(data.notifications)[0] ?? (data.automationState ? { title: data.automationState.detail ?? data.automationState.label } : null),
-    marketNotice: rows(data.events)[0] ?? null,
+    systemNotice: objectRows(data.notifications)[0] ?? (data.automationState ? { title: data.automationState.detail ?? data.automationState.label } : null),
+    marketNotice: objectRows(data.events)[0] ?? null,
     aiRead: data.marketRegime ?? null,
-    activities: [...rows(data.agentRuns), ...rows(data.jobRuns)].sort(byNewest),
-    strategyProducts: rows(data.strategyCatalog?.products),
-    accountSnapshots: rows(data.accountSnapshots)
+    activities: [...objectRows(data.agentRuns), ...objectRows(data.jobRuns)].filter((row) => row.id != null).sort(byNewest),
+    strategyProducts: objectRows(data.strategyCatalog?.products),
+    activeRiskRuleCount: objectRows(data.riskRules).filter((row) => row.enabled === true).length,
+    collectionState: {
+      systemNotice: systemNoticeAvailable ? "loaded" : "unavailable",
+      marketNotice: hasOwn(data, "events") ? "loaded" : "unavailable",
+      activities: activityAvailable ? "loaded" : "unavailable",
+      strategyProducts: strategyCatalogAvailable ? "loaded" : "unavailable",
+      riskRules: riskRulesAvailable ? "loaded" : "unavailable"
+    },
+    accountSnapshots
   };
 }
 
@@ -55,9 +112,10 @@ export function buildSelectedExecutionStages(data = {}, order = {}) {
 }
 
 export function buildPositionPresentation(data = {}) {
-  const base = buildPositionView(data);
-  const orders = rows(data.executionOrders);
-  const plans = rows(data.tradePlans);
+  const positionRows = objectRows(data.positions).filter((row) => cockpitObjectId(row) != null);
+  const base = buildPositionView({ ...data, positions: positionRows });
+  const orders = objectRows(data.executionOrders);
+  const plans = objectRows(data.tradePlans);
   return {
     ...base,
     positions: base.positions.map((position) => {
@@ -72,7 +130,7 @@ export function buildPositionPresentation(data = {}) {
       return {
         ...position,
         id: cockpitObjectId(position),
-        notionalUsdt: positionNotionalUsdt(position),
+        notionalUsdt: positionNotional(position),
         stopLoss: position.stopLoss ?? position.stopLossPrice ?? plan?.stopLoss ?? plan?.stop_loss ?? null,
         takeProfits: rows(position.takeProfits ?? position.takeProfit ?? plan?.takeProfit ?? plan?.take_profit)
       };
