@@ -183,3 +183,100 @@ PASS (no output)
 - The pre-existing App/route work, unrelated source/test changes, prior captures, and other untracked files remain untouched and unstaged.
 - Final captures stayed in `/tmp`; no unauthorized artifact was added to the repository.
 - Only the authorized Task 7 source, test, fixture, and report files are staged and committed.
+
+## Fix round 1 — exact-tree integration and fail-closed review identity
+
+Date: 2026-09-04
+
+Reviewed base: `7fb1832`
+
+Implementation commit: `4236e40`
+
+### Blocking findings resolved
+
+- `findReviewTrade` is now part of the committed tree and applies strict, unique precedence: `tradeLifecycleId` → `executionOrderId` → `orderId`. Blank identities are absent; an explicit stronger miss or duplicate returns `null` immediately and cannot fall through to a weaker match. Adversarial coverage includes an earlier weak match, stronger misses, duplicates at every level, blank identities, and no-identity input.
+- Review System Health reads only a nonblank production system fact (`system.apiHealth`, `system.health`, or `system.status`). A loaded transport/resource state no longer implies `正常`/`Healthy`; missing health is explicitly unavailable.
+- The selected detail is resolved from `filtered`, not the unfiltered review set. Excluding the selected row clears the visible canonical identity and detail immediately; row selection also validates against that same visible set.
+- The production `TradingCenter` now mounts `TradingCockpitShell`/`TradingCockpitPage`, forwards `initialReviewId`, and synchronizes `onReviewSelect`. The App integration contains only cockpit URL restoration, review identity propagation, and immersive cockpit shell behavior; three matching global shell selectors were staged without adjacent mobile/settings changes.
+- `src/cockpitUrlState.js` owns only the five cockpit paths and scoped `/app/trade/reviews/:id` restoration. Unknown routes return `null`/`false` and are not rewritten. Malformed encoded review identities fail closed.
+- `tests/trading-cockpit-browser.html` is tracked. The browser runner mounts the real `August15AuthenticatedShell`, not a direct Review component.
+
+### TDD evidence
+
+After the URL-helper scaffold, the focused run produced exactly the two intended behavioral failures: resource `loaded` rendered `正常`, and an earlier execution-order match beat an explicit lifecycle identity. The implementation then made the focused model/reference/protected-deep-link set green:
+
+```text
+node --test tests/trading-cockpit-model.test.mjs tests/trading-cockpit-reference.test.mjs tests/aug15-review-deep-link.test.mjs
+PASS: 82/82
+```
+
+The protected `tests/aug15-review-deep-link.test.mjs` remained read-only.
+
+### Exact committed-tree proof
+
+The implementation commit was exported without working-tree files:
+
+```text
+task7_archive=$(mktemp -d /tmp/trading-task7-4236e40.XXXXXX)
+git archive 4236e40 | tar -x -C "$task7_archive"
+ln -s '/Users/ely/Desktop/Trading Agent/node_modules' "$task7_archive/node_modules"
+archive: /tmp/trading-task7-4236e40.2eXle5
+```
+
+From that archive:
+
+```text
+node --test tests/trading-cockpit-model.test.mjs tests/trading-cockpit-reference.test.mjs tests/aug15-review-deep-link.test.mjs
+PASS: 82/82
+
+KORDYN_COCKPIT_VIEWS=execution node tests/run-trading-cockpit-browser.mjs
+PASS: 1440×1080, 1280×960, 1024×768; cleanup PASS
+
+npm run build
+PASS: 1,823 modules transformed
+```
+
+At every archived browser viewport the real App shell reached Execution & Review, selected `review-18` from page 2, changed the canonical detail and URL to `/app/trade/reviews/review-18`, filtered to `ADA/USDT` and cleared the excluded selection/detail while every visible row remained ADA, reloaded to restore `review-18` on page 2, and failed closed for an unmatched review. Workbench geometry remained 36/64, targets remained at least 36px, and document overflow was zero.
+
+### Shared-checkout regression gates
+
+```text
+node tests/run-trading-cockpit-browser.mjs
+PASS: all five views × 1440/1280/1024 (15 viewport/view cases); cleanup PASS
+
+KORDYN_COCKPIT_VIEWS=execution KORDYN_COCKPIT_STATE=<loading|stale|degraded|error|failed|forbidden|disabled> node tests/run-trading-cockpit-browser.mjs
+PASS: every state at all three viewports
+
+KORDYN_COCKPIT_VIEWS=execution KORDYN_COCKPIT_EMPTY=1 node tests/run-trading-cockpit-browser.mjs
+KORDYN_COCKPIT_VIEWS=execution KORDYN_COCKPIT_REVIEW_CASE=malformed node tests/run-trading-cockpit-browser.mjs
+PASS: both at all three viewports
+
+npm test
+PASS: 2,342/2,342, 0 failures; isolated data root cleaned
+
+npm run lint
+PASS
+
+npm run build
+PASS: 1,823 modules transformed
+
+node /Users/ely/.codex/skills/impeccable/scripts/detect.mjs --json src/aug15/tradingCockpit/ReviewPage.jsx src/aug15/tradingCockpit.css
+PASS: []
+
+git diff --check
+PASS: no output
+```
+
+### Exact implementation file list
+
+- `src/aug15/App.jsx`
+- `src/aug15/styles.css`
+- `src/aug15/tradingCockpit/ReviewPage.jsx`
+- `src/aug15/workspacePages.jsx`
+- `src/cockpitUrlState.js`
+- `src/viewData.js`
+- `tests/run-trading-cockpit-browser.mjs`
+- `tests/trading-cockpit-browser.html`
+- `tests/trading-cockpit-reference.test.mjs`
+
+The pre-existing broader `src/appUrlState.js`, its tests, protected deep-link test, product-architecture work, mobile work, and other dirty files remain unstaged. No backend/API/trading/auth changes were made. The independent review's deferred minor—remaining 9–10px detail copy—remains intentionally assigned to Task 9 visual convergence; Critical and Important findings from this round are resolved.
