@@ -2,6 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { toPng } from "html-to-image";
 import { August15AuthenticatedShell } from "../src/aug15/App.jsx";
+import { ConfirmHost } from "../src/confirm.jsx";
 import { TradingViewChart } from "../src/lib.jsx";
 import "../src/aug15/styles.css";
 
@@ -125,7 +126,7 @@ const fixtureMarket = (symbol, index) => {
 };
 
 const positions = [
-  { id: "pos-btc", positionId: "pos-btc", executionOrderId: "ord-00", symbol: "BTC/USDT", source: "execution_engine", direction: "long", side: "buy", quantity: .18, size: .18, entryPrice: 110820, markPrice: 114262.4, unrealizedPnl: 619.63, pnl: 619.63, leverage: 3, liquidationPrice: 82410, liqDistancePct: 27.8, margin: 6855.74, initialMargin: 6855.74, notionalUsdt: 20567.23, notional: 20567.23, stopLoss: 108920, takeProfits: [116180], openedAt: iso(-22), updatedAt: now },
+  { positionId: "ord-04", symbol: "BTC/USDT", source: "execution_engine", direction: "long", side: "buy", quantity: .18, size: .18, entryPrice: 110820, markPrice: 114262.4, unrealizedPnl: 619.63, pnl: 619.63, leverage: 3, liquidationPrice: 82410, liqDistancePct: 27.8, margin: 6855.74, initialMargin: 6855.74, notionalUsdt: 20567.23, notional: 20567.23, openedAt: iso(-22), updatedAt: now },
   { id: "pos-eth", positionId: "pos-eth", executionOrderId: "ord-01", symbol: "ETH/USDT", source: "execution_engine", direction: "long", side: "buy", quantity: 1.4, size: 1.4, entryPrice: 4258, markPrice: 4382.18, unrealizedPnl: 173.85, pnl: 173.85, leverage: 3, liquidationPrice: 3184, liqDistancePct: 27.3, margin: 2044.98, initialMargin: 2044.98, notionalUsdt: 6135.05, notional: 6135.05, stopLoss: 4180, takeProfits: [4471], openedAt: iso(-15), updatedAt: now },
   { id: "pos-sol", positionId: "pos-sol", executionOrderId: "ord-02", instId: "SOL-USDT-SWAP", symbol: "SOL/USDT", source: "exchange_rest", direction: "short", side: "sell", quantity: 18, size: 18, entryPrice: 223.1, markPrice: 219.84, unrealizedPnl: 58.68, pnl: 58.68, leverage: 2, liquidationPrice: 318.2, liqDistancePct: 44.7, margin: 1978.56, initialMargin: 1978.56, notionalUsdt: 3957.12, notional: 3957.12, stopLoss: 226.2, takeProfits: [214.1], openedAt: iso(-8), updatedAt: now },
   { id: "pos-sui", positionId: "pos-sui", executionOrderId: "ord-03", instId: "SUI-USDT-SWAP", symbol: "SUI/USDT", source: "exchange_ws", direction: "long", side: "buy", quantity: 960, size: 960, entryPrice: 4.08, markPrice: 4.26, unrealizedPnl: 172.8, pnl: 172.8, leverage: 2, liquidationPrice: 2.17, liqDistancePct: 49.1, margin: 2044.8, initialMargin: 2044.8, notionalUsdt: 4089.6, notional: 4089.6, stopLoss: 4.01, takeProfits: [4.35], openedAt: iso(-5), updatedAt: now }
@@ -134,9 +135,9 @@ const positions = [
 const executionOrders = Array.from({ length: 32 }, (_, index) => {
   const symbol = symbols[index % symbols.length], side = index % 3 === 2 ? "sell" : "buy", price = prices[symbol];
   const quantity = symbol === "BTC/USDT" ? .03 + index / 1000 : symbol === "ETH/USDT" ? .4 + index / 10 : 8 + index;
-  const status = index < 24 ? "filled" : index % 3 === 0 ? "open" : index % 3 === 1 ? "pending" : "canceled";
+  const status = index === 1 ? "protecting" : index < 24 ? "filled" : index % 3 === 0 ? "open" : index % 3 === 1 ? "pending" : "canceled";
   const type = index % 7 === 0 ? "stop" : index % 4 === 0 ? "market" : "limit";
-  return { id: `ord-${String(index).padStart(2, "0")}`, orderId: `ord-${String(index).padStart(2, "0")}`, tradePlanId: `plan-${index % 8}`, planId: `plan-${index % 8}`, positionId: positions[index % positions.length].positionId, symbol, side, direction: side, type, orderType: type, purpose: type === "stop" ? "stop_loss" : "entry", quantity, size: quantity, filledQuantity: status === "filled" ? quantity : 0, accFillSz: status === "filled" ? quantity : 0, price: round(price * (1 + (index % 5 - 2) * .001)), exchange: "OKX", venue: "OKX", source: "execution_engine", status, reduceOnly: type === "stop", createdAt: iso(-96 + index * 2), updatedAt: iso(-96 + index * 2 + .2) };
+  return { id: `ord-${String(index).padStart(2, "0")}`, orderId: `ord-${String(index).padStart(2, "0")}`, tradePlanId: `plan-${index % 8}`, planId: `plan-${index % 8}`, positionId: index < positions.length ? positions[index].positionId : `historical-position-${index}`, symbol, side, direction: side, type, orderType: type, purpose: type === "stop" ? "stop_loss" : "entry", quantity, size: quantity, filledQuantity: status === "filled" ? quantity : 0, accFillSz: status === "filled" ? quantity : 0, price: round(price * (1 + (index % 5 - 2) * .001)), exchange: "OKX", venue: "OKX", source: "execution_engine", status, reduceOnly: type === "stop", createdAt: iso(-96 + index * 2), updatedAt: iso(-96 + index * 2 + .2) };
 });
 
 const fills = Array.from({ length: 24 }, (_, index) => {
@@ -201,6 +202,14 @@ if (query.get("marketCase") === "mismatched") Object.assign(data, {
   activeMarket: fixtureMarket("BTC/USDT", 0),
   watchlist: [" BTC/USDT ", { symbol: " DOGE/USDT " }, "/USDT"]
 });
+if (query.get("positionCase") === "malformed") Object.assign(data, {
+  portfolio: {},
+  portfolioRisk: {},
+  positions: [null, "bad", {}, { id: "", symbol: "", status: "protecting" }, { symbol: " ", status: "protecting" }],
+  executionOrders: [{ id: "", positionId: "", status: "protecting" }, { symbol: "BTC/USDT", status: "protecting" }],
+  tradePlans: [{ id: "wrong-malformed", stopLoss: 13.37, takeProfit: [14.88] }],
+  accountSnapshots: []
+});
 const requestedResourceState = query.get("resource");
 if (["not_loaded", "loading", "ready", "error", "failed", "forbidden", "disabled", "stale", "degraded"].includes(requestedResourceState)) data.resourceState.cockpit = requestedResourceState;
 if (requestedResourceState === "unknown") data.resourceState.cockpit = "future_state";
@@ -212,7 +221,7 @@ history.replaceState(null, "", ({ overview: "/app/trade/overview", market: "/app
 const api = { data, action, toast: "", busy: false, notify() {}, download() {}, refresh() {}, ensureSection() {}, connectionError: "" };
 const browserContent = chartLifecycleModes.has(chartFailureMode)
   ? <div className="cockpitPage" data-cockpit-page="overview"><div data-cockpit-region="market-chart"><TradingViewChart symbol="BTC/USDT" interval="60" showVolume chartLibraryLoader={loadChartLibraryFixture}/></div></div>
-  : <August15AuthenticatedShell api={api} lang="zh" switchLang={() => {}}/>;
+  : <><August15AuthenticatedShell api={api} lang="zh" switchLang={() => {}}/><ConfirmHost/></>;
 createRoot(document.getElementById("root")).render(browserContent);
 
 const captureCockpitVisual = async () => {

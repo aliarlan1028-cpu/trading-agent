@@ -18,6 +18,7 @@ const emptyMode = process.env.KORDYN_COCKPIT_EMPTY === "1";
 const enrichedMode = process.env.KORDYN_COCKPIT_ENRICHED === "1";
 const stateMode = String(process.env.KORDYN_COCKPIT_STATE || "").trim().toLowerCase();
 const marketCase = String(process.env.KORDYN_COCKPIT_MARKET_CASE || "").trim().toLowerCase();
+const positionCase = String(process.env.KORDYN_COCKPIT_POSITION_CASE || "").trim().toLowerCase();
 const resourceStateModes = new Set(["not_loaded", "loading", "loaded", "ready", "stale", "degraded", "error", "failed", "forbidden", "disabled", "unknown"]);
 const chartStatusByMode = new Map([
   ["chart-error", "error"], ["chart-empty", "empty"], ["chart-init-error", "error"],
@@ -31,6 +32,7 @@ const regularChartMode = !stateMode || ["loaded", "ready"].includes(stateMode);
 const marketIntervalSequence = ["1h", "4h", "1D"];
 assert.ok(!stateMode || resourceStateModes.has(stateMode) || chartStatusByMode.has(stateMode), `Unsupported KORDYN_COCKPIT_STATE: ${stateMode}`);
 assert.ok(!marketCase || ["malformed", "mismatched"].includes(marketCase), `Unsupported KORDYN_COCKPIT_MARKET_CASE: ${marketCase}`);
+assert.ok(!positionCase || positionCase === "malformed", `Unsupported KORDYN_COCKPIT_POSITION_CASE: ${positionCase}`);
 assert.ok(views.length, "KORDYN_COCKPIT_VIEWS must name at least one canonical cockpit view");
 
 function withCdpCommandTimeout(promise, method) {
@@ -204,6 +206,7 @@ try {
       if (resourceStateModes.has(stateMode)) fixtureParams.set("resource", stateMode);
       if (chartStatusByMode.has(stateMode)) fixtureParams.set("chart", stateMode.replace("chart-", ""));
       if (marketCase) fixtureParams.set("marketCase", marketCase);
+      if (positionCase) fixtureParams.set("positionCase", positionCase);
       await cdp.send("Page.navigate", { url: `${baseUrl}/tests/trading-cockpit-browser.html?${fixtureParams}` });
       await waitForExpression(cdp, `document.querySelector('[data-cockpit-page="${view}"]')`, `${width}x${height} ${view} cockpit page`);
       const chartSelector = `[data-cockpit-page="${view}"] [data-cockpit-region="market-chart"]`;
@@ -237,8 +240,56 @@ try {
         const orphanRequest = await evaluate(cdp, `window.__cockpitKlineFixture?.queries?.some((row) => row.symbol === 'DOGE/USDT')`);
         assert.equal(orphanRequest, false, `${width}x${height} orphaned saved pair never becomes a chart request`);
       }
+      let positionActionFacts = null;
+      if (view === "positions" && !emptyMode && !positionCase && regularChartMode) {
+        const exitExists = await evaluate(cdp, `Boolean(document.querySelector('[data-position-exit][data-execution-id="ord-01"]'))`);
+        assert.equal(exitExists, true, `${width}x${height} positions exposes the production exit for its exact execution object`);
+        await evaluate(cdp, `document.querySelector('[data-position-exit][data-execution-id="ord-01"]')?.focus()`);
+        const exitFocus = await evaluate(cdp, `(() => { const node = document.querySelector('[data-position-exit][data-execution-id="ord-01"]'); const style = node ? getComputedStyle(node) : null; return style ? style.outlineStyle + ' ' + style.outlineWidth : null; })()`);
+        assert.notEqual(exitFocus, "none 0px", `${width}x${height} positions exit action has a visible focus ring`);
+        await evaluate(cdp, `document.querySelector('[data-position-exit][data-execution-id="ord-01"]')?.click()`);
+        await waitForExpression(cdp, `document.querySelector('.cfmCard[role="dialog"]')`, `${width}x${height} positions canonical exit confirmation`);
+        const confirmation = await evaluate(cdp, `(() => ({ text: document.querySelector('.cfmCard')?.textContent || '', beforeAction: window.__cockpitLastAction || null, activeClass: document.activeElement?.className || '' }))()`);
+        assert.match(confirmation.text, /ETH\/USDT/, `${width}x${height} confirmation identifies the selected position's exact execution object`);
+        assert.equal(confirmation.beforeAction, null, `${width}x${height} positions never writes before confirmation`);
+        assert.match(confirmation.activeClass, /cfmCancel/, `${width}x${height} confirmation moves focus into the dialog`);
+        await evaluate(cdp, `document.querySelector('.cfmOk')?.click()`);
+        await waitForExpression(cdp, `window.__cockpitLastAction?.path === '/api/execution-orders/ord-01/close'`, `${width}x${height} positions canonical execution exit request`);
+        positionActionFacts = await evaluate(cdp, `window.__cockpitLastAction`);
+        assert.deepEqual(positionActionFacts, {
+          path: "/api/execution-orders/ord-01/close",
+          payload: { reason: "manual_ui", intent: "close_position", expectedStatus: "protecting" }
+        }, `${width}x${height} positions preserves the canonical execution action payload`);
+      }
       const facts = await evaluate(cdp, `(() => { const page = document.querySelector('[data-cockpit-page]'); const region = document.querySelector(${JSON.stringify(chartSelector)}); const chart = region?.querySelector('.tvChart'); const kline = window.__cockpitKlineFixture || {}; const lifecycle = window.__cockpitChartFailure || {}; const main = document.querySelector('[data-cockpit-page="overview"] .overviewPrimary'); const rail = document.querySelector('[data-cockpit-page="overview"] .overviewRail'); const lastRegion = document.querySelector('[data-cockpit-page="overview"] [data-cockpit-region="strategy-footer"]'); const marketWorkspace = document.querySelector('[data-cockpit-page="market"] .marketWorkspace'); const marketChartWorkspace = document.querySelector('[data-cockpit-page="market"] [data-cockpit-region="market-chart-workspace"]'); const marketInterval = document.querySelector('[data-market-interval][aria-pressed="true"]'); marketInterval?.focus(); const marketFocusedStyle = marketInterval ? getComputedStyle(marketInterval) : null; const canvas = chart?.querySelector('canvas'); const overviewRegions = Object.fromEntries([...document.querySelectorAll('[data-cockpit-page="overview"] [data-cockpit-region]')].map((node) => { const rect = node.getBoundingClientRect(); return [node.dataset.cockpitRegion, { top: Math.round(rect.top * 100) / 100, height: Math.round(rect.height * 100) / 100 }]; })); const targets = ['overview', 'market'].includes(page?.dataset.cockpitPage) ? [...page.querySelectorAll('button, a[href], input, select, [tabindex]:not([tabindex="-1"])')].filter((node) => !node.disabled && !node.closest('.tvChart') && getComputedStyle(node).display !== 'none') : []; const targetFacts = targets.map((node) => { const rect = node.getBoundingClientRect(); const style = getComputedStyle(node); return { label: node.getAttribute('aria-label') || node.textContent?.trim() || node.className, tag: node.tagName, className: node.className, width: rect.width, height: rect.height, minWidth: style.minWidth, minHeight: style.minHeight, size: Math.min(rect.width, rect.height) }; }).filter((row) => Number.isFinite(row.size)); const targetSizes = targetFacts.map((row) => row.size); const smallestTarget = targetFacts.sort((a, b) => a.size - b.size)[0] || null; const readableText = page?.dataset.cockpitPage === 'overview' ? [...page.querySelectorAll('small, p, time, em, th, td, button, .cockpitTone')].filter((node) => !node.matches('.overviewMarketQuote > div > b, .overviewHeroEquity b, .overviewHeroFact b, .overviewAiLead b, .cockpitGauge b')) : []; const textFacts = readableText.filter((node) => getComputedStyle(node).display !== 'none').map((node) => ({ label: node.textContent?.trim() || node.className, size: Number.parseFloat(getComputedStyle(node).fontSize) })).filter((row) => Number.isFinite(row.size)); const textSizes = textFacts.map((row) => row.size); const smallestText = textFacts.sort((a, b) => a.size - b.size)[0] || null; const fixtureFields = window.__cockpitFixtureFields || []; return ({ fixture: document.documentElement.dataset.fixtureKind, fixtureFields, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, resourceState: page?.dataset.resourceState || null, statePanel: page?.querySelector('[data-overview-resource-state]')?.dataset.overviewResourceState || page?.querySelector('[data-market-resource-state]')?.dataset.marketResourceState || null, regionCharts: region?.querySelectorAll(".tvChart canvas").length || 0, chartVisible: Boolean(canvas && canvas.getBoundingClientRect().width > 0 && canvas.getBoundingClientRect().height > 0), chartStatus: chart?.dataset.chartStatus || null, volumeSeries: chart?.dataset.volumeSeries || null, chartRemovals: lifecycle.removals || 0, chartRuntimeErrors: lifecycle.runtimeErrors || 0, chartUnhandledRejections: lifecycle.unhandledRejections || 0, candleSetDataCalls: lifecycle.candleSetDataCalls || 0, volumeSetDataCalls: lifecycle.volumeSetDataCalls || 0, chartUpdateCalls: lifecycle.updateCalls || 0, minKeyboardTargetPx: targetSizes.length ? Math.min(...targetSizes) : null, minMarketTargetPx: page?.dataset.cockpitPage === 'market' && targetSizes.length ? Math.min(...targetSizes) : null, smallestTarget, minOverviewTextPx: textSizes.length ? Math.min(...textSizes) : null, maxOverviewTextPx: textSizes.length ? Math.max(...textSizes) : null, smallestText, mainRailRatio: main && rail ? main.getBoundingClientRect().width / rail.getBoundingClientRect().width : null, lastRegionTop: lastRegion?.getBoundingClientRect().top ?? null, overviewRegions, marketActiveIntervals: document.querySelectorAll('[data-market-interval][aria-pressed="true"]').length, marketChartWorkspaceRatio: marketWorkspace && marketChartWorkspace ? marketChartWorkspace.getBoundingClientRect().width / marketWorkspace.getBoundingClientRect().width : null, marketCanonicalSymbol: page?.dataset.marketSymbol || null, marketFocusedOutline: marketFocusedStyle ? marketFocusedStyle.outlineStyle + ' ' + marketFocusedStyle.outlineWidth : null, klineRequests: kline.requests || 0, klineSymbols: kline.symbols || [], klineQueries: kline.queries || [], page: page?.dataset.cockpitPage }); })()`);
       const marketStateFacts = view === "market" ? await evaluate(cdp, `(() => { const page = document.querySelector('[data-cockpit-page="market"]'); const regions = [...page.querySelectorAll('[data-cockpit-region]')].map((node) => node.dataset.cockpitRegion); return { regions, symbolSelectDisabled: Boolean(page.querySelector('[data-market-symbol-select]')?.disabled), hasChartLoadingText: /加载 K 线|Loading candlesticks/.test(page.textContent || '') }; })()`) : null;
+      const positionStateFacts = view === "positions" ? await evaluate(cdp, `(() => {
+        const page = document.querySelector('[data-cockpit-page="positions"]');
+        const workspace = page?.querySelector('.positionWorkspace');
+        const columns = workspace ? [...workspace.children].slice(0, 3).map((node) => node.getBoundingClientRect().width) : [];
+        const totalWidth = columns.reduce((sum, value) => sum + value, 0);
+        const targets = page ? [...page.querySelectorAll('button, a[href], input, select, [tabindex]:not([tabindex="-1"])')].filter((node) => !node.disabled && getComputedStyle(node).display !== 'none') : [];
+        const targetFacts = targets.map((node) => { const rect = node.getBoundingClientRect(); return { label: node.getAttribute('aria-label') || node.textContent?.trim() || node.className, size: Math.min(rect.width, rect.height) }; }).filter((row) => Number.isFinite(row.size));
+        const positionRow = page?.querySelector('[data-position-id="ord-04"]');
+        const tableRegion = page?.querySelector('[data-cockpit-region="position-table"]');
+        const trendRegion = page?.querySelector('[data-cockpit-region="portfolio-pnl-trend"]');
+        const trend = trendRegion?.querySelector('.cockpitAreaTrend');
+        return {
+          state: page?.dataset.resourceState || null,
+          statePanel: page?.querySelector('[data-position-resource-state]')?.dataset.positionResourceState || null,
+          regions: [...(page?.querySelectorAll('[data-cockpit-region]') || [])].map((node) => node.dataset.cockpitRegion),
+          rowCount: page?.querySelectorAll('[data-position-id]').length || 0,
+          positionOnlyText: positionRow?.textContent || '',
+          positionOnlyExecution: positionRow?.dataset.executionId || null,
+          wrongProtectionVisible: /13\.37|14\.88/.test(positionRow?.textContent || ''),
+          exitCount: page?.querySelectorAll('[data-position-exit]').length || 0,
+          tableHeight: tableRegion?.getBoundingClientRect().height || 0,
+          trendWidthRatio: trendRegion && trend ? trend.getBoundingClientRect().width / trendRegion.getBoundingClientRect().width : null,
+          columnPct: totalWidth ? columns.map((value) => value / totalWidth * 100) : [],
+          minTargetPx: targetFacts.length ? Math.min(...targetFacts.map((row) => row.size)) : null,
+          smallestTarget: targetFacts.sort((a, b) => a.size - b.size)[0] || null
+        };
+      })()`) : null;
       assert.equal(facts.fixture, "production-shaped-synthetic", `${width}x${height} ${view} uses the marked test-only fixture`);
       assert.equal(facts.page, view, `${width}x${height} renders the requested real cockpit view`);
       assert.equal(facts.overflow, 0, `${width}x${height} ${view} has no document overflow`);
@@ -329,16 +380,49 @@ try {
         const eventRows = await evaluate(cdp, `document.querySelectorAll('[data-cockpit-region="event-catalysts"] .marketEventRows article').length`);
         assert.equal(eventRows, 0, `${width}x${height} severity-only and date-only shells do not render as event catalysts`);
       }
+      if (view === "positions") {
+        const requiredRegions = ["position-hero", "account-constraints", "position-allocation", "long-short", "pnl-distribution", "position-table", "portfolio-pnl-trend", "risk-health", "margin-safety", "concentration"];
+        if (resourceStateModes.has(stateMode) && !["loaded", "ready"].includes(stateMode)) {
+          assert.equal(positionStateFacts.state, expectedResourceState, `${width}x${height} positions normalizes ${stateMode} to ${expectedResourceState}`);
+          assert.equal(positionStateFacts.statePanel, expectedResourceState, `${width}x${height} positions renders its ${stateMode} state boundary`);
+          assert.equal(positionStateFacts.exitCount, 0, `${width}x${height} ${stateMode} positions exposes no action against non-current facts`);
+          const retains = retainedBodyModes.has(stateMode);
+          assert.equal(positionStateFacts.regions.includes("position-hero"), retains, `${width}x${height} ${stateMode} positions ${retains ? "retains" : "blocks"} last-valid facts`);
+          if (positionStateFacts.minTargetPx !== null) assert.ok(positionStateFacts.minTargetPx >= 36, `${width}x${height} ${stateMode} positions control target ${positionStateFacts.minTargetPx}px is at least 36px`);
+        } else if (emptyMode) {
+          assert.equal(positionStateFacts.rowCount, 0, `${width}x${height} empty positions renders no fabricated row`);
+          assert.equal(positionStateFacts.exitCount, 0, `${width}x${height} empty positions renders no exit action`);
+          assert.ok(positionStateFacts.tableHeight > 0 && positionStateFacts.tableHeight < 260, `${width}x${height} empty positions uses a compact table state (${positionStateFacts.tableHeight}px)`);
+        } else if (positionCase === "malformed") {
+          assert.equal(positionStateFacts.rowCount, 0, `${width}x${height} malformed positions renders no identity-less row`);
+          assert.equal(positionStateFacts.exitCount, 0, `${width}x${height} malformed positions cannot authorize an exit`);
+          assert.equal(positionStateFacts.wrongProtectionVisible, false, `${width}x${height} malformed positions does not render unrelated protection`);
+        } else {
+          for (const region of requiredRegions) assert.ok(positionStateFacts.regions.includes(region), `${width}x${height} positions renders ${region}`);
+          assert.equal(positionStateFacts.positionOnlyExecution, "ord-00", `${width}x${height} positionId-only row resolves the exact position-linked execution, not colliding order id ord-04`);
+          assert.match(positionStateFacts.positionOnlyText, /110,834\.53/, `${width}x${height} positionId-only row renders its exact joined stop`);
+          assert.match(positionStateFacts.positionOnlyText, /116,547\.65/, `${width}x${height} positionId-only row renders its exact joined target`);
+          assert.equal(positionStateFacts.wrongProtectionVisible, false, `${width}x${height} positionId-only row cannot borrow wrong-row protection`);
+          assert.ok(positionStateFacts.minTargetPx >= 36, `${width}x${height} positions keyboard target minimum ${positionStateFacts.minTargetPx}px is at least 36px: ${JSON.stringify(positionStateFacts.smallestTarget)}`);
+          assert.ok(positionStateFacts.trendWidthRatio >= .9, `${width}x${height} positions PnL trend uses the available panel width (${positionStateFacts.trendWidthRatio})`);
+          if (width === 1440) {
+            assert.equal(positionStateFacts.columnPct.length, 3, "1440 positions exposes its three workbench columns");
+            const expected = [24, 52, 24];
+            positionStateFacts.columnPct.forEach((value, index) => assert.ok(Math.abs(value - expected[index]) <= 8, `1440 positions column ${index + 1} is ${value.toFixed(2)}%, near ${expected[index]}%`));
+          }
+        }
+      }
       if (outputDir && view === "market" && !emptyMode && regularChartMode) {
         const beforeCaptureReset = await evaluate(cdp, "window.__cockpitKlineFixture?.requests || 0");
         await evaluate(cdp, `(() => { const select = document.querySelector('[data-market-symbol-select]'); if (!select) return false; select.value = 'BTC/USDT'; select.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
         await waitForExpression(cdp, `document.querySelector('[data-cockpit-page="market"]')?.dataset.marketSymbol === 'BTC/USDT' && (window.__cockpitKlineFixture?.requests || 0) > ${beforeCaptureReset}`, `${width}x${height} market capture reset`);
       }
+      if (outputDir && view === "positions") await evaluate(cdp, `(() => { const scroller = document.querySelector('.positionTableScroll'); if (!scroller) return false; scroller.scrollLeft = 0; return true; })()`);
       if (outputDir) {
         const shot = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false, fromSurface: true });
         await writeFile(path.join(outputDir, `${view}-${width}x${height}${emptyMode ? "-empty" : stateMode ? `-${stateMode}` : enrichedMode ? "-enriched" : ""}.png`), Buffer.from(shot.data, "base64"));
       }
-      results.push({ width, height, view, charts: facts.regionCharts, klineRequests: facts.klineRequests, overflow: facts.overflow, resourceState: facts.resourceState, chartStatus: facts.chartStatus, volumeSeries: facts.volumeSeries, chartRemovals: facts.chartRemovals, chartRuntimeErrors: facts.chartRuntimeErrors, chartUnhandledRejections: facts.chartUnhandledRejections, minKeyboardTargetPx: facts.minKeyboardTargetPx, minMarketTargetPx: facts.minMarketTargetPx, minOverviewTextPx: facts.minOverviewTextPx, maxOverviewTextPx: facts.maxOverviewTextPx, mainRailRatio: facts.mainRailRatio, marketChartWorkspaceRatio: facts.marketChartWorkspaceRatio, marketCanonicalSymbol: facts.marketCanonicalSymbol, marketRegions: marketStateFacts?.regions, lastRegionTop: facts.lastRegionTop, overviewRegions: facts.overviewRegions });
+      results.push({ width, height, view, charts: facts.regionCharts, klineRequests: facts.klineRequests, overflow: facts.overflow, resourceState: facts.resourceState, chartStatus: facts.chartStatus, volumeSeries: facts.volumeSeries, chartRemovals: facts.chartRemovals, chartRuntimeErrors: facts.chartRuntimeErrors, chartUnhandledRejections: facts.chartUnhandledRejections, minKeyboardTargetPx: facts.minKeyboardTargetPx, minMarketTargetPx: facts.minMarketTargetPx, minOverviewTextPx: facts.minOverviewTextPx, maxOverviewTextPx: facts.maxOverviewTextPx, mainRailRatio: facts.mainRailRatio, marketChartWorkspaceRatio: facts.marketChartWorkspaceRatio, marketCanonicalSymbol: facts.marketCanonicalSymbol, marketRegions: marketStateFacts?.regions, positionStateFacts, positionActionFacts, lastRegionTop: facts.lastRegionTop, overviewRegions: facts.overviewRegions });
     }
   }
   console.log(`trading cockpit browser PASS ${JSON.stringify(results)}`);

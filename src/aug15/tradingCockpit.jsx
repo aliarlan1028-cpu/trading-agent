@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
   AlertTriangle, Check, ChevronRight,
-  Clock3, Gauge, ShieldCheck, Sparkles,
-  Target, WalletCards
+  Clock3, Sparkles, Target
 } from "lucide-react";
 import { displayMoney, displayPct, formatDateTime, formatTime, humanize, localizeText } from "./lib.jsx";
 import { t } from "./i18n.js";
@@ -10,7 +9,6 @@ import { executionExitAction, requestExecutionExit } from "./executionExit.js";
 import {
   buildLedgerPresentation,
   buildOverviewPresentation,
-  buildPositionPresentation,
   buildReviewPresentation,
   buildSelectedExecutionStages
 } from "./tradingCockpit/model.js";
@@ -25,6 +23,7 @@ import {
 import { AreaTrend as MiniTrend } from "./tradingCockpit/visuals.jsx";
 import { OverviewPage } from "./tradingCockpit/OverviewPage.jsx";
 import { MarketPage } from "./tradingCockpit/MarketPage.jsx";
+import { PositionsPage } from "./tradingCockpit/PositionsPage.jsx";
 import "./tradingCockpit.css";
 
 // Presentation selectors centralize buildPositionView and buildExecutionView joins.
@@ -55,32 +54,6 @@ export function TradingCockpitShell({ data, active, onChange, ui, children }) {
 function SystemNotice({ notice, onOpen }) {
   const text = localizeText(notice?.message || notice?.title || t("系统正在等待新的交易事实。", "The system is waiting for new trading facts."));
   return <button type="button" className="cockpitNotice" onClick={onOpen}><span><Sparkles/><b>{t("系统动态", "System update")}</b><p>{text}</p></span><ChevronRight/></button>;
-}
-
-function PositionsPage({ data }) {
-  const view = buildPositionPresentation(data); const portfolio = data.portfolio || {}; const positions = view.positions;
-  const equity = number(portfolio.totalEquityUsdt); const marginPct = equity > 0 ? Math.max(0, Math.min(100, view.marginUsdt / equity * 100)) : null;
-  const longNotional = positions.filter((row) => sideTone(row.direction || row.side) === "positive").reduce((sum, row) => sum + row.notionalUsdt, 0);
-  const shortNotional = positions.filter((row) => sideTone(row.direction || row.side) === "negative").reduce((sum, row) => sum + row.notionalUsdt, 0);
-  const totalDirectional = longNotional + shortNotional;
-  const avgLeverage = positions.length ? positions.reduce((sum, row) => sum + number(row.leverage), 0) / positions.length : null;
-  return <div className="cockpitPage cockpitPositions" data-cockpit-page="positions">
-    <section className="positionHero"><div><small>{t("组合敞口", "Portfolio exposure")}</small><b>{positions.length ? `${money(view.exposureUsdt)} USDT` : t("当前空仓", "Currently flat")}</b><span>{positions.length} {t("个真实持仓", "real positions")}</span></div><div><Metric label={t("未实现盈亏", "Unrealized PnL")} value={positions.length ? `${signedMoney(view.unrealizedPnlUsdt)} U` : "—"} tone={view.unrealizedPnlUsdt >= 0 ? "positive" : "negative"}/><Metric label={t("保证金占用", "Margin used")} value={positions.length ? `${money(view.marginUsdt)} U` : "—"} detail={marginPct == null ? "—" : `${marginPct.toFixed(1)}%`}/><Metric label={t("可用保证金", "Available margin")} value={finite(portfolio.availableMarginUsdt) ? `${money(portfolio.availableMarginUsdt)} U` : "—"}/><Metric label={t("平均杠杆", "Avg leverage")} value={avgLeverage == null ? "—" : `${avgLeverage.toFixed(2)}x`}/></div><Tone tone={marginPct != null && marginPct > 70 ? "warning" : "positive"}>{marginPct == null ? t("风险待同步", "Risk pending") : marginPct > 70 ? t("保证金占用偏高", "High margin usage") : t("风险占用正常", "Risk usage normal")}</Tone></section>
-    <div className="positionWorkspace">
-      <aside className="positionAllocation"><Panel title={t("资产配置", "Allocation")}><div className="allocationStack">{positions.slice(0, 6).map((row) => { const value = row.notionalUsdt; const pct = view.exposureUsdt ? value / view.exposureUsdt * 100 : 0; return <article key={row.id}><span><b>{row.symbol}</b><em>{pct.toFixed(1)}%</em></span><i><b style={{ width: `${pct}%` }}/></i><small>{money(value)} U</small></article>; })}{!positions.length && <CockpitEmpty icon={WalletCards} title={t("暂无配置", "No allocation")} detail={t("真实持仓出现后展示资产权重。", "Asset weights appear when real positions exist.")}/>}</div></Panel><Panel title={t("多空分布", "Long / short")}><div className="directionSplit"><span><b className="positiveText">{totalDirectional ? `${(longNotional / totalDirectional * 100).toFixed(0)}%` : "—"}</b><small>{t("多头", "Long")}</small></span><span><b className="negativeText">{totalDirectional ? `${(shortNotional / totalDirectional * 100).toFixed(0)}%` : "—"}</b><small>{t("空头", "Short")}</small></span></div></Panel></aside>
-      <section className="positionCore"><Panel title={t("持仓明细", "Position detail")} meta={t("AI 托管仓与外部仓保持来源区分", "AI-managed and external positions keep distinct provenance")} region="position-table"><DataTable label={t("持仓明细", "Position detail")} rows={positions} emptyTitle={t("暂无持仓", "No positions")} emptyDetail={t("当前账户空仓；系统不会生成演示仓位。", "The account is flat; the system does not invent demo positions.")} columns={[
-        { key: "symbol", label: t("交易对", "Pair"), render: (row) => <span className="symbolCell"><b>{row.symbol}</b><small>{row.source === "execution_engine" ? t("AI 托管", "AI-managed") : t("外部/手动", "External/manual")}</small></span> },
-        { key: "direction", label: t("方向", "Side"), render: (row) => <Tone tone={sideTone(row.direction || row.side)}>{humanize(row.direction || row.side)}</Tone> },
-        { key: "size", label: t("数量", "Size"), render: (row) => row.quantity ?? row.size ?? row.pos ?? "—" },
-        { key: "entry", label: t("开仓均价", "Entry"), render: (row) => money(row.entryPrice ?? row.entry) },
-        { key: "mark", label: t("标记价格", "Mark"), render: (row) => money(row.markPrice ?? row.mark) },
-        { key: "pnl", label: t("未实现盈亏", "Unrealized"), render: (row) => <strong className={number(row.unrealizedPnl ?? row.pnl) >= 0 ? "positiveText" : "negativeText"}>{signedMoney(row.unrealizedPnl ?? row.pnl)} U</strong> },
-        { key: "leverage", label: t("杠杆", "Lev"), render: (row) => finite(row.leverage) ? `${row.leverage}x` : "—" },
-        { key: "liq", label: t("强平价", "Liq"), render: (row) => money(row.liquidationPrice) }
-      ]}/></Panel><Panel title={t("组合净值趋势", "Portfolio equity trend")} meta={t("真实账户快照", "Real account snapshots")}><MiniTrend values={list(data.accountSnapshots).map((row) => row.totalEquityUsdt)} label={t("组合净值趋势", "Portfolio equity trend")} height={118}/></Panel></section>
-      <aside className="positionRisk"><Panel title={t("风险健康", "Risk health")}><div className="healthScore"><div className="allocationRing" style={{ "--value": marginPct == null ? 0 : 100 - marginPct }}><span><b>{marginPct == null ? "—" : `${Math.round(100 - marginPct)}%`}</b><small>{t("健康度", "health")}</small></span></div></div><div className="healthChecks"><span><Check/>{t("持仓事实已核对", "Position facts reconciled")}<b>{positions.length}</b></span><span><ShieldCheck/>{t("强平距离", "Liquidation distance")}<b>{positions.some((row) => finite(row.liqDistancePct) && number(row.liqDistancePct) < 12) ? t("需关注", "Attention") : t("正常", "Normal")}</b></span><span><Gauge/>{t("保证金安全", "Margin safety")}<b>{marginPct == null ? "—" : `${(100 - marginPct).toFixed(1)}%`}</b></span></div></Panel><Panel title={t("集中度", "Concentration")}><div className="riskList">{positions.slice().sort((a, b) => b.notionalUsdt - a.notionalUsdt).slice(0, 3).map((row) => <span key={row.id}><b>{row.symbol}</b><em>{view.exposureUsdt ? `${(row.notionalUsdt / view.exposureUsdt * 100).toFixed(1)}%` : "—"}</em></span>)}{!positions.length && <p className="inlineEmpty">{t("空仓，无集中度风险。", "Flat; no concentration risk.")}</p>}</div></Panel></aside>
-    </div>
-  </div>;
 }
 
 function ReviewPage({ data, initialReviewId, onReviewSelect }) {

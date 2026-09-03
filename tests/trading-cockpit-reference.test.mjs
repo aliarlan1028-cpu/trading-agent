@@ -11,6 +11,8 @@ const require = createRequire(import.meta.url);
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cacheDir = path.join(rootDir, "node_modules", ".cache");
 const componentBundle = path.join(cacheDir, `trading-cockpit-primitives-${process.pid}.cjs`);
+const positionsModulePath = path.join(rootDir, "src/aug15/tradingCockpit/PositionsPage.jsx");
+const positionsModuleExists = fs.existsSync(positionsModulePath);
 fs.mkdirSync(cacheDir, { recursive: true });
 process.on("exit", () => {
   try { fs.rmSync(componentBundle, { force: true }); } catch { /* noop */ }
@@ -22,6 +24,9 @@ require("esbuild").buildSync({
       export { AreaTrend, BreadthBars, DistributionPlot, DonutChart, GaugeChart } from "./src/aug15/tradingCockpit/visuals.jsx";
       export { OverviewPage } from "./src/aug15/tradingCockpit/OverviewPage.jsx";
       export { MarketPage } from "./src/aug15/tradingCockpit/MarketPage.jsx";
+      ${positionsModuleExists
+        ? 'export { PositionsPage } from "./src/aug15/tradingCockpit/PositionsPage.jsx";'
+        : "export const PositionsPage = undefined;"}
       export { createElement } from "react";
       export { renderToStaticMarkup } from "react-dom/server";
     `,
@@ -45,6 +50,7 @@ const {
   GaugeChart,
   MarketPage,
   OverviewPage,
+  PositionsPage,
   createElement,
   renderToStaticMarkup
 } = require(componentBundle);
@@ -59,6 +65,7 @@ const workspaces = await readFile(new URL("../src/aug15/workspacePages.jsx", imp
 const cockpit = await readFile(new URL("../src/aug15/tradingCockpit.jsx", import.meta.url), "utf8").catch(() => "");
 const overviewSource = await readFile(new URL("../src/aug15/tradingCockpit/OverviewPage.jsx", import.meta.url), "utf8").catch(() => "");
 const marketSource = await readFile(new URL("../src/aug15/tradingCockpit/MarketPage.jsx", import.meta.url), "utf8").catch(() => "");
+const positionsSource = await readFile(new URL("../src/aug15/tradingCockpit/PositionsPage.jsx", import.meta.url), "utf8").catch(() => "");
 const cockpitCss = await readFile(new URL("../src/aug15/tradingCockpit.css", import.meta.url), "utf8").catch(() => "");
 const librarySource = await readFile(new URL("../src/lib.jsx", import.meta.url), "utf8").catch(() => "");
 const browserHarness = await readFile(new URL("./trading-cockpit-browser.jsx", import.meta.url), "utf8").catch(() => "");
@@ -84,7 +91,7 @@ test("all five canonical trading routes render inside one shared cockpit shell",
 });
 
 test("reference-driven pages expose distinct real product landmarks and honest empty states", () => {
-  const pageSources = `${cockpit}\n${marketSource}\n${overviewSource}`;
+  const pageSources = `${cockpit}\n${marketSource}\n${overviewSource}\n${positionsSource}`;
   for (const landmark of [
     "data-cockpit-page=\"market\"",
     "data-cockpit-page=\"positions\"",
@@ -125,6 +132,117 @@ test("market page exposes the complete reference workspace with real supported c
   assert.match(marketSource, /aria-pressed/);
   assert.doesNotMatch(marketSource, /showVolume|\b(?:indicator|save|screenshot|fullscreen)\b/i);
   assert.doesNotMatch(marketSource, /72,450|8,234|\+12\.4%|0\.0007/);
+});
+
+test("positions page exposes the complete reference risk workbench", () => {
+  assert.equal(positionsModuleExists, true);
+  assert.match(positionsSource, /data-cockpit-page="positions"/);
+  for (const region of [
+    "position-hero", "account-constraints", "position-allocation", "long-short",
+    "pnl-distribution", "position-table", "portfolio-pnl-trend", "risk-health",
+    "margin-safety", "concentration"
+  ]) assert.match(positionsSource, new RegExp(`(?:data-cockpit-region|region)=["'{]+${region}`));
+  assert.match(positionsSource, /buildPositionPresentation/);
+  assert.match(positionsSource, /stopLoss/);
+  assert.match(positionsSource, /takeProfits/);
+  assert.match(positionsSource, /executionExitAction/);
+  assert.match(positionsSource, /requestExecutionExit/);
+});
+
+test("positions renders a positionId-only row with only its exact protection and execution identity", () => {
+  const html = render(PositionsPage, {
+    data: {
+      resourceState: { cockpit: "loaded" },
+      portfolio: { totalEquityUsdt: 10_000, availableMarginUsdt: 8_000 },
+      portfolioRisk: { utilizationPct: 20, status: "ok" },
+      positions: [
+        { positionId: "ord-collision", symbol: "BTC/USDT", source: "execution_engine", direction: "long", quantity: 1, markPrice: 100, entryPrice: 98, unrealizedPnl: 2, margin: 20, leverage: 3, liquidationPrice: 70 },
+        { positionId: "other-position", executionOrderId: "ord-collision", symbol: "BTC/USDT", source: "execution_engine", direction: "short", quantity: 2, markPrice: 100, entryPrice: 102, unrealizedPnl: -4, margin: 40, leverage: 2, liquidationPrice: 140 }
+      ],
+      executionOrders: [
+        { id: "ord-collision", positionId: "other-position", tradePlanId: "wrong-plan", symbol: "BTC/USDT", status: "protecting" },
+        { id: "exact-execution", positionId: "ord-collision", tradePlanId: "exact-plan", symbol: "BTC/USDT", status: "protecting" }
+      ],
+      tradePlans: [
+        { id: "exact-plan", stopLoss: 91.25, takeProfit: [112.5, 118.75] },
+        { id: "wrong-plan", stopLoss: 13.37, takeProfit: [14.88] }
+      ],
+      accountSnapshots: [
+        { id: "s1", createdAt: "2026-09-03T08:00:00Z", totalEquityUsdt: 9_980 },
+        { id: "s2", createdAt: "2026-09-03T09:00:00Z", totalEquityUsdt: 10_000 }
+      ]
+    },
+    action() {},
+    ui: { ensureSection() {}, refresh() {} }
+  });
+  assert.match(html, /data-position-id="ord-collision"/);
+  assert.match(html, /data-execution-id="exact-execution"/);
+  assert.match(html, /91\.25/);
+  assert.match(html, /112\.50/);
+  assert.match(html, /118\.75/);
+  const exactRow = html.match(/<tbody data-position-id="ord-collision"[^]*?<\/tbody>/)?.[0] || "";
+  assert.doesNotMatch(exactRow, /13\.37|14\.88/);
+  assert.match(html, /(?:市价平仓|Close at market)/);
+});
+
+test("positions keeps absent financial and protection facts unavailable", () => {
+  const html = render(PositionsPage, {
+    data: {
+      resourceState: { cockpit: "loaded" },
+      portfolio: {},
+      portfolioRisk: {},
+      positions: [{ positionId: "missing-facts", symbol: "ETH/USDT", direction: "long", quantity: 1 }],
+      executionOrders: [],
+      tradePlans: [],
+      accountSnapshots: []
+    },
+    action() {},
+    ui: { ensureSection() {}, refresh() {} }
+  });
+  assert.match(html, /data-position-id="missing-facts"/);
+  assert.match(html, /(?:未登记|Not registered)/);
+  assert.match(html, /(?:不可用|Unavailable)/);
+  assert.doesNotMatch(html, /data-position-id="missing-facts"[^]*>0\.00\s*(?:U|USDT|%|x)/);
+  assert.doesNotMatch(html, /(?:市价平仓|Close at market)/);
+});
+
+test("positions empty and malformed inputs cannot fabricate rows, metrics, protection, or actions", () => {
+  const base = { resourceState: { cockpit: "loaded" }, portfolio: {}, portfolioRisk: {}, executionOrders: [], tradePlans: [], accountSnapshots: [] };
+  const empty = render(PositionsPage, { data: { ...base, positions: [] }, action() {}, ui: {} });
+  assert.match(empty, /(?:暂无持仓|No positions)/);
+  assert.doesNotMatch(empty, /data-position-id=/);
+  assert.doesNotMatch(empty, /(?:市价平仓|Close at market)/);
+
+  const malformed = { ...base, positions: [null, "bad", {}, { id: "", symbol: "", status: "protecting" }, { symbol: " ", status: "protecting" }] };
+  assert.doesNotThrow(() => render(PositionsPage, { data: malformed, action() {}, ui: {} }));
+  const malformedHtml = render(PositionsPage, { data: malformed, action() {}, ui: {} });
+  assert.doesNotMatch(malformedHtml, /data-position-id=/);
+  assert.doesNotMatch(malformedHtml, /(?:市价平仓|Close at market)/);
+});
+
+test("positions honors loaded, retained, and terminal resource boundaries", () => {
+  const facts = {
+    portfolio: { totalEquityUsdt: 10_000, availableMarginUsdt: 8_000 },
+    portfolioRisk: { utilizationPct: 20, status: "ok" },
+    positions: [{ positionId: "state-position", symbol: "SOL/USDT", direction: "long", quantity: 1, markPrice: 100 }],
+    executionOrders: [{ id: "state-execution", positionId: "state-position", status: "protecting" }],
+    tradePlans: [], accountSnapshots: []
+  };
+  for (const state of ["loading", "stale", "degraded"]) {
+    const html = render(PositionsPage, { data: { ...facts, resourceState: { cockpit: state } }, action() {}, ui: {} });
+    assert.match(html, new RegExp(`data-position-resource-state="${state}"`));
+    assert.match(html, /data-position-id="state-position"/);
+    assert.doesNotMatch(html, /(?:市价平仓|Close at market)/);
+  }
+  for (const state of ["error", "failed", "forbidden", "disabled"]) {
+    const html = render(PositionsPage, { data: { ...facts, resourceState: { cockpit: state } }, action() {}, ui: {} });
+    assert.match(html, new RegExp(`data-position-resource-state="${state}"`));
+    assert.doesNotMatch(html, /data-position-id="state-position"/);
+    assert.doesNotMatch(html, /(?:市价平仓|Close at market)/);
+  }
+  const initial = render(PositionsPage, { data: { resourceState: { cockpit: "loading" } }, action() {}, ui: {} });
+  assert.match(initial, /data-position-resource-state="loading"/);
+  assert.doesNotMatch(initial, /data-cockpit-region="position-hero"/);
 });
 
 test("market rejects malformed pair identities", () => {
