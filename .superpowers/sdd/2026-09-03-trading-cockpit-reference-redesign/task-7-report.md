@@ -456,3 +456,99 @@ PASS: no output
 - `tests/trading-cockpit-reference.test.mjs`
 
 The App commit contains only the recognizer callback and its popstate use. The broader App precursor and all product-architecture, mobile, settings/risk/research, visual-artifact, and other dirty work remain unstaged. The only remaining reviewed item is the deferred Task 9 typography Minor.
+
+## Fix round 4 — exact-tree legacy orders/fills fallback
+
+Date: 2026-09-04
+
+Reviewed base: `af417e5`
+
+Implementation commit: `b3e7041`
+
+### Exact-tree mismatch resolved
+
+- The committed product route registry does not recognize `tradeOrders` or `tradeFills`. The App's retained compatibility fallback now handles both exactly like `tradeLedger`: it selects the `ledger` workspace tab and renders Cockpit while the scoped helper owns `/app/trade/orders-fills`.
+- The mounted browser gate now includes `portfolioProtection`, `tradeOrders`, and `tradeFills`. These aliases are not distinct searchable feature rows in the committed registry, so the test honestly labels their provenance as `mounted-production-shell-setActive`; it locates the already-mounted production `AppTopbar.setActive` callback through React's mounted fiber and invokes the same production navigation entry used by real shell controls.
+- Searchable aliases retain `production-search` provenance. Existing Back/Forward, brand/settings exit, forged-state rejection, review page-two selection, filter/detail synchronization, callback URL, reload restoration, invalid review, focus, geometry, and zero-overflow assertions all remain in the same gate.
+
+### TDD evidence
+
+The modified browser test was staged alone with the unmodified App and exported as an exact pre-fix tree:
+
+```text
+red_tree=$(git write-tree)
+git archive "$red_tree" | tar -x -C "$red_archive"
+RED_TREE=bfe14f13853ae6e9e9c24a04c4e9950331d22085
+RED_ARCHIVE=/tmp/trading-task7-round4-red.vCvTER
+
+KORDYN_COCKPIT_VIEWS=execution node tests/run-trading-cockpit-browser.mjs
+FAIL: portfolioProtection reached /app/trade/positions and positions; tradeOrders reached /app/trade/orders-fills but rendered AI instead of ledger
+cleanup PASS
+```
+
+After the one-line fallback change, the staged exact tree passed the same mounted gate. `portfolioProtection` rendered positions at `/app/trade/positions`; both `tradeOrders` and `tradeFills` rendered ledger at `/app/trade/orders-fills`.
+
+Shared focused verification before commit:
+
+```text
+node --test tests/trading-cockpit-model.test.mjs tests/trading-cockpit-reference.test.mjs tests/aug15-review-deep-link.test.mjs
+PASS: 88/88
+```
+
+The final four tests are the protected, untracked deep-link test and remain shared-checkout-only evidence.
+
+### Exact committed-tree proof
+
+```text
+task7_archive=$(mktemp -d /tmp/trading-task7-b3e7041.XXXXXX)
+git archive b3e7041 | tar -x -C "$task7_archive"
+ln -s '/Users/ely/Desktop/Trading Agent/node_modules' "$task7_archive/node_modules"
+archive: /tmp/trading-task7-b3e7041.HeHVZf
+```
+
+Only tracked archive tests were named:
+
+```text
+node --test tests/trading-cockpit-model.test.mjs tests/trading-cockpit-reference.test.mjs
+PASS: 84/84
+
+KORDYN_COCKPIT_VIEWS=execution node tests/run-trading-cockpit-browser.mjs
+PASS: 1440×1080, 1280×960, 1024×768; all alias/history/review assertions and cleanup PASS
+
+npm run build
+PASS: 1,823 modules transformed; built in 1.56s
+```
+
+The archive output independently records:
+
+- `portfolioProtection` → `/app/trade/positions` → `positions`
+- `tradeOrders` → `/app/trade/orders-fills` → `ledger`
+- `tradeFills` → `/app/trade/orders-fills` → `ledger`
+
+All three entries report `mounted-production-shell-setActive`; no dirty `productArchitecture.js` content or untracked test file participated in the archive.
+
+### Shared-checkout regression gates
+
+```text
+npm test
+PASS: 2,344/2,344, 0 failures; isolated data root cleaned
+
+node tests/run-trading-cockpit-browser.mjs
+PASS: all five views × 1440/1280/1024; alias/history/review assertions and cleanup PASS
+
+npm run lint
+PASS
+
+node /Users/ely/.codex/skills/impeccable/scripts/detect.mjs --json src/aug15/App.jsx
+PASS: [] (run once)
+
+git diff --check && git diff --cached --check
+PASS: no output
+```
+
+### Exact implementation file list
+
+- `src/aug15/App.jsx`
+- `tests/run-trading-cockpit-browser.mjs`
+
+The App commit is one fallback-line change; no product-architecture, mobile, settings/risk/research, or unrelated dirty content was staged. The only remaining reviewed item is the deferred Task 9 typography Minor.
