@@ -473,6 +473,8 @@
 .marketWatchSelect small { color: var(--cockpit-text-3); font-size: 11px; }
 .marketWatchSelect em { font-size: 11px; font-style: normal; }
 .marketWatchSelect > svg { width: 13px; height: 13px; color: var(--cockpit-text-3); }
+.marketWatchUnavailable { color: var(--cockpit-text-3); cursor: default; }
+.marketWatchUnavailable b { color: var(--cockpit-ink); }
 .tradingCockpit .marketWatchRemove { min-width: 36px; width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 6px; color: var(--cockpit-text-3); background: transparent; cursor: pointer; }
 .marketWatchRemove:hover { color: var(--cockpit-negative); background: var(--cockpit-negative-soft); }
 .marketWatchRemove svg { width: 13px; height: 13px; }

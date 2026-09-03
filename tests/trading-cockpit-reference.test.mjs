@@ -21,6 +21,7 @@ require("esbuild").buildSync({
       export { CockpitTable } from "./src/aug15/tradingCockpit/shared.jsx";
       export { AreaTrend, BreadthBars, DistributionPlot, DonutChart, GaugeChart } from "./src/aug15/tradingCockpit/visuals.jsx";
       export { OverviewPage } from "./src/aug15/tradingCockpit/OverviewPage.jsx";
+      export { MarketPage } from "./src/aug15/tradingCockpit/MarketPage.jsx";
       export { createElement } from "react";
       export { renderToStaticMarkup } from "react-dom/server";
     `,
@@ -42,6 +43,7 @@ const {
   DistributionPlot,
   DonutChart,
   GaugeChart,
+  MarketPage,
   OverviewPage,
   createElement,
   renderToStaticMarkup
@@ -123,6 +125,93 @@ test("market page exposes the complete reference workspace with real supported c
   assert.match(marketSource, /aria-pressed/);
   assert.doesNotMatch(marketSource, /showVolume|\b(?:indicator|save|screenshot|fullscreen)\b/i);
   assert.doesNotMatch(marketSource, /72,450|8,234|\+12\.4%|0\.0007/);
+});
+
+test("market rejects malformed pair identities", () => {
+  const ui = { ensureSection() {}, refresh() {} };
+  const malformed = [" ", "/USDT", "BTC/", {}, []];
+  for (const symbol of malformed) {
+    const data = {
+      resourceState: { cockpit: "loaded" },
+      markets: [{ id: "bad-market", symbol, price: 100 }],
+      activeMarket: { id: "bad-active", symbol, price: 100 },
+      watchlist: [symbol],
+      events: []
+    };
+    assert.doesNotThrow(() => render(MarketPage, { data, ui }), `malformed ${JSON.stringify(symbol)} cannot crash Market`);
+    const html = render(MarketPage, { data, ui });
+    assert.match(html, /data-market-symbol=""/);
+    assert.doesNotMatch(html, /class="tvChart"/);
+  }
+});
+
+test("market trims a valid pair into one canonical identity", () => {
+  const canonical = render(MarketPage, {
+    data: {
+      resourceState: { cockpit: "loaded" },
+      markets: [{ id: "btc", symbol: "  BTC/USDT  ", price: 100 }],
+      activeMarket: { id: "btc-active", symbol: " BTC/USDT ", price: 100 },
+      watchlist: [" BTC/USDT "],
+      events: []
+    },
+    ui: { ensureSection() {}, refresh() {} }
+  });
+  assert.match(canonical, /data-market-symbol="BTC\/USDT"/);
+  assert.match(canonical, /<option value="BTC\/USDT" selected="">BTC\/USDT<\/option>/);
+  assert.doesNotMatch(canonical, /data-market-symbol="\s+BTC\/USDT/);
+});
+
+test("market loading retains a real event but rejects an empty event shell as evidence", () => {
+  const ui = { ensureSection() {}, refresh() {} };
+  const valid = render(MarketPage, {
+    data: {
+      resourceState: { cockpit: "loading" },
+      events: [{ id: "event-cpi", title: "CPI release", due: "2026-09-05T00:00:00Z", importance: "high", source: "official-calendar" }]
+    },
+    ui
+  });
+  assert.match(valid, /data-market-resource-state="loading"/);
+  assert.match(valid, /data-cockpit-region="market-header"/);
+  assert.match(valid, /CPI release/);
+
+  const emptyShell = render(MarketPage, { data: { resourceState: { cockpit: "loading" }, events: [{}] }, ui });
+  assert.match(emptyShell, /data-market-resource-state="loading"/);
+  assert.doesNotMatch(emptyShell, /data-cockpit-region="market-header"/);
+  assert.doesNotMatch(emptyShell, /(?:Market event|Recorded)/);
+});
+
+test("market event renderer filters malformed shells without inventing catalyst facts", () => {
+  const html = render(MarketPage, {
+    data: {
+      resourceState: { cockpit: "loaded" },
+      markets: [],
+      activeMarket: null,
+      watchlist: [],
+      events: [null, {}, [], "event", { title: "  " }]
+    },
+    ui: { ensureSection() {}, refresh() {} }
+  });
+  assert.match(html, /(?:暂无已记录事件|No recorded events)/);
+  assert.doesNotMatch(html, /(?:Market event|Recorded)/);
+});
+
+test("market preserves an orphaned saved pair as removable unavailable evidence", () => {
+  const html = render(MarketPage, {
+    data: {
+      resourceState: { cockpit: "loaded" },
+      markets: [{ id: "btc", symbol: "BTC/USDT", price: 100 }],
+      activeMarket: { id: "btc-active", symbol: "BTC/USDT", price: 100 },
+      watchlist: [" BTC/USDT ", { symbol: " DOGE/USDT " }],
+      events: []
+    },
+    action() {},
+    ui: { ensureSection() {}, refresh() {} }
+  });
+  assert.match(html, /data-market-watch-unavailable="DOGE\/USDT"/);
+  assert.match(html, /DOGE\/USDT/);
+  assert.match(html, /(?:从自选移除 DOGE\/USDT|Remove DOGE\/USDT from watchlist)/);
+  assert.match(html, /(?:行情不可用|Quote unavailable)/);
+  assert.doesNotMatch(html, /data-market-watch-select="DOGE\/USDT"/);
 });
 
 test("cockpit visual tokens and responsive contracts match the approved reference family", () => {

@@ -174,6 +174,25 @@ const enrichment = {
 };
 if (query.get("enriched") === "1") Object.assign(data, enrichment);
 if (query.get("empty") === "1") Object.assign(data, { portfolio: {}, portfolioRisk: { utilizationPct: null, status: "no_equity" }, markets: [], activeMarket: null, watchlist: [], marketRegime: null, notifications: [], positions: [], executionOrders: [], fills: [], closedTradeLifecycles: [], reviews: [], accountSnapshots: [] });
+if (query.get("marketCase") === "malformed") Object.assign(data, {
+  markets: [
+    { id: "bad-space", symbol: " ", price: 1 },
+    { id: "bad-base", symbol: "/USDT", price: 2 },
+    { id: "bad-quote", symbol: "BTC/", price: 3 },
+    { id: "bad-object", symbol: {}, price: 4 },
+    { id: "bad-array", symbol: [], price: 5 },
+    { ...fixtureMarket("BTC/USDT", 0), symbol: " BTC/USDT " },
+    fixtureMarket("ETH/USDT", 1)
+  ],
+  activeMarket: { ...fixtureMarket("BTC/USDT", 0), symbol: " BTC/USDT " },
+  watchlist: [" ", "/USDT", "BTC/", {}, [], " BTC/USDT ", "ETH/USDT"],
+  events: [null, {}, [], "event", { title: " " }]
+});
+if (query.get("marketCase") === "mismatched") Object.assign(data, {
+  markets: [fixtureMarket("BTC/USDT", 0), fixtureMarket("ETH/USDT", 1)],
+  activeMarket: fixtureMarket("BTC/USDT", 0),
+  watchlist: [" BTC/USDT ", { symbol: " DOGE/USDT " }, "/USDT"]
+});
 const requestedResourceState = query.get("resource");
 if (["not_loaded", "loading", "ready", "error", "failed", "forbidden", "disabled", "stale", "degraded"].includes(requestedResourceState)) data.resourceState.cockpit = requestedResourceState;
 if (requestedResourceState === "unknown") data.resourceState.cockpit = "future_state";

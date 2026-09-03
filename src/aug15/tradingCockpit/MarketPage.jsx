@@ -22,6 +22,21 @@ const signedPct = (value, fallback = "—") => finite(value) ? `${Number(value) 
 const formatCompact = (value, fallback = "—") => finite(value)
   ? new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 }).format(Number(value))
   : fallback;
+const text = (value) => typeof value === "string" ? value.trim() : "";
+
+function canonicalMarketSymbol(value) {
+  const symbol = text(value);
+  return /^[^/\s]+\/[^/\s]+$/.test(symbol) ? symbol : "";
+}
+
+function eventEvidence(event) {
+  if (!event || typeof event !== "object" || Array.isArray(event)) return null;
+  const title = text(event.title) || text(event.shortTitle);
+  const detail = text(event.summary) || text(event.description) || text(event.sourceName) || text(event.source);
+  const status = text(event.importance) || text(event.impact);
+  const date = text(event.due) || text(event.startAt) || text(event.createdAt);
+  return title || detail || status || date ? { ...event, title, detail, status, date } : null;
+}
 
 function resourceStateOf(data) {
   const raw = String(data?.resourceState?.cockpit || "").trim().toLowerCase();
@@ -29,10 +44,10 @@ function resourceStateOf(data) {
   return RESOURCE_STATES.has(raw) ? raw : "not_loaded";
 }
 
-function hasMarketEvidence(data, markets) {
+function hasMarketEvidence(data, markets, events) {
   if (markets.length) return true;
-  if (list(data?.events).some((row) => row && typeof row === "object")) return true;
-  if (list(data?.watchlist).length) return true;
+  if (events.length) return true;
+  if (watchSymbolsOf(data?.watchlist).length) return true;
   if (list(data?.mediumTermAnalytics?.symbols).some((row) => row && typeof row === "object")) return true;
   const regime = data?.marketRegime;
   return Boolean(regime && typeof regime === "object" && (
@@ -42,16 +57,23 @@ function hasMarketEvidence(data, markets) {
 }
 
 function marketRows(data) {
-  const rows = buildMarketRows(data);
-  const active = data?.activeMarket?.symbol
-    ? buildMarketRows({ markets: [data.activeMarket] })[0]
+  const normalize = (row) => {
+    const symbol = canonicalMarketSymbol(row?.symbol);
+    return symbol ? { ...row, id: row.id || symbol, symbol } : null;
+  };
+  const rows = buildMarketRows(data).map(normalize).filter(Boolean);
+  const activeSymbol = canonicalMarketSymbol(data?.activeMarket?.symbol);
+  const active = activeSymbol
+    ? normalize(buildMarketRows({ markets: [{ ...data.activeMarket, symbol: activeSymbol }] })[0])
     : null;
-  if (!active || rows.some((row) => row.symbol === active.symbol)) return rows;
-  return [active, ...rows];
+  const ordered = active && !rows.some((row) => row.symbol === active.symbol) ? [active, ...rows] : rows;
+  return [...new Map(ordered.map((row) => [row.symbol, row])).values()];
 }
 
 function watchSymbolsOf(value) {
-  return list(value).map((row) => typeof row === "string" ? row : row?.symbol).filter(Boolean);
+  return [...new Set(list(value)
+    .map((row) => canonicalMarketSymbol(typeof row === "string" ? row : row?.symbol))
+    .filter(Boolean))];
 }
 
 function levelValues(value) {
@@ -127,12 +149,15 @@ function Watchlist({ rows, selected, savedSymbols, onSelect, onRemove }) {
   return <CockpitPanel className="marketWatchlist" region="watchlist" title={t("自选列表", "Watchlist")} meta={`${rows.length}`}>
     {rows.length ? <div className="marketWatchRows">{rows.slice(0, 7).map((row) => {
       const change = numeric(row.changePct ?? row.change24hPct);
-      return <article className={row.symbol === selected ? "active" : ""} key={row.symbol}>
-        <button type="button" className="marketWatchSelect" aria-current={row.symbol === selected ? "true" : undefined} onClick={() => onSelect(row.symbol)}>
+      return <article className={row.available && row.symbol === selected ? "active" : ""} data-market-watch-unavailable={!row.available ? row.symbol : undefined} key={row.symbol}>
+        {row.available ? <button type="button" className="marketWatchSelect" data-market-watch-select={row.symbol} aria-current={row.symbol === selected ? "true" : undefined} onClick={() => onSelect(row.symbol)}>
           <span><b>{row.symbol}</b><small>{money(row.price ?? row.last)}</small></span>
           <em className={change == null ? "" : change >= 0 ? "positiveText" : "negativeText"}>{signedPct(change)}</em>
           {change == null ? <Activity/> : change >= 0 ? <TrendingUp/> : <TrendingDown/>}
-        </button>
+        </button> : <div className="marketWatchSelect marketWatchUnavailable">
+          <span><b>{row.symbol}</b><small>{t("行情不可用", "Quote unavailable")}</small></span>
+          <em>—</em><Activity/>
+        </div>}
         {savedSymbols.includes(row.symbol) && <button type="button" className="marketWatchRemove" aria-label={t(`从自选移除 ${row.symbol}`, `Remove ${row.symbol} from watchlist`)} onClick={() => onRemove(row.symbol)}><X/></button>}
       </article>;
     })}</div> : <CockpitEmpty icon={Star} title={t("自选列表为空", "Watchlist is empty")} detail={t("当前没有已保存的交易对。", "No market pair is currently saved.")}/>
@@ -171,7 +196,7 @@ function Breadth({ regime, markets }) {
 function EventCatalysts({ events }) {
   return <CockpitPanel className="marketEvents" region="event-catalysts" title={t("关键宏观与催化", "Event catalysts")} meta={`${events.length}`}>
     {events.length ? <div className="marketEventRows">{events.slice(0, 4).map((event, index) => <article key={event.id || `${event.title}-${index}`}>
-      <CalendarDays/><time>{formatDateTime(event.due || event.startAt || event.createdAt)}</time><span><b>{localizeText(event.title || event.shortTitle || t("市场事件", "Market event"))}</b><small>{localizeText(event.summary || event.description || event.sourceName || event.source || t("事件详情未提供", "Event detail unavailable"))}</small></span><Tone tone={String(event.importance || event.impact).toLowerCase() === "high" ? "warning" : "neutral"}>{humanize(event.importance || event.impact, t("已记录", "Recorded"))}</Tone>
+      <CalendarDays/><time>{formatDateTime(event.date, "—")}</time><span><b>{event.title ? localizeText(event.title) : "—"}</b><small>{event.detail ? localizeText(event.detail) : "—"}</small></span><Tone tone={event.status.toLowerCase() === "high" ? "warning" : "neutral"}>{event.status ? humanize(event.status) : "—"}</Tone>
     </article>)}</div> : <CockpitEmpty icon={CalendarDays} title={t("暂无已记录事件", "No recorded events")} detail={t("宏观或业务事件同步后会显示在这里。", "Synced macro and business events appear here.")}/>
     }
   </CockpitPanel>;
@@ -202,7 +227,8 @@ function MarketTicker({ markets, selected, onSelect }) {
 export function MarketPage({ data = {}, action, ui }) {
   const markets = useMemo(() => marketRows(data), [data]);
   const symbols = useMemo(() => [...new Set(markets.map((row) => row.symbol).filter(Boolean))], [markets]);
-  const preferredSymbol = data?.activeMarket?.symbol && symbols.includes(data.activeMarket.symbol) ? data.activeMarket.symbol : symbols[0] || "";
+  const activeSymbol = canonicalMarketSymbol(data?.activeMarket?.symbol);
+  const preferredSymbol = activeSymbol && symbols.includes(activeSymbol) ? activeSymbol : symbols[0] || "";
   const [symbol, setSymbol] = useState(preferredSymbol);
   const [interval, setInterval] = useState("1h");
   useEffect(() => {
@@ -210,15 +236,18 @@ export function MarketPage({ data = {}, action, ui }) {
   }, [preferredSymbol, symbol, symbols]);
 
   const state = resourceStateOf(data);
-  const hasEvidence = hasMarketEvidence(data, markets);
+  const events = list(data.events).map(eventEvidence).filter(Boolean);
+  const hasEvidence = hasMarketEvidence(data, markets, events);
   const retainsFacts = ["stale", "degraded"].includes(state) || (state === "loading" && hasEvidence);
   const blocked = ["not_loaded", "error", "failed", "forbidden", "disabled"].includes(state) || (state === "loading" && !hasEvidence);
   const market = markets.find((row) => row.symbol === symbol) || null;
   const regime = data.marketRegime && typeof data.marketRegime === "object" ? data.marketRegime : {};
   const medium = list(data.mediumTermAnalytics?.symbols).find((row) => row?.symbol === symbol) || null;
   const savedSymbols = watchSymbolsOf(data.watchlist);
-  const watchRows = savedSymbols.map((name) => markets.find((row) => row.symbol === name)).filter(Boolean);
-  const events = list(data.events).filter((row) => row && typeof row === "object");
+  const watchRows = savedSymbols.map((name) => {
+    const live = markets.find((row) => row.symbol === name);
+    return live ? { ...live, available: true } : { symbol: name, available: false };
+  });
   const reload = () => ui?.ensureSection?.("cockpit", { force: true }) ?? ui?.refresh?.(true);
   const removeWatch = (name) => action?.(`/api/watchlist/${encodeURIComponent(name)}`, {}, "DELETE");
 
