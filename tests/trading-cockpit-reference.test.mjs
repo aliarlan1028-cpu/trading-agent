@@ -13,6 +13,8 @@ const cacheDir = path.join(rootDir, "node_modules", ".cache");
 const componentBundle = path.join(cacheDir, `trading-cockpit-primitives-${process.pid}.cjs`);
 const positionsModulePath = path.join(rootDir, "src/aug15/tradingCockpit/PositionsPage.jsx");
 const positionsModuleExists = fs.existsSync(positionsModulePath);
+const reviewModulePath = path.join(rootDir, "src/aug15/tradingCockpit/ReviewPage.jsx");
+const reviewModuleExists = fs.existsSync(reviewModulePath);
 fs.mkdirSync(cacheDir, { recursive: true });
 process.on("exit", () => {
   try { fs.rmSync(componentBundle, { force: true }); } catch { /* noop */ }
@@ -27,6 +29,9 @@ require("esbuild").buildSync({
       ${positionsModuleExists
         ? 'export { PositionsPage } from "./src/aug15/tradingCockpit/PositionsPage.jsx";'
         : "export const PositionsPage = undefined;"}
+      ${reviewModuleExists
+        ? 'export { ReviewPage } from "./src/aug15/tradingCockpit/ReviewPage.jsx";'
+        : "export const ReviewPage = undefined;"}
       export { createElement } from "react";
       export { renderToStaticMarkup } from "react-dom/server";
     `,
@@ -51,6 +56,7 @@ const {
   MarketPage,
   OverviewPage,
   PositionsPage,
+  ReviewPage,
   createElement,
   renderToStaticMarkup
 } = require(componentBundle);
@@ -66,6 +72,7 @@ const cockpit = await readFile(new URL("../src/aug15/tradingCockpit.jsx", import
 const overviewSource = await readFile(new URL("../src/aug15/tradingCockpit/OverviewPage.jsx", import.meta.url), "utf8").catch(() => "");
 const marketSource = await readFile(new URL("../src/aug15/tradingCockpit/MarketPage.jsx", import.meta.url), "utf8").catch(() => "");
 const positionsSource = await readFile(new URL("../src/aug15/tradingCockpit/PositionsPage.jsx", import.meta.url), "utf8").catch(() => "");
+const reviewSource = await readFile(new URL("../src/aug15/tradingCockpit/ReviewPage.jsx", import.meta.url), "utf8").catch(() => "");
 const cockpitCss = await readFile(new URL("../src/aug15/tradingCockpit.css", import.meta.url), "utf8").catch(() => "");
 const librarySource = await readFile(new URL("../src/lib.jsx", import.meta.url), "utf8").catch(() => "");
 const browserHarness = await readFile(new URL("./trading-cockpit-browser.jsx", import.meta.url), "utf8").catch(() => "");
@@ -91,7 +98,7 @@ test("all five canonical trading routes render inside one shared cockpit shell",
 });
 
 test("reference-driven pages expose distinct real product landmarks and honest empty states", () => {
-  const pageSources = `${cockpit}\n${marketSource}\n${overviewSource}\n${positionsSource}`;
+  const pageSources = `${cockpit}\n${marketSource}\n${overviewSource}\n${positionsSource}\n${reviewSource}`;
   for (const landmark of [
     "data-cockpit-page=\"market\"",
     "data-cockpit-page=\"positions\"",
@@ -147,6 +154,102 @@ test("positions page exposes the complete reference risk workbench", () => {
   assert.match(positionsSource, /takeProfits/);
   assert.match(positionsSource, /executionExitAction/);
   assert.match(positionsSource, /requestExecutionExit/);
+});
+
+test("review page exposes the complete reference workbench without mislabeled analytics", () => {
+  assert.equal(reviewModuleExists, true);
+  assert.match(reviewSource, /data-cockpit-page="execution"/);
+  for (const region of [
+    "review-hero", "ai-review-conclusion", "review-filters", "trade-list",
+    "trade-detail", "trade-path", "hold-pnl-distribution", "behavior-insights", "next-actions"
+  ]) assert.match(reviewSource, new RegExp(`(?:data-cockpit-region|region)=["'{]+${region}`));
+  assert.match(reviewSource, /buildReviewPresentation/);
+  assert.match(reviewSource, /onReviewSelect/);
+  assert.doesNotMatch(reviewSource, /profitFactor[^\n]+平均盈亏比/);
+});
+
+test("review deep link selects an exact canonical review and matched lifecycle facts", () => {
+  const html = render(ReviewPage, {
+    data: {
+      resourceState: { cockpit: "loaded" },
+      performance: { trades: 2, totalPnlUsdt: 10, winRatePct: 50, expectancyUsdt: 5, maxDrawdownPct: 2.4, profitFactor: 1.5 },
+      closedTradeLifecycles: [
+        { id: "trade-a", symbol: "BTC/USDT", entryPrice: 90, exitPrice: 101, netRealizedPnl: 11, holdMinutes: 45 },
+        { id: "trade-b", symbol: "ETH/USDT", entryPrice: 1900, exitPrice: 1940, netRealizedPnl: -1, holdMinutes: 80, strategy: "mean-revert", signal: "retest", pathSamples: [{ at: "2026-09-01T00:00:00Z", pnlUsdt: -2 }, { at: "2026-09-01T01:00:00Z", pnlUsdt: -1 }] }
+      ],
+      reviews: [
+        { id: "review-a", type: "trade", tradeLifecycleId: "trade-a", symbol: "BTC/USDT", status: "completed", summary: "BTC exact review", netRealizedPnl: 999, holdMinutes: 45 },
+        { id: "review-b", type: "trade", tradeLifecycleId: "trade-b", symbol: "ETH/USDT", status: "completed", summary: "ETH exact review", netRealizedPnl: 999, holdMinutes: 80, improvement: "Wait for the recorded retest." }
+      ],
+      behaviorProfile: { strengths: ["Risk guard held."], flags: [{ key: "timing", title: "Timing", detail: "Entry timing repeated." }] }
+    },
+    initialReviewId: "review-b",
+    onReviewSelect() {},
+    ui: {}
+  });
+  assert.match(html, /data-selected-review-id="review-b"/);
+  assert.match(html, /data-review-detail-id="review-b"/);
+  assert.match(html, /ETH exact review/);
+  assert.match(html, /-1\.00/);
+  assert.doesNotMatch(html, /999\.00/);
+  assert.match(html, /data-review-path-samples="2"/);
+});
+
+test("review malformed or unmatched deep links fail closed instead of selecting another review", () => {
+  const data = {
+    resourceState: { cockpit: "loaded" },
+    performance: {}, closedTradeLifecycles: [],
+    reviews: [{ id: "review-real", type: "trade", symbol: "BTC/USDT", status: "completed", summary: "Must not be selected" }]
+  };
+  for (const initialReviewId of ["review-missing", "   ", { id: "review-real" }]) {
+    const html = render(ReviewPage, { data, initialReviewId, onReviewSelect() {}, ui: {} });
+    assert.match(html, /data-selected-review-id=""/);
+    assert.doesNotMatch(html, /data-review-detail-id="review-real"/);
+  }
+});
+
+test("review keeps unavailable analytics unavailable and never turns aggregate trajectory metadata into a path", () => {
+  const html = render(ReviewPage, {
+    data: {
+      resourceState: { cockpit: "loaded" },
+      performance: { trades: 1, totalPnlUsdt: 3, winRatePct: 100, avgPnlUsdt: 3 },
+      closedTradeLifecycles: [{ id: "trade-one", symbol: "SOL/USDT", netRealizedPnl: 3, holdMinutes: 12, trajectory: { note: "aggregate only", candles: 9 } }],
+      reviews: [{ id: "review-one", type: "trade", tradeLifecycleId: "trade-one", symbol: "SOL/USDT", status: "completed", summary: "Recorded outcome", trajectory: { note: "aggregate only", candles: 9 } }],
+      behaviorProfile: {}
+    },
+    ui: {}
+  });
+  const hero = html.match(/<section[^>]*data-cockpit-region="review-hero"[^]*?<\/section>/)?.[0] || "";
+  assert.match(hero, /(?:单笔期望|Expectancy)/);
+  assert.match(hero, /(?:最大回撤|Max drawdown)/);
+  assert.match(hero, /Profit Factor/);
+  assert.ok((hero.match(/(?:不可用|Unavailable)/g) || []).length >= 3);
+  assert.match(html, /(?:未记录逐时路径|No intratrade path recorded)/);
+  assert.doesNotMatch(html, /data-review-path-samples="[1-9]/);
+  assert.match(html, /(?:暂无已记录行动|No recorded next actions)/);
+});
+
+test("review survives malformed collections and preserves retained versus terminal resource states", () => {
+  const facts = {
+    performance: { trades: 1, totalPnlUsdt: 2 },
+    closedTradeLifecycles: [null, "bad", { id: "trade-state", netRealizedPnl: 2, holdMinutes: 20 }],
+    reviews: [null, {}, { id: "", type: "trade" }, { id: "review-state", type: "trade", tradeLifecycleId: "trade-state", status: "completed", summary: "Retained review" }],
+    behaviorProfile: { strengths: null, flags: [null, {}] }
+  };
+  for (const state of ["loading", "stale", "degraded"]) {
+    assert.doesNotThrow(() => render(ReviewPage, { data: { ...facts, resourceState: { cockpit: state } }, ui: {} }));
+    const html = render(ReviewPage, { data: { ...facts, resourceState: { cockpit: state } }, ui: {} });
+    assert.match(html, new RegExp(`data-review-resource-state="${state}"`));
+    assert.match(html, /data-cockpit-region="review-hero"/);
+  }
+  for (const state of ["error", "failed", "forbidden", "disabled"]) {
+    const html = render(ReviewPage, { data: { ...facts, resourceState: { cockpit: state } }, ui: {} });
+    assert.match(html, new RegExp(`data-review-resource-state="${state}"`));
+    assert.doesNotMatch(html, /data-cockpit-region="review-hero"/);
+  }
+  const initial = render(ReviewPage, { data: { resourceState: { cockpit: "loading" } }, ui: {} });
+  assert.match(initial, /data-review-resource-state="loading"/);
+  assert.doesNotMatch(initial, /data-cockpit-region="review-hero"/);
 });
 
 test("positions renders a positionId-only row with only its exact protection and execution identity", () => {

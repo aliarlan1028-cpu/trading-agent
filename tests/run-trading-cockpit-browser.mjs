@@ -19,6 +19,7 @@ const enrichedMode = process.env.KORDYN_COCKPIT_ENRICHED === "1";
 const stateMode = String(process.env.KORDYN_COCKPIT_STATE || "").trim().toLowerCase();
 const marketCase = String(process.env.KORDYN_COCKPIT_MARKET_CASE || "").trim().toLowerCase();
 const positionCase = String(process.env.KORDYN_COCKPIT_POSITION_CASE || "").trim().toLowerCase();
+const reviewCase = String(process.env.KORDYN_COCKPIT_REVIEW_CASE || "").trim().toLowerCase();
 const resourceStateModes = new Set(["not_loaded", "loading", "loaded", "ready", "stale", "degraded", "error", "failed", "forbidden", "disabled", "unknown"]);
 const chartStatusByMode = new Map([
   ["chart-error", "error"], ["chart-empty", "empty"], ["chart-init-error", "error"],
@@ -33,6 +34,7 @@ const marketIntervalSequence = ["1h", "4h", "1D"];
 assert.ok(!stateMode || resourceStateModes.has(stateMode) || chartStatusByMode.has(stateMode), `Unsupported KORDYN_COCKPIT_STATE: ${stateMode}`);
 assert.ok(!marketCase || ["malformed", "mismatched"].includes(marketCase), `Unsupported KORDYN_COCKPIT_MARKET_CASE: ${marketCase}`);
 assert.ok(!positionCase || ["malformed", "partial"].includes(positionCase), `Unsupported KORDYN_COCKPIT_POSITION_CASE: ${positionCase}`);
+assert.ok(!reviewCase || ["malformed"].includes(reviewCase), `Unsupported KORDYN_COCKPIT_REVIEW_CASE: ${reviewCase}`);
 assert.ok(views.length, "KORDYN_COCKPIT_VIEWS must name at least one canonical cockpit view");
 
 function withCdpCommandTimeout(promise, method) {
@@ -207,6 +209,7 @@ try {
       if (chartStatusByMode.has(stateMode)) fixtureParams.set("chart", stateMode.replace("chart-", ""));
       if (marketCase) fixtureParams.set("marketCase", marketCase);
       if (positionCase) fixtureParams.set("positionCase", positionCase);
+      if (reviewCase) fixtureParams.set("reviewCase", reviewCase);
       await cdp.send("Page.navigate", { url: `${baseUrl}/tests/trading-cockpit-browser.html?${fixtureParams}` });
       await waitForExpression(cdp, `document.querySelector('[data-cockpit-page="${view}"]')`, `${width}x${height} ${view} cockpit page`);
       const chartSelector = `[data-cockpit-page="${view}"] [data-cockpit-region="market-chart"]`;
@@ -261,6 +264,40 @@ try {
           payload: { reason: "manual_ui", intent: "close_position", expectedStatus: "protecting" }
         }, `${width}x${height} positions preserves the canonical execution action payload`);
       }
+      let reviewInteractionFacts = null;
+      if (view === "execution" && !emptyMode && !reviewCase && (!resourceStateModes.has(stateMode) || ["loaded", "ready"].includes(stateMode))) {
+        const before = await evaluate(cdp, `(() => { const detail = document.querySelector('[data-review-detail-id]'); return { selectedId: document.querySelector('[data-cockpit-page="execution"]')?.dataset.selectedReviewId || '', detailId: detail?.dataset.reviewDetailId || '', detailText: detail?.textContent || '', pathText: document.querySelector('[data-cockpit-region="trade-path"]')?.textContent || '' }; })()`);
+        assert.match(before.pathText, /(?:未记录逐时路径|No intratrade path recorded)/, `${width}x${height} review initially exposes the honest no-path state`);
+        await evaluate(cdp, `document.querySelector('[data-review-page-next]')?.click()`);
+        await waitForExpression(cdp, `document.querySelector('[data-review-page="2"]')`, `${width}x${height} review page two`);
+        const pageTwoId = await evaluate(cdp, `document.querySelector('[data-review-page="2"] [data-review-id]')?.dataset.reviewId || ''`);
+        assert.ok(pageTwoId, `${width}x${height} review page two contains a canonical review`);
+        await evaluate(cdp, `document.querySelector('[data-review-page="2"] [data-review-id]')?.focus()`);
+        await evaluate(cdp, `document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }))`);
+        await waitForExpression(cdp, `document.querySelector('[data-review-detail-id]')?.dataset.reviewDetailId === ${JSON.stringify(pageTwoId)}`, `${width}x${height} review page-two selection`);
+        const after = await evaluate(cdp, `(() => { const page = document.querySelector('[data-cockpit-page="execution"]'); const detail = document.querySelector('[data-review-detail-id]'); return { selectedId: page?.dataset.selectedReviewId || '', detailId: detail?.dataset.reviewDetailId || '', detailText: detail?.textContent || '', pathSamples: Number(document.querySelector('[data-review-path-samples]')?.dataset.reviewPathSamples || 0), path: location.pathname }; })()`);
+        assert.equal(after.selectedId, pageTwoId, `${width}x${height} selected identity follows the clicked page-two review`);
+        assert.equal(after.detailId, pageTwoId, `${width}x${height} detail identity follows the clicked page-two review`);
+        assert.notEqual(after.detailText, before.detailText, `${width}x${height} clicked review changes real detail content`);
+        assert.equal(after.path, `/app/trade/reviews/${encodeURIComponent(pageTwoId)}`, `${width}x${height} onReviewSelect updates the canonical deep link`);
+        assert.ok(after.pathSamples >= 2, `${width}x${height} selected review draws only its recorded path samples`);
+
+        const reloadParams = new URLSearchParams({ view: "execution", reviewId: pageTwoId });
+        await cdp.send("Page.navigate", { url: `${baseUrl}/tests/trading-cockpit-browser.html?${reloadParams}` });
+        await waitForExpression(cdp, `document.querySelector('[data-review-detail-id]')?.dataset.reviewDetailId === ${JSON.stringify(pageTwoId)}`, `${width}x${height} review deep-link reload`);
+        const restored = await evaluate(cdp, `({ selectedId: document.querySelector('[data-cockpit-page="execution"]')?.dataset.selectedReviewId || '', detailId: document.querySelector('[data-review-detail-id]')?.dataset.reviewDetailId || '', listPage: document.querySelector('[data-review-page]')?.dataset.reviewPage || '', path: location.pathname })`);
+        assert.deepEqual(restored, { selectedId: pageTwoId, detailId: pageTwoId, listPage: "2", path: `/app/trade/reviews/${encodeURIComponent(pageTwoId)}` }, `${width}x${height} deep-link fixture restores the same canonical review and list page`);
+
+        const invalidParams = new URLSearchParams({ view: "execution", reviewId: "review-does-not-exist" });
+        await cdp.send("Page.navigate", { url: `${baseUrl}/tests/trading-cockpit-browser.html?${invalidParams}` });
+        await waitForExpression(cdp, `document.querySelector('[data-cockpit-page="execution"]')`, `${width}x${height} unmatched review deep link`);
+        const invalid = await evaluate(cdp, `({ selectedId: document.querySelector('[data-cockpit-page="execution"]')?.dataset.selectedReviewId || '', detailCount: document.querySelectorAll('[data-review-detail-id]').length })`);
+        assert.deepEqual(invalid, { selectedId: "", detailCount: 0 }, `${width}x${height} unmatched review id fails closed`);
+
+        await cdp.send("Page.navigate", { url: `${baseUrl}/tests/trading-cockpit-browser.html?${reloadParams}` });
+        await waitForExpression(cdp, `document.querySelector('[data-review-detail-id]')?.dataset.reviewDetailId === ${JSON.stringify(pageTwoId)}`, `${width}x${height} review restoration after fail-closed check`);
+        reviewInteractionFacts = { before, after, restored, invalid };
+      }
       const facts = await evaluate(cdp, `(() => { const page = document.querySelector('[data-cockpit-page]'); const region = document.querySelector(${JSON.stringify(chartSelector)}); const chart = region?.querySelector('.tvChart'); const kline = window.__cockpitKlineFixture || {}; const lifecycle = window.__cockpitChartFailure || {}; const main = document.querySelector('[data-cockpit-page="overview"] .overviewPrimary'); const rail = document.querySelector('[data-cockpit-page="overview"] .overviewRail'); const lastRegion = document.querySelector('[data-cockpit-page="overview"] [data-cockpit-region="strategy-footer"]'); const marketWorkspace = document.querySelector('[data-cockpit-page="market"] .marketWorkspace'); const marketChartWorkspace = document.querySelector('[data-cockpit-page="market"] [data-cockpit-region="market-chart-workspace"]'); const marketInterval = document.querySelector('[data-market-interval][aria-pressed="true"]'); marketInterval?.focus(); const marketFocusedStyle = marketInterval ? getComputedStyle(marketInterval) : null; const canvas = chart?.querySelector('canvas'); const overviewRegions = Object.fromEntries([...document.querySelectorAll('[data-cockpit-page="overview"] [data-cockpit-region]')].map((node) => { const rect = node.getBoundingClientRect(); return [node.dataset.cockpitRegion, { top: Math.round(rect.top * 100) / 100, height: Math.round(rect.height * 100) / 100 }]; })); const targets = ['overview', 'market'].includes(page?.dataset.cockpitPage) ? [...page.querySelectorAll('button, a[href], input, select, [tabindex]:not([tabindex="-1"])')].filter((node) => !node.disabled && !node.closest('.tvChart') && getComputedStyle(node).display !== 'none') : []; const targetFacts = targets.map((node) => { const rect = node.getBoundingClientRect(); const style = getComputedStyle(node); return { label: node.getAttribute('aria-label') || node.textContent?.trim() || node.className, tag: node.tagName, className: node.className, width: rect.width, height: rect.height, minWidth: style.minWidth, minHeight: style.minHeight, size: Math.min(rect.width, rect.height) }; }).filter((row) => Number.isFinite(row.size)); const targetSizes = targetFacts.map((row) => row.size); const smallestTarget = targetFacts.sort((a, b) => a.size - b.size)[0] || null; const readableText = page?.dataset.cockpitPage === 'overview' ? [...page.querySelectorAll('small, p, time, em, th, td, button, .cockpitTone')].filter((node) => !node.matches('.overviewMarketQuote > div > b, .overviewHeroEquity b, .overviewHeroFact b, .overviewAiLead b, .cockpitGauge b')) : []; const textFacts = readableText.filter((node) => getComputedStyle(node).display !== 'none').map((node) => ({ label: node.textContent?.trim() || node.className, size: Number.parseFloat(getComputedStyle(node).fontSize) })).filter((row) => Number.isFinite(row.size)); const textSizes = textFacts.map((row) => row.size); const smallestText = textFacts.sort((a, b) => a.size - b.size)[0] || null; const fixtureFields = window.__cockpitFixtureFields || []; return ({ fixture: document.documentElement.dataset.fixtureKind, fixtureFields, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, resourceState: page?.dataset.resourceState || null, statePanel: page?.querySelector('[data-overview-resource-state]')?.dataset.overviewResourceState || page?.querySelector('[data-market-resource-state]')?.dataset.marketResourceState || null, regionCharts: region?.querySelectorAll(".tvChart canvas").length || 0, chartVisible: Boolean(canvas && canvas.getBoundingClientRect().width > 0 && canvas.getBoundingClientRect().height > 0), chartStatus: chart?.dataset.chartStatus || null, volumeSeries: chart?.dataset.volumeSeries || null, chartRemovals: lifecycle.removals || 0, chartRuntimeErrors: lifecycle.runtimeErrors || 0, chartUnhandledRejections: lifecycle.unhandledRejections || 0, candleSetDataCalls: lifecycle.candleSetDataCalls || 0, volumeSetDataCalls: lifecycle.volumeSetDataCalls || 0, chartUpdateCalls: lifecycle.updateCalls || 0, minKeyboardTargetPx: targetSizes.length ? Math.min(...targetSizes) : null, minMarketTargetPx: page?.dataset.cockpitPage === 'market' && targetSizes.length ? Math.min(...targetSizes) : null, smallestTarget, minOverviewTextPx: textSizes.length ? Math.min(...textSizes) : null, maxOverviewTextPx: textSizes.length ? Math.max(...textSizes) : null, smallestText, mainRailRatio: main && rail ? main.getBoundingClientRect().width / rail.getBoundingClientRect().width : null, lastRegionTop: lastRegion?.getBoundingClientRect().top ?? null, overviewRegions, marketActiveIntervals: document.querySelectorAll('[data-market-interval][aria-pressed="true"]').length, marketChartWorkspaceRatio: marketWorkspace && marketChartWorkspace ? marketChartWorkspace.getBoundingClientRect().width / marketWorkspace.getBoundingClientRect().width : null, marketCanonicalSymbol: page?.dataset.marketSymbol || null, marketFocusedOutline: marketFocusedStyle ? marketFocusedStyle.outlineStyle + ' ' + marketFocusedStyle.outlineWidth : null, klineRequests: kline.requests || 0, klineSymbols: kline.symbols || [], klineQueries: kline.queries || [], page: page?.dataset.cockpitPage }); })()`);
       const marketStateFacts = view === "market" ? await evaluate(cdp, `(() => { const page = document.querySelector('[data-cockpit-page="market"]'); const regions = [...page.querySelectorAll('[data-cockpit-region]')].map((node) => node.dataset.cockpitRegion); return { regions, symbolSelectDisabled: Boolean(page.querySelector('[data-market-symbol-select]')?.disabled), hasChartLoadingText: /加载 K 线|Loading candlesticks/.test(page.textContent || '') }; })()`) : null;
       const positionStateFacts = view === "positions" ? await evaluate(cdp, `(() => {
@@ -295,6 +332,26 @@ try {
           columnPct: totalWidth ? columns.map((value) => value / totalWidth * 100) : [],
           minTargetPx: targetFacts.length ? Math.min(...targetFacts.map((row) => row.size)) : null,
           smallestTarget: targetFacts.sort((a, b) => a.size - b.size)[0] || null
+        };
+      })()`) : null;
+      const reviewStateFacts = view === "execution" ? await evaluate(cdp, `(() => {
+        const page = document.querySelector('[data-cockpit-page="execution"]');
+        const workspace = page?.querySelector('.reviewWorkbench');
+        const columns = workspace ? [...workspace.children].slice(0, 2).map((node) => node.getBoundingClientRect().width) : [];
+        const totalWidth = columns.reduce((sum, value) => sum + value, 0);
+        const targets = page ? [...page.querySelectorAll('button, a[href], input, select, [tabindex]:not([tabindex="-1"])')].filter((node) => !node.disabled && getComputedStyle(node).display !== 'none') : [];
+        const targetFacts = targets.map((node) => { const rect = node.getBoundingClientRect(); return { label: node.getAttribute('aria-label') || node.textContent?.trim() || node.className, size: Math.min(rect.width, rect.height) }; }).filter((row) => Number.isFinite(row.size));
+        const focused = page?.querySelector('[data-review-id]'); focused?.focus(); const focusStyle = focused ? getComputedStyle(focused) : null;
+        return {
+          state: page?.dataset.resourceState || null,
+          statePanel: page?.querySelector('[data-review-resource-state]')?.dataset.reviewResourceState || null,
+          regions: [...(page?.querySelectorAll('[data-cockpit-region]') || [])].map((node) => node.dataset.cockpitRegion),
+          rowCount: page?.querySelectorAll('[data-review-id]').length || 0,
+          detailId: page?.querySelector('[data-review-detail-id]')?.dataset.reviewDetailId || '',
+          columnPct: totalWidth ? columns.map((value) => value / totalWidth * 100) : [],
+          minTargetPx: targetFacts.length ? Math.min(...targetFacts.map((row) => row.size)) : null,
+          focusActive: document.activeElement === focused,
+          focusOutline: focusStyle ? focusStyle.outlineStyle + ' ' + focusStyle.outlineWidth : null
         };
       })()`) : null;
       assert.equal(facts.fixture, "production-shaped-synthetic", `${width}x${height} ${view} uses the marked test-only fixture`);
@@ -429,6 +486,30 @@ try {
           }
         }
       }
+      if (view === "execution") {
+        const requiredRegions = ["review-hero", "ai-review-conclusion", "review-filters", "trade-list", "trade-detail", "trade-path", "hold-pnl-distribution", "behavior-insights", "next-actions"];
+        if (resourceStateModes.has(stateMode) && !["loaded", "ready"].includes(stateMode)) {
+          assert.equal(reviewStateFacts.state, expectedResourceState, `${width}x${height} review normalizes ${stateMode} to ${expectedResourceState}`);
+          assert.equal(reviewStateFacts.statePanel, expectedResourceState, `${width}x${height} review renders its ${stateMode} state boundary`);
+          assert.equal(reviewStateFacts.regions.includes("review-hero"), retainedBodyModes.has(stateMode), `${width}x${height} ${stateMode} review ${retainedBodyModes.has(stateMode) ? "retains" : "blocks"} last-valid facts`);
+        } else if (emptyMode) {
+          assert.equal(reviewStateFacts.rowCount, 0, `${width}x${height} empty review renders no fabricated row`);
+          assert.equal(reviewStateFacts.detailId, "", `${width}x${height} empty review renders no fabricated detail`);
+        } else if (reviewCase === "malformed") {
+          assert.equal(reviewStateFacts.rowCount, 1, `${width}x${height} malformed review fixture retains only its canonical review`);
+          assert.equal(reviewStateFacts.detailId, "review-safe", `${width}x${height} malformed review selects only the canonical review`);
+        } else {
+          for (const region of requiredRegions) assert.ok(reviewStateFacts.regions.includes(region), `${width}x${height} review renders ${region}`);
+          assert.ok(reviewInteractionFacts, `${width}x${height} review completes page-two/deep-link interaction`);
+          assert.ok(reviewStateFacts.minTargetPx >= 36, `${width}x${height} review control target ${reviewStateFacts.minTargetPx}px is at least 36px`);
+          assert.equal(reviewStateFacts.focusActive, true, `${width}x${height} review row receives keyboard focus`);
+          assert.notEqual(reviewStateFacts.focusOutline, "none 0px", `${width}x${height} review rows have a visible focus ring: ${JSON.stringify(reviewStateFacts)}`);
+          if (width === 1440) {
+            const expected = [36, 64];
+            reviewStateFacts.columnPct.forEach((value, index) => assert.ok(Math.abs(value - expected[index]) <= 8, `1440 review column ${index + 1} is ${value.toFixed(2)}%, near ${expected[index]}%`));
+          }
+        }
+      }
       if (outputDir && view === "market" && !emptyMode && regularChartMode) {
         const beforeCaptureReset = await evaluate(cdp, "window.__cockpitKlineFixture?.requests || 0");
         await evaluate(cdp, `(() => { const select = document.querySelector('[data-market-symbol-select]'); if (!select) return false; select.value = 'BTC/USDT'; select.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
@@ -439,7 +520,7 @@ try {
         const shot = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false, fromSurface: true });
         await writeFile(path.join(outputDir, `${view}-${width}x${height}${emptyMode ? "-empty" : stateMode ? `-${stateMode}` : enrichedMode ? "-enriched" : ""}.png`), Buffer.from(shot.data, "base64"));
       }
-      results.push({ width, height, view, charts: facts.regionCharts, klineRequests: facts.klineRequests, overflow: facts.overflow, resourceState: facts.resourceState, chartStatus: facts.chartStatus, volumeSeries: facts.volumeSeries, chartRemovals: facts.chartRemovals, chartRuntimeErrors: facts.chartRuntimeErrors, chartUnhandledRejections: facts.chartUnhandledRejections, minKeyboardTargetPx: facts.minKeyboardTargetPx, minMarketTargetPx: facts.minMarketTargetPx, minOverviewTextPx: facts.minOverviewTextPx, maxOverviewTextPx: facts.maxOverviewTextPx, mainRailRatio: facts.mainRailRatio, marketChartWorkspaceRatio: facts.marketChartWorkspaceRatio, marketCanonicalSymbol: facts.marketCanonicalSymbol, marketRegions: marketStateFacts?.regions, positionStateFacts, positionActionFacts, lastRegionTop: facts.lastRegionTop, overviewRegions: facts.overviewRegions });
+      results.push({ width, height, view, charts: facts.regionCharts, klineRequests: facts.klineRequests, overflow: facts.overflow, resourceState: facts.resourceState, chartStatus: facts.chartStatus, volumeSeries: facts.volumeSeries, chartRemovals: facts.chartRemovals, chartRuntimeErrors: facts.chartRuntimeErrors, chartUnhandledRejections: facts.chartUnhandledRejections, minKeyboardTargetPx: facts.minKeyboardTargetPx, minMarketTargetPx: facts.minMarketTargetPx, minOverviewTextPx: facts.minOverviewTextPx, maxOverviewTextPx: facts.maxOverviewTextPx, mainRailRatio: facts.mainRailRatio, marketChartWorkspaceRatio: facts.marketChartWorkspaceRatio, marketCanonicalSymbol: facts.marketCanonicalSymbol, marketRegions: marketStateFacts?.regions, positionStateFacts, positionActionFacts, reviewStateFacts, reviewInteractionFacts, lastRegionTop: facts.lastRegionTop, overviewRegions: facts.overviewRegions });
     }
   }
   console.log(`trading cockpit browser PASS ${JSON.stringify(results)}`);
