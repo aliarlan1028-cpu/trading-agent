@@ -34,6 +34,12 @@ test("overview presentation keeps system and market notices distinct", () => {
   assert.equal(model.marketNotice.title, "非农数据");
 });
 
+test("overview preserves an unavailable market instead of inventing a default symbol", () => {
+  const model = buildOverviewPresentation({ markets: [], positions: [] });
+  assert.equal(model.market, null);
+  assert.deepEqual(model.markets, []);
+});
+
 test("position protection is joined only from the matching plan or order", () => {
   const model = buildPositionPresentation({
     positions: [{ positionId: "p-1", symbol: "BTC/USDT", executionOrderId: "o-1", quantity: 1 }],
@@ -88,4 +94,17 @@ test("ledger derives counts and fees from real rows", () => {
     fills: [{ id: "f-1", orderId: "o-1", feeUsdt: -0.5 }]
   });
   assert.deepEqual(model.metrics, { total: 2, working: 1, filled: 1, blocked: 0, fillRatePct: 50, feesUsdt: -0.5 });
+});
+
+test("ledger counts canceled orders in its rejected or canceled metric", () => {
+  const model = buildLedgerPresentation({
+    executionOrders: [{ id: "o-1", status: "canceled" }, { id: "o-2", status: "cancelled" }, { id: "o-3", status: "rejected" }]
+  });
+  assert.equal(model.metrics.blocked, 3);
+});
+
+test("ledger fails closed when only an unmodeled raw order list exists", () => {
+  const model = buildLedgerPresentation({ orders: [{ id: "unmodeled-order", status: "open" }] });
+  assert.deepEqual(model.orders, []);
+  assert.equal(model.metrics.total, 0);
 });

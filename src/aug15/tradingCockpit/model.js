@@ -103,7 +103,7 @@ export function buildLedgerPresentation(data = {}) {
   const execution = buildExecutionView(data);
   const working = execution.orders.filter((row) => /open|pending|working|partial/i.test(String(row.status))).length;
   const filled = execution.orders.filter((row) => /filled|complete/i.test(String(row.status))).length;
-  const blocked = execution.orders.filter((row) => /reject|blocked|risk/i.test(String(row.status))).length;
+  const blocked = execution.orders.filter((row) => /reject|blocked|risk|cancel/i.test(String(row.status))).length;
   const feesUsdt = execution.fills.reduce((sum, row) => sum + (Number.isFinite(Number(row.feeUsdt ?? row.fee)) ? Number(row.feeUsdt ?? row.fee) : 0), 0);
   return {
     ...execution,
