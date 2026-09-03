@@ -246,20 +246,28 @@ try {
       { query: "review-00", objectId: "review-00", objectType: "Review", route: "labReviews", path: "/app/trade/execution-review", page: "execution" },
       { query: "tradeReviewDetail", featureRoute: "tradeReviewDetail", route: "tradeReviewDetail", path: "/app/trade/execution-review", page: "execution" },
       { query: "ownerReviewWorkspace", featureRoute: "ownerReviewWorkspace", route: "ownerReviewWorkspace", path: "/app/trade/execution-review", page: "execution" },
-      { query: "tradeLedger", featureRoute: "tradeLedger", route: "tradeLedger", path: "/app/trade/orders-fills", page: "ledger" }
+      { query: "tradeLedger", featureRoute: "tradeLedger", route: "tradeLedger", path: "/app/trade/orders-fills", page: "ledger" },
+      { dispatchRoute: true, route: "portfolioProtection", path: "/app/trade/positions", page: "positions" },
+      { dispatchRoute: true, route: "tradeOrders", path: "/app/trade/orders-fills", page: "ledger" },
+      { dispatchRoute: true, route: "tradeFills", path: "/app/trade/orders-fills", page: "ledger" }
     ];
     const aliasFacts = [];
     for (const aliasCase of aliasCases) {
-      await evaluate(cdp, `(() => { const input = document.querySelector('[aria-label="全局搜索"]'); if (!input) return false; const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; setter.call(input, ${JSON.stringify(aliasCase.query)}); input.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
-      const resultExpression = aliasCase.featureRoute
-        ? `(() => [...document.querySelectorAll('#august15-search-results [role="option"]')].some((node) => node.querySelector('code')?.textContent === ${JSON.stringify(aliasCase.featureRoute)}))()`
-        : `Boolean(document.querySelector('#august15-search-results [data-shell-object-id=${JSON.stringify(aliasCase.objectId)}][data-shell-object-type=${JSON.stringify(aliasCase.objectType)}]'))`;
-      await waitForExpression(cdp, resultExpression, `${aliasCase.route} production search result`);
-      await evaluate(cdp, aliasCase.featureRoute
-        ? `([...document.querySelectorAll('#august15-search-results [role="option"]')].find((node) => node.querySelector('code')?.textContent === ${JSON.stringify(aliasCase.featureRoute)}))?.click()`
-        : `document.querySelector('#august15-search-results [data-shell-object-id=${JSON.stringify(aliasCase.objectId)}][data-shell-object-type=${JSON.stringify(aliasCase.objectType)}]')?.click()`);
+      if (aliasCase.dispatchRoute) {
+        const dispatched = await evaluate(cdp, `(() => { const host = document.querySelector('.appTopbar'); const key = host && Object.keys(host).find((name) => name.startsWith('__reactFiber$')); let fiber = key ? host[key] : null; while (fiber) { const setActive = fiber.memoizedProps?.setActive || fiber.memoizedProps?.ui?.setActive; if (typeof setActive === 'function') { setActive(${JSON.stringify(aliasCase.route)}); return true; } fiber = fiber.return; } return false; })()`);
+        assert.equal(dispatched, true, `${aliasCase.route} dispatches through the mounted production shell setActive entry`);
+      } else {
+        await evaluate(cdp, `(() => { const input = document.querySelector('[aria-label="全局搜索"]'); if (!input) return false; const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; setter.call(input, ${JSON.stringify(aliasCase.query)}); input.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+        const resultExpression = aliasCase.featureRoute
+          ? `(() => [...document.querySelectorAll('#august15-search-results [role="option"]')].some((node) => node.querySelector('code')?.textContent === ${JSON.stringify(aliasCase.featureRoute)}))()`
+          : `Boolean(document.querySelector('#august15-search-results [data-shell-object-id=${JSON.stringify(aliasCase.objectId)}][data-shell-object-type=${JSON.stringify(aliasCase.objectType)}]'))`;
+        await waitForExpression(cdp, resultExpression, `${aliasCase.route} production search result`);
+        await evaluate(cdp, aliasCase.featureRoute
+          ? `([...document.querySelectorAll('#august15-search-results [role="option"]')].find((node) => node.querySelector('code')?.textContent === ${JSON.stringify(aliasCase.featureRoute)}))?.click()`
+          : `document.querySelector('#august15-search-results [data-shell-object-id=${JSON.stringify(aliasCase.objectId)}][data-shell-object-type=${JSON.stringify(aliasCase.objectType)}]')?.click()`);
+      }
       await waitForExpression(cdp, `location.pathname === ${JSON.stringify(aliasCase.path)} && document.querySelector('[data-cockpit-page=${JSON.stringify(aliasCase.page)}]')`, `${aliasCase.route} canonical cockpit destination`);
-      aliasFacts.push({ requestedRoute: aliasCase.route, ...await evaluate(cdp, `({ activeRoute: document.querySelector('.appShell')?.dataset.classicCapability || '', path: location.pathname, page: document.querySelector('[data-cockpit-page]')?.dataset.cockpitPage || '' })`) });
+      aliasFacts.push({ requestedRoute: aliasCase.route, provenance: aliasCase.dispatchRoute ? "mounted-production-shell-setActive" : "production-search", ...await evaluate(cdp, `({ activeRoute: document.querySelector('.appShell')?.dataset.classicCapability || '', path: location.pathname, page: document.querySelector('[data-cockpit-page]')?.dataset.cockpitPage || '' })`) });
       await evaluate(cdp, `document.querySelector('.cockpitBrand')?.click()`);
       await waitForExpression(cdp, `location.pathname === '/app' && document.querySelector('[data-classic-view="chat"]')`, `${aliasCase.route} returns to app-root chat`);
     }
