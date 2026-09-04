@@ -1,7 +1,7 @@
 # 交易驾驶舱参考图重构报告
 
 日期：2026-09-04
-最终生产实现源提交：`193c301098121e2c3ec03400c7afb2a13b877464`
+最终生产实现源提交：`d9efcea00c2c42b7e605d7d9a24472721f40b6ac`
 原 Task 9 收敛实现：`30458a06996ae5c029361600f3d62bf07d3a1dc6`
 
 ## 交付范围与边界
@@ -58,6 +58,16 @@ Round 2 打开五张 1440 图并检查 1280/1024。最终批次同时处理：
 - Positions 只重新平衡现有配置、趋势和风险内容高度；1440 最末真实区域从 941px 延伸到 1001px，没有新增 footer 或虚构能力。
 - 最终主证据改用既有 test-only enriched production-shaped fixture，使 Event、Agent run、Risk rule、Strategy 等现有能力形状实际出现在五页证据中；该 fixture 从未被生产代码导入，空态/异常态仍单独验证。
 
+### 独立复审修复：完整 operational text 对比度
+
+独立复审在现已被取代的证据提交 `3f51837658eec43aaf83414180405ccada7330d0` 上发现 Critical 0 / Important 1 / Minor 1。唯一 Important 是先前 computed-style 对比度门禁只抽样少数 meta / metric / table / tone 节点，未覆盖真实可见的提示标题、active 周期、语义涨跌值和操作按钮。
+
+本轮先扩展浏览器合同，令最小字号与对比度使用同一个完整 operational population：可见且有几何尺寸的链接、按钮、表单、标签、summary、正文、时间、表格、定义列表、强调文本、带直接文本的 `span` 及 `cockpitTone`。`aria-hidden`、不可见和无几何节点被排除；仅作为子节点容器且自身没有直接文本的 wrapper 不重复计数。有效背景由当前节点到祖先的 computed background 逐层进行 alpha 合成，半透明前景也先与有效背景合成后再计算 WCAG contrast。该合同应用于正常、enriched、empty 及全部真实 shell 资源状态，不以隐藏微小文字的方式通过。
+
+RED 的六个独立复审反例为：系统提示 `3.723:1`、市场提示 `2.771:1`、总览 active 周期 `3.008:1`、行情 active 周期 `3.412:1`、negative `3.788:1`、positive 最低 `4.115:1`（白底时 `4.489:1`）。完整人口扫描还额外捕获持仓集中度 `3.723:1` 与执行页「已记录优势」`3.969:1`。
+
+修复没有改变图表线、K 线、成交量柱、状态圆点或图标的装饰色；只新增 scoped operational text tokens，并让 active control 保留既有橙底 / 浅橙底、underline 与 active class。GREEN 六个反例分别为 `6.623:1`、`6.807:1`、`5.324:1`、`6.071:1`、`5.919:1`、`5.958:1`（白底 `6.501:1`）。五页最终最差值均不低于 `4.905:1`。
+
 ## 最终几何与可读性
 
 1440×1080 实测：
@@ -68,7 +78,7 @@ Round 2 打开五张 1440 图并检查 1280/1024。最终批次同时处理：
 | 行情 | 60px | 26 / 26 | 1 | 74 / 26 | 11px | 4.905:1 | 36px | 1078.016 | 0 |
 | 持仓 | 60px | 26 / 26 | 1 | 24 / 52 / 24 | 11px | 5.324:1 | 36px | 1001.000 | 0 |
 | 执行与复盘 | 60px | 26 / 26 | 1 | 36 / 64 | 11px | 4.905:1 | 36px | 1070.375 | 0 |
-| 委托与成交 | 60px | 26 / 26 | 1 | 53 / 47 | 11px | 5.342:1 | 36px | 1068.750 | 0 |
+| 委托与成交 | 60px | 26 / 26 | 1 | 53 / 47 | 11px | 5.091:1 | 36px | 1068.750 | 0 |
 
 五页在 1280×960 与 1024×768 也均为 `overflow=0`、Header 60px、唯一 active、最小正文 11px、最小目标 36px。画布边距分别为 18px 与 16px。1024 使用有意的纵向重排和页面滚动，不把桌面三列强行缩窄；Market 主报价、Positions Hero、Execution 详情均通过内容 containment 合同。
 
@@ -101,7 +111,7 @@ Overview 与 Market 的真实图表组件均已呈现非空 canvas，逐 K 线�
 - `.impeccable/review/trading-cockpit-v2-ledger-1024.png`
 - `.impeccable/review/trading-cockpit-v2-positions-empty-1440.png`
 
-八张 PNG 均已逐图打开：文件名与页面/viewport 匹配，Overview footer、Market 5 条自选与 ticker、Execution 底部三块、Ledger 分页均完整；Market K 线与逐 K 线成交量均非空，无半加载、错误页面、横向裁切或误标文件。七张主证据来自 enriched test-only fixture；Positions empty 保持独立 loaded-empty 证据。
+八张 PNG 均从 exact `d9efcea` detached clone 重新捕获并逐图打开：文件名与页面/viewport 匹配，Overview footer、Market 5 条自选与 ticker、Execution 底部三块、Ledger 分页均完整；Market K 线与逐 K 线成交量均非空，无半加载、错误页面、横向裁切或误标文件。七张主证据来自 enriched test-only fixture；Positions empty 保持独立 loaded-empty 证据。加深后的 operational 文本仍保持橙 / 绿 / 红 / 黄语义层级，没有把图表与装饰色整体压暗。
 
 ## 视觉残余与诚实声明
 
@@ -118,10 +128,10 @@ Overview 与 Market 的真实图表组件均已呈现非空 canvas，逐 K 线�
 
 ## Fresh verification
 
-- Impeccable detector（UI 收敛后仅运行一次）：`[]`。
-- 共享工作树诊断：Focused `112/112`、Full `2368/2368`、ESLint PASS、Vite build PASS（1826 modules，1.63s）。这组数字包含未提交的用户/其他任务文件，仅用于确认 Task 9 与并行工作兼容，不作为提交态计数。
-- exact detached clone（生产实现 `193c301` 及其 8 张最终 evidence assets；最终 evidence hash 由交付回报记录，避免报告自引用）：Focused `108/108`、Full `2357/2357`、ESLint PASS、Vite build PASS（1825 modules，1.55s）。
-- 默认与 enriched 五页 Chrome 在 shared 与 exact detached clone 均各为 15 个 viewport/page 组合 PASS；全部进程与临时 profile 清理成功。exact clone 的 enriched 1440 几何与表中最终值一致。
+- Impeccable detector（UI 收敛后仅运行一次）：`[]`。本轮对比度修复遵守「最终收敛后 exactly once」约束，没有为了重复生成相同机械结论而再次运行 detector。
+- 共享工作树诊断：Focused `108/108`（附加 Position / Performance integrity 合集 `132/132`）、Full `2368/2368`、ESLint PASS、Vite build PASS（1826 modules，1.46s）。首次直接运行附加 focused 集时因未提供 `TEST_DATA_ROOT` 得到 `test_data_dir_requires_test_data_root`；改用仓库权威 `scripts/run-tests-isolated.mjs` 后 `132/132`，该失败属于调用前置条件错误，不是产品回归。这组数字包含未提交的用户/其他任务文件，仅用于确认 Task 9 与并行工作兼容，不作为提交态计数。
+- exact detached clone（生产实现 `d9efcea` 及其 8 张最终 evidence assets；最终 evidence hash 由交付回报记录，避免报告自引用）：Focused `108/108`、Full `2357/2357`、ESLint PASS、Vite build PASS（1825 modules，1.43s）。
+- 默认与 enriched 五页 Chrome 在 shared 与 exact detached clone 均各为 15 个 viewport/page 组合 PASS；全部进程与临时 profile 清理成功。exact clone 的 enriched 1440 几何与表中最终值一致，完整 operational population 对比度在五页、三视口均通过。
 - 状态矩阵 Chrome：Loading、Empty、Stale、Degraded、Failed、Forbidden、Disabled 全五页 PASS；Market / Positions / Execution malformed、Market mismatched、Positions partial、Ledger 8 组 malformed / long / identity / risk / status / collection counterexamples 全部 PASS；9 个 chart lifecycle 状态全部在正确挂载范围内 PASS。Market malformed 的早期 runner-scope RED 已单独纠正并复跑 PASS。
 - `git diff --check`：PASS。
 
