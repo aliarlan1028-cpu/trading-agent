@@ -438,6 +438,8 @@
 .tradingCockpit .marketIntervals button { min-width: 38px; height: 36px; padding: 0 8px; border: 0; border-radius: 6px; color: var(--cockpit-text-2); background: transparent; font-size: 11px; font-weight: 650; cursor: pointer; }
 .marketIntervals button:hover { color: var(--cockpit-ink); background: #f8f5f1; }
 .marketIntervals button.active { color: var(--cockpit-accent-text); background: var(--cockpit-accent-soft); }
+.tradingCockpit .marketIntervals button:disabled { color: var(--cockpit-text-3); border: 1px solid var(--cockpit-border); background: #f2efeb; cursor: not-allowed; }
+.tradingCockpit .marketIntervals button.active:disabled { color: #4f4943; border-color: #c8bfb6; background: #e7e2dc; box-shadow: inset 0 -2px 0 #8c8176; }
 .marketChartQuote { min-height: 43px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 7px 13px; border-bottom: 1px solid var(--cockpit-hairline); }
 .marketChartQuote span { display: grid; line-height: 1.25; }
 .marketChartQuote b { font-size: 12px; }

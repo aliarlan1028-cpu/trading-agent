@@ -333,6 +333,56 @@ try {
         const orphanRequest = await evaluate(cdp, `window.__cockpitKlineFixture?.queries?.some((row) => row.symbol === 'DOGE/USDT')`);
         assert.equal(orphanRequest, false, `${width}x${height} orphaned saved pair never becomes a chart request`);
       }
+      let marketIntervalInteractionFacts = null;
+      if (view === "market") {
+        const intervalFacts = await evaluate(cdp, `(() => {
+          const nodes = [...document.querySelectorAll('[data-market-interval]')];
+          const styleFact = (node) => { const style = getComputedStyle(node); return { label: node.textContent.trim(), disabled: node.disabled, cursor: style.cursor, color: style.color, background: style.backgroundColor, borderColor: style.borderColor, tabIndex: node.tabIndex }; };
+          const active = nodes.find((node) => node.getAttribute('aria-pressed') === 'true') || null;
+          let enabledActiveStyle = null;
+          if (active) {
+            const probe = active.cloneNode(true);
+            probe.disabled = false;
+            probe.removeAttribute('data-market-interval');
+            probe.setAttribute('aria-hidden', 'true');
+            active.parentElement.append(probe);
+            enabledActiveStyle = styleFact(probe);
+            probe.remove();
+          }
+          return { count: nodes.length, rows: nodes.map(styleFact), active: active ? styleFact(active) : null, inactive: nodes.find((node) => node !== active) ? styleFact(nodes.find((node) => node !== active)) : null, enabledActiveStyle };
+        })()`);
+        marketIntervalInteractionFacts = { ...intervalFacts };
+        if (intervalFacts.count && intervalFacts.rows.every((row) => row.disabled)) {
+          const clickFacts = await evaluate(cdp, `(() => {
+            const nodes = [...document.querySelectorAll('[data-market-interval]')];
+            const active = nodes.find((node) => node.getAttribute('aria-pressed') === 'true');
+            const target = nodes.find((node) => node !== active);
+            const beforeLabel = active?.textContent.trim() || '';
+            const beforeRequests = window.__cockpitKlineFixture?.requests || 0;
+            target?.click();
+            target?.focus();
+            const focusAfterProgrammatic = document.activeElement === target;
+            const focusable = [...document.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), summary, [tabindex]:not([tabindex="-1"])')].filter((node) => {
+              const style = getComputedStyle(node);
+              return style.display !== 'none' && style.visibility !== 'hidden';
+            });
+            const predecessor = focusable.filter((node) => node.compareDocumentPosition(nodes[0]) & Node.DOCUMENT_POSITION_FOLLOWING).at(-1) || null;
+            predecessor?.focus();
+            const targetRect = target?.getBoundingClientRect();
+            return { targetLabel: target?.textContent.trim() || '', beforeLabel, afterLabel: nodes.find((node) => node.getAttribute('aria-pressed') === 'true')?.textContent.trim() || '', beforeRequests, afterRequests: window.__cockpitKlineFixture?.requests || 0, focusAfterProgrammatic, predecessorFocused: document.activeElement === predecessor, targetPoint: targetRect ? { x: targetRect.left + targetRect.width / 2, y: targetRect.top + targetRect.height / 2 } : null };
+          })()`);
+          assert.equal(clickFacts.predecessorFocused, true, `${width}x${height} disabled market intervals expose a real keyboard predecessor: ${JSON.stringify(clickFacts)}`);
+          if (clickFacts.targetPoint) {
+            await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: clickFacts.targetPoint.x, y: clickFacts.targetPoint.y, button: "left", clickCount: 1 });
+            await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: clickFacts.targetPoint.x, y: clickFacts.targetPoint.y, button: "left", clickCount: 1 });
+          }
+          const pointerFacts = await evaluate(cdp, `({ intervalFocused: Boolean(document.activeElement?.matches('[data-market-interval]')), activeLabel: document.querySelector('[data-market-interval][aria-pressed="true"]')?.textContent.trim() || '', requests: window.__cockpitKlineFixture?.requests || 0 })`);
+          await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+          await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+          const tabFacts = await evaluate(cdp, `({ intervalFocused: Boolean(document.activeElement?.matches('[data-market-interval]')), activeLabel: document.querySelector('[data-market-interval][aria-pressed="true"]')?.textContent.trim() || '', requests: window.__cockpitKlineFixture?.requests || 0 })`);
+          marketIntervalInteractionFacts = { ...marketIntervalInteractionFacts, clickFacts, pointerFacts, tabFacts };
+        }
+      }
       let positionActionFacts = null;
       if (view === "positions" && !emptyMode && !positionCase && regularChartMode) {
         const exitExists = await evaluate(cdp, `Boolean(document.querySelector('[data-position-exit][data-execution-id="ord-01"]'))`);
@@ -707,7 +757,8 @@ try {
           ...contrastFact(node),
           disabled: node.disabled,
           ariaDisabled: node.getAttribute('aria-disabled'),
-          cursor: getComputedStyle(node).cursor
+          cursor: getComputedStyle(node).cursor,
+          marketInterval: node.matches('[data-market-interval]')
         }));
         const interactive = [...(page?.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), summary, [tabindex]:not([tabindex="-1"])') || [])].filter((node) => {
           const style = getComputedStyle(node);
@@ -744,6 +795,27 @@ try {
       assert.equal(facts.overflow, 0, `${width}x${height} ${view} has no document overflow`);
       if (!emptyMode && !stateMode && !marketCase && !positionCase && !reviewCase && !ledgerCase) {
         process.stdout.write(`trading cockpit convergence geometry ${JSON.stringify({ width, height, view, ...layoutFacts })}\n`);
+      }
+      const marketIntervalsShouldBeDisabled = view === "market" && (emptyMode || (resourceStateModes.has(stateMode) && !["loaded", "ready"].includes(stateMode)));
+      if (!measureOnly && marketIntervalsShouldBeDisabled && marketIntervalInteractionFacts.count) {
+        const disabledIntervalContrast = layoutFacts.disabledControls.filter((control) => control.marketInterval);
+        process.stdout.write(`trading cockpit market disabled intervals ${JSON.stringify({ width, height, state: stateMode || "empty", ...marketIntervalInteractionFacts, contrast: disabledIntervalContrast })}\n`);
+        assert.equal(marketIntervalInteractionFacts.rows.every((row) => row.disabled), true, `${width}x${height} unavailable market disables every interval: ${JSON.stringify(marketIntervalInteractionFacts)}`);
+        assert.equal(marketIntervalInteractionFacts.rows.every((row) => ["not-allowed", "default"].includes(row.cursor)), true, `${width}x${height} unavailable market intervals use a non-action cursor: ${JSON.stringify(marketIntervalInteractionFacts)}`);
+        assert.equal(disabledIntervalContrast.length, marketIntervalInteractionFacts.count, `${width}x${height} every disabled interval participates in the rendered contrast gate`);
+        assert.equal(disabledIntervalContrast.every((control) => control.ratio >= 4.5), true, `${width}x${height} disabled interval text remains readable: ${JSON.stringify(disabledIntervalContrast)}`);
+        assert.equal(marketIntervalInteractionFacts.clickFacts?.afterLabel, marketIntervalInteractionFacts.clickFacts?.beforeLabel, `${width}x${height} disabled interval click cannot change the active interval`);
+        assert.equal(marketIntervalInteractionFacts.clickFacts?.afterRequests, marketIntervalInteractionFacts.clickFacts?.beforeRequests, `${width}x${height} disabled interval click cannot request candles`);
+        assert.equal(marketIntervalInteractionFacts.clickFacts?.focusAfterProgrammatic, false, `${width}x${height} disabled interval rejects programmatic focus`);
+        assert.equal(marketIntervalInteractionFacts.pointerFacts?.intervalFocused, false, `${width}x${height} real pointer click cannot focus a disabled interval`);
+        assert.equal(marketIntervalInteractionFacts.pointerFacts?.activeLabel, marketIntervalInteractionFacts.clickFacts?.beforeLabel, `${width}x${height} real pointer click cannot change the disabled active interval`);
+        assert.equal(marketIntervalInteractionFacts.pointerFacts?.requests, marketIntervalInteractionFacts.clickFacts?.beforeRequests, `${width}x${height} real pointer click cannot request disabled interval candles`);
+        assert.equal(marketIntervalInteractionFacts.tabFacts?.intervalFocused, false, `${width}x${height} keyboard Tab skips disabled intervals`);
+        assert.equal(marketIntervalInteractionFacts.tabFacts?.activeLabel, marketIntervalInteractionFacts.clickFacts?.beforeLabel, `${width}x${height} keyboard Tab preserves the disabled active interval`);
+        assert.equal(marketIntervalInteractionFacts.tabFacts?.requests, marketIntervalInteractionFacts.clickFacts?.beforeRequests, `${width}x${height} keyboard Tab cannot request disabled interval candles`);
+        const disabledActive = marketIntervalInteractionFacts.active;
+        const enabledActive = marketIntervalInteractionFacts.enabledActiveStyle;
+        assert.ok(disabledActive && enabledActive && ["color", "background", "borderColor"].some((key) => disabledActive[key] !== enabledActive[key]), `${width}x${height} disabled active interval is visually distinct from enabled active: ${JSON.stringify({ disabledActive, enabledActive })}`);
       }
       // Lifecycle fault injection mounts the production TradingViewChart alone so failures cannot
       // be masked by the shell. Shell geometry remains mandatory for every mounted shell scenario.
@@ -848,6 +920,10 @@ try {
       if (view === "market" && !chartLifecycleFailureModes.has(stateMode) && (!resourceStateModes.has(stateMode) || ["loaded", "ready"].includes(stateMode) || retainedBodyModes.has(stateMode))) {
         assert.equal(facts.marketActiveIntervals, 1, `${width}x${height} market has exactly one active interval`);
         assert.ok(facts.marketChartWorkspaceRatio >= .65, `${width}x${height} market chart workspace ratio ${facts.marketChartWorkspaceRatio} is at least 65%`);
+        if (marketIntervalInteractionFacts.count && !marketIntervalsShouldBeDisabled) {
+          assert.equal(marketIntervalInteractionFacts.rows.every((row) => !row.disabled && row.cursor === "pointer"), true, `${width}x${height} loaded market intervals remain enabled pointer controls: ${JSON.stringify(marketIntervalInteractionFacts)}`);
+          assert.ok(marketIntervalInteractionFacts.active && marketIntervalInteractionFacts.inactive && ["color", "background", "borderColor"].some((key) => marketIntervalInteractionFacts.active[key] !== marketIntervalInteractionFacts.inactive[key]), `${width}x${height} loaded active interval remains visually distinct: ${JSON.stringify(marketIntervalInteractionFacts)}`);
+        }
         if (!emptyMode) {
           assert.ok(facts.minMarketTargetPx >= 36, `${width}x${height} market keyboard target minimum ${facts.minMarketTargetPx}px is at least 36px: ${JSON.stringify(facts.smallestTarget)}`);
           assert.notEqual(facts.marketFocusedOutline, "none 0px", `${width}x${height} market focused interval has a visible outline`);
@@ -1026,7 +1102,7 @@ try {
           await writeFile(path.join(outputDir, filename), Buffer.from(shot.data, "base64"));
         }
       }
-      results.push({ width, height, view, charts: facts.regionCharts, klineRequests: facts.klineRequests, overflow: facts.overflow, resourceState: facts.resourceState, chartStatus: facts.chartStatus, volumeSeries: facts.volumeSeries, chartRemovals: facts.chartRemovals, chartRuntimeErrors: facts.chartRuntimeErrors, chartUnhandledRejections: facts.chartUnhandledRejections, minKeyboardTargetPx: facts.minKeyboardTargetPx, minMarketTargetPx: facts.minMarketTargetPx, minOverviewTextPx: facts.minOverviewTextPx, maxOverviewTextPx: facts.maxOverviewTextPx, mainRailRatio: facts.mainRailRatio, marketChartWorkspaceRatio: facts.marketChartWorkspaceRatio, marketCanonicalSymbol: facts.marketCanonicalSymbol, marketRegions: marketStateFacts?.regions, positionStateFacts, positionActionFacts, reviewStateFacts, reviewInteractionFacts, ledgerStateFacts, ledgerInteractionFacts, layoutFacts, lastRegionTop: facts.lastRegionTop, overviewRegions: facts.overviewRegions });
+      results.push({ width, height, view, charts: facts.regionCharts, klineRequests: facts.klineRequests, overflow: facts.overflow, resourceState: facts.resourceState, chartStatus: facts.chartStatus, volumeSeries: facts.volumeSeries, chartRemovals: facts.chartRemovals, chartRuntimeErrors: facts.chartRuntimeErrors, chartUnhandledRejections: facts.chartUnhandledRejections, minKeyboardTargetPx: facts.minKeyboardTargetPx, minMarketTargetPx: facts.minMarketTargetPx, minOverviewTextPx: facts.minOverviewTextPx, maxOverviewTextPx: facts.maxOverviewTextPx, mainRailRatio: facts.mainRailRatio, marketChartWorkspaceRatio: facts.marketChartWorkspaceRatio, marketCanonicalSymbol: facts.marketCanonicalSymbol, marketRegions: marketStateFacts?.regions, marketIntervalInteractionFacts, positionStateFacts, positionActionFacts, reviewStateFacts, reviewInteractionFacts, ledgerStateFacts, ledgerInteractionFacts, layoutFacts, lastRegionTop: facts.lastRegionTop, overviewRegions: facts.overviewRegions });
     }
   }
   console.log(`trading cockpit browser PASS ${JSON.stringify({ historyFacts, results })}`);
