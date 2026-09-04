@@ -980,8 +980,8 @@
 }
 
 /* Orders & fills — reference (5): execution truth, selected-order evidence, exchange ledger. */
-.cockpitLedgerV2 { display: grid; align-content: start; gap: 10px; }
-.ledgerTitleV2 { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.cockpitLedgerV2 { display: grid; align-content: start; gap: 5px; padding-top: 6px; padding-bottom: 16px; }
+.ledgerTitleV2 { min-height: 30px; display: flex; align-items: center; justify-content: space-between; gap: 18px; }
 .ledgerTitleV2 > div { min-width: 0; }
 .ledgerTitleV2 h1 { color: var(--cockpit-ink); font-size: 21px; letter-spacing: -.03em; }
 .ledgerTitleV2 p { margin-top: 3px; color: var(--cockpit-text-3); font-size: 11px; }
@@ -995,44 +995,44 @@
 .ledgerResourceState > div { min-width: 0; display: grid; gap: 2px; }
 .ledgerResourceState b { font-size: 12px; }
 .ledgerResourceState span { color: var(--cockpit-text-3); font-size: 11px; }
-.ledgerResourceState button { min-width: 92px; min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 12px; border: 1px solid var(--cockpit-border); border-radius: 7px; color: var(--cockpit-copy); background: #fff; cursor: pointer; }
+.ledgerResourceState button { min-width: 92px; min-height: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 12px; border: 1px solid var(--cockpit-border); border-radius: 7px; color: var(--cockpit-copy); background: #fff; cursor: pointer; }
 .ledgerResourceState button svg { width: 13px; height: 13px; }
 
-.ledgerHeroV2 { min-height: 96px; display: grid; grid-template-columns: minmax(190px, 1.35fr) repeat(5, minmax(112px, 1fr)); overflow: hidden; border: 1px solid var(--cockpit-border); border-radius: var(--cockpit-radius); background: #fff; box-shadow: 0 8px 24px rgba(70, 52, 31, .035); }
-.ledgerHeroV2 .cockpitMetric { padding: 13px 15px; border-right: 1px solid var(--cockpit-hairline); }
+.ledgerHeroV2 { min-height: 68px; display: grid; grid-template-columns: minmax(190px, 1.35fr) repeat(5, minmax(112px, 1fr)); overflow: hidden; border: 1px solid var(--cockpit-border); border-radius: var(--cockpit-radius); background: #fff; box-shadow: 0 8px 24px rgba(70, 52, 31, .035); }
+.ledgerHeroV2 .cockpitMetric { padding: 8px 15px; border-right: 1px solid var(--cockpit-hairline); }
 .ledgerHeroV2 .cockpitMetric:last-child { border-right: 0; }
-.ledgerHeroV2 .cockpitMetric small { font-size: 10px; }
+.ledgerHeroV2 .cockpitMetric small { font-size: 11px; }
 .ledgerHeroV2 .cockpitMetric b { font-size: 17px; }
 .ledgerHeroV2 .cockpitMetric.strong b { font-size: 24px; }
 
 .ledgerNotices { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: hidden; border: 1px solid var(--cockpit-border); border-radius: 8px; background: #fff; }
-.ledgerNotices article { min-width: 0; min-height: 46px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 9px; padding: 7px 13px; }
+.ledgerNotices article { min-width: 0; min-height: 36px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 9px; padding: 3px 13px; }
 .ledgerNotices article + article { border-left: 1px solid var(--cockpit-hairline); }
 .ledgerNotices svg { width: 15px; height: 15px; color: var(--cockpit-brand); }
 .ledgerNotices article:last-child svg { color: var(--cockpit-warning); }
 .ledgerNotices span { min-width: 0; display: grid; }
-.ledgerNotices small { color: var(--cockpit-text-3); font-size: 9px; }
+.ledgerNotices small { color: var(--cockpit-text-3); font-size: 11px; }
 .ledgerNotices b { overflow: hidden; color: var(--cockpit-copy); font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 
-.ledgerFilters { min-width: 0; min-height: 46px; display: grid; align-items: center; gap: 8px; padding: 5px 7px 5px 13px; border: 1px solid var(--cockpit-border); border-radius: 8px; background: #fff; }
+.ledgerFilters { min-width: 0; min-height: 40px; display: grid; align-items: center; gap: 8px; padding: 2px 7px 2px 13px; border: 1px solid var(--cockpit-border); border-radius: 8px; background: #fff; }
 .ledgerFilters.order { grid-template-columns: minmax(200px, 1fr) repeat(2, minmax(130px, auto)); }
 .ledgerFilters.fills { grid-template-columns: minmax(190px, 1fr) repeat(4, minmax(116px, auto)); margin-top: 2px; }
 .ledgerFilters > span { min-width: 0; display: flex; align-items: center; gap: 7px; }
 .ledgerFilters > span svg { width: 14px; height: 14px; color: var(--cockpit-brand); }
 .ledgerFilters > span b { font-size: 12px; }
-.ledgerFilters > span small { overflow: hidden; color: var(--cockpit-text-3); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.ledgerFilters label { min-width: 0; display: grid; grid-template-columns: auto minmax(78px, 1fr); align-items: center; gap: 5px; color: var(--cockpit-text-3); font-size: 10px; }
+.ledgerFilters > span small { overflow: hidden; color: var(--cockpit-text-3); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.ledgerFilters label { min-width: 0; display: grid; grid-template-columns: auto minmax(78px, 1fr); align-items: center; gap: 5px; color: var(--cockpit-text-3); font-size: 11px; }
 .ledgerFilters select { min-width: 0; height: 36px; padding: 0 26px 0 9px; border: 1px solid var(--cockpit-border); border-radius: 6px; color: var(--cockpit-copy); background: #fff; font: inherit; font-size: 11px; }
 
 .ledgerWorkbenchV2 { min-width: 0; display: grid; grid-template-columns: minmax(0, 53fr) minmax(420px, 47fr); align-items: stretch; gap: 12px; }
-.ledgerOrderList { min-height: 403px; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
+.ledgerOrderList { min-height: 358px; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
 .ledgerWorkbenchV2.empty > :is(.ledgerOrderList, .ledgerDetailStack) { min-height: 190px; }
 .ledgerTableScroll { min-width: 0; overflow: auto; }
 .ledgerOrderTable, .ledgerFillTable { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .ledgerOrderTable { min-width: 610px; }
 .ledgerFillTable { min-width: 1090px; }
-.ledgerOrderTable th, .ledgerFillTable th { height: 32px; padding: 0 9px; color: var(--cockpit-text-3); background: #fcfbf9; font-size: 10px; font-weight: 650; text-align: left; white-space: nowrap; }
-.ledgerOrderTable td, .ledgerFillTable td { height: 39px; overflow: hidden; padding: 5px 9px; border-top: 1px solid var(--cockpit-hairline); color: var(--cockpit-copy); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.ledgerOrderTable th, .ledgerFillTable th { height: 30px; padding: 0 9px; color: var(--cockpit-text-3); background: #fcfbf9; font-size: 11px; font-weight: 650; text-align: left; white-space: nowrap; }
+.ledgerOrderTable td, .ledgerFillTable td { height: 36px; overflow: hidden; padding: 3px 9px; border-top: 1px solid var(--cockpit-hairline); color: var(--cockpit-copy); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .ledgerOrderTable th:first-child { width: 29%; }
 .ledgerOrderTable th:nth-child(2) { width: 15%; }
 .ledgerOrderTable th:nth-child(3) { width: 11%; }
@@ -1042,41 +1042,43 @@
 .ledgerOrderTable td:first-child { padding: 0; }
 .ledgerOrderTable tbody tr:hover { background: #fffaf5; }
 .ledgerOrderTable tbody tr.selected { background: var(--cockpit-accent-soft); box-shadow: inset 2px 0 var(--cockpit-brand); }
-.ledgerOrderSelect { width: 100%; height: 39px; min-height: 39px; display: grid; align-content: center; gap: 1px; padding: 3px 9px; border: 0; color: inherit; background: transparent; cursor: pointer; text-align: left; }
+.ledgerOrderSelect { width: 100%; height: 36px; min-height: 36px; display: grid; align-content: center; gap: 1px; padding: 2px 9px; border: 0; color: inherit; background: transparent; cursor: pointer; text-align: left; }
 .tradingCockpit .ledgerOrderSelect:focus,
 .tradingCockpit .ledgerOrderSelect:focus-visible,
 .tradingCockpit .ledgerOrderSelect.focusVisible { outline: 3px solid rgba(238, 112, 38, .32); outline-offset: -3px; box-shadow: inset 0 0 0 2px rgba(238, 112, 38, .4); }
-.ledgerOrderSelect time { font-size: 10px; }
-.ledgerOrderSelect small { overflow: hidden; color: var(--cockpit-text-3); font-size: 9px; text-overflow: ellipsis; }
-.ledgerOrderTable b, .ledgerFillTable b { color: var(--cockpit-ink); font-size: 10px; }
+.ledgerOrderSelect time { font-size: 11px; }
+.ledgerOrderSelect small { overflow: hidden; color: var(--cockpit-text-3); font-size: 11px; text-overflow: ellipsis; }
+.ledgerOrderTable b, .ledgerFillTable b { color: var(--cockpit-ink); font-size: 11px; }
+.ledgerOrderTable .cockpitTone, .ledgerFillTable .cockpitTone { font-size: 11px; }
 .ledgerOrderTable .cockpitTone, .ledgerFillTable .cockpitTone { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 
-.ledgerPagination { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 9px 4px 13px; border-top: 1px solid var(--cockpit-hairline); }
-.ledgerPagination > span { color: var(--cockpit-text-3); font-size: 10px; }
+.ledgerPagination { min-height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 9px 2px 13px; border-top: 1px solid var(--cockpit-hairline); }
+.ledgerPagination > span { color: var(--cockpit-text-3); font-size: 11px; }
 .ledgerPagination > div { display: flex; align-items: center; gap: 5px; }
 .ledgerPagination button { width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 6px; color: var(--cockpit-copy); background: #f7f4ef; cursor: pointer; }
 .ledgerPagination button svg { width: 13px; height: 13px; }
 .ledgerPagination b { min-width: 20px; font-size: 11px; text-align: center; }
 
-.ledgerDetailStack { min-width: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; align-content: stretch; gap: 10px; }
-.ledgerOrderDetail { min-height: 276px; }
+.ledgerDetailStack { min-width: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; align-content: stretch; gap: 6px; }
+.ledgerOrderDetail { min-height: 224px; }
 .ledgerOrderDetail.empty { min-height: 190px; }
-.ledgerSelectedIdentity { min-height: 43px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 13px; border-bottom: 1px solid var(--cockpit-hairline); background: #fffcf8; }
+.ledgerOrderDetail > .cockpitPanelHead, .ledgerTimelinePanel > .cockpitPanelHead { min-height: 36px; padding-block: 4px; }
+.ledgerSelectedIdentity { min-height: 36px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 3px 13px; border-bottom: 1px solid var(--cockpit-hairline); background: #fffcf8; }
 .ledgerSelectedIdentity > span { min-width: 0; display: grid; }
-.ledgerSelectedIdentity small { color: var(--cockpit-text-3); font-size: 9px; }
+.ledgerSelectedIdentity small { color: var(--cockpit-text-3); font-size: 11px; }
 .ledgerSelectedIdentity b { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .ledgerSelectedIdentity > b { flex: none; }
 .ledgerOrderFacts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; border-bottom: 1px solid var(--cockpit-hairline); }
-.ledgerOrderFacts > div { min-width: 0; min-height: 48px; display: grid; align-content: center; gap: 2px; padding: 7px 10px; border-right: 1px solid var(--cockpit-hairline); border-bottom: 1px solid var(--cockpit-hairline); }
+.ledgerOrderFacts > div { min-width: 0; min-height: 38px; display: grid; align-content: center; gap: 1px; padding: 3px 10px; border-right: 1px solid var(--cockpit-hairline); border-bottom: 1px solid var(--cockpit-hairline); }
 .ledgerOrderFacts > div:nth-child(4n) { border-right: 0; }
 .ledgerOrderFacts > div:nth-last-child(-n+4) { border-bottom: 0; }
-.ledgerOrderFacts dt { color: var(--cockpit-text-3); font-size: 9px; }
-.ledgerOrderFacts dd { overflow: hidden; margin: 0; color: var(--cockpit-ink); font-size: 10px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-.ledgerOrderActions { min-height: 48px; display: flex; align-items: center; justify-content: flex-end; gap: 7px; padding: 6px 10px; }
+.ledgerOrderFacts dt { color: var(--cockpit-text-3); font-size: 11px; }
+.ledgerOrderFacts dd { overflow: hidden; margin: 0; color: var(--cockpit-ink); font-size: 11px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.ledgerOrderActions { min-height: 36px; display: flex; align-items: center; justify-content: flex-end; gap: 7px; padding: 0 10px; }
 .cockpitLedgerV2 .ledgerOrderActions button { min-height: 36px; }
 
-.ledgerTimelinePanel { min-height: 117px; }
-.ledgerTimeline { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); margin: 0; padding: 12px 8px 11px; list-style: none; }
+.ledgerTimelinePanel { min-height: 112px; }
+.ledgerTimeline { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); margin: 0; padding: 8px 8px 7px; list-style: none; }
 .ledgerTimeline li { position: relative; min-width: 0; display: grid; justify-items: center; gap: 5px; text-align: center; }
 .ledgerTimeline li::after { content: ""; position: absolute; top: 12px; left: calc(50% + 13px); width: calc(100% - 26px); height: 1px; background: var(--cockpit-border); }
 .ledgerTimeline li:last-child::after { display: none; }
@@ -1085,10 +1087,12 @@
 .ledgerTimeline li.complete > i { border-color: #8dceb4; color: #fff; background: var(--cockpit-positive); }
 .ledgerTimeline li > i svg { width: 11px; height: 11px; }
 .ledgerTimeline li span { min-width: 0; display: grid; gap: 1px; }
-.ledgerTimeline b { font-size: 9px; }
-.ledgerTimeline small { overflow: hidden; color: var(--cockpit-text-3); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.ledgerTimeline b { font-size: 11px; }
+.ledgerTimeline small { overflow: hidden; color: var(--cockpit-text-3); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.ledgerTimeline li.partial > i { border-color: var(--cockpit-warning); color: var(--cockpit-warning); background: var(--cockpit-warning-soft); }
+.ledgerTimeline li.failed > i { border-color: var(--cockpit-negative); color: var(--cockpit-negative); background: var(--cockpit-negative-soft); }
 
-.ledgerFillPanel { min-height: 394px; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
+.ledgerFillPanel { min-height: 358px; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
 .ledgerWorkbenchV2.empty + .ledgerFilters + .ledgerFillPanel { min-height: 190px; }
 .ledgerFillTable th:first-child { width: 15%; }
 .ledgerFillTable th:nth-child(2) { width: 10%; }
@@ -1119,7 +1123,7 @@
   .ledgerFilters.fills { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .ledgerFilters.fills > span { grid-column: 1 / -1; min-height: 28px; }
   .ledgerWorkbenchV2 { grid-template-columns: 1fr; }
-  .ledgerOrderList { min-height: 404px; }
+  .ledgerOrderList { min-height: 358px; }
   .ledgerDetailStack { grid-template-areas: "detail timeline"; grid-template-columns: minmax(0, 1.45fr) minmax(360px, .8fr); grid-template-rows: minmax(190px, auto); align-items: stretch; }
   .ledgerOrderDetail { grid-area: detail; }
   .ledgerTimelinePanel { grid-area: timeline; }

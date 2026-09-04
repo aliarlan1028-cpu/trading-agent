@@ -155,6 +155,7 @@ export function buildSelectedExecutionStages(data = {}, order = {}) {
     ? authoritativeOrders.filter((row) => orderIdentity(row) === selectedId)
     : [];
   const selected = orderMatches.length === 1 ? orderMatches[0] : null;
+  const canonicalOrderId = normalizedIdentity(selected?.id);
 
   if (!selected) {
     return ["signal", "risk", "routing", "order", "fill", "protection"]
@@ -167,7 +168,9 @@ export function buildSelectedExecutionStages(data = {}, order = {}) {
     : [];
   const plan = planMatches.length === 1 ? planMatches[0] : null;
   const riskChecks = objectRows(data.riskChecks);
-  const exactRiskMatches = riskChecks.filter((row) => normalizedIdentity(row.executionOrderId) === selectedId);
+  const exactRiskMatches = canonicalOrderId
+    ? riskChecks.filter((row) => normalizedIdentity(row.executionOrderId) === canonicalOrderId)
+    : [];
   let risk = exactRiskMatches.length === 1 ? exactRiskMatches[0] : null;
   if (!exactRiskMatches.length && plan && planId) {
     const planOwners = authoritativeOrders.filter((row) => planIdentity(row) === planId);
@@ -175,22 +178,45 @@ export function buildSelectedExecutionStages(data = {}, order = {}) {
       !normalizedIdentity(row.executionOrderId)
       && planIdentity(row) === planId
     ));
-    if (planOwners.length === 1 && orderIdentity(planOwners[0]) === selectedId && planRiskMatches.length === 1) {
+    if (canonicalOrderId && planOwners.length === 1 && normalizedIdentity(planOwners[0].id) === canonicalOrderId && planRiskMatches.length === 1) {
       risk = planRiskMatches[0];
     }
   }
-  const fills = objectRows(data.fills).filter((row) => {
+  const fills = canonicalOrderId ? objectRows(data.fills).filter((row) => {
     const fillOrderId = normalizedIdentity(row.executionOrderId) ?? normalizedIdentity(row.orderId);
-    return fillOrderId === selectedId;
-  });
-  const protectedOrder = /stop|protect|take_profit|止损|止盈/i.test(String(selected.type ?? selected.kind ?? selected.purpose ?? ""));
+    return fillOrderId === canonicalOrderId;
+  }) : [];
+  const protectionStatus = String(selected.status ?? "").trim().toLowerCase();
+  const protectionState = String(selected.protectionState ?? selected.protection ?? "").trim().toLowerCase();
+  const protectionIdentifiers = [
+    selected.stopClientOrderId,
+    selected.stopAlgoId,
+    selected.stopOrderId,
+    selected.protectionClientOrderId,
+    selected.protectionOrderId,
+    ...rows(selected.tpClientOrderIds),
+    ...rows(selected.tpAlgoIds)
+  ].map(normalizedIdentity).filter(Boolean);
+  const hasPersistedProtection = canonicalOrderId && protectionIdentifiers.length > 0;
+  const protectionFailed = /failed|error|requested_unconfirmed|unconfirmed/.test(`${protectionStatus} ${protectionState}`);
+  const protectionPartial = hasPersistedProtection && !protectionFailed
+    && (protectionStatus === "protecting_degraded" || protectionState === "stop_only" || protectionState === "degraded");
+  const protectionComplete = hasPersistedProtection && !protectionFailed && !protectionPartial
+    && (protectionStatus === "protecting" || /confirmed|active|protected/.test(protectionState));
+  const protectionDetail = protectionFailed
+    ? selected.protectionState ?? selected.protection ?? selected.status ?? null
+    : protectionPartial
+      ? selected.protectionState ?? selected.protection ?? selected.status ?? null
+      : protectionComplete
+        ? selected.protectionState ?? selected.protection ?? protectionIdentifiers[0]
+        : null;
   return [
     { id: "signal", done: Boolean(plan), detail: plan?.signal ?? plan?.strategy ?? null },
     { id: "risk", done: /pass|approved|allowed/i.test(String(risk?.status ?? risk?.decision ?? risk?.result ?? "")), detail: risk?.summary ?? risk?.reason ?? null },
     { id: "routing", done: Boolean(selected.exchange ?? selected.venue), detail: selected.exchange ?? selected.venue ?? null },
-    { id: "order", done: true, detail: selected.status ?? null },
+    { id: "order", done: Boolean(canonicalOrderId), detail: canonicalOrderId ? selected.status ?? null : null },
     { id: "fill", done: fills.length > 0, detail: fills.length ? String(fills.length) : null },
-    { id: "protection", done: protectedOrder, detail: protectedOrder ? selected.type ?? selected.kind : null }
+    { id: "protection", done: Boolean(protectionComplete), state: protectionComplete ? "complete" : protectionPartial ? "partial" : protectionFailed ? "failed" : "incomplete", detail: protectionDetail }
   ];
 }
 
@@ -245,20 +271,29 @@ export function buildReviewPresentation(data = {}) {
 }
 
 export function buildLedgerPresentation(data = {}) {
+  const ordersAvailable = hasOwn(data, "executionOrders") && Array.isArray(data.executionOrders);
+  const fillsAvailable = hasOwn(data, "fills") && Array.isArray(data.fills);
   const execution = buildExecutionView(data);
-  const working = execution.orders.filter((row) => /open|pending|working|partial/i.test(String(row.status))).length;
-  const filled = execution.orders.filter((row) => /filled|complete/i.test(String(row.status))).length;
-  const blocked = execution.orders.filter((row) => /reject|blocked|risk|cancel/i.test(String(row.status))).length;
-  const feesUsdt = execution.fills.reduce((sum, row) => sum + (Number.isFinite(Number(row.feeUsdt ?? row.fee)) ? Number(row.feeUsdt ?? row.fee) : 0), 0);
+  const working = ordersAvailable ? execution.orders.filter((row) => /open|pending|working|partial/i.test(String(row.status))).length : null;
+  const filled = ordersAvailable ? execution.orders.filter((row) => /filled|complete/i.test(String(row.status))).length : null;
+  const blocked = ordersAvailable ? execution.orders.filter((row) => /reject|blocked|risk/i.test(String(row.status))).length : null;
+  const feeValues = fillsAvailable ? execution.fills.map((row) => row.feeUsdt ?? row.fee) : [];
+  const feesUsdt = fillsAvailable && feeValues.every(finiteNumber)
+    ? Number(feeValues.reduce((sum, value) => sum + Number(value), 0).toFixed(8))
+    : null;
   return {
     ...execution,
+    collectionState: {
+      orders: ordersAvailable ? "loaded" : "unavailable",
+      fills: fillsAvailable ? "loaded" : "unavailable"
+    },
     metrics: {
-      total: execution.orders.length,
+      total: ordersAvailable ? execution.orders.length : null,
       working,
       filled,
       blocked,
-      fillRatePct: execution.orders.length ? Number((filled / execution.orders.length * 100).toFixed(1)) : null,
-      feesUsdt: Number(feesUsdt.toFixed(8))
+      fillRatePct: ordersAvailable && execution.orders.length ? Number((filled / execution.orders.length * 100).toFixed(1)) : null,
+      feesUsdt
     }
   };
 }

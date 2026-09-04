@@ -20,6 +20,7 @@ const PAGE_SIZE = 8;
 
 const list = (value) => Array.isArray(value) ? value : [];
 const objects = (value) => list(value).filter((row) => row && typeof row === "object" && !Array.isArray(row));
+const hasArray = (value, key) => Boolean(value && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, key) && Array.isArray(value[key]));
 const identity = (value) => typeof value === "string" && value.trim() ? value.trim() : Number.isFinite(value) ? String(value) : null;
 const orderIdentity = (row) => identity(row?.id) ?? identity(row?.executionOrderId) ?? identity(row?.orderId);
 const fillIdentity = (row) => identity(row?.id) ?? identity(row?.fillId);
@@ -38,7 +39,7 @@ function uniqueIdentityRows(value, resolveIdentity) {
   const rows = objects(value).map((row) => ({ row, id: resolveIdentity(row) })).filter(({ id }) => id);
   const counts = new Map();
   rows.forEach(({ id }) => counts.set(id, (counts.get(id) || 0) + 1));
-  return rows.filter(({ id }) => counts.get(id) === 1).map(({ row, id }) => ({ ...row, id }));
+  return rows.filter(({ id }) => counts.get(id) === 1).map(({ row }) => row);
 }
 
 function resourceStateOf(data) {
@@ -91,20 +92,20 @@ function Notices({ data }) {
 
 function OrderFilters({ filters, symbols, total, onChange }) {
   return <div className="ledgerFilters order" data-cockpit-region="order-filters">
-    <span><CircleDot aria-hidden="true"/><b>{t("委托列表", "Order list")}</b><small>{t(`${total} 条匹配`, `${total} matches`)}</small></span>
+    <span><CircleDot aria-hidden="true"/><b>{t("委托列表", "Order list")}</b><small>{total === null ? unavailable() : t(`${total} 条匹配`, `${total} matches`)}</small></span>
     <label>{t("状态", "Status")}<select data-order-filter="status" value={filters.status} onChange={(event) => onChange("status", event.target.value)}><option value="all">{t("全部状态", "All statuses")}</option><option value="working">{t("进行中", "Working")}</option><option value="filled">{t("已成交", "Filled")}</option><option value="blocked">{t("拒绝 / 阻断", "Rejected / blocked")}</option><option value="other">{t("其他", "Other")}</option></select></label>
     <label>{t("交易对", "Pair")}<select data-order-filter="symbol" value={filters.symbol} onChange={(event) => onChange("symbol", event.target.value)}><option value="all">{t("全部交易对", "All pairs")}</option>{symbols.map((symbol) => <option value={symbol} key={symbol}>{symbol}</option>)}</select></label>
   </div>;
 }
 
-function OrderList({ rows, selectedId, page, pages, onPage, onSelect }) {
+function OrderList({ rows, selectedId, page, pages, available, onPage, onSelect }) {
   const [focusedId, setFocusedId] = useState("");
   return <CockpitPanel className="ledgerOrderList" region="order-list" ariaLabel={t("委托列表", "Order list")}>
     {rows.length ? <div className="ledgerTableScroll" data-order-page={page}><table className="ledgerOrderTable" aria-label={t("委托列表", "Order list")}><thead><tr><th>{t("时间 / 委托", "Time / order")}</th><th>{t("交易对", "Pair")}</th><th>{t("方向", "Side")}</th><th>{t("数量", "Quantity")}</th><th>{t("价格", "Price")}</th><th>{t("状态", "Status")}</th></tr></thead><tbody>{rows.map((row) => {
       const id = orderIdentity(row);
       const selected = id === selectedId;
       const family = orderStatusFamily(row.status);
-      return <tr key={id} className={selected ? "selected" : ""} data-order-id={id} data-order-status-family={family} aria-selected={selected}>
+      return <tr key={id} className={selected ? "selected" : ""} data-order-id={id} data-order-status-family={family}>
         <td><button type="button" className={`ledgerOrderSelect ${focusedId === id ? "focusVisible" : ""}`.trim()} data-order-select={id} aria-pressed={selected} onFocus={() => setFocusedId(id)} onBlur={() => setFocusedId("")} onClick={() => onSelect(row)} onKeyDown={(event) => { setFocusedId(id); if (["Enter", " "].includes(event.key)) { event.preventDefault(); onSelect(row); } }}><time>{formatDateTime(row.createdAt ?? row.updatedAt)}</time><small>{id}</small></button></td>
         <td><b>{identity(row.symbol) ?? unavailable()}</b></td>
         <td><Tone tone={sideTone(row.side ?? row.direction)}>{humanize(row.side ?? row.direction, unavailable())}</Tone></td>
@@ -112,7 +113,7 @@ function OrderList({ rows, selectedId, page, pages, onPage, onSelect }) {
         <td>{money(row.price ?? row.orderPrice)}</td>
         <td><Tone tone={statusTone(row.status)}>{humanize(row.status, unavailable())}</Tone></td>
       </tr>;
-    })}</tbody></table></div> : <CockpitEmpty title={t("暂无委托", "No orders")} detail={t("当前筛选没有可验证的委托事实。", "No verifiable orders match the current filters.")}/>}
+    })}</tbody></table></div> : <CockpitEmpty title={available ? t("暂无委托", "No orders") : t("委托数据不可用", "Order data unavailable")} detail={available ? t("当前筛选没有可验证的委托事实。", "No verifiable orders match the current filters.") : t("当前来源没有返回可验证的委托集合。", "The source did not return a verifiable order collection.")}/>}
     <Pagination page={page} pages={pages} prefix="order" onPage={onPage}/>
   </CockpitPanel>;
 }
@@ -120,12 +121,13 @@ function OrderList({ rows, selectedId, page, pages, onPage, onSelect }) {
 function OrderDetail({ data, selected, actionsAllowed, action, ui }) {
   const selectedId = orderIdentity(selected);
   if (!selectedId) return <CockpitPanel className="ledgerOrderDetail empty" region="order-detail" title={t("订单详情", "Order detail")}><CockpitEmpty title={t("未选择有效委托", "No valid order selected")} detail={t("筛选或身份冲突不会回退到另一笔委托。", "Filters or identity conflicts never fall back to another order.")}/></CockpitPanel>;
-  const exactFills = objects(data.fills).filter((row) => (identity(row.executionOrderId) ?? identity(row.orderId)) === selectedId && fillIdentity(row));
+  const canonicalOrderId = identity(selected?.id);
+  const exactFills = canonicalOrderId ? objects(data.fills).filter((row) => (identity(row.executionOrderId) ?? identity(row.orderId)) === canonicalOrderId && fillIdentity(row)) : [];
   const planId = planIdentity(selected);
   const plans = planId ? objects(data.tradePlans).filter((row) => identity(row.id) === planId) : [];
   const plan = plans.length === 1 ? plans[0] : null;
   const stages = buildSelectedExecutionStages(data, selected);
-  const exit = actionsAllowed && identity(selected.id) === selectedId ? executionExitAction(selected) : null;
+  const exit = actionsAllowed && canonicalOrderId && canonicalOrderId === selectedId ? executionExitAction(selected) : null;
   const facts = [
     [t("委托编号", "Order ID"), selectedId],
     [t("交易对", "Pair"), identity(selected.symbol) ?? unavailable()],
@@ -148,14 +150,14 @@ function OrderDetail({ data, selected, actionsAllowed, action, ui }) {
       <footer className="ledgerOrderActions"><button type="button" className="cockpitSecondaryButton" onClick={() => ui.setActive("chat")}><Bot aria-hidden="true"/>{t("交给 AI 处理", "Ask AI")}</button>{exit && <button type="button" className="cockpitDangerButton" data-order-exit={exit.intent} onClick={() => requestExecutionExit(action, selected, "manual_ui")}>{exit.label}</button>}</footer>
     </CockpitPanel>
     <CockpitPanel className="ledgerTimelinePanel" region="execution-timeline" title={t("执行时间线", "Execution timeline")} meta={t("严格绑定当前委托", "Selected order only")}>
-      <ol className="ledgerTimeline">{stages.map((stage, index) => <li key={stage.id} data-execution-stage={stage.id} data-stage-state={stage.done ? "complete" : "incomplete"} className={stage.done ? "complete" : "incomplete"}><i>{stage.done ? <Check aria-hidden="true"/> : index + 1}</i><span><b>{labels[stage.id]}</b><small>{localizeText(stage.detail, stage.done ? t("已验证", "Verified") : t("未取得证据", "No evidence"))}</small></span></li>)}</ol>
+      <ol className="ledgerTimeline">{stages.map((stage, index) => { const stageState = stage.state ?? (stage.done ? "complete" : "incomplete"); return <li key={stage.id} data-execution-stage={stage.id} data-stage-state={stageState} className={stageState}><i>{stage.done ? <Check aria-hidden="true"/> : index + 1}</i><span><b>{labels[stage.id]}</b><small>{localizeText(stage.detail, stage.done ? t("已验证", "Verified") : t("未取得证据", "No evidence"))}</small></span></li>; })}</ol>
     </CockpitPanel>
   </div>;
 }
 
 function FillFilters({ filters, symbols, total, onChange }) {
   return <div className="ledgerFilters fills" data-cockpit-region="fill-filters">
-    <span><Check aria-hidden="true"/><b>{t("交易所成交账本", "Exchange fill ledger")}</b><small>{t(`${total} 条匹配`, `${total} matches`)}</small></span>
+    <span><Check aria-hidden="true"/><b>{t("交易所成交账本", "Exchange fill ledger")}</b><small>{total === null ? unavailable() : t(`${total} 条匹配`, `${total} matches`)}</small></span>
     <label>{t("交易对", "Pair")}<select data-fill-filter="symbol" value={filters.symbol} onChange={(event) => onChange("symbol", event.target.value)}><option value="all">{t("全部交易对", "All pairs")}</option>{symbols.map((symbol) => <option value={symbol} key={symbol}>{symbol}</option>)}</select></label>
     <label>{t("方向", "Side")}<select data-fill-filter="side" value={filters.side} onChange={(event) => onChange("side", event.target.value)}><option value="all">{t("全部方向", "All sides")}</option><option value="buy">{t("买入", "Buy")}</option><option value="sell">{t("卖出", "Sell")}</option></select></label>
     <label>{t("流动性", "Liquidity")}<select data-fill-filter="liquidity" value={filters.liquidity} onChange={(event) => onChange("liquidity", event.target.value)}><option value="all">{t("全部", "All")}</option><option value="maker">Maker</option><option value="taker">Taker</option><option value="unknown">{t("不可用", "Unavailable")}</option></select></label>
@@ -163,23 +165,29 @@ function FillFilters({ filters, symbols, total, onChange }) {
   </div>;
 }
 
-function FillLedger({ rows, page, pages, onPage }) {
+function FillLedger({ rows, page, pages, available, onPage }) {
   return <CockpitPanel className="ledgerFillPanel" region="fill-ledger" ariaLabel={t("交易所成交账本", "Exchange fill ledger")}>
     {rows.length ? <div className="ledgerTableScroll" data-fill-page={page}><table className="ledgerFillTable" aria-label={t("交易所确认成交", "Exchange-confirmed fills")}><thead><tr><th>{t("成交时间", "Fill time")}</th><th>{t("成交编号", "Fill ID")}</th><th>{t("委托编号", "Order ID")}</th><th>{t("交易对", "Pair")}</th><th>{t("方向", "Side")}</th><th>{t("成交数量", "Quantity")}</th><th>{t("成交价格", "Price")}</th><th>{t("手续费", "Fee")}</th><th>{t("流动性", "Liquidity")}</th><th>{t("开 / 减仓", "Open / reduce")}</th></tr></thead><tbody>{rows.map((row) => {
       const id = fillIdentity(row);
       const liquidity = fillLiquidity(row);
       const intent = fillIntent(row);
       return <tr key={id} data-fill-id={id} data-fill-liquidity={liquidity} data-fill-intent={intent}><td>{row.createdAt || row.updatedAt || row.ts ? formatDateTime(row.createdAt ?? row.updatedAt ?? row.ts) : unavailable()}</td><td><b>{id}</b></td><td>{identity(row.executionOrderId) ?? identity(row.orderId) ?? unavailable()}</td><td><b>{identity(row.symbol) ?? unavailable()}</b></td><td><Tone tone={sideTone(row.side ?? row.direction)}>{humanize(row.side ?? row.direction, unavailable())}</Tone></td><td>{quantity(row.quantity ?? row.size ?? row.fillSz)}</td><td>{money(row.price ?? row.fillPx)}</td><td>{finite(row.feeUsdt ?? row.fee) ? `${money(row.feeUsdt ?? row.fee)} U` : unavailable()}</td><td>{liquidity === "unknown" ? unavailable() : humanize(liquidity)}</td><td>{intent === "unknown" ? unavailable() : intent === "reduce" ? t("减仓", "Reduce") : t("开仓", "Open")}</td></tr>;
-    })}</tbody></table></div> : <CockpitEmpty title={t("暂无成交", "No fills")} detail={t("交易所确认成交后，成交与费用事实会显示在这里。", "Fill and fee facts appear after exchange confirmation.")}/>}
+    })}</tbody></table></div> : <CockpitEmpty title={available ? t("暂无成交", "No fills") : t("成交数据不可用", "Fill data unavailable")} detail={available ? t("交易所确认成交后，成交与费用事实会显示在这里。", "Fill and fee facts appear after exchange confirmation.") : t("当前来源没有返回可验证的成交集合。", "The source did not return a verifiable fill collection.")}/>}
     <Pagination page={page} pages={pages} prefix="fill" onPage={onPage}/>
   </CockpitPanel>;
 }
 
 export function LedgerPage({ data = {}, action, ui = {} }) {
   const state = resourceStateOf(data);
+  const ordersAvailable = hasArray(data, "executionOrders");
+  const fillsAvailable = hasArray(data, "fills");
   const orders = useMemo(() => uniqueIdentityRows(data.executionOrders, orderIdentity), [data.executionOrders]);
   const fills = useMemo(() => uniqueIdentityRows(data.fills, fillIdentity), [data.fills]);
-  const sanitizedData = useMemo(() => ({ ...data, executionOrders: orders, fills }), [data, orders, fills]);
+  const sanitizedData = useMemo(() => ({
+    ...data,
+    ...(ordersAvailable ? { executionOrders: orders } : {}),
+    ...(fillsAvailable ? { fills } : {})
+  }), [data, fills, fillsAvailable, orders, ordersAvailable]);
   const presentation = useMemo(() => buildLedgerPresentation(sanitizedData), [sanitizedData]);
   const hasFacts = orders.length > 0 || fills.length > 0;
   const retainsFacts = ["loading", "stale", "degraded"].includes(state) && hasFacts;
@@ -208,7 +216,6 @@ export function LedgerPage({ data = {}, action, ui = {} }) {
   const fillRows = filteredFills.slice((safeFillPage - 1) * PAGE_SIZE, safeFillPage * PAGE_SIZE);
   const selected = filteredOrders.find((row) => orderIdentity(row) === selectedId) ?? null;
   const metrics = presentation.metrics;
-  const feesAvailable = fills.every((row) => finite(row.feeUsdt ?? row.fee));
   const latestTimestamp = [...orders, ...fills].map((row) => row.updatedAt ?? row.createdAt ?? row.ts).filter(Boolean).sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
 
   useEffect(() => {
@@ -229,26 +236,29 @@ export function LedgerPage({ data = {}, action, ui = {} }) {
     setSelectedId(id);
   };
 
-  return <div className="cockpitPage cockpitLedgerV2" data-cockpit-page="ledger" data-resource-state={state} data-selected-order-id={selected ? orderIdentity(selected) : ""}>
+  const selectedIdentityProps = bodyVisible && selected ? { "data-selected-order-id": orderIdentity(selected) ?? "" } : {};
+  const metricValue = (value) => value === null ? unavailable() : String(value);
+
+  return <div className="cockpitPage cockpitLedgerV2" data-cockpit-page="ledger" data-resource-state={state} {...selectedIdentityProps}>
     {state !== "loaded" && <LedgerResourceState state={state} retainsFacts={retainsFacts} onRetry={reload}/>}
     {bodyVisible && <>
       <header className="ledgerTitleV2"><div><h1>{t("委托与成交", "Orders & Fills")}</h1><p>{t("订单状态、执行证据与交易所成交回报分层核对。", "Reconcile order state, execution evidence, and exchange-confirmed fills separately.")}</p></div><span>{latestTimestamp ? formatDateTime(latestTimestamp) : unavailable()}</span></header>
       <section className="ledgerHeroV2" data-cockpit-region="execution-hero">
-        <CockpitMetric strong label={t("全部委托", "Total orders")} value={String(metrics.total)}/>
-        <CockpitMetric label={t("进行中", "Working")} value={String(metrics.working)} tone={metrics.working ? "warning" : ""}/>
-        <CockpitMetric label={t("已成交", "Filled")} value={String(metrics.filled)} tone={metrics.filled ? "positive" : ""}/>
-        <CockpitMetric label={t("拒绝 / 风控阻断", "Rejected / risk blocked")} value={String(metrics.blocked)} tone={metrics.blocked ? "negative" : ""}/>
+        <CockpitMetric strong label={t("全部委托", "Total orders")} value={metricValue(metrics.total)}/>
+        <CockpitMetric label={t("进行中", "Working")} value={metricValue(metrics.working)} tone={metrics.working ? "warning" : ""}/>
+        <CockpitMetric label={t("已成交", "Filled")} value={metricValue(metrics.filled)} tone={metrics.filled ? "positive" : ""}/>
+        <CockpitMetric label={t("拒绝 / 风控阻断", "Rejected / risk blocked")} value={metricValue(metrics.blocked)} tone={metrics.blocked ? "negative" : ""}/>
         <CockpitMetric label={t("成交成功率", "Fill rate")} value={metrics.fillRatePct === null ? unavailable() : `${metrics.fillRatePct.toFixed(1)}%`}/>
-        <CockpitMetric label={t("手续费", "Fees")} value={feesAvailable ? `${money(metrics.feesUsdt)} U` : unavailable()}/>
+        <CockpitMetric label={t("手续费", "Fees")} value={metrics.feesUsdt === null ? unavailable() : `${money(metrics.feesUsdt)} U`}/>
       </section>
       <Notices data={sanitizedData}/>
-      <OrderFilters filters={orderFilters} symbols={orderSymbols} total={filteredOrders.length} onChange={updateOrderFilter}/>
+      <OrderFilters filters={orderFilters} symbols={orderSymbols} total={ordersAvailable ? filteredOrders.length : null} onChange={updateOrderFilter}/>
       <div className={`ledgerWorkbenchV2 ${orders.length ? "" : "empty"}`.trim()}>
-        <OrderList rows={orderRows} selectedId={selected ? orderIdentity(selected) : ""} page={safeOrderPage} pages={orderPages} onPage={setOrderPage} onSelect={selectOrder}/>
+        <OrderList rows={orderRows} selectedId={selected ? orderIdentity(selected) : ""} page={safeOrderPage} pages={orderPages} available={ordersAvailable} onPage={setOrderPage} onSelect={selectOrder}/>
         <OrderDetail data={sanitizedData} selected={selected} actionsAllowed={actionsAllowed} action={action} ui={ui}/>
       </div>
-      <FillFilters filters={fillFilters} symbols={fillSymbols} total={filteredFills.length} onChange={updateFillFilter}/>
-      <FillLedger rows={fillRows} page={safeFillPage} pages={fillPages} onPage={setFillPage}/>
+      <FillFilters filters={fillFilters} symbols={fillSymbols} total={fillsAvailable ? filteredFills.length : null} onChange={updateFillFilter}/>
+      <FillLedger rows={fillRows} page={safeFillPage} pages={fillPages} available={fillsAvailable} onPage={setFillPage}/>
     </>}
   </div>;
 }

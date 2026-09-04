@@ -217,6 +217,45 @@ test("ledger hero reports the six truthful execution metrics from loaded facts",
   assert.doesNotMatch(hero, /待审批/);
 });
 
+test("ledger hero distinguishes explicit zero collections from unavailable collections", () => {
+  const explicitEmpty = render(LedgerPage, {
+    data: { resourceState: { cockpit: "loaded" }, executionOrders: [], fills: [], tradePlans: [], riskChecks: [] },
+    action() {}, ui: { setActive() {}, refresh() {} }
+  });
+  const explicitHero = explicitEmpty.match(/<section[^>]*data-cockpit-region="execution-hero"[^]*?<\/section>/)?.[0] || "";
+  assert.equal((explicitHero.match(/aria-label="[^"]+: 0(?:\.00)?(?: U)?"/g) || []).length, 5, "explicit loaded emptiness renders five truthful zero counts/fees");
+  assert.match(explicitHero, /(?:不可用|Unavailable)/, "empty fill-rate has no denominator");
+
+  for (const data of [
+    { resourceState: { cockpit: "loaded" } },
+    { resourceState: { cockpit: "loaded" }, executionOrders: {}, fills: "malformed" }
+  ]) {
+    const html = render(LedgerPage, { data, action() {}, ui: { setActive() {}, refresh() {} } });
+    const hero = html.match(/<section[^>]*data-cockpit-region="execution-hero"[^]*?<\/section>/)?.[0] || "";
+    assert.equal((hero.match(/aria-label="[^"]+: (?:不可用|Unavailable)"/g) || []).length, 6, "missing/malformed collections render six unavailable metrics");
+    assert.doesNotMatch(hero, />0(?:\.0+)?(?:\s*U|%)?</, "unavailable collections never fabricate zero facts");
+  }
+});
+
+test("ledger canonical execution identity remains fail-closed for aliases, blanks, and duplicates", () => {
+  const cases = [
+    [{ executionOrderId: "execution-alias-77", status: "entry_pending", symbol: "BTC/USDT" }],
+    [{ id: " ", executionOrderId: "execution-alias-blank", status: "entry_pending", symbol: "ETH/USDT" }],
+    [
+      { id: "duplicate-execution", status: "entry_pending", symbol: "SOL/USDT" },
+      { id: "duplicate-execution", status: "entry_pending", symbol: "SUI/USDT" }
+    ]
+  ];
+  for (const executionOrders of cases) {
+    const html = render(LedgerPage, {
+      data: { resourceState: { cockpit: "loaded" }, executionOrders, fills: [], tradePlans: [], riskChecks: [] },
+      action() {}, ui: { setActive() {}, refresh() {} }
+    });
+    assert.doesNotMatch(html, /data-order-exit=/, "invalid or ambiguous canonical execution has no exit action");
+  }
+  assert.doesNotMatch(ledgerSource, /aria-selected=/, "native table rows do not claim unsupported selectable-grid semantics");
+});
+
 test("ledger selected-order stages never borrow sibling facts and reject ambiguous identities", () => {
   assert.ok(LedgerPage, "LedgerPage must be independently renderable");
   const html = render(LedgerPage, {
@@ -251,7 +290,7 @@ test("ledger selected-order stages never borrow sibling facts and reject ambiguo
     },
     action() {}, ui: { setActive() {}, refresh() {} }
   });
-  assert.match(ambiguous, /data-selected-order-id=""/);
+  assert.doesNotMatch(ambiguous, /data-selected-order-id=/);
   assert.doesNotMatch(ambiguous, /data-order-id=/);
 });
 
@@ -273,6 +312,7 @@ test("ledger keeps retained facts visible but blocks actions and terminal stale 
     const html = render(LedgerPage, { data: { ...facts, resourceState: { cockpit: state } }, action() {}, ui: { setActive() {}, refresh() {} } });
     assert.match(html, new RegExp(`data-ledger-resource-state="${state}"`));
     assert.doesNotMatch(html, /data-order-id="state-order"/);
+    assert.doesNotMatch(html, /data-selected-order-id=/, `${state} hides both body facts and selected object identity`);
   }
   const initial = render(LedgerPage, { data: { resourceState: { cockpit: "loading" } }, action() {}, ui: { setActive() {}, refresh() {} } });
   assert.match(initial, /data-ledger-resource-state="loading"/);

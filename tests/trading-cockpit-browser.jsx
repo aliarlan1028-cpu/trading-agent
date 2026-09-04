@@ -137,7 +137,7 @@ const executionOrders = Array.from({ length: 32 }, (_, index) => {
   const quantity = symbol === "BTC/USDT" ? .03 + index / 1000 : symbol === "ETH/USDT" ? .4 + index / 10 : 8 + index;
   const status = index === 1 ? "protecting" : index < 24 ? "filled" : index % 3 === 0 ? "open" : index % 3 === 1 ? "pending" : "canceled";
   const type = index % 7 === 0 ? "stop" : index % 4 === 0 ? "market" : "limit";
-  return { id: `ord-${String(index).padStart(2, "0")}`, orderId: `ord-${String(index).padStart(2, "0")}`, tradePlanId: `plan-${index % 8}`, planId: `plan-${index % 8}`, positionId: index < positions.length ? positions[index].positionId : `historical-position-${index}`, symbol, side, direction: side, type, orderType: type, purpose: type === "stop" ? "stop_loss" : "entry", quantity, size: quantity, filledQuantity: status === "filled" ? quantity : 0, accFillSz: status === "filled" ? quantity : 0, price: round(price * (1 + (index % 5 - 2) * .001)), exchange: "OKX", venue: "OKX", source: "execution_engine", status, reduceOnly: type === "stop", createdAt: iso(-96 + index * 2), updatedAt: iso(-96 + index * 2 + .2) };
+  return { id: `ord-${String(index).padStart(2, "0")}`, orderId: `ord-${String(index).padStart(2, "0")}`, tradePlanId: `plan-${index % 8}`, planId: `plan-${index % 8}`, positionId: index < positions.length ? positions[index].positionId : `historical-position-${index}`, symbol, side, direction: side, type, orderType: type, purpose: type === "stop" ? "stop_loss" : "entry", quantity, size: quantity, filledQuantity: status === "filled" ? quantity : 0, accFillSz: status === "filled" ? quantity : 0, price: round(price * (1 + (index % 5 - 2) * .001)), exchange: "OKX", venue: "OKX", source: "execution_engine", status, reduceOnly: type === "stop", ...(index === 1 ? { stopClientOrderId: "stop-ord-01" } : {}), createdAt: iso(-96 + index * 2), updatedAt: iso(-96 + index * 2 + .2) };
 });
 
 const fills = Array.from({ length: 24 }, (_, index) => {
@@ -250,6 +250,25 @@ if (query.get("ledgerCase") === "malformed") Object.assign(data, {
   fills: [{}, { id: "", executionOrderId: "ledger-valid" }, { id: "ledger-fill-valid", executionOrderId: "ledger-valid", symbol: "SOL/USDT", side: "sell", quantity: 2, price: prices["SOL/USDT"], feeUsdt: -0.1, liquidity: "taker", kind: "entry", exchange: "OKX", createdAt: iso(-.9) }],
   tradePlans: [{}, { id: "" }],
   riskChecks: [{}, { id: "" }]
+});
+if (query.get("ledgerCase") === "identity") Object.assign(data, {
+  executionOrders: [
+    { executionOrderId: "execution-alias-77", status: "entry_pending", symbol: "BTC/USDT", createdAt: iso(-1) },
+    { id: " ", executionOrderId: "execution-alias-blank", status: "entry_pending", symbol: "ETH/USDT", createdAt: iso(-2) },
+    { id: "duplicate-execution", status: "entry_pending", symbol: "SOL/USDT", createdAt: iso(-3) },
+    { id: "duplicate-execution", status: "entry_pending", symbol: "SUI/USDT", createdAt: iso(-4) }
+  ],
+  fills: [{ id: "alias-fill", executionOrderId: "execution-alias-77", symbol: "BTC/USDT", feeUsdt: -0.1 }],
+  tradePlans: [],
+  riskChecks: []
+});
+if (query.get("ledgerCase") === "collections-missing") {
+  delete data.executionOrders;
+  delete data.fills;
+}
+if (query.get("ledgerCase") === "collections-malformed") Object.assign(data, {
+  executionOrders: { unexpected: true },
+  fills: "malformed"
 });
 if (query.get("ledgerCase") === "long") Object.assign(data, {
   notifications: [{ id: "ledger-long-notice", unread: true, title: "Synthetic long execution notice preserves a production-shaped but deliberately verbose reconciliation message so containment can be verified without exposing any production event, credential, or account fact.", createdAt: iso(-1) }]

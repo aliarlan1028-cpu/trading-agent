@@ -472,15 +472,75 @@ test("ledger derives counts and fees from real rows", () => {
   assert.deepEqual(model.metrics, { total: 2, working: 1, filled: 1, blocked: 0, fillRatePct: 50, feesUsdt: -0.5 });
 });
 
-test("ledger counts canceled orders in its rejected or canceled metric", () => {
+test("ledger blocked metric excludes canceled orders", () => {
   const model = buildLedgerPresentation({
-    executionOrders: [{ id: "o-1", status: "canceled" }, { id: "o-2", status: "cancelled" }, { id: "o-3", status: "rejected" }]
+    executionOrders: [
+      { id: "o-1", status: "canceled" },
+      { id: "o-2", status: "cancelled" },
+      { id: "o-3", status: "rejected" },
+      { id: "o-4", status: "risk_blocked" }
+    ],
+    fills: []
   });
-  assert.equal(model.metrics.blocked, 3);
+  assert.equal(model.metrics.blocked, 2);
 });
 
 test("ledger fails closed when only an unmodeled raw order list exists", () => {
   const model = buildLedgerPresentation({ orders: [{ id: "unmodeled-order", status: "open" }] });
   assert.deepEqual(model.orders, []);
-  assert.equal(model.metrics.total, 0);
+  assert.deepEqual(model.collectionState, { orders: "unavailable", fills: "unavailable" });
+  assert.deepEqual(model.metrics, { total: null, working: null, filled: null, blocked: null, fillRatePct: null, feesUsdt: null });
+});
+
+test("ledger distinguishes explicit empty collections from missing or malformed collections", () => {
+  const explicitEmpty = buildLedgerPresentation({ executionOrders: [], fills: [] });
+  assert.deepEqual(explicitEmpty.collectionState, { orders: "loaded", fills: "loaded" });
+  assert.deepEqual(explicitEmpty.metrics, { total: 0, working: 0, filled: 0, blocked: 0, fillRatePct: null, feesUsdt: 0 });
+
+  for (const input of [
+    {},
+    { executionOrders: {}, fills: [] },
+    { executionOrders: [], fills: "malformed" }
+  ]) {
+    const model = buildLedgerPresentation(input);
+    const ordersAvailable = Object.hasOwn(input, "executionOrders") && Array.isArray(input.executionOrders);
+    const fillsAvailable = Object.hasOwn(input, "fills") && Array.isArray(input.fills);
+    assert.equal(model.collectionState.orders, ordersAvailable ? "loaded" : "unavailable");
+    assert.equal(model.collectionState.fills, fillsAvailable ? "loaded" : "unavailable");
+    assert.equal(model.metrics.total, ordersAvailable ? 0 : null);
+    assert.equal(model.metrics.feesUsdt, fillsAvailable ? 0 : null);
+  }
+});
+
+test("execution order and fill stages require an original canonical order id", () => {
+  const aliasOnly = { executionOrderId: "execution-alias-77", status: "entry_pending", type: "limit" };
+  const stages = buildSelectedExecutionStages({
+    executionOrders: [aliasOnly],
+    fills: [{ id: "fill-alias", executionOrderId: "execution-alias-77" }]
+  }, aliasOnly);
+  assert.equal(stages.find((stage) => stage.id === "order").done, false);
+  assert.equal(stages.find((stage) => stage.id === "fill").done, false);
+});
+
+test("execution protection requires persisted exact protection evidence", () => {
+  const protectedOrder = { id: "order-protected", status: "protecting", type: "limit", stopClientOrderId: "stop-order-protected" };
+  const protectedStages = buildSelectedExecutionStages({ executionOrders: [protectedOrder], fills: [] }, protectedOrder);
+  assert.equal(protectedStages.find((stage) => stage.id === "protection").done, true);
+
+  for (const order of [
+    { id: "order-type-only", status: "entry_pending", type: "stop" },
+    { id: "order-degraded", status: "protecting_degraded", type: "limit", stopClientOrderId: "stop-order-degraded" },
+    { id: "order-failed", status: "protection_failed", type: "limit", stopClientOrderId: "stop-order-failed" }
+  ]) {
+    const stage = buildSelectedExecutionStages({ executionOrders: [order], fills: [] }, order).find((item) => item.id === "protection");
+    assert.equal(stage.done, false, `${order.id} does not present protection as complete`);
+  }
+
+  const explicitConfirmed = { id: "order-confirmed", status: "entry_filled", protectionState: "confirmed", stopAlgoId: "stop-algo-confirmed" };
+  const confirmedStage = buildSelectedExecutionStages({ executionOrders: [explicitConfirmed], fills: [] }, explicitConfirmed).find((item) => item.id === "protection");
+  assert.deepEqual({ done: confirmedStage.done, state: confirmedStage.state }, { done: true, state: "complete" });
+
+  const partial = { id: "order-stop-only", status: "protecting", protectionState: "stop_only", stopClientOrderId: "stop-only-id" };
+  const partialStage = buildSelectedExecutionStages({ executionOrders: [partial], fills: [] }, partial).find((item) => item.id === "protection");
+  assert.deepEqual({ done: partialStage.done, state: partialStage.state }, { done: false, state: "partial" });
 });
