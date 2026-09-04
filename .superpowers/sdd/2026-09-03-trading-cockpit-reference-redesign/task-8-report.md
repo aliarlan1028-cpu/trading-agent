@@ -5,6 +5,8 @@ Base commit: `ad0f220`
 Implementation commit: `e9e53f92035250ce29c0db40f3d3b8394ce187da`
 Fix-round base/report commit: `d8839191ff41b6e7355b587647e0541f9daf5d85`
 Fix-round implementation commit: `614e328f1e4fe53416b82b248c6550102b31a3de`
+Fix-round-2 base/report commit: `00db541a136040e83007ef6572aecc03cbf8d5db`
+Fix-round-2 implementation commit: `953ac21823ee94a7a7bdf6e6c706ac69a30a4d32`
 Scope: Task 8 only
 Status: implementation complete; awaiting independent review
 
@@ -35,11 +37,11 @@ The implemented region contract preserves the authority's title/date line, six-p
 
 At 1440 and 1280 the order workbench measured `53.00/47.00`. At 1024 it deliberately reflows into vertically stacked full-width order and detail surfaces. The document had zero horizontal overflow at all three widths. The smallest enabled Ledger control measured 36px and the real keyboard-selected order target exposed a solid 3px focus outline plus inset focus ring.
 
-Fix-round final temporary captures were generated and inspected at original resolution:
+Fix-round-2 final temporary captures were generated and inspected at original resolution:
 
-- `/private/tmp/task8-fix-final/ledger-1440x1080.png`
-- `/private/tmp/task8-fix-final/ledger-1280x960.png`
-- `/private/tmp/task8-fix-final/ledger-1024x768.png`
+- `/private/tmp/task8-fix-round2-final/ledger-1440x1080.png`
+- `/private/tmp/task8-fix-round2-final/ledger-1280x960.png`
+- `/private/tmp/task8-fix-round2-final/ledger-1024x768.png`
 
 The 1440 capture preserves the reference hierarchy and dense first-screen reconciliation flow. Its complete fill ledger ends at `1068.75px` and its pagination at `1067.75px`, leaving approximately `11px` of visible viewport clearance at 1080px; neither is clipped. The 1280 capture retains the same two-column workbench with internally contained tables. The 1024 capture intentionally stacks the workbench and continues vertically rather than compressing facts into unreadable columns. Earlier pre-fix captures are historical and are not the visual evidence for this round.
 
@@ -58,7 +60,7 @@ Awaiting approval is not substituted for any of those metrics. Missing fee value
 
 The order list and exchange-confirmed fill ledger have independent production-local filters and pagination:
 
-- orders: status family and symbol;
+- orders: independent working, filled, canceled, rejected/risk-blocked, and other status families plus symbol;
 - fills: symbol, side, maker/taker liquidity, and open/reduce intent.
 
 The mounted Chrome gate exercises page changes, filter-induced page reset, restoration of a valid default selection, mouse selection, Enter-key selection, visible focus, and independent fill filters. Each list paginates eight rows per page. The exchange fill table explicitly names itself as exchange-confirmed evidence and never promotes an order into a fill.
@@ -70,7 +72,7 @@ The selected order must have a nonblank canonical identity and resolve to exactl
 The six timeline stages are bound as follows:
 
 - Signal: one exact, unique selected plan identity.
-- Risk: one exact `executionOrderId` match takes precedence. A plan-level fallback is allowed only for one unique plan, one unique execution owner, and one unlinked, unambiguous plan risk fact.
+- Risk: when the selected execution owns `riskCheckId`, that explicit reference must resolve to exactly one risk row and no weaker fallback is allowed. Without an explicit reference, one exact `executionOrderId` match takes precedence. A plan-level fallback is allowed only for one unique plan, one unique execution owner, and one unlinked, unambiguous plan risk fact. Only normalized exact positive outcomes complete the stage; negative substrings such as `not_allowed` or `not_approved` cannot pass.
 - Routing: venue/exchange on the exact selected order.
 - Order: the uniquely resolved selected order itself.
 - Fill: one or more fills with an exact nonblank `orderId` or `executionOrderId` equal to the selected order.
@@ -148,6 +150,79 @@ PASS: every state at all three viewports; cleanup PASS
 Loading/stale/degraded retained all eight regions and suppressed exits. Failed/forbidden/disabled rendered the boundary only, with no rows, detail, or action.
 
 ## Regression and exact-commit gates
+
+### Fix round 2 — risk authority, canceled status, and no-selection timeline
+
+The second review-fix cycle again started RED. The focused run produced `98 passed / 6 failed` out of 104 tests at the intended assertions: explicit `riskCheckId` precedence and invalid-reference fail-closed behavior, exact positive-risk outcomes, negative protection states, a distinct canceled family, and the required six-stage timeline when no canonical selection exists.
+
+The production presentation join now treats an own `riskCheckId` as authoritative: it must be nonblank and resolve uniquely, otherwise Risk remains incomplete and cannot borrow plan evidence. Without an explicit reference, exact execution linkage precedes the already constrained unique-plan fallback. Risk and protection use exact normalized allowlists, so `disallowed`, `not_allowed`, `not_approved`, `bypassed`, `inactive`, `not_protected`, and unknown states cannot become success through substring matching. Persisted protection IDs still require a positive protection state or the exact `protecting` execution status.
+
+Canceled orders now have a separate filter and status family. The mounted real-component test returned `canceledFamilies=["canceled","canceled"]` for the canceled filter and `blockedFamilies=["blocked"]` for the rejected/risk-blocked filter; the latter is backed by an independent `risk_blocked` fixture row, never by a canceled row. The Hero blocked metric remains `1` for the normal fixture and continues to exclude both canceled rows.
+
+Explicit empty, missing collections, malformed collections, and invalid canonical selection all keep the eight structural regions mounted. Order Detail renders a compact unavailable body and Execution Timeline renders exactly six incomplete stages, without selected-object identity, an exit control, or an API call. The missing/malformed collection Hero uses six `不可用` values; only explicitly loaded empty arrays produce truthful zero counts.
+
+The fresh shared-checkout gates passed:
+
+```text
+node scripts/run-tests-isolated.mjs tests/trading-cockpit-model.test.mjs tests/trading-cockpit-reference.test.mjs
+PASS: 104/104
+
+npm test
+PASS: 2364/2364, 0 failures
+
+npm run lint
+PASS
+
+npm run build
+PASS: built in 1.59s
+
+node tests/run-trading-cockpit-browser.mjs
+PASS: 15/15 view/viewport results; cleanup PASS
+
+node /Users/ely/.codex/skills/impeccable/scripts/detect.mjs --json src/aug15/tradingCockpit/LedgerPage.jsx src/aug15/tradingCockpit.css
+[]
+
+git diff --check
+PASS (no output)
+```
+
+The shared count includes unrelated user-owned tests and is reported only with that provenance. The history-preserving exact checkout of `953ac21823ee94a7a7bdf6e6c706ac69a30a4d32` is `/private/tmp/task8-ledger-round2-clone.WBX26E`. It produced:
+
+```text
+focused model/reference
+PASS: 104/104
+
+npm test
+PASS: 2353/2353, 0 failures
+
+npm run lint
+PASS
+
+npm run build
+PASS: built in 1.53s
+
+all-five real Chrome
+PASS: 15/15 view/viewport results; cleanup PASS
+
+Ledger exact Chrome cases
+PASS: normal, risk-counterexamples, identity, adversarial, malformed,
+      long, explicit-empty, collections-missing, collections-malformed,
+      loading, stale, degraded, failed, forbidden, disabled, error,
+      and not_loaded at 1440×1080, 1280×960, and 1024×768
+
+Impeccable detector
+[]
+
+git diff --check
+PASS (no output)
+
+git status --short
+PASS (no output after removing the temporary node_modules symlink)
+```
+
+The first appended `error/not_loaded` exact command attempt failed before mounting the product with `ERR_MODULE_NOT_FOUND` because the temporary dependency symlink had already been removed for the clean-status check. Restoring the same read-only dependency symlink and rerunning only those two states passed at all three viewports; the symlink was then removed again and the exact checkout returned clean. This was a harness precondition error, not a product-state failure.
+
+The round-2 1440 screenshot was inspected at original resolution. The complete fill ledger and pagination are readable and uncut: `fillLedgerBottom=1068.75`, `fillPaginationBottom=1067.75`, leaving `11.25px` and `12.25px` respectively inside the 1080px viewport. Its order/detail workbench remains `53.00% / 47.00%`, minimum enabled target is 36px, minimum operational text is 11px, and document horizontal overflow is zero. The 1280 viewport preserves the two-column workbench; 1024 purposefully stacks it without horizontal overflow.
 
 ### Fix round 1 — identity, availability, protection, and first-frame convergence
 
