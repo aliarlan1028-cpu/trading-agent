@@ -416,6 +416,67 @@ test("execution risk uses exact order evidence before any plan fallback", () => 
   assert.deepEqual(stages.find((stage) => stage.id === "risk"), { id: "risk", done: false, detail: "exact order block" });
 });
 
+test("execution risk honors a unique explicit riskCheckId before weaker joins", () => {
+  const order = { id: "order-selected", tradePlanId: "plan-selected", riskCheckId: "risk-explicit", status: "open" };
+  const stages = buildSelectedExecutionStages({
+    executionOrders: [order],
+    tradePlans: [{ id: "plan-selected", signal: "recorded" }],
+    riskChecks: [
+      { id: "risk-plan", tradePlanId: "plan-selected", status: "passed", summary: "weaker plan pass" },
+      { id: "risk-exact-order", executionOrderId: "order-selected", status: "passed", summary: "weaker execution pass" },
+      { id: "risk-explicit", status: "blocked", summary: "explicit risk block" }
+    ]
+  }, order);
+  assert.deepEqual(stages.find((stage) => stage.id === "risk"), { id: "risk", done: false, detail: "explicit risk block" });
+});
+
+test("execution risk fails closed for blank, missing, or duplicate explicit riskCheckId", () => {
+  const plan = { id: "plan-selected", signal: "recorded" };
+  const planPass = { id: "risk-plan", tradePlanId: "plan-selected", status: "passed", summary: "must not be borrowed" };
+  const cases = [
+    {
+      label: "blank explicit risk id",
+      order: { id: "order-blank", tradePlanId: plan.id, riskCheckId: " ", status: "open" },
+      riskChecks: [planPass]
+    },
+    {
+      label: "missing explicit risk id",
+      order: { id: "order-missing", tradePlanId: plan.id, riskCheckId: "risk-missing", status: "open" },
+      riskChecks: [planPass]
+    },
+    {
+      label: "duplicate explicit risk id",
+      order: { id: "order-duplicate", tradePlanId: plan.id, riskCheckId: "risk-duplicate", status: "open" },
+      riskChecks: [planPass, { id: "risk-duplicate", status: "passed" }, { id: "risk-duplicate", status: "passed" }]
+    }
+  ];
+  for (const { label, order, riskChecks } of cases) {
+    const risk = buildSelectedExecutionStages({ executionOrders: [order], tradePlans: [plan], riskChecks, fills: [] }, order)
+      .find((stage) => stage.id === "risk");
+    assert.deepEqual(risk, { id: "risk", done: false, detail: null }, label);
+  }
+});
+
+test("execution risk accepts only exact normalized positive outcomes", () => {
+  const positive = { id: "order-positive", riskCheckId: "risk-positive", status: "open" };
+  const accepted = buildSelectedExecutionStages({
+    executionOrders: [positive],
+    riskChecks: [{ id: "risk-positive", status: " Approved ", summary: "explicit approval" }],
+    fills: []
+  }, positive).find((stage) => stage.id === "risk");
+  assert.deepEqual(accepted, { id: "risk", done: true, detail: "explicit approval" });
+
+  for (const status of ["disallowed", "not_allowed", "not_approved", "bypassed"]) {
+    const order = { id: `order-${status}`, riskCheckId: `risk-${status}`, status: "open" };
+    const risk = buildSelectedExecutionStages({
+      executionOrders: [order],
+      riskChecks: [{ id: `risk-${status}`, status, summary: status }],
+      fills: []
+    }, order).find((stage) => stage.id === "risk");
+    assert.deepEqual(risk, { id: "risk", done: false, detail: status }, `${status} is not a positive risk result`);
+  }
+});
+
 test("execution risk plan fallback fails closed for sibling ownership or ambiguous evidence", () => {
   const selected = { id: "order-selected", tradePlanId: "plan-shared", status: "open" };
   const plan = { id: "plan-shared", signal: "recorded" };
@@ -543,4 +604,10 @@ test("execution protection requires persisted exact protection evidence", () => 
   const partial = { id: "order-stop-only", status: "protecting", protectionState: "stop_only", stopClientOrderId: "stop-only-id" };
   const partialStage = buildSelectedExecutionStages({ executionOrders: [partial], fills: [] }, partial).find((item) => item.id === "protection");
   assert.deepEqual({ done: partialStage.done, state: partialStage.state }, { done: false, state: "partial" });
+
+  for (const protectionState of ["inactive", "not_protected", "protected_but_unverified"]) {
+    const order = { id: `order-${protectionState}`, status: "protecting", protectionState, stopClientOrderId: `stop-${protectionState}` };
+    const stage = buildSelectedExecutionStages({ executionOrders: [order], fills: [] }, order).find((item) => item.id === "protection");
+    assert.deepEqual({ done: stage.done, state: stage.state }, { done: false, state: "incomplete" }, `${protectionState} fails closed despite a persisted id`);
+  }
 });

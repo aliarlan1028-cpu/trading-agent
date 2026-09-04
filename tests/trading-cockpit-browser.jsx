@@ -135,7 +135,7 @@ const positions = [
 const executionOrders = Array.from({ length: 32 }, (_, index) => {
   const symbol = symbols[index % symbols.length], side = index % 3 === 2 ? "sell" : "buy", price = prices[symbol];
   const quantity = symbol === "BTC/USDT" ? .03 + index / 1000 : symbol === "ETH/USDT" ? .4 + index / 10 : 8 + index;
-  const status = index === 1 ? "protecting" : index < 24 ? "filled" : index % 3 === 0 ? "open" : index % 3 === 1 ? "pending" : "canceled";
+  const status = index === 1 ? "protecting" : index < 24 ? "filled" : index === 31 ? "risk_blocked" : index % 3 === 0 ? "open" : index % 3 === 1 ? "pending" : "canceled";
   const type = index % 7 === 0 ? "stop" : index % 4 === 0 ? "market" : "limit";
   return { id: `ord-${String(index).padStart(2, "0")}`, orderId: `ord-${String(index).padStart(2, "0")}`, tradePlanId: `plan-${index % 8}`, planId: `plan-${index % 8}`, positionId: index < positions.length ? positions[index].positionId : `historical-position-${index}`, symbol, side, direction: side, type, orderType: type, purpose: type === "stop" ? "stop_loss" : "entry", quantity, size: quantity, filledQuantity: status === "filled" ? quantity : 0, accFillSz: status === "filled" ? quantity : 0, price: round(price * (1 + (index % 5 - 2) * .001)), exchange: "OKX", venue: "OKX", source: "execution_engine", status, reduceOnly: type === "stop", ...(index === 1 ? { stopClientOrderId: "stop-ord-01" } : {}), createdAt: iso(-96 + index * 2), updatedAt: iso(-96 + index * 2 + .2) };
 });
@@ -261,6 +261,26 @@ if (query.get("ledgerCase") === "identity") Object.assign(data, {
   fills: [{ id: "alias-fill", executionOrderId: "execution-alias-77", symbol: "BTC/USDT", feeUsdt: -0.1 }],
   tradePlans: [],
   riskChecks: []
+});
+if (query.get("ledgerCase") === "risk-counterexamples") Object.assign(data, {
+  executionOrders: [{
+    id: "ledger-risk-selected",
+    symbol: "BTC/USDT",
+    side: "buy",
+    status: "protecting",
+    tradePlanId: "ledger-risk-plan",
+    riskCheckId: "ledger-risk-explicit",
+    protectionState: "inactive",
+    stopClientOrderId: "ledger-inactive-stop",
+    createdAt: iso(-1),
+    updatedAt: iso(-1)
+  }],
+  fills: [],
+  tradePlans: [{ id: "ledger-risk-plan", signal: "counterexample-signal", strategy: "counterexample-strategy" }],
+  riskChecks: [
+    { id: "ledger-plan-pass", tradePlanId: "ledger-risk-plan", status: "passed", summary: "sibling-only-risk" },
+    { id: "ledger-risk-explicit", status: "not_allowed", summary: "explicit-negative-risk" }
+  ]
 });
 if (query.get("ledgerCase") === "collections-missing") {
   delete data.executionOrders;

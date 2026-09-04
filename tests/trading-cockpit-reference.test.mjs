@@ -256,6 +256,47 @@ test("ledger canonical execution identity remains fail-closed for aliases, blank
   assert.doesNotMatch(ledgerSource, /aria-selected=/, "native table rows do not claim unsupported selectable-grid semantics");
 });
 
+test("ledger separates canceled orders from rejected and risk-blocked orders", () => {
+  const html = render(LedgerPage, {
+    data: {
+      resourceState: { cockpit: "loaded" },
+      executionOrders: [
+        { id: "order-canceled", status: "canceled" },
+        { id: "order-cancelled", status: "cancelled" },
+        { id: "order-rejected", status: "rejected" },
+        { id: "order-risk-blocked", status: "risk_blocked" }
+      ],
+      fills: [], tradePlans: [], riskChecks: []
+    },
+    action() {}, ui: { setActive() {}, refresh() {} }
+  });
+  assert.match(html, /<option value="canceled">(?:已取消|Canceled)<\/option>/);
+  assert.equal((html.match(/data-order-status-family="canceled"/g) || []).length, 2);
+  assert.equal((html.match(/data-order-status-family="blocked"/g) || []).length, 2);
+});
+
+test("ledger keeps all eight regions and six incomplete stages without a canonical selection", () => {
+  const cases = [
+    { label: "explicit empty", data: { executionOrders: [], fills: [] } },
+    { label: "collections missing", data: {} },
+    { label: "collections malformed", data: { executionOrders: {}, fills: "malformed" } },
+    { label: "identity invalid", data: { executionOrders: [{ id: "duplicate" }, { id: "duplicate" }, { id: " " }], fills: [] } }
+  ];
+  for (const { label, data } of cases) {
+    const html = render(LedgerPage, {
+      data: { resourceState: { cockpit: "loaded" }, ...data, tradePlans: [], riskChecks: [] },
+      action() {}, ui: { setActive() {}, refresh() {} }
+    });
+    for (const region of ["execution-hero", "execution-notices", "order-filters", "order-list", "order-detail", "execution-timeline", "fill-filters", "fill-ledger"]) {
+      assert.match(html, new RegExp(`data-cockpit-region="${region}"`), `${label} retains ${region}`);
+    }
+    const timeline = html.match(/<section[^>]*data-cockpit-region="execution-timeline"[^]*?<\/section>/)?.[0] || "";
+    assert.equal((timeline.match(/data-execution-stage=/g) || []).length, 6, `${label} retains six stages`);
+    assert.equal((timeline.match(/data-stage-state="incomplete"/g) || []).length, 6, `${label} marks every stage incomplete`);
+    assert.doesNotMatch(html, /data-selected-order-id=|data-order-detail-id=|data-order-exit=/, `${label} invents no selection, detail, or action`);
+  }
+});
+
 test("ledger selected-order stages never borrow sibling facts and reject ambiguous identities", () => {
   assert.ok(LedgerPage, "LedgerPage must be independently renderable");
   const html = render(LedgerPage, {

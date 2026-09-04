@@ -1132,6 +1132,10 @@
   .ledgerWorkbenchV2.empty .ledgerTimelinePanel { min-height: 155px; }
   .ledgerWorkbenchV2.empty .ledgerDetailStack { grid-template-rows: minmax(155px, auto); }
   .ledgerWorkbenchV2.empty .cockpitEmpty { min-height: 108px; padding-block: 12px; }
+  .ledgerWorkbenchV2.empty .ledgerTimeline { min-height: 108px; grid-template-columns: repeat(6, minmax(0, 1fr)); align-content: initial; gap: 0; padding: 8px; }
+  .ledgerWorkbenchV2.empty .ledgerTimeline li { min-height: 0; grid-template-columns: 1fr; justify-items: center; align-items: initial; gap: 5px; text-align: center; }
+  .ledgerWorkbenchV2.empty .ledgerTimeline li::after { top: 12px; left: calc(50% + 13px); width: calc(100% - 26px); height: 1px; }
+  .ledgerWorkbenchV2.empty .ledgerTimeline li span { text-align: center; }
   .ledgerTimelinePanel { min-height: 190px; }
   .ledgerTimeline { min-height: 145px; grid-template-columns: 1fr; align-content: center; gap: 4px; padding: 8px 11px; }
   .ledgerTimeline li { min-height: 31px; grid-template-columns: 25px minmax(0, 1fr); justify-items: start; align-items: center; gap: 8px; text-align: left; }

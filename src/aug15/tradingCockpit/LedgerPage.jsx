@@ -31,7 +31,19 @@ const money = (value, digits = 2) => finite(value) ? displayMoney(Number(value),
 const quantity = (value) => finite(value) ? Number(value).toLocaleString("en-US", { maximumFractionDigits: 8 }) : unavailable();
 const sideTone = (value) => /short|sell|空|卖/i.test(String(value || "")) ? "negative" : /long|buy|多|买/i.test(String(value || "")) ? "positive" : "neutral";
 const statusTone = (value) => /fail|error|reject|cancel|blocked|risk|异常|失败|拒绝|取消|阻断/i.test(String(value || "")) ? "negative" : /pending|open|working|partial|wait|待|进行/i.test(String(value || "")) ? "warning" : /fill|complete|active|success|approved|protect|已|运行/i.test(String(value || "")) ? "positive" : "neutral";
-const orderStatusFamily = (value) => /open|pending|working|partial|protect/i.test(String(value || "")) ? "working" : /filled|complete/i.test(String(value || "")) ? "filled" : /reject|blocked|risk|cancel/i.test(String(value || "")) ? "blocked" : "other";
+const normalizedStatus = (value) => String(value ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+const WORKING_ORDER_STATUSES = new Set(["open", "pending", "working", "partial", "partially_filled", "entry_pending", "entry_submitted", "protecting", "protecting_degraded"]);
+const FILLED_ORDER_STATUSES = new Set(["filled", "complete", "completed", "entry_filled"]);
+const CANCELED_ORDER_STATUSES = new Set(["canceled", "cancelled"]);
+const BLOCKED_ORDER_STATUSES = new Set(["rejected", "blocked", "risk_blocked", "risk_rejected", "rejected_by_risk"]);
+const orderStatusFamily = (value) => {
+  const status = normalizedStatus(value);
+  if (WORKING_ORDER_STATUSES.has(status)) return "working";
+  if (FILLED_ORDER_STATUSES.has(status)) return "filled";
+  if (CANCELED_ORDER_STATUSES.has(status)) return "canceled";
+  if (BLOCKED_ORDER_STATUSES.has(status)) return "blocked";
+  return "other";
+};
 const fillIntent = (row) => row?.reduceOnly === true || /close|reduce|exit/i.test(String(row?.kind ?? row?.intent ?? row?.purpose ?? "")) ? "reduce" : row?.reduceOnly === false || /entry|open/i.test(String(row?.kind ?? row?.intent ?? row?.purpose ?? "")) ? "open" : "unknown";
 const fillLiquidity = (row) => /taker/i.test(String(row?.liquidity ?? row?.execType ?? "")) ? "taker" : /maker/i.test(String(row?.liquidity ?? row?.execType ?? "")) ? "maker" : "unknown";
 
@@ -93,7 +105,7 @@ function Notices({ data }) {
 function OrderFilters({ filters, symbols, total, onChange }) {
   return <div className="ledgerFilters order" data-cockpit-region="order-filters">
     <span><CircleDot aria-hidden="true"/><b>{t("委托列表", "Order list")}</b><small>{total === null ? unavailable() : t(`${total} 条匹配`, `${total} matches`)}</small></span>
-    <label>{t("状态", "Status")}<select data-order-filter="status" value={filters.status} onChange={(event) => onChange("status", event.target.value)}><option value="all">{t("全部状态", "All statuses")}</option><option value="working">{t("进行中", "Working")}</option><option value="filled">{t("已成交", "Filled")}</option><option value="blocked">{t("拒绝 / 阻断", "Rejected / blocked")}</option><option value="other">{t("其他", "Other")}</option></select></label>
+    <label>{t("状态", "Status")}<select data-order-filter="status" value={filters.status} onChange={(event) => onChange("status", event.target.value)}><option value="all">{t("全部状态", "All statuses")}</option><option value="working">{t("进行中", "Working")}</option><option value="filled">{t("已成交", "Filled")}</option><option value="canceled">{t("已取消", "Canceled")}</option><option value="blocked">{t("拒绝 / 阻断", "Rejected / blocked")}</option><option value="other">{t("其他", "Other")}</option></select></label>
     <label>{t("交易对", "Pair")}<select data-order-filter="symbol" value={filters.symbol} onChange={(event) => onChange("symbol", event.target.value)}><option value="all">{t("全部交易对", "All pairs")}</option>{symbols.map((symbol) => <option value={symbol} key={symbol}>{symbol}</option>)}</select></label>
   </div>;
 }
@@ -120,13 +132,21 @@ function OrderList({ rows, selectedId, page, pages, available, onPage, onSelect 
 
 function OrderDetail({ data, selected, actionsAllowed, action, ui }) {
   const selectedId = orderIdentity(selected);
-  if (!selectedId) return <CockpitPanel className="ledgerOrderDetail empty" region="order-detail" title={t("订单详情", "Order detail")}><CockpitEmpty title={t("未选择有效委托", "No valid order selected")} detail={t("筛选或身份冲突不会回退到另一笔委托。", "Filters or identity conflicts never fall back to another order.")}/></CockpitPanel>;
   const canonicalOrderId = identity(selected?.id);
+  const hasCanonicalSelection = Boolean(selectedId && canonicalOrderId && selectedId === canonicalOrderId);
+  const stages = buildSelectedExecutionStages(data, selected ?? {});
+  const labels = { signal: t("信号", "Signal"), risk: t("风控", "Risk"), routing: t("路由", "Routing"), order: t("委托", "Order"), fill: t("成交", "Fill"), protection: t("保护", "Protection") };
+  const timeline = <CockpitPanel className="ledgerTimelinePanel" region="execution-timeline" title={t("执行时间线", "Execution timeline")} meta={t("严格绑定当前委托", "Selected order only")}>
+    <ol className="ledgerTimeline">{stages.map((stage, index) => { const stageState = stage.state ?? (stage.done ? "complete" : "incomplete"); return <li key={stage.id} data-execution-stage={stage.id} data-stage-state={stageState} className={stageState}><i>{stage.done ? <Check aria-hidden="true"/> : index + 1}</i><span><b>{labels[stage.id]}</b><small>{localizeText(stage.detail, stage.done ? t("已验证", "Verified") : t("未取得证据", "No evidence"))}</small></span></li>; })}</ol>
+  </CockpitPanel>;
+  if (!hasCanonicalSelection) return <div className="ledgerDetailStack">
+    <CockpitPanel className="ledgerOrderDetail empty" region="order-detail" title={t("订单详情", "Order detail")}><CockpitEmpty title={t("未选择有效委托", "No valid order selected")} detail={t("筛选或身份冲突不会回退到另一笔委托。", "Filters or identity conflicts never fall back to another order.")}/></CockpitPanel>
+    {timeline}
+  </div>;
   const exactFills = canonicalOrderId ? objects(data.fills).filter((row) => (identity(row.executionOrderId) ?? identity(row.orderId)) === canonicalOrderId && fillIdentity(row)) : [];
   const planId = planIdentity(selected);
   const plans = planId ? objects(data.tradePlans).filter((row) => identity(row.id) === planId) : [];
   const plan = plans.length === 1 ? plans[0] : null;
-  const stages = buildSelectedExecutionStages(data, selected);
   const exit = actionsAllowed && canonicalOrderId && canonicalOrderId === selectedId ? executionExitAction(selected) : null;
   const facts = [
     [t("委托编号", "Order ID"), selectedId],
@@ -142,16 +162,13 @@ function OrderDetail({ data, selected, actionsAllowed, action, ui }) {
     [t("信号", "Signal"), localizeText(plan?.signal ?? selected.signal, unavailable())],
     [t("关联成交", "Related fills"), String(exactFills.length)]
   ];
-  const labels = { signal: t("信号", "Signal"), risk: t("风控", "Risk"), routing: t("路由", "Routing"), order: t("委托", "Order"), fill: t("成交", "Fill"), protection: t("保护", "Protection") };
   return <div className="ledgerDetailStack">
     <CockpitPanel className="ledgerOrderDetail" region="order-detail" title={t("订单详情", "Order detail")} meta={selectedId} action={<Tone tone={statusTone(selected.status)}>{humanize(selected.status, unavailable())}</Tone>}>
       <article className="ledgerSelectedIdentity" data-order-detail-id={selectedId} data-order-detail-symbol={identity(selected.symbol) ?? ""}><span><small>{t("当前委托", "Selected order")}</small><b>{selectedId}</b></span><b>{identity(selected.symbol) ?? unavailable()}</b></article>
       <dl className="ledgerOrderFacts">{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
       <footer className="ledgerOrderActions"><button type="button" className="cockpitSecondaryButton" onClick={() => ui.setActive("chat")}><Bot aria-hidden="true"/>{t("交给 AI 处理", "Ask AI")}</button>{exit && <button type="button" className="cockpitDangerButton" data-order-exit={exit.intent} onClick={() => requestExecutionExit(action, selected, "manual_ui")}>{exit.label}</button>}</footer>
     </CockpitPanel>
-    <CockpitPanel className="ledgerTimelinePanel" region="execution-timeline" title={t("执行时间线", "Execution timeline")} meta={t("严格绑定当前委托", "Selected order only")}>
-      <ol className="ledgerTimeline">{stages.map((stage, index) => { const stageState = stage.state ?? (stage.done ? "complete" : "incomplete"); return <li key={stage.id} data-execution-stage={stage.id} data-stage-state={stageState} className={stageState}><i>{stage.done ? <Check aria-hidden="true"/> : index + 1}</i><span><b>{labels[stage.id]}</b><small>{localizeText(stage.detail, stage.done ? t("已验证", "Verified") : t("未取得证据", "No evidence"))}</small></span></li>; })}</ol>
-    </CockpitPanel>
+    {timeline}
   </div>;
 }
 
@@ -236,7 +253,8 @@ export function LedgerPage({ data = {}, action, ui = {} }) {
     setSelectedId(id);
   };
 
-  const selectedIdentityProps = bodyVisible && selected ? { "data-selected-order-id": orderIdentity(selected) ?? "" } : {};
+  const selectedCanonicalId = identity(selected?.id);
+  const selectedIdentityProps = bodyVisible && selectedCanonicalId && selectedCanonicalId === orderIdentity(selected) ? { "data-selected-order-id": selectedCanonicalId } : {};
   const metricValue = (value) => value === null ? unavailable() : String(value);
 
   return <div className="cockpitPage cockpitLedgerV2" data-cockpit-page="ledger" data-resource-state={state} {...selectedIdentityProps}>

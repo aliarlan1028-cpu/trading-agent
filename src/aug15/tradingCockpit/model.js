@@ -168,18 +168,28 @@ export function buildSelectedExecutionStages(data = {}, order = {}) {
     : [];
   const plan = planMatches.length === 1 ? planMatches[0] : null;
   const riskChecks = objectRows(data.riskChecks);
-  const exactRiskMatches = canonicalOrderId
-    ? riskChecks.filter((row) => normalizedIdentity(row.executionOrderId) === canonicalOrderId)
-    : [];
-  let risk = exactRiskMatches.length === 1 ? exactRiskMatches[0] : null;
-  if (!exactRiskMatches.length && plan && planId) {
-    const planOwners = authoritativeOrders.filter((row) => planIdentity(row) === planId);
-    const planRiskMatches = riskChecks.filter((row) => (
-      !normalizedIdentity(row.executionOrderId)
-      && planIdentity(row) === planId
-    ));
-    if (canonicalOrderId && planOwners.length === 1 && normalizedIdentity(planOwners[0].id) === canonicalOrderId && planRiskMatches.length === 1) {
-      risk = planRiskMatches[0];
+  const hasExplicitRiskCheckId = hasOwn(selected, "riskCheckId");
+  let risk = null;
+  if (hasExplicitRiskCheckId) {
+    const riskCheckId = normalizedIdentity(selected.riskCheckId);
+    const explicitRiskMatches = riskCheckId
+      ? riskChecks.filter((row) => normalizedIdentity(row.id) === riskCheckId)
+      : [];
+    risk = explicitRiskMatches.length === 1 ? explicitRiskMatches[0] : null;
+  } else {
+    const exactRiskMatches = canonicalOrderId
+      ? riskChecks.filter((row) => normalizedIdentity(row.executionOrderId) === canonicalOrderId)
+      : [];
+    risk = exactRiskMatches.length === 1 ? exactRiskMatches[0] : null;
+    if (!exactRiskMatches.length && plan && planId) {
+      const planOwners = authoritativeOrders.filter((row) => planIdentity(row) === planId);
+      const planRiskMatches = riskChecks.filter((row) => (
+        !normalizedIdentity(row.executionOrderId)
+        && planIdentity(row) === planId
+      ));
+      if (canonicalOrderId && planOwners.length === 1 && normalizedIdentity(planOwners[0].id) === canonicalOrderId && planRiskMatches.length === 1) {
+        risk = planRiskMatches[0];
+      }
     }
   }
   const fills = canonicalOrderId ? objectRows(data.fills).filter((row) => {
@@ -198,11 +208,19 @@ export function buildSelectedExecutionStages(data = {}, order = {}) {
     ...rows(selected.tpAlgoIds)
   ].map(normalizedIdentity).filter(Boolean);
   const hasPersistedProtection = canonicalOrderId && protectionIdentifiers.length > 0;
-  const protectionFailed = /failed|error|requested_unconfirmed|unconfirmed/.test(`${protectionStatus} ${protectionState}`);
+  const protectionFailureStates = new Set(["failed", "error", "requested_unconfirmed", "unconfirmed"]);
+  const protectionNegativeStates = new Set(["inactive", "not_protected"]);
+  const protectionPartialStates = new Set(["stop_only", "degraded"]);
+  const protectionCompleteStates = new Set(["confirmed", "active", "protected"]);
+  const protectionFailed = protectionFailureStates.has(protectionStatus) || protectionFailureStates.has(protectionState) || protectionStatus === "protection_failed";
   const protectionPartial = hasPersistedProtection && !protectionFailed
-    && (protectionStatus === "protecting_degraded" || protectionState === "stop_only" || protectionState === "degraded");
+    && (protectionStatus === "protecting_degraded" || protectionPartialStates.has(protectionState));
+  const protectionStateKnown = Boolean(protectionState);
+  const protectionStateAllowsCompletion = protectionStateKnown
+    ? protectionCompleteStates.has(protectionState)
+    : protectionStatus === "protecting";
   const protectionComplete = hasPersistedProtection && !protectionFailed && !protectionPartial
-    && (protectionStatus === "protecting" || /confirmed|active|protected/.test(protectionState));
+    && !protectionNegativeStates.has(protectionState) && protectionStateAllowsCompletion;
   const protectionDetail = protectionFailed
     ? selected.protectionState ?? selected.protection ?? selected.status ?? null
     : protectionPartial
@@ -210,9 +228,13 @@ export function buildSelectedExecutionStages(data = {}, order = {}) {
       : protectionComplete
         ? selected.protectionState ?? selected.protection ?? protectionIdentifiers[0]
         : null;
+  const riskOutcome = String(risk?.status ?? risk?.decision ?? risk?.result ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const riskPassed = riskOutcome
+    ? new Set(["pass", "passed", "approved", "allowed", "allowed_with_warnings", "ok", "success", "succeeded", "accepted"]).has(riskOutcome)
+    : risk?.passed === true;
   return [
     { id: "signal", done: Boolean(plan), detail: plan?.signal ?? plan?.strategy ?? null },
-    { id: "risk", done: /pass|approved|allowed/i.test(String(risk?.status ?? risk?.decision ?? risk?.result ?? "")), detail: risk?.summary ?? risk?.reason ?? null },
+    { id: "risk", done: Boolean(riskPassed), detail: risk?.summary ?? risk?.reason ?? null },
     { id: "routing", done: Boolean(selected.exchange ?? selected.venue), detail: selected.exchange ?? selected.venue ?? null },
     { id: "order", done: Boolean(canonicalOrderId), detail: canonicalOrderId ? selected.status ?? null : null },
     { id: "fill", done: fills.length > 0, detail: fills.length ? String(fills.length) : null },
