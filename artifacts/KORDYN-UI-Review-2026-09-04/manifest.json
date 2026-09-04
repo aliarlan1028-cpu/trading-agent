@@ -1,0 +1,1163 @@
+{
+  "generatedAt": "2026-09-04",
+  "counts": {
+    "desktopScreenshots": 45,
+    "appScreenshots": 45,
+    "authScreenshots": 7,
+    "overlayScreenshots": 38,
+    "contactSheets": 5,
+    "originalScreenshots": 135
+  },
+  "files": [
+    {
+      "path": "CHATGPT_REVIEW_PROMPT_ZH.md",
+      "bytes": 2804,
+      "sha256": "8ab87ff3285a2ce46de5db0c95365b57aa48771b68248455e8e20c9170e71cc5"
+    },
+    {
+      "path": "README.md",
+      "bytes": 14513,
+      "sha256": "a5ecb844219a9e1cd253f831157e0937e4bbe00b86884188c16ac700008264d7"
+    },
+    {
+      "path": "app-inventory.json",
+      "bytes": 16998,
+      "sha256": "7ce56e03a731db9660589bd8b98c2034fb57dea6818f8c2cc65c081102ee29d4"
+    },
+    {
+      "path": "auth-inventory.json",
+      "bytes": 831,
+      "sha256": "32bbf8a1bd919bcd6eef68b21e34a37b2d31f040f64d09e459adf41eb4d2e822"
+    },
+    {
+      "path": "contact-sheets/01-desktop-all.jpg",
+      "bytes": 476223,
+      "sha256": "ed8d818311988793cd921a6e0914468ec30c898dd07e50fbf14e58f971dbd3d4",
+      "width": 1448,
+      "height": 1925,
+      "format": "jpeg"
+    },
+    {
+      "path": "contact-sheets/02-app-all.jpg",
+      "bytes": 486493,
+      "sha256": "f4bf83217f3692d55abb649b7effa29c8c01983f28a9af5c520baa37ce36de18",
+      "width": 1320,
+      "height": 2264,
+      "format": "jpeg"
+    },
+    {
+      "path": "contact-sheets/03-auth-all.jpg",
+      "bytes": 79240,
+      "sha256": "2c9513c7d6502443e2cb8d1af6f8055cdb58219d75cf5a8a143e03408d5df636",
+      "width": 1320,
+      "height": 524,
+      "format": "jpeg"
+    },
+    {
+      "path": "contact-sheets/04-desktop-overlays.jpg",
+      "bytes": 215985,
+      "sha256": "6ddc01e70be9fcf72f096c2efeeaa73ed69d1ea35d3e749eda2c06af738d59f3",
+      "width": 1448,
+      "height": 860,
+      "format": "jpeg"
+    },
+    {
+      "path": "contact-sheets/05-app-overlays.jpg",
+      "bytes": 219042,
+      "sha256": "c29f51de94ae02c71f83e578185c6bb70ef0c912d963d2975ab6c0a7d6a5b595",
+      "width": 1320,
+      "height": 1136,
+      "format": "jpeg"
+    },
+    {
+      "path": "desktop-inventory.json",
+      "bytes": 15834,
+      "sha256": "1736d82fecf2ba01d282fa441a681efb5914070f104d2f3511692fdc24215475"
+    },
+    {
+      "path": "overlay-inventory.json",
+      "bytes": 2960,
+      "sha256": "6d38e80f5e9a38a384690915d5b68e611a60289b0740af335e7fd7e3fb1a8450"
+    },
+    {
+      "path": "screenshots/app/01-ai-dialog.png",
+      "bytes": 33580,
+      "sha256": "7e002c8ce9ff7513ed6a3dc72041685bd5c8f15d8c676924e21699c7a26b2748",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/02-ai-patrol.png",
+      "bytes": 33580,
+      "sha256": "fe2994b755c6cf1bfa017aef1b49f12b5ed16fee075b2e7b7ac0473b2f707066",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/03-ai-poster.png",
+      "bytes": 33580,
+      "sha256": "7e002c8ce9ff7513ed6a3dc72041685bd5c8f15d8c676924e21699c7a26b2748",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/04-ai-intelligence.png",
+      "bytes": 27683,
+      "sha256": "2f55b812bc4e69b773aaa36e2e7c068211de4cecd51a718ea40d0552d38c1725",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/05-ai-watch.png",
+      "bytes": 31596,
+      "sha256": "06493dd6415984ebebef80eacb898fae5e1334b6679f06f35afc13a7cbd7b218",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/06-trade-overview.png",
+      "bytes": 32079,
+      "sha256": "9e456f0ddc665ba4ce3b3f06c1d6845688b5c277276060684c7a3c5983d44e90",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/07-trade-market.png",
+      "bytes": 32079,
+      "sha256": "9e456f0ddc665ba4ce3b3f06c1d6845688b5c277276060684c7a3c5983d44e90",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/08-trade-account.png",
+      "bytes": 24343,
+      "sha256": "f4eaed70c936124b03d1cc9e1bb78b9f24cf5d400f47315eb7af6fc7890c530e",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/09-trade-positions.png",
+      "bytes": 34087,
+      "sha256": "8b4b4a5c3e74abab71718861d46af360d6929fb47deb65275cccb2d07cf63d0e",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/10-trade-protection.png",
+      "bytes": 34087,
+      "sha256": "8b4b4a5c3e74abab71718861d46af360d6929fb47deb65275cccb2d07cf63d0e",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/11-trade-execution-review.png",
+      "bytes": 32823,
+      "sha256": "b1886c46e9bdb7ab1df641f57841c174663c580829e5b8cc481a74176b82ee8d",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/12-trade-orders-fills.png",
+      "bytes": 23973,
+      "sha256": "252f7830e083bbef67900f10f83004ecf28d8c5e72b65e7fab97ccf5cfc848ea",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/13-trade-orders.png",
+      "bytes": 23579,
+      "sha256": "0fba2b7d11b98b44476f7d4188266351772d338410147a25ae39f99fccb8ffb1",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/14-trade-fills.png",
+      "bytes": 19534,
+      "sha256": "e8835eb388858f3f087d0b519c1b2d9bde570329fc704e4595ed195af093bd2a",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/15-trade-reviews.png",
+      "bytes": 29536,
+      "sha256": "ed31e51c66f1c1cf52c2f976afd828c77a69794c3fb96b098ee4095c9d3341d6",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/16-trade-review-detail.png",
+      "bytes": 25322,
+      "sha256": "d4d4754528884747d3fbffe775c499a0152b971a1c346d6214ff7ac7846f1bef",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/17-research-overview.png",
+      "bytes": 34921,
+      "sha256": "60160388e7376b0dcfdadc1fc103efdc7881a9cf823897cf489c6ed87ab77f63",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/18-research-knowledge.png",
+      "bytes": 34921,
+      "sha256": "60160388e7376b0dcfdadc1fc103efdc7881a9cf823897cf489c6ed87ab77f63",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/19-research-strategies.png",
+      "bytes": 24405,
+      "sha256": "9afb6509c89a5d99fd30ab1306a3d02e001ed8be58d6f815c8a3967bd7a420e2",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/20-research-strategy-studio.png",
+      "bytes": 29693,
+      "sha256": "c21b30151d34196ec773826d986031057ce79c66f33f049088493e6be5ac8cc3",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/21-research-strategy-market.png",
+      "bytes": 14971,
+      "sha256": "69fa1c99067195683e39a357bdd40b94a667b20aed89c36757ac937ee8ba47ab",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/22-research-strategy-backtests.png",
+      "bytes": 26752,
+      "sha256": "38f6d1e9527da6f89c419913b763e32b1577ad74a6d9277992a25c748b04d521",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/23-research-capabilities.png",
+      "bytes": 29152,
+      "sha256": "c0db0a39e7ed162c88bfe89af93336855f3058288ff8f6bbeb8295d2d2650ef5",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/24-risk-overview.png",
+      "bytes": 28278,
+      "sha256": "16ec8c3ab6fd6bf654db4d254b05bf1db3ddc95ada63676c7aa7fa11996018fc",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/25-risk-events.png",
+      "bytes": 16362,
+      "sha256": "22e6740d7dfbc60cb85b15035f327751935b42c208fbcf2ef297cefd5c1b45de",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/26-risk-boundaries.png",
+      "bytes": 26113,
+      "sha256": "cf8218c17267f7fe93087921ba7e49bce5eef31a333e0bc853c0575fbf8f3495",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/27-risk-rules.png",
+      "bytes": 14086,
+      "sha256": "049cee1fdaef5f84ebd7ac3f11331c126be67ac603cebba8f89c20363c37a01e",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/28-risk-key-security.png",
+      "bytes": 29790,
+      "sha256": "ec61df9f69f6eabcee8e935ca35c185b53a9bbc1a98b07a186971cb8a48f3cd2",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/29-operations-overview.png",
+      "bytes": 25272,
+      "sha256": "06141999a3fec60e270ddb33cf3986dfd4d8ce481c9a6ddc035cbf54d2e8616e",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/30-operations-events.png",
+      "bytes": 29799,
+      "sha256": "1e852ba3283f24437f5a089312d723821caeb2a2002d76e7f382683ee89760e3",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/31-operations-tasks.png",
+      "bytes": 29203,
+      "sha256": "8eb2d6bd48e025f2be51b84885c8ff8a25dbb2566d289f995da8203977e64649",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/32-operations-audit.png",
+      "bytes": 24668,
+      "sha256": "4fd584aecf3d2e8ee3b1f751ab70e4d471bb8c8412f3e58ee5f2fe6abdf7282b",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/33-operations-notifications.png",
+      "bytes": 19728,
+      "sha256": "adbe791082983911606cad65b9085348877e614230a3c990ccce349e6c692fe7",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/34-settings-overview.png",
+      "bytes": 28368,
+      "sha256": "16b9d7758d6b5fcbc4c8bcc15e74b0cd34f436c14830d6b02487af84f86bee89",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/35-settings-basics.png",
+      "bytes": 22848,
+      "sha256": "c593ac9f06a231158d55fb5663976d01260a3c17361ced9acbe84ca967cf578d",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/36-settings-runtime.png",
+      "bytes": 29368,
+      "sha256": "09c07ca80ad1bfd76d87a9826b2142d37b0b9e2091df168b3d865272e010e3d2",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/37-settings-network.png",
+      "bytes": 27242,
+      "sha256": "d9a2f344f625899bba693c74335bbbfe59e69c0ea0514a2af2fc91327de5a17e",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/38-settings-data-backup.png",
+      "bytes": 27061,
+      "sha256": "50eb6e6c2faa13fe4f23195c4e8ee255b73836c5d3b9e20fe27a91e9e3baf938",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/39-settings-security.png",
+      "bytes": 29790,
+      "sha256": "ec61df9f69f6eabcee8e935ca35c185b53a9bbc1a98b07a186971cb8a48f3cd2",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/40-settings-exchanges.png",
+      "bytes": 31671,
+      "sha256": "789cb65584139ca25eac42c2ef0ee63896f91575ca41af9912948cebf7b4c75b",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/41-settings-notifications.png",
+      "bytes": 30216,
+      "sha256": "742c7be67807a44f92c5ffd1b163e0301f99515424ba343d917183cda2d78c52",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/42-settings-event-sources.png",
+      "bytes": 32486,
+      "sha256": "d7165bde5688ff159531e6e5251ca84ba3a3fd121d635a2a01e4e93637c2b969",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/43-settings-models.png",
+      "bytes": 24875,
+      "sha256": "9e269d9e45c529447bf7397ac52f1a13ae1ab1de737edd82c871ef95dda01cd4",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/44-settings-agents.png",
+      "bytes": 8161,
+      "sha256": "15c8cd1709542cfc2e531e82b4c2bcfc24cc4b427edffa72e4ffbef2265abc1a",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/app/45-settings-users.png",
+      "bytes": 8161,
+      "sha256": "15c8cd1709542cfc2e531e82b4c2bcfc24cc4b427edffa72e4ffbef2265abc1a",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/auth/01-web-marketing-home.png",
+      "bytes": 99196,
+      "sha256": "bc564cb998406916f18027ebd2abf81179165faae9994e9da5a78475d69e2590",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/auth/02-web-login-modal.png",
+      "bytes": 59733,
+      "sha256": "196ecea1a802feb2ccd45f9cbeb22b52d2f49a56151fe73d188b7a7fbd7fcfcc",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/auth/03-web-subscribe-modal.png",
+      "bytes": 84857,
+      "sha256": "dcdc0e00a5c1438aa42b733e182420ca7d04aa650093259820a70a85924892c4",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/auth/04-app-login.png",
+      "bytes": 27609,
+      "sha256": "5b83f17ceb2912b32217b129e22bf1657b644791718050262869ff6c504949b0",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/auth/05-app-login-2fa.png",
+      "bytes": 30402,
+      "sha256": "d1bbde99719083b527283ba46b62faca219fb564dc492a34f1e67c746afa6509",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/auth/06-app-register.png",
+      "bytes": 30064,
+      "sha256": "54c7a871b8dc96c611874f4ef3424a8f14ff3e5a0bcc9ec2138cbcacef8de120",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/auth/07-app-registration-closed.png",
+      "bytes": 28115,
+      "sha256": "f05b2dfa2e133aa46ffe2d3036a5ff53fa0d158530b760e5dd4f77194f9cfa8f",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/01-ai-dialog.png",
+      "bytes": 99239,
+      "sha256": "1f485d5c5cd769d1566476a606b407d98a5272dad8fc0887ce3e7a264debb6d4",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/02-ai-patrol.png",
+      "bytes": 99250,
+      "sha256": "9075c20214a2d52968dfe47871eb210486302a2ad3dfc2d12b291407d8a2f62a",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/03-ai-poster.png",
+      "bytes": 99238,
+      "sha256": "adbe751ab866a957160ef601f085f18f16a3423ece8690b40b5cec031e1b5cb3",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/04-ai-intelligence.png",
+      "bytes": 89978,
+      "sha256": "30211b623b52824d7c4ef6244afb480b0c649bfc36c4ff3d595845b839c4ef16",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/05-ai-watch.png",
+      "bytes": 95817,
+      "sha256": "6f0f3447aa0e9bb320098435353947e613a084373a5175aa26b163693a68fe51",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/06-trade-overview.png",
+      "bytes": 97409,
+      "sha256": "d65c439598413812cc69d9886f0a3201676c1e94c47f9e4793cbc125452849c7",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/07-trade-market.png",
+      "bytes": 70867,
+      "sha256": "6f1791bf223eb12792432810f27289409b1b7baf207510435e4e9ef3f9c12ce8",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/08-trade-account.png",
+      "bytes": 97409,
+      "sha256": "d65c439598413812cc69d9886f0a3201676c1e94c47f9e4793cbc125452849c7",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/09-trade-positions.png",
+      "bytes": 71800,
+      "sha256": "65b5c437a00137ead1149be7d00387c0d90bea705b16def0de67c05dcba84625",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/10-trade-protection.png",
+      "bytes": 71800,
+      "sha256": "65b5c437a00137ead1149be7d00387c0d90bea705b16def0de67c05dcba84625",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/11-trade-execution-review.png",
+      "bytes": 74725,
+      "sha256": "79c557c97e3226a6df6440ae51f5f3cbdc776d5b275c13770e2e9652cb73e4cc",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/12-trade-orders-fills.png",
+      "bytes": 67880,
+      "sha256": "3f6d6ed75dd9f71b042dad4ff15ddd30a4a5b3a4c6be1ec3cc7a229f6ead00eb",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/13-trade-orders.png",
+      "bytes": 67880,
+      "sha256": "3f6d6ed75dd9f71b042dad4ff15ddd30a4a5b3a4c6be1ec3cc7a229f6ead00eb",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/14-trade-fills.png",
+      "bytes": 67880,
+      "sha256": "3f6d6ed75dd9f71b042dad4ff15ddd30a4a5b3a4c6be1ec3cc7a229f6ead00eb",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/15-trade-reviews.png",
+      "bytes": 74725,
+      "sha256": "79c557c97e3226a6df6440ae51f5f3cbdc776d5b275c13770e2e9652cb73e4cc",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/16-trade-review-detail.png",
+      "bytes": 74845,
+      "sha256": "14643d4c7903f089ba3e844c9793c74099f24594e91a10760693462b22cfc6b3",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/17-research-overview.png",
+      "bytes": 82563,
+      "sha256": "93a5ae49bbcd51a4001d18f6f8a8da37b7595d563d9978d4182133d4249570f7",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/18-research-knowledge.png",
+      "bytes": 82563,
+      "sha256": "93a5ae49bbcd51a4001d18f6f8a8da37b7595d563d9978d4182133d4249570f7",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/19-research-strategies.png",
+      "bytes": 94417,
+      "sha256": "68119e4eae2cb4abd8c1f391d044174bcda7ba073313d077226740e27b87ac79",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/20-research-strategy-studio.png",
+      "bytes": 90254,
+      "sha256": "f7d81800773bdb2d7ba712b218332de66aa777bcd9b72fc55dd74a1846a90726",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/21-research-strategy-market.png",
+      "bytes": 50754,
+      "sha256": "9351f2c5703b0b90bdddb3e6b1b31949bb1bb663bee42e4a5137d6d86d7b1d94",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/22-research-strategy-backtests.png",
+      "bytes": 80139,
+      "sha256": "bf4def3a7267fc46128eb1e9c8b95509c925afa5987a66f3ae69532f500ae7ac",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/23-research-capabilities.png",
+      "bytes": 70363,
+      "sha256": "492e6285c87962eca892aaf6660bf17cd2caaf681633d86d10721771c4ea4bb8",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/24-risk-overview.png",
+      "bytes": 95724,
+      "sha256": "177658d1f82a0b1f999ed183981d11a44d8eadf1206ddf010040564eff5c8d06",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/25-risk-events.png",
+      "bytes": 59812,
+      "sha256": "980a35e37f84700f23a199eb30ce18094c24ee3eb077d8a570a26bd626f85c79",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/26-risk-boundaries.png",
+      "bytes": 128260,
+      "sha256": "7e41d65da7c5f29a184327e628de244a1532dcb534b807239cdc7fdd98920e93",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/27-risk-rules.png",
+      "bytes": 76713,
+      "sha256": "d31c8be73e4c83a58dd85d2882b3c47f9c2dcb628bc1483700bab327d96f7a6c",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/28-risk-key-security.png",
+      "bytes": 63426,
+      "sha256": "167180da9d09992d0d2bfd10d21738c6184841494d069d8e370d221b02cd367d",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/29-operations-overview.png",
+      "bytes": 87224,
+      "sha256": "7a5301a81c2f17146d2ee8696daf2ec7f7d5dc4f56bcf4a4a7543f4f4cc97a74",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/30-operations-events.png",
+      "bytes": 79366,
+      "sha256": "cd17107191d9becd6076f2b2cdcc95c496f7d15d6940041f1574042690e4604c",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/31-operations-tasks.png",
+      "bytes": 77152,
+      "sha256": "fc848ccfbfd212cc3c8840a1aaa79e541b08cdaf88e231490600706f2ed06b78",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/32-operations-audit.png",
+      "bytes": 82047,
+      "sha256": "7e1f551520a54c0320bd090d76230fb19e9056cd744eb0521369e3c4b0d3cd69",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/33-operations-notifications.png",
+      "bytes": 83624,
+      "sha256": "d4812b83306eca9b00b7eea76843c81e33c3b1f39da32c8fc20c8d3e2fe48e10",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/34-settings-overview.png",
+      "bytes": 85722,
+      "sha256": "9a7de381add1285961988a1531bbaed91e2ffeb44263e71f18d6d760d6f666cd",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/35-settings-basics.png",
+      "bytes": 87224,
+      "sha256": "78fb04d0fd69958f6bf75e3fdc8ca6d802d4950894ddc069237d4eac8095ced3",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/36-settings-runtime.png",
+      "bytes": 87224,
+      "sha256": "78fb04d0fd69958f6bf75e3fdc8ca6d802d4950894ddc069237d4eac8095ced3",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/37-settings-network.png",
+      "bytes": 82672,
+      "sha256": "55c49d4f1f771decea299382bb051a3e76aa0a38c90798043e0d846ae81fb595",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/38-settings-data-backup.png",
+      "bytes": 80392,
+      "sha256": "511e206ca623af24eae56969d88f4e512928348d3a5fcb40c085c2b599c1990c",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/39-settings-security.png",
+      "bytes": 80649,
+      "sha256": "ffbb3ca5a79db032e0e8691f91eda1c4124f7d4fbc8b36ba2cd355be6bfbf071",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/40-settings-exchanges.png",
+      "bytes": 59304,
+      "sha256": "089eafacbef1a0ee9ca08ceed9deb04990f9f1e54eb5647c7711818fb07a3bc7",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/41-settings-notifications.png",
+      "bytes": 69515,
+      "sha256": "a1778d1c03706f1cdc3e2faad20e743ed6da38b80c786beb6135dc976c41aa6f",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/42-settings-event-sources.png",
+      "bytes": 68104,
+      "sha256": "aa68408c954cc447840142806f8c7932addef624b7f7b47ca0bc40ba94fbbf0b",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/43-settings-models.png",
+      "bytes": 52256,
+      "sha256": "8f50ab190341a2fa1ffba7eaf00ae6a592fdc5357c8a252e5d5a85fc02fc69b3",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/44-settings-agents.png",
+      "bytes": 73367,
+      "sha256": "a8903c930cf88f4a7a46c6d36f79cf4f66353f93a66d54da31d9f1f8cba8a53a",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/desktop/45-settings-users.png",
+      "bytes": 88908,
+      "sha256": "32c83b36a1d7d1219f40f316670d2bcf6453ee48095d75c549cd5dd8fe6f79ac",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/app-01-panel-mandate.png",
+      "bytes": 30019,
+      "sha256": "aa8e316502ba84b0d0b418efd38dbf8fda661ef7e20e78a899996f888f51dbab",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/app-02-panel-riskRules.png",
+      "bytes": 27302,
+      "sha256": "a534dd04ff1063e25cb550f434f0bf8fddcef92be95f8c8984b5f24039ec54a1",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/app-03-panel-ip.png",
+      "bytes": 14680,
+      "sha256": "e8a122bee737a58374737e3d8ef477d290ce1401beba7c6ba5270919a9c940bc",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/app-04-panel-eventRule.png",
+      "bytes": 27892,
+      "sha256": "206f15ff85981c106983bcaaa11ac2b7de175b94cd66d48a9a69be6a9a83fb1a",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/app-05-panel-knowledgeImport.png",
+      "bytes": 25694,
+      "sha256": "ca97b9b9ad887303b6669a623b887e9858c7abdff7525581739ae24d25122a5c",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/app-06-panel-knowledgeList.png",
+      "bytes": 18831,
+      "sha256": "2cf8072ff78819d57726d1cc060114297ede74cedf70012a1694f564d7ce4d4b",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/app-07-panel-ruleLibrary.png",
+      "bytes": 49821,
+      "sha256": "4535c1f0cbbaa9dc68e25ce8a674103439ec41db27ae1849e075a25a07015fcd",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/app-08-panel-riskIncidents.png",
+      "bytes": 18252,
+      "sha256": "777ab7d1cd121467472d6ec6794ada3eb609712c1e24092db0ab2631329094db",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/app-09-panel-skillImport.png",
+      "bytes": 31480,
+      "sha256": "2b217da56ae274a21d4611979860d34cd10b78378c2eafff5bf1ef144955f92a",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/app-10-panel-taskManager.png",
+      "bytes": 30635,
+      "sha256": "51d6777f8949afbd800c87d776418df0dc46923953478faf928aeda148c74ff8",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/app-11-panel-eventSources.png",
+      "bytes": 33894,
+      "sha256": "984fe44d0877caff690e9cf378d9335424d73f2fdfe021c050a56f1b2b4685b3",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/app-12-panel-auditChain.png",
+      "bytes": 31581,
+      "sha256": "33271d06ab7407918efa9b84611800be0aca380d10cea8166c13311481397c79",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/app-13-panel-executionDetail.png",
+      "bytes": 20380,
+      "sha256": "5f64ae4ed6462552d245a8aebcb4b5c810fc5b8e26278f9ebe06f415842950d0",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/app-14-more-drawer.png",
+      "bytes": 26854,
+      "sha256": "efbe5c10272c4febfcb200325053eba21bb7fe4c6281c3609f68c6ca09f3d149",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/app-15-emergency-stop-confirm.png",
+      "bytes": 28437,
+      "sha256": "becf5622151a6e03503c182428a5659f44babbd53e2bf40e808b45dc80a4aba4",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/app-16-market-pair-sheet.png",
+      "bytes": 28839,
+      "sha256": "f47dab41a1c979f8d9a35de102a4ed15b74a079fb1c259d02aa2ff35a89fa093",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/app-17-capability-detail-sheet.png",
+      "bytes": 20152,
+      "sha256": "6dd0016ca607c72aa9d5da3309efa9d96a061a28531490e37cdd2505e6207170",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/app-18-review-detail-sheet.png",
+      "bytes": 24578,
+      "sha256": "c2b869691a9a8c7009651b6ea697502ef458a5e70639cf9bfbc462f8f98f51c2",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/app-19-research-detail-sheet.png",
+      "bytes": 19630,
+      "sha256": "9b7a21efe636fc41345942de1faf39b0bd39a0f4ddd54a10f2f64296f24cbca0",
+      "width": 390,
+      "height": 844,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/desktop-01-panel-mandate.png",
+      "bytes": 119460,
+      "sha256": "9ba333b2daa507edd685d16dacaf17d173349aef558ccda3ee046438deefb74c",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/desktop-02-panel-riskRules.png",
+      "bytes": 80648,
+      "sha256": "4de94ec974972970037bb11c6bef7cb5aa29131784c7064008cf90c39c0a197a",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/desktop-03-panel-ip.png",
+      "bytes": 58476,
+      "sha256": "5685a38a3959f5069ce89721cfb362f6369e5f77bad128374dcbc4536c420a5b",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/desktop-04-panel-eventRule.png",
+      "bytes": 67580,
+      "sha256": "a0b9fcd1af439e9c86fe7f374cbc96e990534c46e5ab90a59e9fb898e968ae31",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/desktop-05-panel-knowledgeImport.png",
+      "bytes": 75536,
+      "sha256": "bda5d94183fe11edf1932daf9e20be9a2ff88728318c7204a2cb42e197365c3d",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/desktop-06-panel-knowledgeList.png",
+      "bytes": 67952,
+      "sha256": "5a21cfaed68b8a19d52d25b9eed97f864f4abef509838ecacfcd0bbe0bb40715",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/desktop-07-panel-ruleLibrary.png",
+      "bytes": 104757,
+      "sha256": "ff4a841de560418e6f952348cd18d40e5faa50e6904d318a68ce2c5747452d9f",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/desktop-08-panel-riskIncidents.png",
+      "bytes": 73906,
+      "sha256": "9c1ef6ca51d11c4a2afd330abdb184659d44dcdaaf9a33de476cf0a9e394060a",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/desktop-09-panel-skillImport.png",
+      "bytes": 71883,
+      "sha256": "a91f3b3eb15774d64cb9e805c9bcaa20d6940c2e01c140ab72be70eb8edd2eb7",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/desktop-10-panel-taskManager.png",
+      "bytes": 81024,
+      "sha256": "15c6e1ce786b4309ddbd577ef6367218595ee92fb169a0c176d01085b6141d71",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/desktop-11-panel-eventSources.png",
+      "bytes": 75545,
+      "sha256": "a62b32304e0ad1a2bf0166f844ddccd1d1ba6b02a79f7e6a24591466ea91a632",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/desktop-12-panel-auditChain.png",
+      "bytes": 79329,
+      "sha256": "08417b7f845abf0763c74d92f4815204737be12241125e88768642f54b00634b",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/desktop-13-panel-executionDetail.png",
+      "bytes": 59350,
+      "sha256": "f68b7c4984a7d9730806ee52ddd9ca58a6490f8fe7c2953320330dfa9107a856",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/desktop-14-global-search.png",
+      "bytes": 102027,
+      "sha256": "727b418c13f201307964bd4b10a798f6cf57d6be923527cba1d52a5d27f53f77",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/desktop-15-emergency-stop-confirm.png",
+      "bytes": 104169,
+      "sha256": "7e6e17db8e2f6d0e03a8715cd4f37c360d2bf062afa56e9ce5382b79c9210026",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/desktop-16-language-menu.png",
+      "bytes": 99404,
+      "sha256": "088cac077aea2c2b0463bc3fcf44c34b4fd22a3dff0e203a902a735ccb51987f",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/desktop-17-account-dialog.png",
+      "bytes": 103323,
+      "sha256": "fc34d80d476a564ef6c10f434f5fc1c6621f5f76dde1c59c1ba44b92bd7046bf",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/desktop-18-support-assistant.png",
+      "bytes": 104533,
+      "sha256": "6c7898e20c8255f4179e41f96f7456d2ef15d19c9323fcf29f3efee59198fb1e",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    },
+    {
+      "path": "screenshots/overlays/desktop-19-capability-install.png",
+      "bytes": 74709,
+      "sha256": "a5c2a3ca203c5559e38691f4ab329ba66679b149bc8bc76aeeb085ec940dd645",
+      "width": 1440,
+      "height": 900,
+      "format": "jpeg"
+    }
+  ]
+}

@@ -16,6 +16,8 @@ test("static delivery assigns documents, cache policy, and a self-hosted CSP", (
   assert.equal(staticDocumentForPath("/landing.html"), "landing.html");
   assert.equal(staticDocumentForPath("/app"), "index.html");
   assert.equal(staticDocumentForPath("/app/settings"), "index.html");
+  assert.equal(staticDocumentForPath("/app/trade/positions"), "index.html");
+  assert.equal(staticDocumentForPath("/app/research/strategies/backtests"), "index.html");
   assert.equal(cacheControlForStatic("/dist/assets/landing-abc.css"), "public, max-age=31536000, immutable");
   assert.equal(cacheControlForStatic("/dist/landing.html"), "no-cache");
   assert.doesNotMatch(staticContentSecurityPolicy(), /fonts\.googleapis|fonts\.gstatic/);

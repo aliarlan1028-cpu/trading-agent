@@ -4,6 +4,9 @@ data/db.json
 data/trading-agent.sqlite*
 docs/rendered-unified/
 .env
+.env.*
+!.env.example
+!.env.*.example
 .DS_Store
 *.log
 backups/

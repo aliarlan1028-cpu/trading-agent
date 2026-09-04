@@ -1,0 +1,44 @@
+[
+  {
+    "index": 1,
+    "surface": "desktop web",
+    "title": "营销首页",
+    "file": "01-web-marketing-home.png"
+  },
+  {
+    "index": 2,
+    "surface": "desktop web",
+    "title": "登录弹窗",
+    "file": "02-web-login-modal.png"
+  },
+  {
+    "index": 3,
+    "surface": "desktop web",
+    "title": "订阅申请弹窗",
+    "file": "03-web-subscribe-modal.png"
+  },
+  {
+    "index": 4,
+    "surface": "APP",
+    "title": "登录",
+    "file": "04-app-login.png"
+  },
+  {
+    "index": 5,
+    "surface": "APP",
+    "title": "登录 / 2FA",
+    "file": "05-app-login-2fa.png"
+  },
+  {
+    "index": 6,
+    "surface": "APP",
+    "title": "注册与订阅",
+    "file": "06-app-register.png"
+  },
+  {
+    "index": 7,
+    "surface": "APP",
+    "title": "注册关闭状态",
+    "file": "07-app-registration-closed.png"
+  }
+]

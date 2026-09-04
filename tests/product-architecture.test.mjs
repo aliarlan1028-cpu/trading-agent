@@ -50,6 +50,7 @@ const desktopCases = [
   ["systemSettings", "configuration", "overview", "systemSettings", null],
   ["systemSettings:trading", "configuration", "trading-runtime", "systemSettings", null],
   ["systemSettings:risk", "configuration", "risk-rules", "systemSettings", null],
+  ["systemSettings:runtime", "configuration", "runtime", "systemSettings", null],
   ["systemSettings:event-sources", "configuration", "event-sources", "systemSettings", null],
   ["systemSettings:models", "configuration", "models", "systemSettings", null],
   ["systemSettings:base:proxy", "configuration", "network", "systemSettings", null],
@@ -95,6 +96,7 @@ test("mobile roots follow product workspaces rather than individual features", (
   assert.equal(resolveMobileRoute("auditSystem").subPage, "audit");
   assert.equal(resolveMobileRoute("systemSettings").workspace, "configuration");
   assert.equal(resolveMobileRoute("systemSettings:trading").subPage, "settings:trading");
+  assert.equal(resolveMobileRoute("systemSettings:runtime").subPage, "settings:runtime");
   assert.equal(resolveMobileRoute("riskMandate").subPage, "boundaries");
   assert.equal(resolveMobileRoute("eventRisk").workspace, "control");
   assert.equal(resolveMobileRoute("eventRisk").route, "riskHub");

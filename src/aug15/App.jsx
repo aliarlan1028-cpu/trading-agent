@@ -30,6 +30,7 @@ import { isNativeApp } from "./lib.jsx";
 import { ConfirmHost } from "./confirm.jsx";
 import { hasNewWebRelease, normalizeRelease } from "./releaseUpdate.js";
 import { resolveDesktopRoute } from "../productArchitecture.js";
+import { appPathForRoute, appRouteFromPath, syncAppHistory } from "../appUrlState.js";
 import { cockpitRouteFromHistory, cockpitRouteFromPath, syncCockpitHistory } from "../cockpitUrlState.js";
 import { useDialogFocus } from "../useDialogFocus.js";
 import {
@@ -449,15 +450,14 @@ export function August15App() {
 const isRecognizedHistoryRoute = (route) => resolveDesktopRoute(route).recognized;
 
 export function August15AuthenticatedShell({ api, lang, switchLang }) {
-  const initialCockpitRoute = cockpitRouteFromPath(globalThis.location?.pathname);
-  const initialCockpitResolution = initialCockpitRoute ? resolveDesktopRoute(initialCockpitRoute) : null;
-  const initialCockpitTab = initialCockpitResolution?.tab === "account" ? "overview" : initialCockpitResolution?.tab === "protection" ? "positions" : initialCockpitResolution?.tab;
-  const [active, setActive] = useState(initialCockpitRoute ? "cockpit" : "chat");
-  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState(["overview", "market", "positions", "execution", "ledger"].includes(initialCockpitTab) ? initialCockpitTab : initialCockpitRoute ? "execution" : "dialog");
+  const [active, setActive] = useState("chat");
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState("dialog");
   const [activeStrategyTab, setActiveStrategyTab] = useState("catalog");
   const [activeSettingsTab, setActiveSettingsTab] = useState("overview");
-  const [activeReviewId, setActiveReviewId] = useState(initialCockpitResolution?.objectId || "");
-  const [activeRoute, setActiveRoute] = useState(initialCockpitRoute || "chat");
+  const [activeSettingsSection, setActiveSettingsSection] = useState("environment");
+  const [activeReviewId, setActiveReviewId] = useState("");
+  const initialBrowserRoute = useRef(cockpitRouteFromHistory(globalThis.location?.pathname, globalThis.history?.state) || appRouteFromPath(globalThis.location?.pathname) || "chat");
+  const [activeRoute, setActiveRoute] = useState(initialBrowserRoute.current);
   const [selectedShellObject, setSelectedShellObject] = useState(null);
   const [panel, setPanel] = useState("");
   const isMobileViewport = useIsMobileViewport();
@@ -466,19 +466,26 @@ export function August15AuthenticatedShell({ api, lang, switchLang }) {
     if (data) ensureSection(active);
   }, [active, Boolean(data)]);
   useEffect(() => {
-    const applyCockpitLocation = (event) => {
-      const route = cockpitRouteFromHistory(window.location.pathname, event.state, { isRecognizedRoute: isRecognizedHistoryRoute });
+    const applyLocation = (event) => {
+      const route = cockpitRouteFromHistory(window.location.pathname, event.state, { isRecognizedRoute: isRecognizedHistoryRoute }) || appRouteFromPath(window.location.pathname);
       const safeRoute = route && resolveDesktopRoute(route).recognized ? route : route ? "chat" : null;
-      if (safeRoute) navigate(safeRoute, { syncHistory: false });
+      if (safeRoute) navigate(safeRoute, { historyMode: "none" });
     };
-    window.addEventListener("popstate", applyCockpitLocation);
-    return () => window.removeEventListener("popstate", applyCockpitLocation);
+    navigate(initialBrowserRoute.current, { historyMode: window.location.pathname === "/app" || window.location.pathname === "/app/" ? "replace" : "none" });
+    window.addEventListener("popstate", applyLocation);
+    return () => window.removeEventListener("popstate", applyLocation);
   }, []);
-  function navigate(next, { syncHistory = true } = {}) {
+  function navigate(next, { historyMode = "push" } = {}) {
     const requested = String(next || "chat");
-    if (!isNativeApp && syncHistory) syncCockpitHistory(requested);
-    setActiveRoute(requested);
-    const resolved = resolveDesktopRoute(requested);
+    if (!isNativeApp) {
+      const cockpitSynced = syncCockpitHistory(requested, { mode: historyMode });
+      const currentPath = globalThis.location?.pathname || "";
+      const knownNonCockpitPath = currentPath !== "/app" && currentPath !== "/app/" && !cockpitRouteFromPath(currentPath) && appRouteFromPath(currentPath);
+      if (!cockpitSynced && knownNonCockpitPath) syncAppHistory(requested, { mode: historyMode });
+    }
+    const canonicalRequested = appRouteFromPath(appPathForRoute(requested)) || requested;
+    setActiveRoute(canonicalRequested);
+    const resolved = resolveDesktopRoute(canonicalRequested);
     if (resolved.recognized) {
       const tab = resolved.tab;
       if (resolved.section === "chat") {
@@ -494,14 +501,19 @@ export function August15AuthenticatedShell({ api, lang, switchLang }) {
         return;
       }
       if (resolved.section === "researchCenter") {
-        if (["reviews", "owner"].includes(tab)) { setActiveReviewId(resolved.objectId || ""); setActiveWorkspaceTab("execution"); setActive("cockpit"); return; }
+        if (["reviews", "owner"].includes(tab)) {
+          setActiveReviewId(resolved.objectId || "");
+          setActiveWorkspaceTab("execution");
+          setActive("cockpit");
+          return;
+        }
         setActiveStrategyTab(resolved.strategyTab || "catalog");
         setActiveWorkspaceTab(tab === "map" ? "knowledge" : ["knowledge", "strategy", "capabilities"].includes(tab) ? tab : "knowledge");
         setActive("researchCenter");
         return;
       }
       if (resolved.section === "riskCenter") {
-        setActiveWorkspaceTab(tab === "events" ? "posture" : ["posture", "mandate", "rules"].includes(tab) ? tab : "posture");
+        setActiveWorkspaceTab(["posture", "events", "mandate", "rules", "keys"].includes(tab) ? tab : "posture");
         setActive("riskCenter");
         return;
       }
@@ -511,9 +523,10 @@ export function August15AuthenticatedShell({ api, lang, switchLang }) {
         return;
       }
       if (resolved.section === "systemSettings") {
-        const oldSettingsTab = ["overview", "base", "exchange", "models", "agents", "users"].includes(resolved.settingsTab)
+        const oldSettingsTab = ["overview", "base", "exchange", "notifications", "event_sources", "models", "agents", "users"].includes(resolved.settingsTab)
           ? resolved.settingsTab
-          : ["trading", "risk", "notifications", "event_sources"].includes(resolved.settingsTab) ? "base" : "overview";
+          : "overview";
+        setActiveSettingsSection(resolved.settingsSection || "environment");
         setActiveSettingsTab(oldSettingsTab);
         setActive("systemSettings");
         return;
@@ -553,9 +566,9 @@ export function August15AuthenticatedShell({ api, lang, switchLang }) {
     if (active === "researchCenter") return <ResearchCenter key={`research:${activeWorkspaceTab}:${activeStrategyTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} strategyInitialTab={activeStrategyTab} />;
     if (active === "riskCenter") return <RiskCenter key={`risk:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
     if (active === "operationsCenter") return <OperationsCenter key={`operations:${activeWorkspaceTab}`} data={data} action={action} ui={ui} initialTab={activeWorkspaceTab} />;
-    if (active === "systemSettings") return <SettingsConcept data={data} action={action} ui={ui} activeTab={activeSettingsTab} onTabChange={setActiveSettingsTab} />;
+    if (active === "systemSettings") return <SettingsConcept key={`settings:${activeSettingsTab}:${activeSettingsSection}`} data={data} action={action} ui={ui} activeTab={activeSettingsTab} initialBaseSection={activeSettingsSection} onTabChange={(tab) => navigate(({ overview: "systemSettings", base: "systemSettings:base", exchange: "systemSettings:exchange", notifications: "systemSettings:notifications", event_sources: "systemSettings:event-sources", models: "systemSettings:models", agents: "systemSettings:agents", users: "systemSettings:users" })[tab] || "systemSettings")} />;
     return <AiTraderCenter data={data} action={action} ui={ui} />;
-  }, [active, activeReviewId, activeSettingsTab, activeWorkspaceTab, activeStrategyTab, data, action, lang]);
+  }, [active, activeReviewId, activeSettingsSection, activeSettingsTab, activeWorkspaceTab, activeStrategyTab, data, action, lang]);
 
   if (isNativeApp || isMobileViewport) {
     // key={lang}:切换语言时整树 remount,让 mobile.jsx 里的 t() 立即全量重渲染(同桌面外壳)。

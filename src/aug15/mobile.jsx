@@ -41,11 +41,12 @@ import {
 import { apiUrl, authHeaders, haptic, displayMoney, marginUsage, SKILL_STATE, SKILL_STATE_HELP, OPEN_EXECUTION_STATES, countOpenExecutions, displayPrice, displayPct, formatDate, formatDateTime, formatTime, humanize, humanizePhase, localizeText, smartMoneyBias, TradingViewChart, LivePrice, StatusBadge, statusTone, systemStatus } from "./lib.jsx";
 import { ChatPage } from "./chat.jsx";
 import { ConceptGraph } from "./pages.jsx";
-import { ConfigPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
+import { ConfigPanel, EventSourcesPanel, SystemConfigPanel, TaskManagerPanel } from "./panels.jsx";
 import { t } from "./i18n.js";
 import { useDialogFocus } from "../useDialogFocus.js";
 import { executionExitAction, requestExecutionExit } from "./executionExit.js";
 import { resolveMobileRoute } from "../productArchitecture.js";
+import { appPathForRoute, appRouteFromPath, syncAppHistory } from "../appUrlState.js";
 import {
   buildCapabilityCatalogRows,
   buildEventRows,
@@ -253,17 +254,19 @@ function MobileReviewSheet({ review, trade, onClose }) {
   </div>;
 }
 
-export function MobileExecution({ data, action, initialTab = "overview" }) {
+export function MobileExecution({ data, action, initialTab = "overview", initialReviewId = "", onTabChange, onReviewSelect, onReviewClose }) {
   const [tab, setTab] = useState(initialTab);
   const [reviewFilter, setReviewFilter] = useState("all");
-  const [selectedReview, setSelectedReview] = useState(null);
   const execution = buildExecutionView(data);
   const { orders, fills, closedTrades: closes, reviews, performance, totals } = execution;
+  const tradeForReview = (review) => closes.find((trade) => trade.tradeLifecycleKey === review.tradeLifecycleKey || trade.executionOrderId === review.executionOrderId || (review.fillIds || []).some((id) => trade.fillIds?.includes(id)));
+  const [selectedReview, setSelectedReview] = useState(()=>{const review=reviews.find(row=>String(row.id)===String(initialReviewId));return review?{review,trade:tradeForReview(review)}:null;});
+  useEffect(()=>{const review=reviews.find(row=>String(row.id)===String(initialReviewId));setSelectedReview(review?{review,trade:tradeForReview(review)}:null);},[initialReviewId]);
   const inFlight = countOpenExecutions(orders);
   const realized = Number(performance.totalPnlUsdt || 0);
   const pendingReviews = reviews.filter((row) => !isCompletedTradeReview(row)).length;
   const completedReviews = reviews.length - pendingReviews;
-  const tradeForReview = (review) => closes.find((trade) => trade.tradeLifecycleKey === review.tradeLifecycleKey || trade.executionOrderId === review.executionOrderId || (review.fillIds || []).some((id) => trade.fillIds?.includes(id)));
+  const changeTab=(next)=>{setTab(next);onTabChange?.(next);};
   const reviewPnl = (review) => netReviewResult(review, tradeForReview(review));
   const lossReviews = reviews.filter((row) => reviewPnl(row) != null && reviewPnl(row) < 0).length;
   const filteredReviews = reviews.filter((row) => reviewFilter === "loss" ? reviewPnl(row) != null && reviewPnl(row) < 0 : reviewFilter === "pending" ? !isCompletedTradeReview(row) : true);
@@ -271,23 +274,23 @@ export function MobileExecution({ data, action, initialTab = "overview" }) {
   const direction = (row) => /short|sell|空/i.test(String(row.direction || row.side || "")) ? t("做空", "Short") : t("做多", "Long");
   const fillKind = (row) => row.kind === "entry" ? t("开仓", "Entry") : row.kind === "close" ? (row.partial === true ? t("减仓", "Reduction") : t("平仓", "Close")) : humanize(row.kind || row.side || t("成交", "Fill"));
   return <div className="mScreen mExecutionScreen">
-    <div className="mSegmentNav">{tabs.map(([id, label]) => <button className={tab === id ? "active" : ""} key={id} onClick={() => setTab(id)}>{label}</button>)}</div>
+    <div className="mSegmentNav">{tabs.map(([id, label]) => <button className={tab === id ? "active" : ""} key={id} onClick={() => changeTab(id)}>{label}</button>)}</div>
     {tab === "overview" && <>
       <div className="mMetric2x2"><div className="mMetricCell"><span>{t("净交易结果", "Net trade result")}</span><b className={`mono ${realized >= 0 ? "pos" : "neg"}`}>{realized >= 0 ? "+" : ""}{displayMoney(realized, 2)}</b></div><div className="mMetricCell"><span>{t("胜率", "Win rate")}</span><b className="mono">{performance.trades ? `${performance.winRatePct}%` : "—"}</b></div><div className="mMetricCell"><span>{t("在途执行", "In flight")}</span><b className="mono">{inFlight}</b></div><div className="mMetricCell"><span>{t("待复盘", "To review")}</span><b className="mono">{pendingReviews}</b></div></div>
       <section className="mNativeSection"><header><div><b>{t("当前重点", "Needs attention")}</b><small>{t("按交易流程排序", "Ordered by trading workflow")}</small></div></header>
-        <button className="mActionRow" onClick={() => setTab("orders")}><span className={inFlight ? "warning" : "ok"}>{inFlight || "✓"}</span><div><b>{inFlight ? t(`${inFlight} 笔执行正在推进`, `${inFlight} executions in progress`) : t("没有在途执行", "No executions in flight")}</b><small>{t("核对订单、保护单与交易所状态", "Review orders, protection, and exchange state")}</small></div><ChevronRight size={16}/></button>
-        <button className="mActionRow" onClick={() => setTab("reviews")}><span className={pendingReviews ? "warning" : "ok"}>{pendingReviews || "✓"}</span><div><b>{pendingReviews ? t(`${pendingReviews} 笔交易等待复盘`, `${pendingReviews} trades await review`) : t("复盘队列已处理", "Review queue is clear")}</b><small>{t("优先复盘亏损与异常离场", "Prioritize losses and unusual exits")}</small></div><ChevronRight size={16}/></button>
+        <button className="mActionRow" onClick={() => changeTab("orders")}><span className={inFlight ? "warning" : "ok"}>{inFlight || "✓"}</span><div><b>{inFlight ? t(`${inFlight} 笔执行正在推进`, `${inFlight} executions in progress`) : t("没有在途执行", "No executions in flight")}</b><small>{t("核对订单、保护单与交易所状态", "Review orders, protection, and exchange state")}</small></div><ChevronRight size={16}/></button>
+        <button className="mActionRow" onClick={() => changeTab("reviews")}><span className={pendingReviews ? "warning" : "ok"}>{pendingReviews || "✓"}</span><div><b>{pendingReviews ? t(`${pendingReviews} 笔交易等待复盘`, `${pendingReviews} trades await review`) : t("复盘队列已处理", "Review queue is clear")}</b><small>{t("优先复盘亏损与异常离场", "Prioritize losses and unusual exits")}</small></div><ChevronRight size={16}/></button>
       </section>
-      <section className="mNativeSection"><header><div><b>{t("最近平仓", "Latest closed trades")}</b><small>{t("完整生命周期 · 净手续费与资金费", "Completed lifecycles · net of recorded fees and funding")}</small></div><button className="mLink" onClick={() => setTab("fills")}>{t("成交流水", "Fill ledger")}</button></header>{closes.slice(0, 5).map((row) => <div className="mTradeRow" key={row.id}><div><b className="mono">{row.symbol || "—"}</b><small>{direction(row)} · {row.closeCount > 1 ? t(`${row.closeCount} 笔平仓合并`, `${row.closeCount} closes combined`) : t("已平仓", "Closed")}</small></div><div><b className={`mono ${Number(row.netRealizedPnl || 0) >= 0 ? "pos" : "neg"}`}>{Number(row.netRealizedPnl) >= 0 ? "+" : ""}{displayMoney(row.netRealizedPnl, 2)}</b><small>{formatTime(row.createdAt)} · {t("净", "net")}</small></div></div>)}{!closes.length && <div className="mNativeEmpty"><ReceiptText size={22}/><b>{t("暂无已平仓交易", "No closed trades yet")}</b></div>}</section>
+      <section className="mNativeSection"><header><div><b>{t("最近平仓", "Latest closed trades")}</b><small>{t("完整生命周期 · 净手续费与资金费", "Completed lifecycles · net of recorded fees and funding")}</small></div><button className="mLink" onClick={() => changeTab("fills")}>{t("成交流水", "Fill ledger")}</button></header>{closes.slice(0, 5).map((row) => <div className="mTradeRow" key={row.id}><div><b className="mono">{row.symbol || "—"}</b><small>{direction(row)} · {row.closeCount > 1 ? t(`${row.closeCount} 笔平仓合并`, `${row.closeCount} closes combined`) : t("已平仓", "Closed")}</small></div><div><b className={`mono ${Number(row.netRealizedPnl || 0) >= 0 ? "pos" : "neg"}`}>{Number(row.netRealizedPnl) >= 0 ? "+" : ""}{displayMoney(row.netRealizedPnl, 2)}</b><small>{formatTime(row.createdAt)} · {t("净", "net")}</small></div></div>)}{!closes.length && <div className="mNativeEmpty"><ReceiptText size={22}/><b>{t("暂无已平仓交易", "No closed trades yet")}</b></div>}</section>
     </>}
     {tab === "orders" && <section className="mNativeSection"><header><div><b>{t("AI 委托", "AI orders")}</b><small>{orders.length === totals.orders ? `${totals.orders} ${t("笔记录", "records")}` : `${t("最近", "Latest")} ${orders.length} / ${totals.orders}`}</small></div></header>{orders.map((row) => { const exit = executionExitAction(row); return <article className="mOrderCard" key={row.id}><header><div><b className="mono">{row.symbol || "—"}</b><span className={/short|sell|空/i.test(String(row.direction || row.side)) ? "short" : "long"}>{direction(row)}</span></div><StatusBadge tone={statusTone(row.status)}>{humanize(row.status)}</StatusBadge></header><div><span>{t("入场", "Entry")}<b className="mono">{displayPrice(row.entryPrice ?? row.price)}</b></span><span>{t("止损", "Stop")}<b className="mono">{displayPrice(row.stopLoss)}</b></span><span>{t("数量", "Size")}<b className="mono">{row.filledQuantity ?? row.quantity ?? row.size ?? "—"}</b></span></div>{exit && <button onClick={() => requestExecutionExit(action, row, "manual_mobile")}>{exit.label}</button>}</article>; })}{!orders.length && <div className="mNativeEmpty"><ClipboardList size={22}/><b>{t("暂无委托", "No orders")}</b></div>}</section>}
     {tab === "fills" && <section className="mNativeSection"><header><div><b>{t("成交流水", "Fill ledger")}</b><small>{fills.length === totals.fills ? `${totals.fills} ${t("笔成交", "fills")}` : `${t("最近", "Latest")} ${fills.length} / ${totals.fills}`}</small></div><span>{t("开仓 / 减仓 / 平仓", "Entries / reductions / closes")}</span></header>{fills.map((row, index) => { const isClose = row.kind === "close" && hasFiniteNumber(row.realizedPnl); const pnl = Number(row.realizedPnl || 0); return <div className="mTradeRow" key={row.id || index}><div><b className="mono">{row.symbol || "—"}</b><small>{direction(row)} · {fillKind(row)} · {row.quantity ?? row.size ?? "—"} @ {displayPrice(row.price)}</small></div><div><b className={`mono ${isClose ? (pnl >= 0 ? "pos" : "neg") : ""}`}>{isClose ? `${pnl >= 0 ? "+" : ""}${displayMoney(pnl, 2)}` : displayPrice(row.price)}</b><small>{isClose ? `${t("价格毛盈亏", "Gross price PnL")} · ` : ""}{formatDateTime(row.createdAt)}{hasFiniteNumber(row.feeUsdt ?? row.fee) ? ` · ${t("费", "fee")} ${displayMoney(row.feeUsdt ?? row.fee, 2)}` : ""}</small></div></div>; })}{!fills.length && <div className="mNativeEmpty"><ReceiptText size={22}/><b>{t("暂无成交", "No fills")}</b><span>{t("交易所确认的开仓、减仓和平仓成交都会显示在这里。", "Exchange-confirmed entries, reductions, and closes appear here.")}</span></div>}</section>}
     {tab === "reviews" && <>
       <div className="mReviewHero"><span><b className="mono">{completedReviews}</b><small>{t("已完成", "Completed")}</small></span><span><b className="mono">{pendingReviews}</b><small>{t("待复盘", "Pending")}</small></span><span><b className="mono neg">{lossReviews}</b><small>{t("亏损复盘", "Losses")}</small></span></div>
       <div className="mReviewFilters">{[["all", t("全部", "All")], ["loss", t("只看亏损", "Losses")], ["pending", t("待处理", "Pending")]].map(([id, label]) => <button type="button" className={reviewFilter === id ? "active" : ""} key={id} onClick={() => setReviewFilter(id)}>{label}</button>)}</div>
-      <section className="mNativeSection"><header><div><b>{t("交易复盘", "Trade reviews")}</b><small>{reviews.length === totals.reviews ? t("点开一笔查看归因与下一次动作", "Open a trade for attribution and next action") : `${t("当前加载", "Loaded")} ${reviews.length} / ${totals.reviews}`}</small></div></header>{filteredReviews.map((row, index) => { const trade = tradeForReview(row); const pnl = reviewPnl(row); const completed = isCompletedTradeReview(row); return <button type="button" className="mReviewRow" key={row.id || index} onClick={() => setSelectedReview({ review: row, trade })}><div className="mReviewRowTop"><span><b className="mono">{row.symbol || trade?.symbol || "—"}</b><small>{direction(row)}</small></span><b className={`mono ${pnl == null ? "" : pnl >= 0 ? "pos" : "neg"}`}>{pnl == null ? "—" : `${pnl >= 0 ? "+" : ""}${displayMoney(pnl, 2)}`}</b></div><p>{localizeText(row.lesson || row.summary) || t("等待成交事实回补与归因。", "Awaiting fill reconciliation and attribution.")}</p><footer><span className={`mReviewState ${completed ? "done" : "pending"}`}>{completed ? t("已完成", "Completed") : t("处理中", "In progress")}</span><time>{formatDateTime(row.completedAt || row.updatedAt || row.createdAt)}</time><ChevronRight size={14}/></footer></button>; })}{!filteredReviews.length && <div className="mNativeEmpty"><BookOpen size={22}/><b>{reviews.length ? t("当前筛选下没有记录", "No reviews in this filter") : t("暂无复盘", "No reviews")}</b><span>{t("完整平仓确认后会自动进入复盘队列。", "Confirmed full closes enter the review queue automatically.")}</span></div>}</section>
+      <section className="mNativeSection"><header><div><b>{t("交易复盘", "Trade reviews")}</b><small>{reviews.length === totals.reviews ? t("点开一笔查看归因与下一次动作", "Open a trade for attribution and next action") : `${t("当前加载", "Loaded")} ${reviews.length} / ${totals.reviews}`}</small></div></header>{filteredReviews.map((row, index) => { const trade = tradeForReview(row); const pnl = reviewPnl(row); const completed = isCompletedTradeReview(row); return <button type="button" className="mReviewRow" key={row.id || index} onClick={() => {setSelectedReview({ review: row, trade });onReviewSelect?.(row.id);}}><div className="mReviewRowTop"><span><b className="mono">{row.symbol || trade?.symbol || "—"}</b><small>{direction(row)}</small></span><b className={`mono ${pnl == null ? "" : pnl >= 0 ? "pos" : "neg"}`}>{pnl == null ? "—" : `${pnl >= 0 ? "+" : ""}${displayMoney(pnl, 2)}`}</b></div><p>{localizeText(row.lesson || row.summary) || t("等待成交事实回补与归因。", "Awaiting fill reconciliation and attribution.")}</p><footer><span className={`mReviewState ${completed ? "done" : "pending"}`}>{completed ? t("已完成", "Completed") : t("处理中", "In progress")}</span><time>{formatDateTime(row.completedAt || row.updatedAt || row.createdAt)}</time><ChevronRight size={14}/></footer></button>; })}{!filteredReviews.length && <div className="mNativeEmpty"><BookOpen size={22}/><b>{reviews.length ? t("当前筛选下没有记录", "No reviews in this filter") : t("暂无复盘", "No reviews")}</b><span>{t("完整平仓确认后会自动进入复盘队列。", "Confirmed full closes enter the review queue automatically.")}</span></div>}</section>
     </>}
-    {selectedReview && <MobileReviewSheet review={selectedReview.review} trade={selectedReview.trade} onClose={() => setSelectedReview(null)} />}
+    {selectedReview && <MobileReviewSheet review={selectedReview.review} trade={selectedReview.trade} onClose={() => {setSelectedReview(null);onReviewClose?.();}} />}
   </div>;
 }
 
@@ -557,9 +560,10 @@ function MobileRiskGoalEditor({ data, action, ui, onDone }) {
   return <div className="mScreen mRiskDetail"><section className="mNativeSection"><header><div><b>{t("盈利目标", "Profit goal")}</b><small>{t("目标不会参与开仓决策", "The goal never influences entry decisions")}</small></div></header><div className="mRiskFieldStack"><MobileRiskField label={t("每日盈利目标", "Daily profit goal")} hint={t(`月度目标按当月 ${sys.monthlyGoalDays || 30} 天自动派生`, `Monthly goal is derived using ${sys.monthlyGoalDays || 30} days`)} suffix="USDT"><input type="number" min="0.01" step="0.01" inputMode="decimal" value={dailyGoal} onChange={(event) => setDailyGoal(event.target.value)} /></MobileRiskField></div><label className="mNativeToggle mGoalNative"><span><b>{t("达到目标后保护到开仓价", "Protect at entry after reaching the goal")}</b><small>{t("只收紧 AI 仓位的止损；不会放宽止损，也不改变止盈", "Only tightens stops on AI positions; never loosens stops or changes take-profit")}</small></span><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} /></label></section><div className="mRiskNote"><ShieldCheck size={17}/><p>{t("这是持仓后的降风险动作，不会为了完成目标而追单。", "This is a post-entry risk reduction; the AI will never chase trades to hit the goal.")}</p></div><div className="mRiskSaveBar"><button type="button" disabled={saving} onClick={save}>{saving ? t("保存中…", "Saving…") : t("保存盈利保护", "Save profit protection")}</button></div></div>;
 }
 
-function MobileRisk({ data, action, ui, view = "all", onOpen = () => {} }) {
+export function MobileRisk({ data, action, ui, view = "all", onOpen = () => {} }) {
   const showOverview = view === "all" || view === "overview";
   const showSettings = view === "all" || view === "settings";
+  const showRules = showOverview || view === "rules";
   const mandate = data.agentStatus?.activeMandate || data.mandates?.[0] || {};
   const sys = data.system || {};
   const portfolio = data.portfolio || {};
@@ -607,7 +611,7 @@ function MobileRisk({ data, action, ui, view = "all", onOpen = () => {} }) {
         </div>;
       })()}
       {showSettings && <><div className="mSettingsIntro"><b>{t("风险边界", "Risk boundaries")}</b><p>{t("按交易权限、执行方式和盈利保护分别设置；修改后立即进入硬风控。", "Configure permissions, execution, and profit protection separately; saved changes enter hard risk control immediately.")}</p></div><section className="mNativeSection mRiskSettingsList"><button type="button" className="mRiskSettingRow" onClick={() => onOpen("permissions")}><span className="mRiskSettingIcon permission"><Shield size={18}/></span><span><b>{t("交易权限", "Trading permissions")}</b><small>{(mandate.allowedSymbols || []).join(" · ") || t("尚未设置币种", "No pairs configured")} · {maxLeverage ? `${maxLeverage}x` : "—"}</small></span><StatusBadge tone={active ? "ok" : "neutral"}>{active ? t("生效中", "Active") : t("未启用", "Off")}</StatusBadge><ChevronRight size={15}/></button><button type="button" className="mRiskSettingRow" onClick={() => onOpen("live")}><span className="mRiskSettingIcon live"><Zap size={18}/></span><span><b>{t("执行方式与实盘验证", "Execution & live validation")}</b><small>{localizeText(data.automationState?.label) || (data.config?.liveTrading?.effective ? t("实盘已开启", "Live on") : t("只分析，不下单", "Analyze only"))} · {data.config?.liveTrading?.maxNotionalUsdt || 50} USDT</small></span><StatusBadge tone={data.config?.liveTrading?.effective ? "danger" : "neutral"}>{data.config?.liveTrading?.effective ? t("实盘", "Live") : t("观察", "Observe")}</StatusBadge><ChevronRight size={15}/></button><button type="button" className="mRiskSettingRow" onClick={() => onOpen("goal")}><span className="mRiskSettingIcon goal"><Gauge size={18}/></span><span><b>{t("盈利目标保护", "Profit goal protection")}</b><small>{sys.dailyGoalUsdt ? `${sys.dailyGoalUsdt} USDT / ${t("日", "day")}` : t("未设置每日目标", "No daily goal")}</small></span><StatusBadge tone={sys.dailyGoalBreakevenEnabled ? "ok" : "neutral"}>{sys.dailyGoalBreakevenEnabled ? t("已开启", "On") : t("未开启", "Off")}</StatusBadge><ChevronRight size={15}/></button></section><section className="mNativeSection"><header><div><b>{t("当前硬边界", "Current hard limits")}</b><small>{t("只读摘要；点交易权限修改", "Read-only summary; edit in Trading permissions")}</small></div></header><div className="mRiskBoundaryGrid"><span><small>{t("单笔风险", "Per-trade risk")}</small><b className="mono">{mandate.maxSingleTradeRiskPct ?? "—"}%</b></span><span><small>{t("日亏损", "Daily loss")}</small><b className="mono neg">{mandate.maxDailyLossPct ?? "—"}%</b></span><span><small>{t("7 日亏损", "7-day loss")}</small><b className="mono neg">{mandate.maxWeeklyLossPct ?? mandate.max_weekly_loss_pct ?? "—"}%</b></span><span><small>{t("单笔金额", "Order max")}</small><b className="mono">{mandate.maxOrderNotionalUsdt ?? "—"} U</b></span></div></section></>}
-      {showOverview && <div className="mCard">
+      {showRules && <div className="mCard">
         <div className="mCardHead"><b>{t("风险规则", "Risk rules")}</b></div>
         <div className="mRuleGrid2">{groups.map(([name, c, bg]) => { const n = scopeCount(name); const label = { "账户": t("账户", "Account"), "交易": t("交易", "Trading"), "事件": t("事件", "Events"), "系统": t("系统", "System") }[name] || name; return <div className="mRuleCard2" key={name} style={{ background: bg }}><b style={{ color: c }}>{label}</b><small>{n ? `${n} ${t("条已启用", "enabled")}` : t("无规则", "No rules")}</small><i style={{ background: c }} /></div>; })}</div>
       </div>}
@@ -1255,6 +1259,35 @@ function MobileAudit({ data, ui }) {
   );
 }
 
+export function MobileNotifications({ data, action }) {
+  const notes = data.notifications || [];
+  const unread = notes.filter((item) => !item.read).length;
+  return (
+    <div className="mScreen mNotificationsScreen" data-aug15-operations-view="notifications">
+      <div className="mCard mBudgetCard">
+        <div className="mBudgetTop"><span>{t("未读通知", "Unread notifications")}</span><b className="mono">{unread}</b></div>
+        <div className="mBudgetBar"><i style={{ width: `${notes.length ? Math.min(100, unread / notes.length * 100) : 0}%` }} /></div>
+      </div>
+      <section className="mNativeSection">
+        <header><div><b>{t("通知收件箱", "Notification inbox")}</b><small>{t("系统、风险与执行动态", "System, risk, and execution updates")}</small></div>{unread > 0 && <button type="button" onClick={() => action("/api/notifications/read", {})}>{t("全部已读", "Mark all read")}</button>}</header>
+        {notes.map((item, index) => (
+          <button
+            type="button"
+            className={`mNativeRow mNotificationRow ${item.read ? "" : "unread"}`}
+            key={item.id || index}
+            onClick={() => !item.read && action("/api/notifications/read", { id: item.id })}
+          >
+            <span className={`mStateDot ${statusTone(item.severity || item.level)}`} />
+            <span><b>{localizeText(item.title, t("系统通知", "System notice"))}</b><small>{localizeText(item.message || item.body, t("暂无通知内容", "No notification details"))}</small></span>
+            <time>{formatTime(item.createdAt)}</time>
+          </button>
+        ))}
+        {!notes.length && <div className="mNativeEmpty"><Bell size={22}/><b>{t("暂无通知", "No notifications")}</b><span>{t("新的系统、风险与执行动态会显示在这里。", "New system, risk, and execution updates will appear here.")}</span></div>}
+      </section>
+    </div>
+  );
+}
+
 // 屏 S1 — AI 交易员：顶栏下 4 等分状态条。
 function MobileChatStatus({ data }) {
   const sys = data.system || {};
@@ -1308,19 +1341,28 @@ function MobileWatch({ data, action }) {
 // 移动端主导航（与桌面 IA 对齐:交易 / 能力 / 风控与运维），走顶部汉堡抽屉。
 // W1b:新增 信号中心(计划看板) + 交易日志,顺序与桌面一致。
 // 风控中心(移动版):把风控总览 + 风控设置合并到一个导航项,顶部 Tab 切换。
-function MobileRiskHub({ data, action, ui, initialView = "" }) {
-  const [tab, setTab] = useState(initialView === "rules" ? "settings" : "overview");
+function MobileEventRiskView({ data, ui }) {
+  const windows=(data.eventRiskWindows||[]);
+  const blocking=windows.filter(item=>item.blocking===true||/block|blackout/i.test(String(item.phase||item.status))).length;
+  return <div className="mScreen" data-aug15-risk-view="events"><div className="mCard mBudgetCard"><div className="mBudgetTop"><span>{t("生效事件风险窗口","Active event-risk windows")}</span><b className="mono">{windows.length}</b></div><div className="mBudgetBar"><i style={{width:`${windows.length?Math.min(100,Math.max(12,blocking/windows.length*100)):0}%`}}/></div></div><section className="mNativeSection"><header><div><b>{t("事件风险","Event risk")}</b><small>{blocking} {t("个正在限制新增风险","restricting new risk")}</small></div><button className="mLink" onClick={()=>ui.setActive("eventsTasks:events")}>{t("事件日历","Calendar")}</button></header>{windows.map((item,index)=><div className="mNativeRow" key={item.id||item.eventId||index}><span className={`mStateDot ${item.blocking?"failed":"pending"}`}/><span><b>{localizeText(item.title||item.name)}</b><small>{formatDateTime(item.dueAt||item.startAt)} · {localizeText(item.sourceName||item.source,t("已验证来源","Verified source"))}</small></span><StatusBadge tone={item.blocking?"danger":"warning"}>{item.blocking?t("阻断","Blocking"):t("监测","Monitoring")}</StatusBadge></div>)}{!windows.length&&<div className="mNativeEmpty"><CalendarClock size={22}/><b>{t("当前没有生效中的已验证高影响事件窗口","No verified high-impact event window is currently active")}</b><span>{t("这不代表事件源为空；完整事实请查看事件日历。","This does not mean event sources are empty; open the calendar for complete facts.")}</span></div>}</section></div>;
+}
+
+function MobileRiskHub({ data, action, ui, initialView = "", onNavigate }) {
+  const [tab, setTab] = useState("overview");
   const [detail, setDetail] = useState("");
+  if(initialView==="events")return <MobileEventRiskView data={data} ui={ui}/>;
+  if(initialView==="boundaries")return <div data-aug15-risk-view="boundaries"><MobileRisk data={data} action={action} ui={ui} view="settings"/></div>;
+  if(initialView==="rules")return <div data-aug15-risk-view="rules"><MobileRisk data={data} action={action} ui={ui} view="rules"/></div>;
   if (detail) {
     const titles = { permissions: t("交易权限", "Trading permissions"), live: t("执行方式", "Execution mode"), goal: t("盈利目标保护", "Profit goal protection") };
     const done = () => setDetail("");
     return <div className="mRiskDetailPage"><div className="mRiskDetailNav"><button type="button" onClick={done}><ChevronLeft size={18}/>{t("风控设置", "Risk settings")}</button><b>{titles[detail]}</b><span /></div>{detail === "permissions" ? <MobileRiskPermissionEditor data={data} action={action} ui={ui} onDone={done} /> : detail === "live" ? <MobileRiskLiveEditor data={data} action={action} ui={ui} onDone={done} /> : <MobileRiskGoalEditor data={data} action={action} ui={ui} onDone={done} />}</div>;
   }
   return (
-    <div className="mHub">
+    <div className="mHub" data-aug15-risk-view={initialView==="rules"?"rules":"overview"}>
       <div className="mHubTabs">
-        <button type="button" className={tab === "overview" ? "active" : ""} onClick={() => setTab("overview")}>{t("风控总览", "Risk overview")}</button>
-        <button type="button" className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>{t("风控设置", "Risk settings")}</button>
+        <button type="button" className={tab === "overview" ? "active" : ""} onClick={() => { setTab("overview"); onNavigate?.("riskOverview"); }}>{t("风控总览", "Risk overview")}</button>
+        <button type="button" className={tab === "settings" ? "active" : ""} onClick={() => { setTab("settings"); onNavigate?.("riskSettings"); }}>{t("风控设置", "Risk settings")}</button>
       </div>
       <MobileRisk data={data} action={action} ui={ui} view={tab} onOpen={setDetail} />
     </div>
@@ -1507,12 +1549,13 @@ export function MobileBacktestResearch({ data, action }) {
 }
 
 // 策略库(移动版):所有会输出交易主张的策略——蒸馏/导入/LLM。与桌面 StrategyLibraryConcept 同口径。
-export function MobileStrategy({ data, action, initialTab = "catalog" }) {
+export function MobileStrategy({ data, action, initialTab = "catalog", onTabChange }) {
   const studio = data.strategyStudio || {};
   const strategyCatalog = buildStrategyCatalogRows(data, t);
   const { products } = strategyCatalog;
   const strategies = strategyCatalog.rows;
   const [tab, setTab] = useState(initialTab);
+  useEffect(() => setTab(initialTab), [initialTab]);
   const [prompt, setPrompt] = useState("");
   const drafts = studio.drafts || [];
   const [selectedId, setSelectedId] = useState(drafts[0]?.id || "");
@@ -1528,7 +1571,7 @@ export function MobileStrategy({ data, action, initialTab = "catalog" }) {
   const originLabel = (value) => t(value, ({ "策略产品":"Strategy product", "指标研究模型":"Research model", "蒸馏":"Distilled", "LLM/手写":"LLM/Manual", "导入":"Imported", "其他":"Other" })[value] || value);
   return (
     <div className="mScreen">
-      <div className="mHubTabs mStrategyTabs"><button className={tab === "catalog" ? "active" : ""} onClick={() => setTab("catalog")}>{t("目录", "Catalog")}</button><button className={tab === "studio" ? "active" : ""} onClick={() => setTab("studio")}>{t("工作室", "Studio")}</button><button className={tab === "market" ? "active" : ""} onClick={() => setTab("market")}>{t("市场", "Market")}</button><button className={tab === "research" ? "active" : ""} onClick={() => setTab("research")}>{t("回测研究", "Backtest")}</button></div>
+      <div className="mHubTabs mStrategyTabs"><button className={tab === "catalog" ? "active" : ""} onClick={() => { setTab("catalog"); onTabChange?.("catalog"); }}>{t("目录", "Catalog")}</button><button className={tab === "studio" ? "active" : ""} onClick={() => { setTab("studio"); onTabChange?.("studio"); }}>{t("工作室", "Studio")}</button><button className={tab === "market" ? "active" : ""} onClick={() => { setTab("market"); onTabChange?.("market"); }}>{t("市场", "Market")}</button><button className={tab === "research" ? "active" : ""} onClick={() => { setTab("research"); onTabChange?.("research"); }}>{t("回测研究", "Backtest")}</button></div>
       {tab === "catalog" && <><div className="mMetric2x2"><div className="mMetricCell"><span>{t("策略总数", "Strategies")}</span><b className="mono">{strategies.length}</b></div><div className="mMetricCell"><span>{t("版本化产品", "Products")}</span><b className="mono pos">{products.length}</b></div><div className="mMetricCell"><span>{t("研究模型", "Research models")}</span><b className="mono">{strategyCatalog.research.length}</b></div><div className="mMetricCell"><span>{t("工作室草稿", "Studio drafts")}</span><b className="mono">{drafts.length}</b></div></div><div className="mCard">{strategies.length ? strategies.map((s) => <div className="mIncRow" key={s.id}><div className="mIncL"><b>{localizeText(s.name)}</b><span className="mIncX">{originLabel(s.origin)}{s.timeframe ? ` · ${s.timeframe}` : ""}</span></div><StatusBadge tone={statusTone(s.status)}>{statusLabel(s.status)}</StatusBadge></div>) : <div className="mEmpty">{t("暂无策略", "No strategies")}</div>}</div></>}
         {tab === "studio" && <div className="mStrategyStack"><div className="mCard"><b className="mSectionTitle">{t("自然语言创建策略", "Create from natural language")}</b><p className="mStrategyHelp">{t("只编译到确定性白名单规则；创建草稿不会下单。", "Compiles only to deterministic allowlisted rules. Drafts never place orders.")}</p><textarea className="mStrategyPrompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={t("例：ADA/USDT 1小时，RSI 14 从30下方站回时做多，止损2%，止盈2.5R", "Example: Long ADA/USDT on 1h when RSI(14) crosses back above 30; 2% stop, 2.5R target")}/><button className="mStrategyPrimary" disabled={prompt.trim().length < 12} onClick={createDraft}><Sparkles size={14}/>{t("生成、测试并自动回测", "Generate, test, and backtest")}</button></div>
         {drafts.length ? <div className="mCard"><b className="mSectionTitle">{t("策略草稿", "Strategy drafts")}</b><div className="mStrategyDrafts">{drafts.slice(0,20).map((row) => <button key={row.id} className={row.id === selected.id ? "active" : ""} onClick={() => setSelectedId(row.id)}><span><b>{localizeText(row.blueprint?.name)}</b><small>{row.authoring?.channel === "agent_chat" ? t("AI 对话创建", "Created in AI chat") : t("工作室创建", "Created in Studio")} · {row.blueprint?.symbols?.join("/")} · {row.blueprint?.timeframe} · {humanize(row.blueprint?.direction)}</small></span><StatusBadge tone={statusTone(row.status)}>{statusLabel(row.status)}</StatusBadge></button>)}</div></div> : null}
@@ -1665,8 +1708,10 @@ function PullToRefresh({ onRefresh, className, children }) {
 
 export function MobileApp({ api, lang, switchLang }) {
   const { data, action, toast, busy, notify, download, refresh, ensureSection, connectionError } = api;
+  const initialBrowserRoute = useRef(appRouteFromPath(globalThis.location?.pathname) || "chat");
   const [route, setRoute] = useState("chat");
-  const [requestedRoute, setRequestedRoute] = useState("chat");
+  const [requestedRoute, setRequestedRoute] = useState(initialBrowserRoute.current);
+  const [routeObjectId, setRouteObjectId] = useState("");
   const [drawer, setDrawer] = useState(false);
   const [subPage, setSubPage] = useState("");
   const [panel, setPanel] = useState("");
@@ -1687,11 +1732,24 @@ export function MobileApp({ api, lang, switchLang }) {
     ensureSection?.(section);
   }, [route]);
 
-  function navigate(next) {
+  useEffect(() => {
+    const applyLocation = () => {
+      const next = appRouteFromPath(window.location.pathname);
+      if (next) navigate(next, { historyMode: "none" });
+    };
+    navigate(initialBrowserRoute.current, { historyMode: window.location.pathname === "/app" || window.location.pathname === "/app/" ? "replace" : "none" });
+    window.addEventListener("popstate", applyLocation);
+    return () => window.removeEventListener("popstate", applyLocation);
+  }, []);
+
+  function navigate(next, { historyMode = "push" } = {}) {
     haptic("light");
     const requested = String(next || "chat");
-    setRequestedRoute(requested);
-    const resolved = resolveMobileRoute(requested);
+    syncAppHistory(requested, { mode: historyMode });
+    const canonicalRequested = appRouteFromPath(appPathForRoute(requested)) || requested;
+    setRequestedRoute(canonicalRequested);
+    const resolved = resolveMobileRoute(canonicalRequested);
+    setRouteObjectId(resolved.objectId || "");
     if (resolved.recognized) {
       let nextRoute = resolved.route;
       let nextSubPage = resolved.subPage || "";
@@ -1729,11 +1787,11 @@ export function MobileApp({ api, lang, switchLang }) {
       : subPage === "marketAccount" ? <MobileAccountHealth data={data} action={action} />
         : <MobileMarket data={data} action={action} ui={ui} />;
   } else if (route === "executionReview") {
-    content = <MobileExecution key={`execution:${subPage}`} data={data} action={action} initialTab={subPage === "reviews" ? "reviews" : "overview"} />;
+    content = <MobileExecution key={`execution:${subPage}:${routeObjectId}`} data={data} action={action} initialTab={({orders:"orders",fills:"fills",reviews:"reviews",owner:"reviews"})[subPage]||"overview"} initialReviewId={routeObjectId} onTabChange={(next)=>navigate(({overview:"tradeJournal",orders:"tradeOrders",fills:"tradeFills",reviews:"labReviews"})[next]||"tradeJournal")} onReviewSelect={(id)=>navigate(`tradeReviewDetail:${id}`)} onReviewClose={()=>navigate("labReviews")} />;
   } else if (route === "tradeLedger") {
-    content = <MobileExecution data={data} action={action} initialTab="orders" />;
+    content = <MobileExecution data={data} action={action} initialTab="orders" onTabChange={(next)=>navigate(({overview:"tradeJournal",orders:"tradeOrders",fills:"tradeFills",reviews:"labReviews"})[next]||"tradeJournal")} onReviewSelect={(id)=>navigate(`tradeReviewDetail:${id}`)} onReviewClose={()=>navigate("labReviews")} />;
   } else if (route === "riskHub") {
-    content = <MobileRiskHub key={`risk:${subPage}`} data={data} action={action} ui={ui} initialView={subPage} />;
+    content = <MobileRiskHub key={`risk:${subPage}`} data={data} action={action} ui={ui} initialView={subPage} onNavigate={navigate} />;
   } else if (route === "intelligence") {
     content = <MobileIntelligence data={data} action={action} ui={ui} />;
   } else if (route === "eventsTasks") {
@@ -1743,18 +1801,18 @@ export function MobileApp({ api, lang, switchLang }) {
   } else if (route === "capabilityLib") {
     content = <MobileCapabilities data={data} action={action} ui={ui} />;
   } else if (route === "strategyLib") {
-    content = <div className="content mSubContent"><MobileStrategy data={data} action={action} initialTab={subPage === "studio" ? "studio" : "catalog"} /></div>;
+    content = <div className="content mSubContent"><MobileStrategy data={data} action={action} initialTab={({ studio: "studio", market: "market", research: "research" })[subPage] || "catalog"} onTabChange={(next) => navigate(({ catalog: "strategyLib", studio: "strategyStudio", market: "strategyMarket", research: "strategyResearch" })[next] || "strategyLib")} /></div>;
   } else if (route === "auditSystem") {
-    content = <MobileAudit data={data} ui={ui} />;
+    content = subPage === "notifications" ? <MobileNotifications data={data} action={action} /> : <MobileAudit data={data} ui={ui} />;
   } else if (route === "systemSettings") {
-    content = settingsSection ? <div className="content mSubContent"><div className="settingsPage"><SystemConfigPanel data={data} action={action} ui={ui} section={settingsSection} /></div></div>
-        : <MobileSettingsIndex data={data} onOpen={setSubPage} />;
+    content = settingsSection ? <div className="content mSubContent"><div className="settingsPage" data-aug15-config-section={settingsSection}>{settingsSection==="event_sources"?<EventSourcesPanel data={data} action={action} ui={ui}/>:<SystemConfigPanel data={data} action={action} ui={ui} section={settingsSection} />}</div></div>
+        : <MobileSettingsIndex data={data} onOpen={navigate} />;
   } else {
     content = <MobileMarket data={data} action={action} ui={ui} />;
   }
 
   const headerRight = subPage
-    ? <button className="mBack" onClick={() => setSubPage("")} aria-label={t("返回", "Back")}><ChevronLeft size={19} /></button>
+    ? <button className="mBack" onClick={() => navigate(route)} aria-label={t("返回", "Back")}><ChevronLeft size={19} /></button>
     : route === "chat"
       ? <span className={`mRunBadge ${autoOn ? "on" : "off"}`}><span className="pulseDot" />{autoOn ? t("运行中", "Running") : t("已暂停", "Paused")}</span>
       : <button ref={killTriggerRef} className="mKill" onClick={() => setKillConfirm(true)}><Zap size={13} /> {data.system?.killSwitch ? t("恢复交易", "Resume") : t("紧急停止", "Emergency stop")}</button>;

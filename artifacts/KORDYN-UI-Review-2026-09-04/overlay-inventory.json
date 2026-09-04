@@ -1,0 +1,28 @@
+[
+  {"index":1,"scope":"desktop+app","slug":"panel-mandate","title":"任务授权配置","entry":"AI 交易员 / 授权与约束"},
+  {"index":2,"scope":"desktop+app","slug":"panel-riskRules","title":"风控规则配置","entry":"风控中心 / 规则"},
+  {"index":3,"scope":"desktop+app","slug":"panel-ip","title":"网络代理配置","entry":"系统设置 / 网络代理"},
+  {"index":4,"scope":"desktop+app","slug":"panel-eventRule","title":"事件规则配置","entry":"系统运营 / 事件"},
+  {"index":5,"scope":"desktop+app","slug":"panel-knowledgeImport","title":"知识导入","entry":"研究中心 / 知识库"},
+  {"index":6,"scope":"desktop+app","slug":"panel-knowledgeList","title":"知识列表","entry":"研究中心 / 知识库"},
+  {"index":7,"scope":"desktop+app","slug":"panel-ruleLibrary","title":"规则库","entry":"风控中心"},
+  {"index":8,"scope":"desktop+app","slug":"panel-riskIncidents","title":"风险事件","entry":"风控中心 / 事件风险"},
+  {"index":9,"scope":"desktop+app","slug":"panel-skillImport","title":"能力导入","entry":"研究中心 / 能力库"},
+  {"index":10,"scope":"desktop+app","slug":"panel-taskManager","title":"任务管理器","entry":"系统运营 / 任务调度"},
+  {"index":11,"scope":"desktop+app","slug":"panel-eventSources","title":"事件源","entry":"系统设置 / 事件源"},
+  {"index":12,"scope":"desktop+app","slug":"panel-auditChain","title":"审计链","entry":"系统运营 / 审计记录"},
+  {"index":13,"scope":"desktop+app","slug":"panel-executionDetail","title":"执行详情","entry":"交易 / 委托与成交"},
+  {"index":14,"scope":"desktop","slug":"global-search","title":"全局搜索","entry":"桌面端顶栏"},
+  {"index":15,"scope":"desktop","slug":"emergency-stop-confirm","title":"紧急停止确认","entry":"桌面端全局危险操作"},
+  {"index":16,"scope":"desktop","slug":"language-menu","title":"语言菜单","entry":"桌面端顶栏"},
+  {"index":17,"scope":"desktop","slug":"account-dialog","title":"账户弹窗","entry":"桌面端顶栏"},
+  {"index":18,"scope":"desktop","slug":"support-assistant","title":"支持助手","entry":"桌面端全局入口"},
+  {"index":19,"scope":"desktop","slug":"capability-install","title":"能力安装确认","entry":"研究中心 / 能力库"},
+  {"index":14,"scope":"app","slug":"more-drawer","title":"更多抽屉","entry":"APP 底部导航"},
+  {"index":15,"scope":"app","slug":"emergency-stop-confirm","title":"紧急停止确认","entry":"APP 全局危险操作"},
+  {"index":16,"scope":"app","slug":"market-pair-sheet","title":"交易对详情","entry":"APP 市场"},
+  {"index":17,"scope":"app","slug":"capability-detail-sheet","title":"能力详情","entry":"APP 能力库"},
+  {"index":18,"scope":"app","slug":"review-detail-sheet","title":"复盘详情","entry":"APP 交易记录"},
+  {"index":19,"scope":"app","slug":"research-detail-sheet","title":"研究详情","entry":"APP 策略研究"}
+]
+

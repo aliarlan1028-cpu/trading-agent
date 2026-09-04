@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { uiConfirm, uiPrompt } from "./confirm.jsx";
 import {
-  Activity, AlertTriangle, BarChart3, Bell, BookOpen, Bot, CalendarDays,
+  Activity, AlertTriangle, BarChart3, Bell, BookOpen, Bot, CalendarClock, CalendarDays,
   CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, Database, Eye, Globe2,
   FileText, Filter, Gauge, GitBranch, KeyRound, Layers3, ListChecks,
   LockKeyhole, Play, Plus, RefreshCw, Search, Server, ShieldCheck,
@@ -9,7 +9,7 @@ import {
   Wrench, XCircle, Zap
 } from "lucide-react";
 import { ChatPage } from "./chat.jsx";
-import { LiveGrayPanel, SymbolMultiSelect, SystemConfigPanel } from "./panels.jsx";
+import { EventSourcesPanel, LiveGrayPanel, SymbolMultiSelect, SystemConfigPanel } from "./panels.jsx";
 import { apiUrl, authHeaders, countOpenExecutions, displayMoney, displayPct, formatDateTime, formatTime, humanize, localizeText, SKILL_STATE, TradingViewChart } from "./lib.jsx";
 import { t } from "./i18n.js";
 import { executionExitAction, requestExecutionExit } from "./executionExit.js";
@@ -646,7 +646,7 @@ export function ExecutionLedgerConcept({ data, action, ui }) {
   </div>;
 }
 
-export function ExecutionReviewConcept({ data, action, ui }) {
+export function ExecutionReviewConcept({ data, action, ui, initialReviewId = "", onReviewSelect }) {
   const execution = buildExecutionView(data);
   const { orders, fills, closedTrades, reviews, performance } = execution;
   const plans = arr(data.tradePlans); const bp = data.behaviorProfile || {};
@@ -661,7 +661,8 @@ export function ExecutionReviewConcept({ data, action, ui }) {
   const positions = buildPositionView(data).positions;
   const protectedPositions = positions.filter((row) => row.stopLoss != null || row.stopLossPrice != null || row.protectionVerified === true || /protected|verified|ok/i.test(String(row.protectionStatus || ""))).length;
   const tradeReviews = reviews;
-  const [selectedReviewId,setSelectedReviewId]=useState(tradeReviews[0]?.id||"");
+  const [selectedReviewId,setSelectedReviewId]=useState(()=>tradeReviews.some(item=>String(item.id)===String(initialReviewId))?initialReviewId:tradeReviews[0]?.id||"");
+  useEffect(()=>{if(initialReviewId&&tradeReviews.some(item=>String(item.id)===String(initialReviewId)))setSelectedReviewId(initialReviewId);},[initialReviewId,tradeReviews]);
   const rangeDays={"7d":7,"30d":30,"90d":90}[historyRange];
   const historyMatch=(item,dateValue)=>{const symbolOk=historySymbol==="all"||item.symbol===historySymbol;const rawDirection=String(item.direction||item.side||"").toLowerCase();const direction=rawDirection.includes("short")||rawDirection.includes("空")||rawDirection.includes("sell")?"short":"long";const directionOk=historyDirection==="all"||direction===historyDirection;if(!symbolOk||!directionOk)return false;if(!rangeDays)return true;const time=new Date(dateValue||item.closedAt||item.completedAt||item.createdAt||0).getTime();return Number.isFinite(time)&&time>=Date.now()-rangeDays*86400000;};
   const diagnosticPoints=arr(bp.scatter).filter(item=>historyMatch(item,item.closedAt));
@@ -740,7 +741,7 @@ export function ExecutionReviewConcept({ data, action, ui }) {
     <section id="er-reviews" className="erZone"><div className="erZoneLabel"><span>{t("交易复盘详情","Trade Review Workbench")}</span><small>{t("结果、根因、改进与事实证据","Outcome, root cause, action, and evidence")}</small></div>
       <ConceptCard title={t("交易复盘详情", "Trade Review Workbench")} meta={t("平仓确认后自动进入队列 · 保留完整复盘正文", "Confirmed closes enter automatically · full review text retained")} className="erReviewCard">
         {filteredReviews.length ? <div className="erReviewWorkbench">
-          <div className="erReviewIndex">{filteredReviews.slice(0,12).map((review,index)=>{const reviewPnl=reviewNetPnl(review);return <button type="button" className={selectedReview.id===review.id?"active":""} key={review.id||index} onClick={()=>setSelectedReviewId(review.id)}><span><b>{review.symbol||t("组合","Portfolio")}</b><Pill tone={toneOf(review.status)}>{humanize(review.status)}</Pill></span><strong className={reviewPnl==null?"":reviewPnl>=0?"good":"bad"}>{reviewHasResult(review)?`${reviewPnl>=0?"+":""}${money(reviewPnl)} U`:"—"}</strong><small>{formatDateTime(review.completedAt||review.createdAt)}</small><p>{review.summary||review.title||t("等待复盘结论。","Awaiting review conclusion.")}</p></button>;})}</div>
+          <div className="erReviewIndex">{filteredReviews.slice(0,12).map((review,index)=>{const reviewPnl=reviewNetPnl(review);return <button type="button" className={selectedReview.id===review.id?"active":""} key={review.id||index} onClick={()=>{setSelectedReviewId(review.id);onReviewSelect?.(review.id);}}><span><b>{review.symbol||t("组合","Portfolio")}</b><Pill tone={toneOf(review.status)}>{humanize(review.status)}</Pill></span><strong className={reviewPnl==null?"":reviewPnl>=0?"good":"bad"}>{reviewHasResult(review)?`${reviewPnl>=0?"+":""}${money(reviewPnl)} U`:"—"}</strong><small>{formatDateTime(review.completedAt||review.createdAt)}</small><p>{review.summary||review.title||t("等待复盘结论。","Awaiting review conclusion.")}</p></button>;})}</div>
           <article className="erReviewDetail">
             <header><div><span>{selectedReview.direction?/short|空/i.test(String(selectedReview.direction))?t("做空","Short"):t("做多","Long"):t("已平仓交易","Closed trade")}</span><h3>{selectedReview.title||`${selectedReview.symbol||t("交易","Trade")} ${t("复盘","review")}`}</h3><small>{formatDateTime(selectedReview.completedAt||selectedReview.createdAt)} · {selectedReview.fillIds?.length||selectedReview.partialCloseCount||1} {t("笔平仓成交","close fills")}</small></div><div className="erReviewResult"><small>{t("净交易结果","Net trade result")}</small><b className={selectedReviewPnl>=0?"good":"bad"}>{reviewHasResult(selectedReview)?`${selectedReviewPnl>=0?"+":""}${money(selectedReviewPnl)} U`:"—"}</b></div></header>
             <div className="erReviewFacts"><span>{t("归因","Attribution")}<b>{selectedReview.attribution||t("待归因","Pending")}</b></span><span>{t("开/平仓手续费","Entry / close fees")}<b>{selectedReviewFees==null?"—":`${money(selectedReviewFees)} U`}</b></span><span>{t("资金费","Funding")}<b>{selectedTrade?.fundingFeeUsdt==null&&selectedReview.fundingFeeUsdt==null?"—":`${money(selectedTrade?.fundingFeeUsdt??selectedReview.fundingFeeUsdt)} U`}</b></span><span>{t("复盘状态","Review status")}<b>{humanize(selectedReview.status)}</b></span></div>
@@ -993,10 +994,11 @@ function StrategyMarketplaceConcept({ data, action }) {
   </div>;
 }
 
-export function StrategyLibraryConcept({ data, action, ui, initialTab = "catalog" }) {
+export function StrategyLibraryConcept({ data, action, ui, initialTab = "catalog", onTabChange }) {
   const [tab,setTab]=useState(initialTab);
   const tabs=[["catalog",t("策略目录","Catalog")],["studio",t("策略工作室","Strategy Studio")],["market",t("内部策略市场","Internal Market")],["research",t("回测研究","Backtest Research")]];
-  return <div className="cp2Stack"><div className="cp2StrategyTabs">{tabs.map(([key,label])=><button key={key} className={tab===key?"active":""} onClick={()=>setTab(key)}>{label}</button>)}</div>{tab==="catalog"?<StrategyCatalogConcept data={data} action={action} ui={ui}/>:tab==="studio"?<StrategyStudioConcept data={data} action={action}/>:tab==="market"?<StrategyMarketplaceConcept data={data} action={action}/>:<StrategyConcept data={data} action={action}/>}</div>;
+  const changeTab=(next)=>{setTab(next);onTabChange?.(next);};
+  return <div className="cp2Stack"><div className="cp2StrategyTabs">{tabs.map(([key,label])=><button key={key} className={tab===key?"active":""} onClick={()=>changeTab(key)}>{label}</button>)}</div>{tab==="catalog"?<StrategyCatalogConcept data={data} action={action} ui={ui}/>:tab==="studio"?<StrategyStudioConcept data={data} action={action}/>:tab==="market"?<StrategyMarketplaceConcept data={data} action={action}/>:<StrategyConcept data={data} action={action}/>}</div>;
 }
 
 const RESEARCH_EVIDENCE_LABELS={historical_backtest:["历史回测","Historical backtest"],optimizer_oos:["自动研究 · 样本外","Automated research · OOS"],studio_oos:["策略工作室 · 样本外","Strategy Studio · OOS"],forward_paper:["纯前向模拟","Pure forward simulation"]};
@@ -1053,6 +1055,17 @@ export function RiskPostureConcept({ data, action, ui }) {
     </div>
     <div className="cp2Grid two"><ConceptCard title={t("风险规则", "Risk Rules")}><ConceptTable compact columns={[{key:"name",label:t("规则", "Rule"),render:r=>localizeText(r.name)},{key:"scope",label:t("范围", "Scope"),render:r=>humanize(r.scope)},{key:"level",label:t("级别", "Level")},{key:"enabled",label:t("状态", "Status"),render:r=><Pill tone={r.enabled===false?"warn":"good"}>{r.enabled===false?t("停用", "Off"):t("启用", "On")}</Pill>}]} rows={rules.slice(0,7)} empty={t("暂无风险规则", "No risk rules")}/></ConceptCard><ConceptCard title={t("事件风险窗口", "Event Risk Windows")} meta={openIncidents.length>7?`${t("共", "of")} ${openIncidents.length} ${t("项 · 未处理", "· open")}`:undefined} action={openIncidents.length?<button className="cp2Link" onClick={()=>ui.openPanel("riskIncidents")}>{t("处理", "Handle")}</button>:undefined}><ConceptTable compact columns={[{key:"name",label:t("事件", "Event"),render:r=>localizeText(r.name||r.title)},{key:"createdAt",label:t("时间", "Time"),render:r=>formatDateTime(r.createdAt)},{key:"severity",label:t("等级", "Severity"),render:r=><Pill tone={toneOf(r.severity)}>{humanize(r.severity)}</Pill>}]} rows={openIncidents.slice(0,7)} empty={t("暂无未处理风险事件", "No open risk incidents")}/></ConceptCard></div>
     <ConceptCard title={t("应急操作", "Emergency Actions")} className="cp2Emergency"><div className="cp2EmergencyActions"><button onClick={async () =>action("/api/system/autonomy",{enabled:false})}><Activity/><span><b>{t("暂停自主运行", "Pause autonomy")}</b><small>{t("停止 AI 生成和执行新计划", "Stop the AI from creating or executing new plans")}</small></span></button><button onClick={async () =>action("/api/risk/reduce-only",{enabled:!data.system?.reduceOnlyMode})}><RefreshCw/><span><b>{data.system?.reduceOnlyMode?t("退出只减仓", "Exit reduce-only"):t("只减仓", "Reduce-only")}</b><small>{t("只允许降低现有风险", "Allow only risk-reducing actions")}</small></span></button><button onClick={async () =>{if(await uiConfirm(t("确认一键平掉所有持仓并进入只减仓模式？", "Flatten all positions and enter reduce-only mode?")))action("/api/risk/emergency-flatten",{});}}><Target/><span><b>{t("平掉全部持仓", "Flatten all")}</b><small>{t("按市价关闭全部持仓", "Close all positions at market")}</small></span></button><button className="bad" onClick={async () =>action("/api/risk/kill-switch",{enabled:!data.system?.killSwitch,reason:""})}><Zap/><span><b>{data.system?.killSwitch?t("解除紧急停止", "Clear emergency stop"):t("紧急停止", "Emergency stop")}</b><small>{t("立即阻止所有新交易", "Block all new trades immediately")}</small></span></button></div></ConceptCard></div>;
+}
+
+export function EventRiskConcept({ data, ui }) {
+  const windows=arr(data.eventRiskWindows);
+  const blocking=windows.filter(item=>item.blocking===true||/block|blackout/i.test(String(item.phase||item.status))).length;
+  const monitoring=windows.filter(item=>!item.blocking).length;
+  const selected=windows[0]||{};
+  return <div className="cp2Stack" data-aug15-risk-view="events">
+    <div className="cp2Metrics three"><ConceptMetric label={t("生效窗口","Active windows")} value={windows.length} sub={t("已核验高影响事件","Verified high-impact events")} tone={blocking?"bad":"good"} icon={CalendarClock}/><ConceptMetric label={t("正在阻断","Blocking")} value={blocking} sub={t("限制新增风险","Restricting new risk")} tone={blocking?"bad":"neutral"} icon={ShieldCheck}/><ConceptMetric label={t("受控监测","Monitoring")} value={monitoring} sub={t("等待事件事实更新","Awaiting event updates")} tone="warn" icon={Eye}/></div>
+    <div className="cp2Grid two wideLeft"><ConceptCard title={t("事件风险窗口","Event Risk Windows")} meta={`${windows.length} ${t("项", "items")}`}><ConceptTable compact columns={[{key:"dueAt",label:t("时间","Time"),render:row=>formatDateTime(row.dueAt||row.startAt)},{key:"title",label:t("事件","Event"),render:row=>localizeText(row.title||row.name)},{key:"sourceName",label:t("来源","Source"),render:row=>localizeText(row.sourceName||row.source,"—")},{key:"phase",label:t("状态","State"),render:row=><Pill tone={row.blocking?"bad":"warn"}>{row.blocking?t("阻断","Blocking"):humanize(row.phase||row.status,t("监测","Monitoring"))}</Pill>}]} rows={windows} empty={t("当前没有生效中的已验证高影响事件窗口。","No verified high-impact event window is currently active.")}/></ConceptCard><ConceptCard title={t("当前事件影响","Current Event Effect")} action={<button className="cp2Link" onClick={()=>ui.setActive("eventsTasks:events")}>{t("打开事件日历 ›","Open calendar ›")}</button>}><div className="cp2Kv column"><span>{t("事件","Event")}<b>{localizeText(selected.title||selected.name,"—")}</b></span><span>{t("计划时间","Due")}<b>{formatDateTime(selected.dueAt||selected.startAt)}</b></span><span>{t("影响范围","Scope")}<b>{selected.marketWide?t("全市场","Market-wide"):arr(selected.relatedSymbols).join(" · ")||"—"}</b></span><span>{t("执行影响","Execution effect")}<b>{selected.blocking?t("暂停新增风险","Pause new risk"):windows.length?t("受控监测","Controlled monitoring"):"—"}</b></span></div><button className="cp2Secondary" onClick={()=>ui.setActive("systemSettings:event-sources")}>{t("管理事件源","Manage event sources")}</button></ConceptCard></div>
+  </div>;
 }
 
 // 自动保护设置：用用户能直接理解的结果描述，不暴露内部“运行时阈值/硬闸”术语。
@@ -1453,10 +1466,10 @@ function UsersSettingsConcept({ data, action, ui }) {
   </div>;
 }
 
-export function SettingsConcept({ data, action, ui, activeTab, onTabChange }) {
+export function SettingsConcept({ data, action, ui, activeTab, initialBaseSection = "environment", onTabChange }) {
   const isOwner = data.user?.isOwner === true;
-  const [baseSection, setBaseSection] = useState("environment");
-  const [pendingBaseSection, setPendingBaseSection] = useState("");
+  const [baseSection, setBaseSection] = useState(initialBaseSection);
+  const [pendingBaseSection, setPendingBaseSection] = useState(initialBaseSection === "environment" ? "" : initialBaseSection);
   const config = data.config || {};
   const exchanges = arr(data.exchangeAccounts);
   const agents = arr(data.agentProfiles);
@@ -1479,6 +1492,8 @@ export function SettingsConcept({ data, action, ui, activeTab, onTabChange }) {
     ["overview", t("系统概览", "Overview")],
     ["base", t("基础配置", "Basics")],
     ["exchange", t("交易所连接", "Exchanges")],
+    ["notifications", t("通知渠道", "Notifications")],
+    ["event_sources", t("事件源", "Event Sources")],
     ["models", t("模型与密钥", "Models & Keys")],
     ["agents", t("Agent 配置", "Agents")],
     ...(isOwner ? [["users", t("用户与订阅", "Users & Subscriptions")]] : [])
@@ -1524,12 +1539,14 @@ export function SettingsConcept({ data, action, ui, activeTab, onTabChange }) {
 
   const scrollToBaseSection = (section) => {
     setBaseSection(section);
-    document.getElementById(`settings-base-${section}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const route={environment:"systemSettings:base",network:"systemSettings:base:proxy",notifications:"systemSettings:notifications",data_backup:"systemSettings:base:backup",security:"systemSettings:base:security"}[section];
+    if(route)ui.setActive(route);else document.getElementById(`settings-base-${section}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   const openBaseSection = (section) => {
     setBaseSection(section);
     setPendingBaseSection(section);
-    onTabChange("base");
+    const route={environment:"systemSettings:base",network:"systemSettings:base:proxy",notifications:"systemSettings:notifications",data_backup:"systemSettings:base:backup",security:"systemSettings:base:security"}[section];
+    if(route)ui.setActive(route);else onTabChange("base");
   };
 
   const overviewCards = [
@@ -1571,7 +1588,7 @@ export function SettingsConcept({ data, action, ui, activeTab, onTabChange }) {
     }
   ];
 
-  return <div className="cp2Settings">
+  return <div className="cp2Settings" data-aug15-settings-view={tab}>
     <header className="uxCenterHead"><div><h1>{t("系统设置", "System Settings")}</h1><span>{t("状态总览 · 连接 · 模型 · Agent · 用户", "Overview · Connections · Models · Agents · Users")}</span></div></header>
     <nav className="uxTabs cp2SettingsTabs" aria-label={t("系统设置导航", "System settings navigation")}>{tabs.map(([id, label]) => <button type="button" role="tab" aria-selected={tab === id} className={tab === id ? "active" : ""} key={id} onClick={() => onTabChange(id)}>{label}</button>)}</nav>
 
@@ -1602,6 +1619,8 @@ export function SettingsConcept({ data, action, ui, activeTab, onTabChange }) {
     </section>}
 
     {tab === "exchange" && <div className="cp2SettingsForm"><section className="cp2SettingsPanel"><SystemConfigPanel data={data} action={action} ui={ui} section="exchange"/></section></div>}
+    {tab === "notifications" && <div className="cp2SettingsForm"><section className="cp2SettingsPanel"><SystemConfigPanel data={data} action={action} ui={ui} section="notifications"/></section></div>}
+    {tab === "event_sources" && <div className="cp2SettingsForm"><section className="cp2SettingsPanel"><EventSourcesPanel data={data} action={action} ui={ui}/></section></div>}
     {tab === "models" && <div className="cp2SettingsForm"><section className="cp2SettingsPanel"><SystemConfigPanel data={data} action={action} ui={ui} section="llm"/></section></div>}
     {tab === "agents" && <AgentSettingsConcept data={data} action={action} ui={ui}/>}
     {tab === "users" && isOwner && <UsersSettingsConcept data={data} action={action} ui={ui}/>}

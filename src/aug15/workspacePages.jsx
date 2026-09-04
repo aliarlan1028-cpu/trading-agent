@@ -1,11 +1,11 @@
 import React, { useState } from "react";
 import {
-  AiDialogConcept, AuditConcept, CapabilitiesConcept, EventsConcept,
-  ExecutionLedgerConcept, ExecutionReviewConcept, IntelligenceConcept, KeysConcept, KnowledgeConcept,
-  MandateConcept, MarketConcept, NotificationsConcept, WatchMonitorConcept,
-  OperationsOverviewConcept, PositionsConcept,
+  AiDialogConcept, AuditConcept, CapabilitiesConcept, EventRiskConcept, EventsConcept,
+  IntelligenceConcept, KeysConcept, KnowledgeConcept,
+  MandateConcept, NotificationsConcept, WatchMonitorConcept,
+  OperationsOverviewConcept,
   RiskPostureConcept, RulesConcept, SettingsConcept, StrategyLibraryConcept,
-  TasksConcept, TradingOverviewConcept
+  TasksConcept
 } from "./conceptPages.jsx";
 import { TradingCockpitPage, TradingCockpitShell } from "./tradingCockpit.jsx";
 import { ChatKpiStrip } from "./chat.jsx";
@@ -18,7 +18,7 @@ const TABS = {
   ai: [["dialog", "对话", "Dialog"], ["intel", "情报", "Intel"], ["watch", "盯盘", "Watch"]],
   trade: [["overview", "总览", "Overview"], ["market", "行情", "Market"], ["positions", "持仓", "Positions"], ["execution", "执行与复盘", "Execution & Review"], ["ledger", "委托与成交", "Orders & Fills"]],
   research: [["knowledge", "知识库", "Knowledge"], ["strategy", "策略库", "Strategies"], ["capabilities", "能力库", "Capabilities"]],
-  risk: [["posture", "风险总览", "Overview"], ["mandate", "资金与交易边界", "Capital & Trading Limits"], ["rules", "风控规则", "Risk Rules"], ["keys", "密钥安全", "Key Security"]],
+  risk: [["posture", "风险总览", "Overview"], ["events", "事件风险", "Event Risk"], ["mandate", "资金与交易边界", "Capital & Trading Limits"], ["rules", "风控规则", "Risk Rules"], ["keys", "密钥安全", "Key Security"]],
   ops: [["overview", "运行总览", "Overview"], ["events", "事件日历", "Events"], ["tasks", "任务调度", "Tasks"], ["audit", "审计记录", "Audit"], ["notifications", "通知中心", "Notifications"]]
 };
 
@@ -38,9 +38,10 @@ export function AiTraderCenter({ data, action, ui, initialTab = "dialog" }) {
   const [tab, setTab] = useState(initialTab);
   const activeWatches = (data.watchTriggers || []).filter((item) => item.status === "active").length;
   const mandate = (data.mandates || []).find((item) => ["active", "running"].includes(item.status));
-  const extra = tab === "dialog" ? <div className="aiTopCluster"><ChatKpiStrip data={data} bar/><div className="aiTopLinks"><button onClick={()=>ui.setActive("riskMandate")}><ShieldCheck/>{t("交易限制", "Trading limits")}<b>{mandate?.maxOrderNotionalUsdt ? `${mandate.maxOrderNotionalUsdt} U` : "—"}</b></button><button onClick={()=>setTab("watch")}><Eye/>{t("实时盯盘", "Live watch")}<b>{activeWatches}</b></button></div></div> : null;
+  const changeTab = (next) => { setTab(next); ui.setActive(({ dialog: "chat", intel: "chat:intelligence", watch: "watch" })[next] || "chat"); };
+  const extra = tab === "dialog" ? <div className="aiTopCluster"><ChatKpiStrip data={data} bar/><div className="aiTopLinks"><button onClick={()=>ui.setActive("riskMandate")}><ShieldCheck/>{t("交易限制", "Trading limits")}<b>{mandate?.maxOrderNotionalUsdt ? `${mandate.maxOrderNotionalUsdt} U` : "—"}</b></button><button onClick={()=>changeTab("watch")}><Eye/>{t("实时盯盘", "Live watch")}<b>{activeWatches}</b></button></div></div> : null;
   const page = tab === "dialog" ? <AiDialogConcept data={data} action={action} ui={ui}/> : tab === "intel" ? <IntelligenceConcept data={data} action={action} ui={ui}/> : <WatchMonitorConcept data={data} action={action} ui={ui}/>;
-  return <CenterShell title={t("AI 交易员","AI Trader")} subtitle="" tabs={TABS.ai} active={tab} onChange={setTab} inlineTabs tabsExtra={extra}>{page}</CenterShell>;
+  return <CenterShell title={t("AI 交易员","AI Trader")} subtitle="" tabs={TABS.ai} active={tab} onChange={changeTab} inlineTabs tabsExtra={extra}>{page}</CenterShell>;
 }
 
 export function TradingCenter({ data, action, ui, initialTab = "overview", initialReviewId = "" }) {
@@ -57,21 +58,24 @@ export function ResearchCenter({ data, action, ui, initialTab = "knowledge", str
   const [tab, setTab] = useState(initialTab);
   const pages = {
     knowledge: <KnowledgeConcept data={data} action={action} ui={ui}/>,
-    strategy: <StrategyLibraryConcept data={data} action={action} ui={ui} initialTab={strategyInitialTab}/>,
+    strategy: <StrategyLibraryConcept data={data} action={action} ui={ui} initialTab={strategyInitialTab} onTabChange={(next) => ui.setActive(({ catalog: "strategyLib", studio: "strategyStudio", market: "strategyMarket", research: "strategyResearch" })[next] || "strategyLib")}/>,
     capabilities: <CapabilitiesConcept data={data} action={action} ui={ui}/>
   };
-  return <CenterShell title={t("研究中心","Research")} subtitle={t("知识库 · 策略库 · 能力库","Knowledge · Strategies · Capabilities")} tabs={TABS.research} active={tab} onChange={setTab}>{pages[tab] || pages.knowledge}</CenterShell>;
+  const changeTab = (next) => { setTab(next); ui.setActive(({ knowledge: "knowledgeBase", strategy: "strategyLib", capabilities: "capabilities" })[next] || "knowledgeBase"); };
+  return <CenterShell title={t("研究中心","Research")} subtitle={t("知识库 · 策略库 · 能力库","Knowledge · Strategies · Capabilities")} tabs={TABS.research} active={tab} onChange={changeTab}>{pages[tab] || pages.knowledge}</CenterShell>;
 }
 
 export function RiskCenter({ data, action, ui, initialTab = "posture" }) {
   const [tab, setTab] = useState(initialTab);
   const pages = {
     posture: <RiskPostureConcept data={data} action={action} ui={ui}/>,
+    events: <EventRiskConcept data={data} action={action} ui={ui}/>,
     mandate: <MandateConcept data={data} action={action} ui={ui}/>,
     rules: <RulesConcept data={data} action={action} ui={ui}/>,
     keys: <KeysConcept data={data} action={action} ui={ui}/>
   };
-  return <CenterShell title={t("风控中心","Risk Center")} subtitle={t("总览 · 资金与交易边界 · 风控规则 · 密钥安全","Overview · Capital & Trading Limits · Risk Rules · Key Security")} tabs={TABS.risk} active={tab} onChange={setTab}>{pages[tab] || pages.posture}</CenterShell>;
+  const changeTab = (next) => { setTab(next); ui.setActive(({ posture: "riskOverview", events: "eventRisk", mandate: "riskMandate", rules: "riskSettings", keys: "riskKeys" })[next] || "riskOverview"); };
+  return <CenterShell title={t("风控中心","Risk Center")} subtitle={t("总览 · 资金与交易边界 · 风控规则 · 密钥安全","Overview · Capital & Trading Limits · Risk Rules · Key Security")} tabs={TABS.risk} active={tab} onChange={changeTab}>{pages[tab] || pages.posture}</CenterShell>;
 }
 
 export function OperationsCenter({ data, action, ui, initialTab = "overview" }) {
@@ -83,7 +87,8 @@ export function OperationsCenter({ data, action, ui, initialTab = "overview" }) 
     audit: <AuditConcept data={data} action={action} ui={ui}/>,
     notifications: <NotificationsConcept data={data} action={action} ui={ui}/>
   };
-  return <CenterShell title={t("系统运营","Operations")} subtitle={t("事件 · 任务 · 审计 · 可观测","Events · Tasks · Audit · Observability")} tabs={TABS.ops} active={tab} onChange={setTab}>{pages[tab] || pages.overview}</CenterShell>;
+  const changeTab = (next) => { setTab(next); ui.setActive(({ overview: "operationsCenter", events: "eventsTasks:events", tasks: "eventsTasks:tasks", audit: "auditSystem", notifications: "notifications" })[next] || "operationsCenter"); };
+  return <CenterShell title={t("系统运营","Operations")} subtitle={t("事件 · 任务 · 审计 · 可观测","Events · Tasks · Audit · Observability")} tabs={TABS.ops} active={tab} onChange={changeTab}>{pages[tab] || pages.overview}</CenterShell>;
 }
 
 export { SettingsConcept };
