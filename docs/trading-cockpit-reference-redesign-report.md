@@ -1,7 +1,7 @@
 # 交易驾驶舱参考图重构报告
 
 日期：2026-09-04
-最终生产实现源提交：`d9efcea00c2c42b7e605d7d9a24472721f40b6ac`
+最终生产实现源提交：`30806e3f957ea2d9c9c5d0d8c16bb47a8a63ec5b`
 原 Task 9 收敛实现：`30458a06996ae5c029361600f3d62bf07d3a1dc6`
 
 ## 交付范围与边界
@@ -68,6 +68,14 @@ RED 的六个独立复审反例为：系统提示 `3.723:1`、市场提示 `2.77
 
 修复没有改变图表线、K 线、成交量柱、状态圆点或图标的装饰色；只新增 scoped operational text tokens，并让 active control 保留既有橙底 / 浅橙底、underline 与 active class。GREEN 六个反例分别为 `6.623:1`、`6.807:1`、`5.324:1`、`6.071:1`、`5.919:1`、`5.958:1`（白底 `6.501:1`）。五页最终最差值均不低于 `4.905:1`。
 
+### 独立复审修复：组合 opacity 与资源状态文字
+
+独立复审在现已被取代的证据提交 `2897465a57c7e5cf66b3d2cecc528b48841f0b45` 上发现 Critical 0 / Important 1 / Minor 1。唯一 Important 是 `.positionResourceState span` 使用 `opacity:.84`，而浏览器合同没有组合文本节点及祖先节点的 computed opacity，导致真实渲染对比度被高估。
+
+本轮先让对比度事实累乘节点与祖先的 opacity，再将前景合成到已求得的有效背景，并在失败输出中显示 `cumulativeOpacity`。RED 实测为：Loading / Stale / Degraded `4.408:1`，Error / Failed `4.195:1`，Forbidden / Disabled / Not loaded `4.137:1`，均为 `cumulativeOpacity=.84`。修复去掉普通 11px 文字的整组透明度，保留每种资源状态的显式 semantic color 和背景区分。GREEN 三组最低对比度分别为 `6.313:1`、`5.705:1`、`5.932:1`，全部 `cumulativeOpacity=1`。
+
+新 opacity 合同同时抓到 Ledger 禁用分页按钮的旧 `opacity:.48`，其 11px 文字实测仅 `2.001:1`。修复使禁用按钮继续保持原生 `disabled` 属性、不可操作、不进入焦点顺序、`cursor:not-allowed` 及灰阶填充 / 边框，但以显式文本色取代整体透明度；GREEN 为 `4.845:1`。浏览器合同现在对每个真实 native disabled control 同时验证对比度、disabled 属性与 cursor，没有为通过对比度而重新启用任何动作。
+
 ## 最终几何与可读性
 
 1440×1080 实测：
@@ -111,7 +119,7 @@ Overview 与 Market 的真实图表组件均已呈现非空 canvas，逐 K 线�
 - `.impeccable/review/trading-cockpit-v2-ledger-1024.png`
 - `.impeccable/review/trading-cockpit-v2-positions-empty-1440.png`
 
-八张 PNG 均从 exact `d9efcea` detached clone 重新捕获并逐图打开：文件名与页面/viewport 匹配，Overview footer、Market 5 条自选与 ticker、Execution 底部三块、Ledger 分页均完整；Market K 线与逐 K 线成交量均非空，无半加载、错误页面、横向裁切或误标文件。七张主证据来自 enriched test-only fixture；Positions empty 保持独立 loaded-empty 证据。加深后的 operational 文本仍保持橙 / 绿 / 红 / 黄语义层级，没有把图表与装饰色整体压暗。
+八张 PNG 的当前像素来源分开记录：Overview / Market / Positions / Execution 的四张主图、Market 1280 与 Positions empty 共六张仍是 exact `d9efcea` detached clone 的已验证捕获；它们在本轮不会渲染 `.positionResourceState` 或 disabled paginator，因此像素没有变化。Ledger 1440 与 Ledger 1024 会渲染禁用分页，已从 exact `30806e3` detached clone 重新捕获。八张均逐图打开：文件名与页面/viewport 匹配，Overview footer、Market 5 条自选与 ticker、Execution 底部三块、Ledger 分页均完整；Market K 线与逐 K 线成交量均非空，无半加载、错误页面、横向裁切或误标文件。七张主证据来自 enriched test-only fixture；Positions empty 保持独立 loaded-empty 证据。加深后的 operational 文本仍保持橙 / 绿 / 红 / 黄语义层级，没有把图表与装饰色整体压暗。
 
 ## 视觉残余与诚实声明
 
@@ -129,9 +137,10 @@ Overview 与 Market 的真实图表组件均已呈现非空 canvas，逐 K 线�
 ## Fresh verification
 
 - Impeccable detector（UI 收敛后仅运行一次）：`[]`。本轮对比度修复遵守「最终收敛后 exactly once」约束，没有为了重复生成相同机械结论而再次运行 detector。
-- 共享工作树诊断：Focused `108/108`（附加 Position / Performance integrity 合集 `132/132`）、Full `2368/2368`、ESLint PASS、Vite build PASS（1826 modules，1.46s）。首次直接运行附加 focused 集时因未提供 `TEST_DATA_ROOT` 得到 `test_data_dir_requires_test_data_root`；改用仓库权威 `scripts/run-tests-isolated.mjs` 后 `132/132`，该失败属于调用前置条件错误，不是产品回归。这组数字包含未提交的用户/其他任务文件，仅用于确认 Task 9 与并行工作兼容，不作为提交态计数。
-- exact detached clone（生产实现 `d9efcea` 及其 8 张最终 evidence assets；最终 evidence hash 由交付回报记录，避免报告自引用）：Focused `108/108`、Full `2357/2357`、ESLint PASS、Vite build PASS（1825 modules，1.43s）。
+- 共享工作树诊断：Focused `108/108`（附加 Position / Performance integrity 合集 `132/132`）、Full `2368/2368`、ESLint PASS、Vite build PASS（1826 modules，1.45s）。首次直接运行附加 focused 集时因未提供 `TEST_DATA_ROOT` 得到 `test_data_dir_requires_test_data_root`；改用仓库权威 `scripts/run-tests-isolated.mjs` 后 `132/132`，该失败属于调用前置条件错误，不是产品回归。这组数字包含未提交的用户/其他任务文件，仅用于确认 Task 9 与并行工作兼容，不作为提交态计数。
+- exact detached clone（生产实现 `30806e3`；最终 evidence hash 由交付回报记录，避免报告自引用）：Focused `108/108`、Full `2357/2357`、ESLint PASS、Vite build PASS（1825 modules，1.43s）。
 - 默认与 enriched 五页 Chrome 在 shared 与 exact detached clone 均各为 15 个 viewport/page 组合 PASS；全部进程与临时 profile 清理成功。exact clone 的 enriched 1440 几何与表中最终值一致，完整 operational population 对比度在五页、三视口均通过。
+- Positions 资源状态在 shared 与 exact 均完成 Loading / Stale / Degraded / Error / Failed / Forbidden / Disabled / Not loaded 八态× 1440 / 1280 / 1024 实测；字号 11px、无横向溢出、对比度分别至少 `6.313:1` / `5.705:1` / `5.932:1`。Ledger 原生禁用分页对比度 `4.845:1`，且仍为 disabled / `cursor:not-allowed`。
 - 状态矩阵 Chrome：Loading、Empty、Stale、Degraded、Failed、Forbidden、Disabled 全五页 PASS；Market / Positions / Execution malformed、Market mismatched、Positions partial、Ledger 8 组 malformed / long / identity / risk / status / collection counterexamples 全部 PASS；9 个 chart lifecycle 状态全部在正确挂载范围内 PASS。Market malformed 的早期 runner-scope RED 已单独纠正并复跑 PASS。
 - `git diff --check`：PASS。
 
