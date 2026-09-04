@@ -238,7 +238,7 @@
 .strategyFooter button { display: inline-flex; align-items: center; gap: 4px; border: 0; color: #08724a; background: transparent; font-size: 10.5px; font-weight: 700; cursor: pointer; }
 
 /* Overview owns a reference-specific composition; selectors stay page-scoped. */
-.cockpitOverview { display: grid; gap: 12px; }
+.cockpitOverview { display: grid; gap: 10px; }
 .cockpitOverview .cockpitPanel { box-shadow: 0 8px 24px rgba(70, 52, 31, .03); }
 .cockpitOverview button { min-width: 36px; min-height: 36px; height: 36px; }
 .cockpitOverview .cockpitTextButton { height: 36px; flex: none; padding-inline: 4px; font-size: 11px; }
@@ -426,8 +426,8 @@
 .marketRegimeSummary b { overflow: hidden; color: var(--cockpit-positive); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .marketRegimeSummary .cockpitGauge { width: 72px; }
 
-.marketWorkspace { min-width: 0; display: grid; grid-template-columns: minmax(0, 74fr) minmax(255px, 26fr); gap: 12px; }
-.marketChartPanel { min-height: 510px; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.marketWorkspace { min-width: 0; display: grid; grid-template-columns: minmax(0, 74fr) minmax(255px, 26fr); align-items: start; gap: 12px; }
+.marketChartPanel { height: 492px; min-height: 492px; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; }
 .marketChartPanel .cockpitPanelHead { min-height: 46px; }
 .marketIntervals { display: flex; gap: 2px; }
 .tradingCockpit .marketIntervals button { min-width: 38px; height: 36px; padding: 0 8px; border: 0; border-radius: 6px; color: var(--cockpit-text-2); background: transparent; font-size: 11px; font-weight: 650; cursor: pointer; }
@@ -438,36 +438,37 @@
 .marketChartQuote b { font-size: 12px; }
 .marketChartQuote small { color: var(--cockpit-text-3); font-size: 11px; }
 .marketChartQuote strong { font-size: 14px; }
-.marketChartBox { min-height: 376px; background: #fbf9f5; }
+.marketChartBox { min-height: 358px; background: #fbf9f5; }
 .marketChartBox .tvChart { width: 100%; height: 100%; }
 .marketChartBox .cockpitEmpty { height: 100%; }
+.marketChartBox a[href] { width: 36px; min-width: 36px; height: 36px; min-height: 36px; display: inline-flex; align-items: center; justify-content: center; }
 .marketVolumeStrip { min-height: 44px; display: flex; align-items: center; gap: 22px; padding: 7px 13px; border-top: 1px solid var(--cockpit-hairline); }
 .marketVolumeStrip span { display: grid; line-height: 1.2; }
 .marketVolumeStrip small { color: var(--cockpit-text-3); font-size: 11px; }
 .marketVolumeStrip b { font-size: 11px; }
 .marketVolumeStrip em { margin-left: auto; color: var(--cockpit-text-3); font-size: 11px; font-style: normal; }
 .marketRail { min-width: 0; display: grid; grid-template-rows: auto 1fr; align-content: start; gap: 12px; }
-.marketStateLead { min-height: 44px; display: flex; align-items: center; gap: 9px; padding: 7px 13px; }
+.marketStateLead { min-height: 40px; display: flex; align-items: center; gap: 9px; padding: 5px 13px; }
 .marketStateLead > svg { width: 21px; height: 21px; flex: none; color: var(--cockpit-brand); }
 .marketStateLead span { min-width: 0; display: grid; }
 .marketStateLead small { color: var(--cockpit-text-3); font-size: 11px; }
 .marketStateLead b { overflow: hidden; color: var(--cockpit-positive); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .marketStateFacts { border-top: 1px solid var(--cockpit-hairline); }
-.marketStateFacts > span { min-height: 28px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 13px; border-bottom: 1px solid var(--cockpit-hairline); }
+.marketStateFacts > span { min-height: 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 13px; border-bottom: 1px solid var(--cockpit-hairline); }
 .marketStateFacts small { color: var(--cockpit-text-3); font-size: 11px; }
 .marketStateFacts b { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.marketConfidence { min-height: 38px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 12px; padding: 5px 13px; }
+.marketConfidence { min-height: 36px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 12px; padding: 4px 13px; }
 .marketConfidence span { display: grid; }
 .marketConfidence span b { color: var(--cockpit-positive); font-size: 15px; }
 .marketConfidence span small { color: var(--cockpit-text-3); font-size: 11px; }
 .marketConfidence > i { height: 5px; overflow: hidden; border-radius: 3px; background: #ede9e4; }
 .marketConfidence > i b { display: block; height: 100%; border-radius: inherit; background: var(--cockpit-positive); }
-.marketWatchRows { max-height: 246px; overflow: auto; }
+.marketWatchRows { max-height: 194px; overflow: auto; }
 .marketWatchRows article { min-height: 38px; display: grid; grid-template-columns: minmax(0, 1fr) 38px; align-items: center; border-bottom: 1px solid var(--cockpit-hairline); }
 .marketWatchRows article:last-child { border-bottom: 0; }
 .marketWatchRows article:hover, .marketWatchRows article.active { background: #fff8f1; }
 .marketWatchRows article.active { box-shadow: inset 2px 0 var(--cockpit-accent); }
-.marketWatchSelect { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto 18px; align-items: center; gap: 7px; padding: 5px 7px 5px 12px; border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer; }
+.marketWatchSelect { min-width: 0; height: 38px; display: grid; grid-template-columns: minmax(0, 1fr) auto 18px; align-items: center; gap: 7px; padding: 2px 7px 2px 12px; overflow: hidden; border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer; }
 .marketWatchSelect > span { min-width: 0; display: grid; }
 .marketWatchSelect b { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .marketWatchSelect small { color: var(--cockpit-text-3); font-size: 11px; }
@@ -480,7 +481,7 @@
 .marketWatchRemove svg { width: 13px; height: 13px; }
 
 .marketAnalysisGrid { min-width: 0; display: grid; grid-template-columns: 1.17fr .82fr .92fr 1.05fr; gap: 12px; }
-.marketAnalysisGrid > .cockpitPanel { min-height: 190px; }
+.marketAnalysisGrid > .cockpitPanel { min-height: 288px; }
 .marketDerivativeFacts { min-height: 144px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .marketDerivativeFacts span { min-width: 0; display: grid; align-content: center; gap: 5px; padding: 10px; border-right: 1px solid var(--cockpit-hairline); border-bottom: 1px solid var(--cockpit-hairline); }
 .marketDerivativeFacts span:nth-child(4n) { border-right: 0; }
@@ -583,27 +584,28 @@
 .positionDetailTable tbody:hover .positionPrimaryRow { background: #fffaf5; }
 .positionSymbol { min-width: 94px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 3px 5px; }
 .positionSymbol > b { overflow: hidden; color: var(--cockpit-ink); font-size: 11.5px; text-overflow: ellipsis; }
-.positionSymbol > small { grid-column: 1 / -1; color: var(--cockpit-text-3); font-size: 10px; }
+.positionSymbol > small { grid-column: 1 / -1; color: var(--cockpit-text-3); font-size: 11px; }
 .positionProtectionRow td { height: 38px; padding: 0 9px 7px; background: #fdfcfb; }
 .positionProtectionRow td > div { min-height: 31px; display: flex; align-items: center; gap: 22px; padding: 4px 8px; border: 1px solid var(--cockpit-hairline); border-radius: 6px; background: #fff; }
 .positionProtectionRow span { display: flex; align-items: center; gap: 6px; }
-.positionProtectionRow small { color: var(--cockpit-text-3); font-size: 10px; }
-.positionProtectionRow b { color: var(--cockpit-text-2); font-size: 10.5px; font-weight: 650; }
+.positionProtectionRow small { color: var(--cockpit-text-3); font-size: 11px; }
+.positionProtectionRow b { color: var(--cockpit-text-2); font-size: 11px; font-weight: 650; }
 .positionProtectionRow span:last-child { margin-left: auto; }
 .positionProtectionRow span:last-child b { max-width: 130px; overflow: hidden; color: var(--cockpit-text-3); text-overflow: ellipsis; }
 .cockpitPositionsV2 .positionExitButton { min-width: 72px; height: 36px; min-height: 36px; display: inline-flex; align-items: center; justify-content: center; padding: 0 10px; border: 1px solid #efb99d; border-radius: 6px; color: var(--cockpit-accent-strong); background: #fff8f2; font-size: 11px; font-weight: 700; cursor: pointer; }
 .positionExitButton:hover { color: #fff; background: var(--cockpit-accent); }
-.positionNoAction { color: var(--cockpit-text-3); font-size: 10px; }
+.positionNoAction { color: var(--cockpit-text-3); font-size: 11px; }
 
-.positionTrendPanel { min-height: 178px; }
-.positionTrendPanel .cockpitAreaTrend { width: 100%; height: 128px; padding: 12px 14px 14px; }
+.positionTrendPanel { min-height: 250px; }
+.cockpitPositionsV2 .positionCore > .positionTrendPanel { min-height: 250px; }
+.positionTrendPanel .cockpitAreaTrend { width: 100%; height: 200px; padding: 12px 14px 14px; }
 .positionRiskHealthBody { min-height: 194px; display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 10px; padding: 13px; }
 .positionRiskHealthBody > .cockpitGauge { width: 92px; }
 .positionRiskHealthBody > div { min-width: 0; display: grid; }
 .positionRiskHealthBody > div span { min-height: 43px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 2px 6px; border-bottom: 1px solid var(--cockpit-hairline); }
 .positionRiskHealthBody > div span:last-child { border-bottom: 0; }
 .positionRiskHealthBody svg { grid-row: 1 / 3; width: 14px; height: 14px; color: var(--cockpit-positive); }
-.positionRiskHealthBody small { color: var(--cockpit-text-3); font-size: 10px; }
+.positionRiskHealthBody small { color: var(--cockpit-text-3); font-size: 11px; }
 .positionRiskHealthBody b { font-size: 11px; }
 
 .positionMarginSafetyBody { min-height: 154px; display: grid; align-content: center; gap: 11px; padding: 14px; }
@@ -613,13 +615,13 @@
 .positionMarginSafetyBody dl { display: grid; grid-template-columns: 1fr 1fr; margin: 0; }
 .positionMarginSafetyBody dl div { display: grid; gap: 2px; }
 .positionMarginSafetyBody dl div:last-child { text-align: right; }
-.positionMarginSafetyBody dt { color: var(--cockpit-text-3); font-size: 10px; }
+.positionMarginSafetyBody dt { color: var(--cockpit-text-3); font-size: 11px; }
 .positionMarginSafetyBody dd { margin: 0; font-size: 11px; font-weight: 650; }
 
 .positionConcentrationBody { min-height: 154px; display: grid; align-content: center; padding: 6px 13px; }
 .positionConcentrationBody > span { min-height: 45px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 8px; border-bottom: 1px solid var(--cockpit-hairline); }
 .positionConcentrationBody > span:last-child { border-bottom: 0; }
-.positionConcentrationBody small { grid-column: 1 / -1; color: var(--cockpit-text-3); font-size: 10px; }
+.positionConcentrationBody small { grid-column: 1 / -1; color: var(--cockpit-text-3); font-size: 11px; }
 .positionConcentrationBody b, .positionConcentrationBody em { font-size: 11px; font-style: normal; }
 .positionConcentrationBody em { color: var(--cockpit-accent-strong); font-weight: 700; }
 .cockpitAreaTrend { width: 100%; height: 80px; display: block; padding: 12px; overflow: visible; color: var(--cockpit-positive); }
@@ -743,7 +745,7 @@
   .cockpitBrand b { font-size: 13px; }
   .cockpitTabs button { min-width: 68px; padding: 0 8px; font-size: 10.5px; }
   .cockpitTabs button::after { right: 8px; left: 8px; }
-  .cockpitPage { padding: 14px 14px 24px; }
+  .cockpitPage { padding: 14px 16px 24px; }
   .portfolioHero { grid-template-columns: 220px 1fr; }
   .portfolioRuntime { grid-column: 1 / -1; min-height: 52px; grid-template-columns: auto auto 1fr; align-items: center; gap: 8px; padding: 8px 14px; border-top: 1px solid var(--cockpit-hairline); }
   .portfolioRuntime small { display: none; }
@@ -779,11 +781,13 @@
   .aiReadList { padding: 0 9px; }
   .portfolioCompact { grid-template-columns: 82px 1fr; padding: 10px; }
   .allocationRing { width: 76px; }
-  .marketHeader { grid-template-columns: 205px 170px minmax(0, 1fr); }
+  .marketHeader { grid-template-columns: 205px 185px minmax(0, 1fr); }
+  .marketPrimaryQuote { padding-inline: 10px; }
+  .marketPrimaryQuote > b { font-size: 24px; }
   .marketRegimeSummary { grid-column: 1 / -1; min-height: 72px; border-top: 1px solid var(--cockpit-hairline); border-right: 0; }
   .marketQuoteFacts > div { padding-inline: 8px; }
   .marketWorkspace { grid-template-columns: minmax(0, 74fr) minmax(240px, 26fr); gap: 10px; }
-  .marketChartPanel { min-height: 476px; }
+  .marketChartPanel { height: 476px; min-height: 476px; }
   .marketChartBox { min-height: 342px; }
   .marketAnalysisGrid { grid-template-columns: 1fr 1fr; gap: 10px; }
   .marketIntervals button { min-width: 36px; padding-inline: 6px; }
@@ -810,6 +814,7 @@
 
 @media (max-width: 1100px) {
   .positionHeroV2 { grid-template-columns: 210px minmax(0, 1fr); }
+  .positionHeroIdentity b { font-size: 23px; }
   .positionHeroRisk { grid-column: 1 / -1; min-height: 47px; grid-template-columns: auto 1fr; align-items: center; gap: 9px; padding: 7px 13px; border-top: 1px solid var(--cockpit-hairline); }
   .positionConstraints { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .positionConstraints > span:nth-child(3) { border-right: 0; }
@@ -826,9 +831,9 @@
 }
 
 /* Execution & Review follows the reference's metric ribbon, 36/64 workbench, and evidence footer. */
-.cockpitReviewV2 { display: grid; align-content: start; gap: 12px; }
+.cockpitReviewV2 { display: grid; align-content: start; gap: 10px; padding-top: 10px; }
 .cockpitReviewV2 :is(button, select, tr[tabindex]) { min-height: 36px; }
-.reviewTitleV2 { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.reviewTitleV2 { min-height: 38px; display: flex; align-items: center; justify-content: space-between; gap: 18px; }
 .reviewTitleV2 > div { min-width: 0; }
 .reviewTitleV2 h1 { color: var(--cockpit-ink); font-size: 21px; letter-spacing: -.03em; }
 .reviewTitleV2 p { margin-top: 3px; color: var(--cockpit-text-3); font-size: 11px; }
@@ -844,16 +849,16 @@
 .reviewResourceState button { min-width: 92px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 12px; border: 1px solid var(--cockpit-border); border-radius: 7px; color: var(--cockpit-copy); background: #fff; cursor: pointer; }
 .reviewResourceState button svg { width: 13px; height: 13px; }
 
-.reviewHeroV2 { min-height: 96px; display: grid; grid-template-columns: minmax(210px, 1.45fr) repeat(6, minmax(100px, 1fr)); overflow: hidden; border: 1px solid var(--cockpit-border); border-radius: 9px; background: #fff; box-shadow: 0 8px 24px rgba(70, 52, 31, .035); }
+.reviewHeroV2 { min-height: 150px; display: grid; grid-template-columns: minmax(210px, 1.45fr) repeat(6, minmax(100px, 1fr)); overflow: hidden; border: 1px solid var(--cockpit-border); border-radius: 9px; background: #fff; box-shadow: 0 8px 24px rgba(70, 52, 31, .035); }
 .reviewHeroV2 .cockpitMetric { padding: 13px 14px; border-right: 1px solid var(--cockpit-hairline); }
 .reviewHeroV2 .cockpitMetric:last-child { border-right: 0; }
-.reviewHeroV2 .cockpitMetric small { font-size: 10px; }
+.reviewHeroV2 .cockpitMetric small { font-size: 11px; }
 .reviewHeroV2 .cockpitMetric b { font-size: 17px; }
 .reviewHeroV2 .cockpitMetric.strong b { font-size: 24px; }
 
-.reviewConclusionV2 { min-height: 122px; }
+.reviewConclusionV2 { min-height: 138px; }
 .reviewConclusionColumns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.reviewConclusionColumns article { min-width: 0; min-height: 77px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-content: start; gap: 9px; padding: 12px 14px; border-right: 1px solid var(--cockpit-hairline); }
+.reviewConclusionColumns article { min-width: 0; min-height: 93px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-content: start; gap: 9px; padding: 12px 14px; border-right: 1px solid var(--cockpit-hairline); }
 .reviewConclusionColumns article:last-child { border-right: 0; }
 .reviewConclusionColumns svg { width: 16px; height: 16px; color: var(--cockpit-brand); }
 .reviewConclusionColumns .positive svg { color: var(--cockpit-positive); }
@@ -863,37 +868,37 @@
 .reviewConclusionColumns p { display: -webkit-box; overflow: hidden; color: var(--cockpit-copy); font-size: 11px; line-height: 1.45; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .reviewConclusionColumns .reviewUnavailable { color: var(--cockpit-text-3); }
 
-.reviewFilters { min-width: 0; min-height: 48px; display: grid; grid-template-columns: minmax(170px, 1fr) repeat(4, minmax(116px, auto)); align-items: center; gap: 8px; padding: 5px 8px 5px 13px; border: 1px solid var(--cockpit-border); border-radius: 8px; background: #fff; }
+.reviewFilters { min-width: 0; min-height: 42px; display: grid; grid-template-columns: minmax(170px, 1fr) repeat(4, minmax(116px, auto)); align-items: center; gap: 8px; padding: 2px 8px 2px 13px; border: 1px solid var(--cockpit-border); border-radius: 8px; background: #fff; }
 .reviewFilters > span { min-width: 0; display: flex; align-items: center; gap: 7px; }
 .reviewFilters > span svg { width: 14px; height: 14px; color: var(--cockpit-brand); }
 .reviewFilters > span b { font-size: 12px; }
-.reviewFilters > span small { overflow: hidden; color: var(--cockpit-text-3); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.reviewFilters label { min-width: 0; display: grid; grid-template-columns: auto minmax(72px, 1fr); align-items: center; gap: 5px; color: var(--cockpit-text-3); font-size: 10px; }
+.reviewFilters > span small { overflow: hidden; color: var(--cockpit-text-3); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.reviewFilters label { min-width: 0; display: grid; grid-template-columns: auto minmax(72px, 1fr); align-items: center; gap: 5px; color: var(--cockpit-text-3); font-size: 11px; }
 .reviewFilters select { min-width: 0; height: 36px; padding: 0 26px 0 9px; border: 1px solid var(--cockpit-border); border-radius: 6px; color: var(--cockpit-copy); background: #fff; font: inherit; font-size: 11px; }
 
 .cockpitReviewV2 .reviewWorkbench { min-width: 0; display: grid; grid-template-columns: minmax(330px, 36fr) minmax(0, 64fr); align-items: stretch; gap: 12px; margin: 0; }
-.reviewTradeList, .reviewTradeDetail { min-height: 450px; }
+.reviewTradeList, .reviewTradeDetail { height: 390px; min-height: 390px; }
 .cockpitReviewV2 .reviewWorkbench.empty > :is(.reviewTradeList, .reviewTradeDetail) { min-height: 210px; }
 .reviewTradeList { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
 .reviewTableScroll { min-width: 0; overflow: auto; }
 .reviewTradeTable { width: 100%; min-width: 430px; border-collapse: collapse; table-layout: fixed; }
-.reviewTradeTable th { height: 32px; padding: 0 8px; color: var(--cockpit-text-3); background: #fcfbf9; font-size: 10px; font-weight: 650; text-align: left; white-space: nowrap; }
+.reviewTradeTable th { height: 32px; padding: 0 8px; color: var(--cockpit-text-3); background: #fcfbf9; font-size: 11px; font-weight: 650; text-align: left; white-space: nowrap; }
 .reviewTradeTable th:first-child { width: 26%; }
 .reviewTradeTable th:nth-child(2) { width: 17%; }
 .reviewTradeTable th:nth-child(3) { width: 17%; }
 .reviewTradeTable th:nth-child(4) { width: 22%; }
 .reviewTradeTable th:last-child { width: 18%; }
-.reviewTradeTable td { height: 37px; overflow: hidden; padding: 5px 8px; border-top: 1px solid var(--cockpit-hairline); color: var(--cockpit-copy); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.reviewTradeTable td { height: 37px; overflow: hidden; padding: 5px 8px; border-top: 1px solid var(--cockpit-hairline); color: var(--cockpit-copy); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .reviewTradeTable td:first-child { padding: 0; }
 .reviewTradeTable tbody tr { cursor: pointer; }
 .reviewTradeTable tbody tr:hover { background: #fffaf5; }
 .reviewTradeTable tbody tr.selected { background: var(--cockpit-accent-soft); box-shadow: inset 2px 0 var(--cockpit-brand); }
 .reviewRowSelect { width: 100%; min-width: 0; display: flex; align-items: center; padding: 0 8px; border: 0; color: inherit; background: transparent; cursor: pointer; text-align: left; }
 .reviewRowSelect:focus { outline: 3px solid rgba(238, 112, 38, .32); outline-offset: -3px; }
-.reviewTradeTable time, .reviewTradeTable b, .reviewTradeTable strong { font-size: 10px; }
+.reviewTradeTable time, .reviewTradeTable b, .reviewTradeTable strong { font-size: 11px; }
 .reviewTradeTable .cockpitTone { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .reviewPagination { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 9px 4px 13px; border-top: 1px solid var(--cockpit-hairline); }
-.reviewPagination > span { color: var(--cockpit-text-3); font-size: 10px; }
+.reviewPagination > span { color: var(--cockpit-text-3); font-size: 11px; }
 .reviewPagination > div { display: flex; align-items: center; gap: 5px; }
 .reviewPagination button { width: 36px; border: 0; border-radius: 6px; color: var(--cockpit-copy); background: #f7f4ef; cursor: pointer; }
 .reviewPagination b { min-width: 20px; font-size: 11px; text-align: center; }
@@ -901,25 +906,25 @@
 .reviewTradeDetail { display: grid; grid-template-rows: auto auto auto minmax(0, 1fr) auto; }
 .reviewSelectedIdentity { min-height: 47px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 13px; border-bottom: 1px solid var(--cockpit-hairline); background: #fffcf8; }
 .reviewSelectedIdentity > span { min-width: 0; display: grid; }
-.reviewSelectedIdentity small { color: var(--cockpit-text-3); font-size: 9px; }
+.reviewSelectedIdentity small { color: var(--cockpit-text-3); font-size: 11px; }
 .reviewSelectedIdentity b { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .reviewSelectedIdentity > div { display: flex; flex: none; gap: 5px; }
 .reviewDetailFacts { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border-bottom: 1px solid var(--cockpit-hairline); }
 .reviewDetailFacts > span { min-width: 0; display: grid; gap: 3px; padding: 9px 10px; border-right: 1px solid var(--cockpit-hairline); }
 .reviewDetailFacts > span:last-child { border-right: 0; }
-.reviewDetailFacts small { color: var(--cockpit-text-3); font-size: 9px; }
+.reviewDetailFacts small { color: var(--cockpit-text-3); font-size: 11px; }
 .reviewDetailFacts b { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.reviewDetailBody { min-width: 0; min-height: 195px; display: grid; grid-template-columns: minmax(175px, 29fr) minmax(0, 71fr); }
+.reviewDetailBody { min-width: 0; min-height: 125px; display: grid; grid-template-columns: minmax(175px, 29fr) minmax(0, 71fr); }
 .reviewDetailBody h3 { color: var(--cockpit-ink); font-size: 11px; }
 .reviewOverview { padding: 12px 13px; border-right: 1px solid var(--cockpit-hairline); }
 .reviewOverview dl { display: grid; margin: 8px 0 0; }
 .reviewOverview dl > div { min-width: 0; min-height: 33px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border-top: 1px solid var(--cockpit-hairline); }
-.reviewOverview dt { color: var(--cockpit-text-3); font-size: 9px; }
-.reviewOverview dd { overflow: hidden; margin: 0; font-size: 10px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.reviewOverview dt { color: var(--cockpit-text-3); font-size: 11px; }
+.reviewOverview dd { overflow: hidden; margin: 0; font-size: 11px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .reviewTradePath { min-width: 0; padding: 12px 14px 8px; }
 .reviewTradePath .cockpitEmpty { min-height: 158px; padding: 12px; }
 .reviewPathChart { display: grid; gap: 4px; padding-top: 6px; }
-.reviewPathChart svg { width: 100%; height: 128px; overflow: visible; color: var(--cockpit-positive); }
+.reviewPathChart svg { width: 100%; height: 82px; overflow: visible; color: var(--cockpit-positive); }
 .reviewPathChart path { fill: none; stroke: currentColor; stroke-width: 1.6; vector-effect: non-scaling-stroke; }
 .reviewPathChart line, .reviewScatter line { stroke: var(--cockpit-border); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
 .reviewPathChart circle { fill: #fff; stroke: currentColor; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
@@ -927,30 +932,30 @@
 .reviewPathChart > div span { display: grid; gap: 2px; }
 .reviewPathChart > div span:nth-child(2) { text-align: center; }
 .reviewPathChart > div span:last-child { text-align: right; }
-.reviewPathChart small { color: var(--cockpit-text-3); font-size: 9px; }
-.reviewPathChart b { font-size: 10px; }
-.reviewRecordedNarrative { min-height: 69px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-content: start; gap: 3px 7px; padding: 10px 13px; border-top: 1px solid var(--cockpit-hairline); background: #fffaf5; }
-.reviewRecordedNarrative > span { grid-row: 1 / 3; display: flex; align-items: center; align-self: start; gap: 5px; color: var(--cockpit-accent-strong); font-size: 10px; }
+.reviewPathChart small { color: var(--cockpit-text-3); font-size: 11px; }
+.reviewPathChart b { font-size: 11px; }
+.reviewRecordedNarrative { min-height: 55px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-content: start; gap: 3px 7px; padding: 7px 13px; border-top: 1px solid var(--cockpit-hairline); background: #fffaf5; }
+.reviewRecordedNarrative > span { grid-row: 1 / 3; display: flex; align-items: center; align-self: start; gap: 5px; color: var(--cockpit-accent-strong); font-size: 11px; }
 .reviewRecordedNarrative svg { width: 13px; height: 13px; }
-.reviewRecordedNarrative > p, .reviewRecordedNarrative details { color: var(--cockpit-copy); font-size: 10px; line-height: 1.45; }
+.reviewRecordedNarrative > p, .reviewRecordedNarrative details { color: var(--cockpit-copy); font-size: 11px; line-height: 1.45; }
 .reviewRecordedNarrative details { grid-column: 2; }
-.reviewRecordedNarrative summary { color: var(--cockpit-ink); cursor: pointer; font-weight: 650; }
+.reviewRecordedNarrative summary { min-height: 36px; display: inline-flex; align-items: center; color: var(--cockpit-ink); cursor: pointer; font-weight: 650; }
 
 .reviewBottomV2 { min-width: 0; display: grid; grid-template-columns: minmax(0, 1.18fr) repeat(2, minmax(0, 1fr)); gap: 12px; }
-.reviewBottomV2 > .cockpitPanel { min-height: 166px; }
+.reviewBottomV2 > .cockpitPanel { min-height: 180px; }
 .reviewScatter { padding: 8px 13px 9px; }
 .reviewScatter svg { width: 100%; height: 84px; overflow: visible; }
 .reviewScatter circle { stroke: #fff; stroke-width: 1; vector-effect: non-scaling-stroke; }
 .reviewScatter circle.positive { fill: var(--cockpit-positive); }
 .reviewScatter circle.negative { fill: var(--cockpit-negative); }
-.reviewScatter > div { display: flex; justify-content: space-between; color: var(--cockpit-text-3); font-size: 9px; }
+.reviewScatter > div { display: flex; justify-content: space-between; color: var(--cockpit-text-3); font-size: 11px; }
 .reviewBehavior > div:last-child, .reviewNextActions > div:last-child { display: grid; }
 .reviewBehavior article, .reviewNextActions article { min-width: 0; min-height: 38px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 7px; padding: 6px 12px; border-bottom: 1px solid var(--cockpit-hairline); }
 .reviewBehavior article:last-child, .reviewNextActions article:last-child { border-bottom: 0; }
 .reviewBehavior article svg { width: 13px; height: 13px; color: var(--cockpit-warning); }
 .reviewBehavior article span { min-width: 0; display: grid; }
-.reviewBehavior article b, .reviewNextActions article p { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.reviewBehavior article p { overflow: hidden; color: var(--cockpit-text-3); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.reviewBehavior article b, .reviewNextActions article p { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.reviewBehavior article p { overflow: hidden; color: var(--cockpit-text-3); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .reviewNextActions article svg { width: 13px; height: 13px; color: var(--cockpit-positive); }
 
 @media (max-width: 1280px) {
@@ -969,7 +974,7 @@
   .reviewHeroV2 .cockpitMetric b { font-size: 15px; }
   .reviewHeroV2 .cockpitMetric.strong b { font-size: 18px; }
   .reviewFilters { grid-template-columns: minmax(130px, 1fr) repeat(4, minmax(95px, auto)); gap: 5px; }
-  .reviewFilters > span small, .reviewFilters label { font-size: 9px; }
+  .reviewFilters > span small, .reviewFilters label { font-size: 11px; }
   .cockpitReviewV2 .reviewWorkbench { grid-template-columns: minmax(300px, 36fr) minmax(0, 64fr); }
   .reviewDetailFacts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .reviewDetailFacts > span:nth-child(3) { border-right: 0; }

@@ -191,7 +191,7 @@ function AiMarketRead({ model, market, marketNotice, marketNoticeState, onOpen }
   return <CockpitPanel className="overviewAiRead" region="ai-market-read" title={t("AI 市场判断", "AI Market Read")} meta={t("只解释证据，不替代风控", "Evidence read; risk controls remain authoritative")}>
     <div className="overviewAiLead">
       <GaugeChart value={confidence == null ? null : Math.round(confidence)} label={t("置信度", "confidence")} tone="positive" ariaLabel={confidence == null ? t("AI 置信度不可用", "AI confidence unavailable") : `${t("AI 置信度", "AI confidence")} ${Math.round(confidence)}%`}/>
-      <div><small>{t("趋势判断", "Directional read")}</small><b>{localizeText(global.label || t("等待行情形成判断", "Awaiting market evidence"))}</b><span>{market?.symbol ? `${market.symbol} · 4H` : t("行情尚未同步", "Market data not synced")}</span></div>
+      <div><small>{t("趋势判断", "Directional read")}</small><b>{localizeText(global.label || t("等待行情形成判断", "Awaiting market evidence"))}</b><span>{market?.symbol || t("行情尚未同步", "Market data not synced")}</span></div>
     </div>
     <div className="overviewAiFacts">
       <span><TrendingUp/><small>{t("趋势结构", "Trend structure")}</small><b>{localizeText(global.label || t("不可用", "Unavailable"))}</b></span>

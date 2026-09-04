@@ -1032,6 +1032,25 @@ test("overview renderer survives production-shaped missing and malformed collect
   assert.doesNotMatch(failed, /class="tvChart"/);
 });
 
+test("overview AI read does not invent a fixed market timeframe", () => {
+  const html = render(OverviewPage, {
+    data: {
+      resourceState: { cockpit: "loaded" },
+      portfolio: { totalEquityUsdt: 100, availableMarginUsdt: 80 },
+      portfolioRisk: { utilizationPct: 20, status: "ok" },
+      markets: [{ symbol: "BTC/USDT", price: 100 }],
+      activeMarket: { symbol: "BTC/USDT", price: 100 },
+      positions: [],
+      notifications: [],
+      accountSnapshots: [],
+      marketRegime: { global: { label: "Neutral", confidence: 58 } }
+    },
+    ui: { setActive() {}, ensureSection() {}, refresh() {} }
+  });
+  assert.match(html, /BTC\/USDT/);
+  assert.doesNotMatch(html, /BTC\/USDT · 4H/);
+});
+
 test("overview renders loading with last-valid facts but blocks initial loading and terminal resource states", () => {
   const ui = { setActive() {}, ensureSection() {}, refresh() {} };
   const facts = {

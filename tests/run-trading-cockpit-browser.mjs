@@ -13,7 +13,10 @@ const viewports = [[1440, 1080], [1280, 960], [1024, 768]];
 const allViews = ["overview", "market", "positions", "execution", "ledger"];
 const requestedViews = String(process.env.KORDYN_COCKPIT_VIEWS || "").split(",").map((value) => value.trim()).filter(Boolean);
 const views = requestedViews.length ? requestedViews.filter((view) => allViews.includes(view)) : allViews;
-const outputDir = process.env.KORDYN_COCKPIT_OUTPUT_DIR ? path.resolve(process.env.KORDYN_COCKPIT_OUTPUT_DIR) : "";
+const outputDirInput = process.env.KORDYN_COCKPIT_CAPTURE_DIR || process.env.KORDYN_COCKPIT_OUTPUT_DIR || "";
+const outputDir = outputDirInput ? path.resolve(outputDirInput) : "";
+const finalCapture = process.env.KORDYN_COCKPIT_FINAL === "1";
+const measureOnly = process.env.KORDYN_COCKPIT_MEASURE_ONLY === "1";
 const emptyMode = process.env.KORDYN_COCKPIT_EMPTY === "1";
 const enrichedMode = process.env.KORDYN_COCKPIT_ENRICHED === "1";
 const stateMode = String(process.env.KORDYN_COCKPIT_STATE || "").trim().toLowerCase();
@@ -316,6 +319,7 @@ try {
         const beforeSymbol = await evaluate(cdp, "window.__cockpitKlineFixture?.requests || 0");
         await evaluate(cdp, `(() => { const select = document.querySelector('[data-market-symbol-select]'); if (!select) return false; select.value = 'ETH/USDT'; select.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
         await waitForExpression(cdp, `(window.__cockpitKlineFixture?.requests || 0) > ${beforeSymbol} && window.__cockpitKlineFixture.queries.some((row) => row.symbol === 'ETH/USDT' && row.tf === '1d')`, `${width}x${height} market canonical ETH/USDT request`);
+        await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${chartSelector} .tvChart`)})?.dataset.chartStatus === 'ok'`, `${width}x${height} market canonical chart settles`);
       }
       if (view === "market" && marketCase === "mismatched") {
         const orphanFacts = await evaluate(cdp, `(() => { const row = document.querySelector('[data-market-watch-unavailable="DOGE/USDT"]'); const select = document.querySelector('[data-market-watch-select="DOGE/USDT"]'); const remove = row?.querySelector('button[aria-label*="DOGE/USDT"]'); return { exists: Boolean(row), selectable: Boolean(select), text: row?.textContent || '', remove: Boolean(remove) }; })()`);
@@ -478,7 +482,7 @@ try {
         assert.deepEqual(ledgerInteractionFacts, { selectedRow: "execution-alias-blank", detailCount: 0, exitCount: 0, lastAction: null }, `${width}x${height} real alias row clicks remain local, fail-closed, and never reach the API`);
       }
       const facts = await evaluate(cdp, `(() => { const page = document.querySelector('[data-cockpit-page]'); const region = document.querySelector(${JSON.stringify(chartSelector)}); const chart = region?.querySelector('.tvChart'); const kline = window.__cockpitKlineFixture || {}; const lifecycle = window.__cockpitChartFailure || {}; const main = document.querySelector('[data-cockpit-page="overview"] .overviewPrimary'); const rail = document.querySelector('[data-cockpit-page="overview"] .overviewRail'); const lastRegion = document.querySelector('[data-cockpit-page="overview"] [data-cockpit-region="strategy-footer"]'); const marketWorkspace = document.querySelector('[data-cockpit-page="market"] .marketWorkspace'); const marketChartWorkspace = document.querySelector('[data-cockpit-page="market"] [data-cockpit-region="market-chart-workspace"]'); const marketInterval = document.querySelector('[data-market-interval][aria-pressed="true"]'); marketInterval?.focus(); const marketFocusedStyle = marketInterval ? getComputedStyle(marketInterval) : null; const canvas = chart?.querySelector('canvas'); const overviewRegions = Object.fromEntries([...document.querySelectorAll('[data-cockpit-page="overview"] [data-cockpit-region]')].map((node) => { const rect = node.getBoundingClientRect(); return [node.dataset.cockpitRegion, { top: Math.round(rect.top * 100) / 100, height: Math.round(rect.height * 100) / 100 }]; })); const targets = ['overview', 'market'].includes(page?.dataset.cockpitPage) ? [...page.querySelectorAll('button, a[href], input, select, [tabindex]:not([tabindex="-1"])')].filter((node) => !node.disabled && !node.closest('.tvChart') && getComputedStyle(node).display !== 'none') : []; const targetFacts = targets.map((node) => { const rect = node.getBoundingClientRect(); const style = getComputedStyle(node); return { label: node.getAttribute('aria-label') || node.textContent?.trim() || node.className, tag: node.tagName, className: node.className, width: rect.width, height: rect.height, minWidth: style.minWidth, minHeight: style.minHeight, size: Math.min(rect.width, rect.height) }; }).filter((row) => Number.isFinite(row.size)); const targetSizes = targetFacts.map((row) => row.size); const smallestTarget = targetFacts.sort((a, b) => a.size - b.size)[0] || null; const readableText = page?.dataset.cockpitPage === 'overview' ? [...page.querySelectorAll('small, p, time, em, th, td, button, .cockpitTone')].filter((node) => !node.matches('.overviewMarketQuote > div > b, .overviewHeroEquity b, .overviewHeroFact b, .overviewAiLead b, .cockpitGauge b')) : []; const textFacts = readableText.filter((node) => getComputedStyle(node).display !== 'none').map((node) => ({ label: node.textContent?.trim() || node.className, size: Number.parseFloat(getComputedStyle(node).fontSize) })).filter((row) => Number.isFinite(row.size)); const textSizes = textFacts.map((row) => row.size); const smallestText = textFacts.sort((a, b) => a.size - b.size)[0] || null; const fixtureFields = window.__cockpitFixtureFields || []; return ({ fixture: document.documentElement.dataset.fixtureKind, fixtureFields, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, resourceState: page?.dataset.resourceState || null, statePanel: page?.querySelector('[data-overview-resource-state]')?.dataset.overviewResourceState || page?.querySelector('[data-market-resource-state]')?.dataset.marketResourceState || null, regionCharts: region?.querySelectorAll(".tvChart canvas").length || 0, chartVisible: Boolean(canvas && canvas.getBoundingClientRect().width > 0 && canvas.getBoundingClientRect().height > 0), chartStatus: chart?.dataset.chartStatus || null, volumeSeries: chart?.dataset.volumeSeries || null, chartRemovals: lifecycle.removals || 0, chartRuntimeErrors: lifecycle.runtimeErrors || 0, chartUnhandledRejections: lifecycle.unhandledRejections || 0, candleSetDataCalls: lifecycle.candleSetDataCalls || 0, volumeSetDataCalls: lifecycle.volumeSetDataCalls || 0, chartUpdateCalls: lifecycle.updateCalls || 0, minKeyboardTargetPx: targetSizes.length ? Math.min(...targetSizes) : null, minMarketTargetPx: page?.dataset.cockpitPage === 'market' && targetSizes.length ? Math.min(...targetSizes) : null, smallestTarget, minOverviewTextPx: textSizes.length ? Math.min(...textSizes) : null, maxOverviewTextPx: textSizes.length ? Math.max(...textSizes) : null, smallestText, mainRailRatio: main && rail ? main.getBoundingClientRect().width / rail.getBoundingClientRect().width : null, lastRegionTop: lastRegion?.getBoundingClientRect().top ?? null, overviewRegions, marketActiveIntervals: document.querySelectorAll('[data-market-interval][aria-pressed="true"]').length, marketChartWorkspaceRatio: marketWorkspace && marketChartWorkspace ? marketChartWorkspace.getBoundingClientRect().width / marketWorkspace.getBoundingClientRect().width : null, marketCanonicalSymbol: page?.dataset.marketSymbol || null, marketFocusedOutline: marketFocusedStyle ? marketFocusedStyle.outlineStyle + ' ' + marketFocusedStyle.outlineWidth : null, klineRequests: kline.requests || 0, klineSymbols: kline.symbols || [], klineQueries: kline.queries || [], page: page?.dataset.cockpitPage }); })()`);
-      const marketStateFacts = view === "market" ? await evaluate(cdp, `(() => { const page = document.querySelector('[data-cockpit-page="market"]'); const regions = [...page.querySelectorAll('[data-cockpit-region]')].map((node) => node.dataset.cockpitRegion); return { regions, symbolSelectDisabled: Boolean(page.querySelector('[data-market-symbol-select]')?.disabled), hasChartLoadingText: /加载 K 线|Loading candlesticks/.test(page.textContent || '') }; })()`) : null;
+      const marketStateFacts = view === "market" ? await evaluate(cdp, `(() => { const page = document.querySelector('[data-cockpit-page="market"]'); const regions = [...page.querySelectorAll('[data-cockpit-region]')].map((node) => node.dataset.cockpitRegion); const quote = page.querySelector('.marketPrimaryQuote'); const facts = page.querySelector('.marketQuoteFacts'); const watchRows = page.querySelector('.marketWatchRows'); const watchRect = watchRows?.getBoundingClientRect(); const rowRects = [...(watchRows?.querySelectorAll('article') || [])].map((row) => row.getBoundingClientRect()); return { regions, symbolSelectDisabled: Boolean(page.querySelector('[data-market-symbol-select]')?.disabled), hasChartLoadingText: /加载 K 线|Loading candlesticks/.test(page.textContent || ''), primaryQuoteContained: Boolean(quote && facts && quote.scrollWidth <= quote.clientWidth + 1 && quote.getBoundingClientRect().right <= facts.getBoundingClientRect().left + 1), watchRowCount: rowRects.length, watchClientHeight: watchRows?.clientHeight || 0, watchScrollHeight: watchRows?.scrollHeight || 0, watchBottom: watchRect?.bottom || 0, finalWatchRowBottom: rowRects.at(-1)?.bottom || 0, watchRowsContained: Boolean(watchRect && rowRects.every((rect) => rect.top >= watchRect.top - 1 && rect.bottom <= watchRect.bottom + 1)) }; })()`) : null;
       const positionStateFacts = view === "positions" ? await evaluate(cdp, `(() => {
         const page = document.querySelector('[data-cockpit-page="positions"]');
         const workspace = page?.querySelector('.positionWorkspace');
@@ -493,6 +497,7 @@ try {
         const allocationRegion = page?.querySelector('[data-cockpit-region="position-allocation"]');
         const longShortRegion = page?.querySelector('[data-cockpit-region="long-short"]');
         const concentrationRegion = page?.querySelector('[data-cockpit-region="concentration"]');
+        const heroValue = page?.querySelector('.positionHeroIdentity b');
         return {
           state: page?.dataset.resourceState || null,
           statePanel: page?.querySelector('[data-position-resource-state]')?.dataset.positionResourceState || null,
@@ -508,6 +513,7 @@ try {
           lastAction: window.__cockpitLastAction || null,
           tableHeight: tableRegion?.getBoundingClientRect().height || 0,
           trendWidthRatio: trendRegion && trend ? trend.getBoundingClientRect().width / trendRegion.getBoundingClientRect().width : null,
+          heroValueContained: Boolean(heroValue && heroValue.scrollWidth <= heroValue.clientWidth + 1),
           columnPct: totalWidth ? columns.map((value) => value / totalWidth * 100) : [],
           minTargetPx: targetFacts.length ? Math.min(...targetFacts.map((row) => row.size)) : null,
           smallestTarget: targetFacts.sort((a, b) => a.size - b.size)[0] || null
@@ -521,12 +527,14 @@ try {
         const targets = page ? [...page.querySelectorAll('button, a[href], input, select, [tabindex]:not([tabindex="-1"])')].filter((node) => !node.disabled && getComputedStyle(node).display !== 'none') : [];
         const targetFacts = targets.map((node) => { const rect = node.getBoundingClientRect(); return { label: node.getAttribute('aria-label') || node.textContent?.trim() || node.className, size: Math.min(rect.width, rect.height) }; }).filter((row) => Number.isFinite(row.size));
         const focused = page?.querySelector('[data-review-id]'); focused?.focus(); const focusStyle = focused ? getComputedStyle(focused) : null;
+        const detail = page?.querySelector('.reviewTradeDetail');
         return {
           state: page?.dataset.resourceState || null,
           statePanel: page?.querySelector('[data-review-resource-state]')?.dataset.reviewResourceState || null,
           regions: [...(page?.querySelectorAll('[data-cockpit-region]') || [])].map((node) => node.dataset.cockpitRegion),
           rowCount: page?.querySelectorAll('[data-review-id]').length || 0,
           detailId: page?.querySelector('[data-review-detail-id]')?.dataset.reviewDetailId || '',
+          detailContentContained: Boolean(detail && detail.scrollHeight <= detail.clientHeight + 1),
           columnPct: totalWidth ? columns.map((value) => value / totalWidth * 100) : [],
           minTargetPx: targetFacts.length ? Math.min(...targetFacts.map((row) => row.size)) : null,
           focusActive: document.activeElement === focused,
@@ -578,9 +586,90 @@ try {
           longTextContained: [...(page?.querySelectorAll('[data-cockpit-region="execution-notices"] article') || [])].every((node) => node.scrollWidth <= node.clientWidth + 1)
         };
       })()`) : null;
+      const layoutFacts = await evaluate(cdp, `(() => {
+        const page = document.querySelector('[data-cockpit-page=${JSON.stringify(view)}]');
+        const header = document.querySelector('.cockpitHeader');
+        const pageRect = page?.getBoundingClientRect();
+        const pageStyle = page ? getComputedStyle(page) : null;
+        const headerRect = header?.getBoundingClientRect();
+        const selectors = {
+          overview: ['.overviewPrimary', '.overviewRail'],
+          market: ['.marketChartPanel', '.marketRail'],
+          positions: ['.positionAnalytics', '.positionCore', '.positionRisk'],
+          execution: ['.reviewTradeList', '.reviewTradeDetail'],
+          ledger: ['.ledgerOrderList', '.ledgerDetailStack']
+        }[${JSON.stringify(view)}] || [];
+        const columns = selectors.map((selector) => page?.querySelector(selector)).filter(Boolean);
+        const widths = columns.map((node) => node.getBoundingClientRect().width);
+        const totalWidth = widths.reduce((sum, value) => sum + value, 0);
+        const operationalSelector = 'small, p, time, em, th, td, dt, dd, label, button, summary, .inlineEmpty';
+        const operational = [...(page?.querySelectorAll(operationalSelector) || [])].filter((node) => {
+          const style = getComputedStyle(node);
+          if (style.display === 'none' || style.visibility === 'hidden') return false;
+          if (node.matches('.cockpitTone, .cockpitTone *, [aria-hidden="true"], [aria-hidden="true"] *')) return false;
+          if (!node.textContent?.trim()) return false;
+          return true;
+        }).map((node) => ({
+          label: node.textContent.trim().slice(0, 80),
+          selector: node.className || node.tagName,
+          size: Number.parseFloat(getComputedStyle(node).fontSize)
+        })).filter((row) => Number.isFinite(row.size));
+        const smallestOperational = operational.sort((a, b) => a.size - b.size)[0] || null;
+        const interactive = [...(page?.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), summary, [tabindex]:not([tabindex="-1"])') || [])].filter((node) => {
+          const style = getComputedStyle(node);
+          return style.display !== 'none' && style.visibility !== 'hidden';
+        });
+        const targetHeights = interactive.map((node) => ({ label: node.getAttribute('aria-label') || node.textContent?.trim().slice(0, 80) || '', selector: node.className || node.tagName, height: node.getBoundingClientRect().height })).filter((row) => Number.isFinite(row.height));
+        const smallestTarget = targetHeights.sort((a, b) => a.height - b.height)[0] || null;
+        const lastRegion = [...(page?.querySelectorAll('[data-cockpit-region]') || [])].sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom)[0];
+        const chart = page?.querySelector('[data-cockpit-region="market-chart"] canvas');
+        const chartRect = chart?.getBoundingClientRect();
+        return {
+          headerHeight: headerRect?.height || 0,
+          pageLeft: pageRect ? pageRect.left + Number.parseFloat(pageStyle.paddingLeft || 0) : 0,
+          pageRightGap: pageRect ? innerWidth - pageRect.right + Number.parseFloat(pageStyle.paddingRight || 0) : 0,
+          activeTabs: document.querySelectorAll('.cockpitTabs [aria-current="page"]').length,
+          columnPct: totalWidth ? widths.map((value) => value / totalWidth * 100) : [],
+          columnTops: columns.map((node) => node.getBoundingClientRect().top),
+          minOperationalTextPx: smallestOperational?.size ?? null,
+          smallestOperational,
+          minTargetHeightPx: smallestTarget?.height ?? null,
+          smallestTarget,
+          chartCanvasCount: page?.querySelectorAll('[data-cockpit-region="market-chart"] canvas').length || 0,
+          chartArea: chartRect ? chartRect.width * chartRect.height : 0,
+          lastMeaningfulBottom: lastRegion?.getBoundingClientRect().bottom || pageRect?.bottom || 0,
+          pageScrollHeight: page?.scrollHeight || 0
+        };
+      })()`);
       assert.equal(facts.fixture, "production-shaped-synthetic", `${width}x${height} ${view} uses the marked test-only fixture`);
       assert.equal(facts.page, view, `${width}x${height} renders the requested real cockpit view`);
       assert.equal(facts.overflow, 0, `${width}x${height} ${view} has no document overflow`);
+      if (!emptyMode && !stateMode && !marketCase && !positionCase && !reviewCase && !ledgerCase) {
+        process.stdout.write(`trading cockpit convergence geometry ${JSON.stringify({ width, height, view, ...layoutFacts })}\n`);
+      }
+      if (!measureOnly) {
+        assert.ok(layoutFacts.headerHeight >= 56 && layoutFacts.headerHeight <= 64, `${width}x${height} ${view} header height ${layoutFacts.headerHeight}px stays within 56–64px`);
+        assert.ok(layoutFacts.pageLeft >= 16 && layoutFacts.pageRightGap >= 16, `${width}x${height} ${view} keeps at least 16px canvas margins: ${JSON.stringify({ left: layoutFacts.pageLeft, right: layoutFacts.pageRightGap })}`);
+        assert.equal(layoutFacts.activeTabs, 1, `${width}x${height} ${view} has exactly one active cockpit tab`);
+      }
+      if (!emptyMode && !stateMode && !marketCase && !positionCase && !reviewCase && !ledgerCase) {
+        if (!measureOnly) {
+          assert.ok(layoutFacts.minOperationalTextPx >= 11, `${width}x${height} ${view} operational copy ${layoutFacts.minOperationalTextPx}px is at least 11px: ${JSON.stringify(layoutFacts.smallestOperational)}`);
+          assert.ok(layoutFacts.minTargetHeightPx >= 36, `${width}x${height} ${view} interactive target ${layoutFacts.minTargetHeightPx}px is at least 36px: ${JSON.stringify(layoutFacts.smallestTarget)}`);
+          if (["overview", "market"].includes(view)) {
+            assert.ok(layoutFacts.chartCanvasCount >= 1 && layoutFacts.chartArea > 10_000, `${width}x${height} ${view} has a present, nonblank chart canvas: ${JSON.stringify({ count: layoutFacts.chartCanvasCount, area: layoutFacts.chartArea })}`);
+          }
+          if (width === 1440) {
+            const targets = { overview: [58, 42], market: [74, 26], positions: [24, 52, 24], execution: [36, 64], ledger: [53, 47] };
+            assert.equal(layoutFacts.columnPct.length, targets[view].length, `1440 ${view} exposes ${targets[view].length} named grid columns`);
+            layoutFacts.columnPct.forEach((value, index) => assert.ok(Math.abs(value - targets[view][index]) <= 8, `1440 ${view} column ${index + 1} is ${value.toFixed(2)}%, near ${targets[view][index]}%`));
+            assert.ok(layoutFacts.lastMeaningfulBottom <= height, `1440 ${view} last meaningful region fits fully inside the primary frame: ${JSON.stringify(layoutFacts)}`);
+          } else {
+            const allowedScroll = width === 1280 ? 520 : 2300;
+            assert.ok(layoutFacts.lastMeaningfulBottom <= height + allowedScroll, `${width}x${height} ${view} last meaningful region stays within its purposeful scroll budget: ${JSON.stringify(layoutFacts)}`);
+          }
+        }
+      }
       if (view === "overview") {
         for (const field of ["notifications", "portfolioRisk", "accountSnapshots"]) assert.equal(facts.fixtureFields.includes(field), true, `${width}x${height} production-shaped cockpit fixture includes ${field}`);
         for (const field of ["events", "agentRuns", "jobRuns", "riskRules", "strategyCatalog"]) assert.equal(facts.fixtureFields.includes(field), enrichedMode, `${width}x${height} cockpit fixture ${enrichedMode ? "includes opt-in" : "omits"} ${field}`);
@@ -655,6 +744,9 @@ try {
         }
         if (!emptyMode && regularChartMode) {
           assert.equal(facts.marketCanonicalSymbol, "ETH/USDT", `${width}x${height} market canonical identity follows the real symbol selector`);
+          assert.equal(marketStateFacts.primaryQuoteContained, true, `${width}x${height} market quote remains inside its hero column`);
+          if (!marketCase) assert.equal(marketStateFacts.watchRowCount, 5, `${width}x${height} market renders all five production-shaped watch rows`);
+          if (marketStateFacts.watchRowCount) assert.equal(marketStateFacts.watchRowsContained, true, `${width}x${height} market keeps every accepted watch row fully visible inside the watchlist: ${JSON.stringify(marketStateFacts)}`);
           assert.ok(facts.klineQueries.some((row) => row.symbol === "BTC/USDT" && row.tf === "1h"), `${width}x${height} market requested the 1h canonical interval`);
           assert.ok(facts.klineQueries.some((row) => row.symbol === "BTC/USDT" && row.tf === "4h"), `${width}x${height} market requested the 4h canonical interval`);
           assert.ok(facts.klineQueries.some((row) => row.symbol === "BTC/USDT" && row.tf === "1d"), `${width}x${height} market requested the 1D canonical interval`);
@@ -703,6 +795,7 @@ try {
           assert.equal(positionStateFacts.wrongProtectionVisible, false, `${width}x${height} positionId-only row cannot borrow wrong-row protection`);
           assert.ok(positionStateFacts.minTargetPx >= 36, `${width}x${height} positions keyboard target minimum ${positionStateFacts.minTargetPx}px is at least 36px: ${JSON.stringify(positionStateFacts.smallestTarget)}`);
           assert.ok(positionStateFacts.trendWidthRatio >= .9, `${width}x${height} positions PnL trend uses the available panel width (${positionStateFacts.trendWidthRatio})`);
+          assert.equal(positionStateFacts.heroValueContained, true, `${width}x${height} positions hero value remains fully readable`);
           if (width === 1440) {
             assert.equal(positionStateFacts.columnPct.length, 3, "1440 positions exposes its three workbench columns");
             const expected = [24, 52, 24];
@@ -724,6 +817,7 @@ try {
           assert.equal(reviewStateFacts.detailId, "review-safe", `${width}x${height} malformed review selects only the canonical review`);
         } else {
           for (const region of requiredRegions) assert.ok(reviewStateFacts.regions.includes(region), `${width}x${height} review renders ${region}`);
+          assert.equal(reviewStateFacts.detailContentContained, true, `${width}x${height} review detail content remains inside its workbench panel`);
           assert.ok(reviewInteractionFacts, `${width}x${height} review completes page-two/deep-link interaction`);
           assert.ok(reviewStateFacts.minTargetPx >= 36, `${width}x${height} review control target ${reviewStateFacts.minTargetPx}px is at least 36px`);
           assert.equal(reviewStateFacts.focusActive, true, `${width}x${height} review row receives keyboard focus`);
@@ -804,13 +898,19 @@ try {
         const beforeCaptureReset = await evaluate(cdp, "window.__cockpitKlineFixture?.requests || 0");
         await evaluate(cdp, `(() => { const select = document.querySelector('[data-market-symbol-select]'); if (!select) return false; select.value = 'BTC/USDT'; select.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
         await waitForExpression(cdp, `document.querySelector('[data-cockpit-page="market"]')?.dataset.marketSymbol === 'BTC/USDT' && (window.__cockpitKlineFixture?.requests || 0) > ${beforeCaptureReset}`, `${width}x${height} market capture reset`);
+        await waitForExpression(cdp, `document.querySelector(${JSON.stringify(`${chartSelector} .tvChart`)})?.dataset.chartStatus === 'ok'`, `${width}x${height} market capture chart settles`);
       }
       if (outputDir && view === "positions") await evaluate(cdp, `(() => { const scroller = document.querySelector('.positionTableScroll'); if (!scroller) return false; scroller.scrollLeft = 0; return true; })()`);
       if (outputDir) {
         const shot = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false, fromSurface: true });
-        await writeFile(path.join(outputDir, `${view}-${width}x${height}${emptyMode ? "-empty" : stateMode ? `-${stateMode}` : enrichedMode ? "-enriched" : ""}.png`), Buffer.from(shot.data, "base64"));
+        const suffix = emptyMode ? "-empty" : stateMode ? `-${stateMode}` : enrichedMode ? "-enriched" : "";
+        const includeFinalEvidence = width === 1440 || (view === "market" && width === 1280) || (view === "ledger" && width === 1024);
+        if (!finalCapture || includeFinalEvidence) {
+          const filename = finalCapture ? `trading-cockpit-v2-${view}${suffix}-${width}.png` : `${view}-${width}x${height}${suffix}.png`;
+          await writeFile(path.join(outputDir, filename), Buffer.from(shot.data, "base64"));
+        }
       }
-      results.push({ width, height, view, charts: facts.regionCharts, klineRequests: facts.klineRequests, overflow: facts.overflow, resourceState: facts.resourceState, chartStatus: facts.chartStatus, volumeSeries: facts.volumeSeries, chartRemovals: facts.chartRemovals, chartRuntimeErrors: facts.chartRuntimeErrors, chartUnhandledRejections: facts.chartUnhandledRejections, minKeyboardTargetPx: facts.minKeyboardTargetPx, minMarketTargetPx: facts.minMarketTargetPx, minOverviewTextPx: facts.minOverviewTextPx, maxOverviewTextPx: facts.maxOverviewTextPx, mainRailRatio: facts.mainRailRatio, marketChartWorkspaceRatio: facts.marketChartWorkspaceRatio, marketCanonicalSymbol: facts.marketCanonicalSymbol, marketRegions: marketStateFacts?.regions, positionStateFacts, positionActionFacts, reviewStateFacts, reviewInteractionFacts, ledgerStateFacts, ledgerInteractionFacts, lastRegionTop: facts.lastRegionTop, overviewRegions: facts.overviewRegions });
+      results.push({ width, height, view, charts: facts.regionCharts, klineRequests: facts.klineRequests, overflow: facts.overflow, resourceState: facts.resourceState, chartStatus: facts.chartStatus, volumeSeries: facts.volumeSeries, chartRemovals: facts.chartRemovals, chartRuntimeErrors: facts.chartRuntimeErrors, chartUnhandledRejections: facts.chartUnhandledRejections, minKeyboardTargetPx: facts.minKeyboardTargetPx, minMarketTargetPx: facts.minMarketTargetPx, minOverviewTextPx: facts.minOverviewTextPx, maxOverviewTextPx: facts.maxOverviewTextPx, mainRailRatio: facts.mainRailRatio, marketChartWorkspaceRatio: facts.marketChartWorkspaceRatio, marketCanonicalSymbol: facts.marketCanonicalSymbol, marketRegions: marketStateFacts?.regions, positionStateFacts, positionActionFacts, reviewStateFacts, reviewInteractionFacts, ledgerStateFacts, ledgerInteractionFacts, layoutFacts, lastRegionTop: facts.lastRegionTop, overviewRegions: facts.overviewRegions });
     }
   }
   console.log(`trading cockpit browser PASS ${JSON.stringify({ historyFacts, results })}`);
