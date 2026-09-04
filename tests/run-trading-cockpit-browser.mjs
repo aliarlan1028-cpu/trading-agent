@@ -622,14 +622,19 @@ try {
         const columns = selectors.map((selector) => page?.querySelector(selector)).filter(Boolean);
         const widths = columns.map((node) => node.getBoundingClientRect().width);
         const totalWidth = widths.reduce((sum, value) => sum + value, 0);
-        const operationalSelector = 'small, p, time, em, th, td, dt, dd, label, button, summary, .inlineEmpty, .cockpitTone';
-        const operational = [...(page?.querySelectorAll(operationalSelector) || [])].filter((node) => {
+        const operationalSelector = 'a[href], button, input, select, textarea, label, summary, small, p, time, em, th, td, dt, dd, b, strong, span, .inlineEmpty, .cockpitTone';
+        const operationalNodes = [...(page?.querySelectorAll(operationalSelector) || [])].filter((node) => {
           const style = getComputedStyle(node);
           if (style.display === 'none' || style.visibility === 'hidden') return false;
           if (node.matches('[aria-hidden="true"], [aria-hidden="true"] *')) return false;
-          if (!node.textContent?.trim()) return false;
+          if (node.getBoundingClientRect().width <= 0 || node.getBoundingClientRect().height <= 0) return false;
+          const hasDirectText = [...node.childNodes].some((child) => child.nodeType === Node.TEXT_NODE && child.textContent?.trim());
+          const ownsRenderedLabel = node.matches('a[href], button, input, select, textarea, label, summary, th, td, dt, dd, .inlineEmpty, .cockpitTone');
+          if (!hasDirectText && !ownsRenderedLabel) return false;
+          if (!node.textContent?.trim() && !node.getAttribute('placeholder') && !node.getAttribute('aria-label')) return false;
           return true;
-        }).map((node) => ({
+        });
+        const operational = operationalNodes.map((node) => ({
           label: node.textContent.trim().slice(0, 80),
           selector: node.className || node.tagName,
           size: Number.parseFloat(getComputedStyle(node).fontSize)
@@ -643,29 +648,54 @@ try {
           const channel = value / 255;
           return channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4;
         }).reduce((sum, value, index) => sum + value * [.2126, .7152, .0722][index], 0);
+        const compositeColor = (foreground, background) => {
+          const alpha = foreground.a + background.a * (1 - foreground.a);
+          if (alpha <= 0) return { r: 255, g: 255, b: 255, a: 1 };
+          return {
+            r: (foreground.r * foreground.a + background.r * background.a * (1 - foreground.a)) / alpha,
+            g: (foreground.g * foreground.a + background.g * background.a * (1 - foreground.a)) / alpha,
+            b: (foreground.b * foreground.a + background.b * background.a * (1 - foreground.a)) / alpha,
+            a: alpha
+          };
+        };
         const contrast = (foreground, background) => {
           const lighter = Math.max(luminance(foreground), luminance(background));
           const darker = Math.min(luminance(foreground), luminance(background));
           return (lighter + .05) / (darker + .05);
         };
         const effectiveBackground = (node) => {
+          const layers = [];
           for (let current = node; current; current = current.parentElement) {
             const color = parseColor(getComputedStyle(current).backgroundColor);
-            if (color && color.a >= .99) return color;
+            if (color && color.a > 0) layers.push(color);
           }
-          return { r: 255, g: 255, b: 255, a: 1 };
+          return layers.reverse().reduce((background, layer) => compositeColor(layer, background), { r: 255, g: 255, b: 255, a: 1 });
         };
-        const contrastSelector = '.cockpitPanelHead span, .cockpitMetric small, .cockpitMetric span, th, dt, .cockpitTone';
-        const contrastFacts = [...(page?.querySelectorAll(contrastSelector) || [])].filter((node) => {
+        const contrastFact = (node) => {
           const style = getComputedStyle(node);
-          return style.display !== 'none' && style.visibility !== 'hidden' && Boolean(node.textContent?.trim());
-        }).map((node) => {
-          const style = getComputedStyle(node);
-          const foreground = parseColor(style.color);
           const background = effectiveBackground(node);
-          return { label: node.textContent.trim().slice(0, 80), selector: node.className || node.tagName, ratio: foreground ? contrast(foreground, background) : 0, color: style.color, background: 'rgb(' + background.r + ', ' + background.g + ', ' + background.b + ')' };
-        });
+          const rawForeground = parseColor(style.color);
+          const foreground = rawForeground ? compositeColor(rawForeground, background) : null;
+          return { label: (node.textContent?.trim() || node.getAttribute('aria-label') || node.getAttribute('placeholder') || '').slice(0, 80), selector: node.className || node.tagName, ratio: foreground ? contrast(foreground, background) : 0, color: style.color, background: 'rgb(' + background.r.toFixed(2) + ', ' + background.g.toFixed(2) + ', ' + background.b.toFixed(2) + ')', size: Number.parseFloat(style.fontSize) };
+        };
+        const contrastFacts = operationalNodes.map(contrastFact);
         const smallestContrast = contrastFacts.sort((a, b) => a.ratio - b.ratio)[0] || null;
+        const contrastCounterexamples = Object.fromEntries([
+          ['overview-notice', '.overviewNoticeChannel:not(.market) b'],
+          ['overview-market-notice', '.overviewNoticeChannel.market b'],
+          ['overview-active-interval', '.overviewMarketToolbar button.active'],
+          ['market-active-interval', '.marketIntervals button.active'],
+          ['semantic-negative-text', '.negativeText'],
+          ['semantic-positive-text', '.positiveText']
+        ].map(([name, selector]) => {
+          const nodes = [...(page?.querySelectorAll(selector) || [])].filter((node) => {
+            const style = getComputedStyle(node);
+            const rect = node.getBoundingClientRect();
+            return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0 && Boolean(node.textContent?.trim());
+          });
+          const facts = nodes.map(contrastFact).sort((a, b) => a.ratio - b.ratio);
+          return [name, facts[0] || null];
+        }));
         const interactive = [...(page?.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), summary, [tabindex]:not([tabindex="-1"])') || [])].filter((node) => {
           const style = getComputedStyle(node);
           return style.display !== 'none' && style.visibility !== 'hidden';
@@ -686,6 +716,7 @@ try {
           smallestOperational,
           minOperationalContrast: smallestContrast?.ratio ?? null,
           smallestContrast,
+          contrastCounterexamples,
           minTargetHeightPx: smallestTarget?.height ?? null,
           smallestTarget,
           chartCanvasCount: page?.querySelectorAll('[data-cockpit-region="market-chart"] canvas').length || 0,
@@ -706,11 +737,18 @@ try {
         assert.ok(layoutFacts.headerHeight >= 56 && layoutFacts.headerHeight <= 64, `${width}x${height} ${view} header height ${layoutFacts.headerHeight}px stays within 56–64px`);
         assert.ok(layoutFacts.pageLeft >= 16 && layoutFacts.pageRightGap >= 16, `${width}x${height} ${view} keeps at least 16px canvas margins: ${JSON.stringify({ left: layoutFacts.pageLeft, right: layoutFacts.pageRightGap })}`);
         assert.equal(layoutFacts.activeTabs, 1, `${width}x${height} ${view} has exactly one active cockpit tab`);
+        assert.ok(layoutFacts.minOperationalTextPx >= 11, `${width}x${height} ${view} operational copy ${layoutFacts.minOperationalTextPx}px is at least 11px: ${JSON.stringify(layoutFacts.smallestOperational)}`);
+        assert.ok(layoutFacts.minOperationalContrast >= 4.5, `${width}x${height} ${view} operational contrast ${layoutFacts.minOperationalContrast} is at least 4.5: ${JSON.stringify(layoutFacts.smallestContrast)}`);
       }
       if (!emptyMode && !stateMode && !marketCase && !positionCase && !reviewCase && !ledgerCase) {
         if (!measureOnly) {
-          assert.ok(layoutFacts.minOperationalTextPx >= 11, `${width}x${height} ${view} operational copy ${layoutFacts.minOperationalTextPx}px is at least 11px: ${JSON.stringify(layoutFacts.smallestOperational)}`);
-          assert.ok(layoutFacts.minOperationalContrast >= 4.5, `${width}x${height} ${view} operational contrast ${layoutFacts.minOperationalContrast} is at least 4.5: ${JSON.stringify(layoutFacts.smallestContrast)}`);
+          const requiredCounterexamples = view === "overview"
+            ? ["overview-notice", "overview-market-notice", "overview-active-interval"]
+            : view === "market" ? ["market-active-interval", "semantic-negative-text", "semantic-positive-text"] : [];
+          for (const name of requiredCounterexamples) {
+            const fact = layoutFacts.contrastCounterexamples[name];
+            assert.ok(fact && fact.ratio >= 4.5, `${width}x${height} ${view} ${name} contrast is at least 4.5: ${JSON.stringify(fact)}`);
+          }
           assert.ok(layoutFacts.minTargetHeightPx >= 36, `${width}x${height} ${view} interactive target ${layoutFacts.minTargetHeightPx}px is at least 36px: ${JSON.stringify(layoutFacts.smallestTarget)}`);
           if (["overview", "market"].includes(view)) {
             assert.ok(layoutFacts.chartCanvasCount >= 1 && layoutFacts.chartArea > 10_000, `${width}x${height} ${view} has a present, nonblank chart canvas: ${JSON.stringify({ count: layoutFacts.chartCanvasCount, area: layoutFacts.chartArea })}`);
