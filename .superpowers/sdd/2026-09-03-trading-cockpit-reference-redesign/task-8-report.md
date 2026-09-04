@@ -7,6 +7,8 @@ Fix-round base/report commit: `d8839191ff41b6e7355b587647e0541f9daf5d85`
 Fix-round implementation commit: `614e328f1e4fe53416b82b248c6550102b31a3de`
 Fix-round-2 base/report commit: `00db541a136040e83007ef6572aecc03cbf8d5db`
 Fix-round-2 implementation commit: `953ac21823ee94a7a7bdf6e6c706ac69a30a4d32`
+Fix-round-3 base/report commit: `a13cc7a7fa13765611ec108bd73a38e2a6bf9fcc`
+Fix-round-3 implementation commit: `04cb9002e1e9c80b6369d2aa3e5f80e335cc501f`
 Scope: Task 8 only
 Status: implementation complete; awaiting independent review
 
@@ -150,6 +152,107 @@ PASS: every state at all three viewports; cleanup PASS
 Loading/stale/degraded retained all eight regions and suppressed exits. Failed/forbidden/disabled rendered the boundary only, with no rows, detail, or action.
 
 ## Regression and exact-commit gates
+
+### Fix round 3 — one authoritative order-status classifier
+
+The third review-fix cycle removed the remaining split-brain order-status semantics. `model.js` now imports the production `OPEN_EXECUTION_STATES` set directly from the constants-only `server/executionStates.mjs` module and exports one pure `executionOrderStatusFamily` classifier. Both the six-metric Hero and the mounted Ledger status filter call that same classifier; `LedgerPage` contains no copied open-state list.
+
+Classification is normalized and exact. Production OPEN state wins first, so all 17 current server states—including `entry_filled`—remain `working` exactly as the backend defines them. Exact terminal filled, canceled, and rejected/risk-blocked sets follow. Unknown and misleading substring values such as `unfilled`, `not_working`, and `risk_approved` are `other`; they do not increment working, filled, or blocked metrics.
+
+The TDD RED run failed only at the three intended contracts before production changed:
+
+```text
+node scripts/run-tests-isolated.mjs tests/trading-cockpit-model.test.mjs tests/trading-cockpit-reference.test.mjs
+FAIL: 104 passed, 3 failed (107 total)
+```
+
+Those failures proved the classifier was absent, the Hero was using legacy local sets, and mounted SSR classified `entry_filled` as filled instead of production-open. After the shared classifier was connected, the same focused command passed `107/107`.
+
+The real mounted status-counterexample page contains two production-open orders, two terminal filled orders, two canceled orders, two rejected/risk-blocked orders, and three negative/unknown counterexamples. At 1440×1080, 1280×960, and 1024×768, interactive filter clicks returned:
+
+```text
+Hero [total, working, filled, blocked]: [11, 2, 2, 2]
+Filter family counts: { working: 2, filled: 2, canceled: 2, blocked: 2, other: 3 }
+PASS: Hero total equals the sum of all five mounted filter results
+```
+
+The round-3 screenshots are:
+
+- `/private/tmp/task8-fix-round3-normal/ledger-1440x1080.png`
+- `/private/tmp/task8-fix-round3-normal/ledger-1280x960.png`
+- `/private/tmp/task8-fix-round3-normal/ledger-1024x768.png`
+- `/private/tmp/task8-ledger-round3-exact-status/ledger-1440x1080.png`
+- `/private/tmp/task8-ledger-round3-exact-status/ledger-1280x960.png`
+- `/private/tmp/task8-ledger-round3-exact-status/ledger-1024x768.png`
+
+No Task 8 CSS changed in this round. The normal 1440 capture still shows the complete fill ledger and pagination inside the primary frame (`fillLedgerBottom=1068.75`, `fillPaginationBottom=1067.75`), with `53.00/47.00` order/detail columns, 36px minimum enabled targets, 11px minimum operational text, and zero document horizontal overflow. The status-counterexample 1440 capture has `24.75px` fill-panel clearance and `25.75px` pagination clearance.
+
+Fresh shared-checkout gates passed:
+
+```text
+focused model/reference
+PASS: 107/107
+
+npm test
+PASS: 2367/2367, 0 failures
+
+npm run lint
+PASS
+
+npm run build
+PASS: 1826 modules transformed; built in 1.45s
+
+all-five real Chrome
+PASS: 15/15 view/viewport results; cleanup PASS
+
+Ledger real Chrome
+PASS: normal, status-counterexamples, risk-counterexamples, identity,
+      adversarial, malformed, long, explicit-empty, collections-missing,
+      collections-malformed, loading, stale, degraded, failed, forbidden,
+      and disabled at 1440×1080, 1280×960, and 1024×768
+
+Impeccable detector
+[]
+
+git diff --check
+PASS (no output)
+```
+
+The larger shared count includes unrelated user-owned tests and is reported only with that provenance. The history-preserving exact detached checkout of `04cb9002e1e9c80b6369d2aa3e5f80e335cc501f` is `/private/tmp/task8-ledger-round3-clone.tR4iaS`. It produced:
+
+```text
+focused model/reference
+PASS: 107/107
+
+npm test
+PASS: 2356/2356, 0 failures
+
+npm run lint
+PASS
+
+npm run build
+PASS: 1825 modules transformed; built in 1.55s
+
+all-five real Chrome
+PASS: 15/15 view/viewport results; cleanup PASS
+
+Ledger exact Chrome
+PASS: normal, status-counterexamples, risk-counterexamples, identity,
+      adversarial, malformed, long, explicit-empty, collections-missing,
+      collections-malformed, loading, stale, degraded, failed, forbidden,
+      disabled, and not_loaded at 1440×1080, 1280×960, and 1024×768
+
+Impeccable detector
+[]
+
+git diff --check
+PASS (no output)
+
+git status --short
+PASS (no output after removing the temporary node_modules symlink)
+```
+
+The production build is therefore direct evidence that importing the constants-only server status module does not violate the Vite bundle boundary. No duplicate open-state list or fallback classifier was introduced.
 
 ### Fix round 2 — risk authority, canceled status, and no-selection timeline
 
@@ -337,6 +440,8 @@ PASS (no output)
 
 - Implementation commit `e9e53f9` contains exactly the eight authorized source/test files, including the explicitly approved model scope extension.
 - Fix-round implementation commit `614e328` contains exactly seven authorized Task 8 source/test files and no report, progress ledger, screenshot, or unrelated shared-worktree change.
+- Fix-round-2 implementation commit `953ac21` contains exactly five authorized Task 8 source/test files and no report, progress ledger, screenshot, or unrelated shared-worktree change.
+- Fix-round-3 implementation commit `04cb900` contains exactly six authorized Task 8 source/test files and no CSS, report, progress ledger, screenshot, or unrelated shared-worktree change.
 - This report is committed separately from production implementation.
 - Pre-existing App/mobile/route/style/test changes, captures, artifacts, the reference-image directory, and all other user-owned untracked files remain untouched and unstaged.
 - Temporary screenshots and exact-checkout directories remain outside the repository; no unauthorized evidence asset was committed.
