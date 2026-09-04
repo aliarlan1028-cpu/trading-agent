@@ -148,9 +148,11 @@ test("market page exposes the complete reference workspace with real supported c
   ]) assert.match(marketSource, new RegExp(`(?:data-cockpit-region|region)=["'{]+${region}`));
   assert.match(marketSource, /buildMarketRows/);
   assert.match(marketSource, /TradingViewChart/);
+  assert.match(marketSource, /<TradingViewChart[^>]*showVolume/);
+  assert.match(marketSource, /逐 K 线成交量随主图显示|Per-candle volume follows the chart/);
   assert.match(marketSource, /\["1m",\s*"5m",\s*"15m",\s*"1h",\s*"4h",\s*"1D"\]/);
   assert.match(marketSource, /aria-pressed/);
-  assert.doesNotMatch(marketSource, /showVolume|\b(?:indicator|save|screenshot|fullscreen)\b/i);
+  assert.doesNotMatch(marketSource, /\b(?:indicator|save|screenshot|fullscreen)\b/i);
   assert.doesNotMatch(marketSource, /72,450|8,234|\+12\.4%|0\.0007/);
 });
 

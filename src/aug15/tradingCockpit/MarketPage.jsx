@@ -264,11 +264,11 @@ export function MarketPage({ data = {}, action, ui }) {
         <div className="marketChartQuote"><span><b>{market?.symbol || t("行情待同步", "Market pending")}</b><small>{t("真实 K 线", "Live candlesticks")}</small></span><strong className={(numeric(market?.changePct ?? market?.change24hPct) ?? 0) >= 0 ? "positiveText" : "negativeText"}>{money(market?.price ?? market?.last)}</strong></div>
         <div className="marketChartBox" data-cockpit-region="market-chart">
           {state !== "loaded" ? <CockpitEmpty icon={Activity} title={t("当前 K 线已暂停", "Current candles paused")} detail={t("最后有效市场事实仍保留；重新加载后恢复当前 K 线。", "Last-valid market facts remain visible. Reload to resume current candles.")}/>
-            : market ? <TradingViewChart symbol={market.symbol} interval={CHART_INTERVALS[interval]}/>
+            : market ? <TradingViewChart symbol={market.symbol} interval={CHART_INTERVALS[interval]} showVolume/>
               : <CockpitEmpty icon={Search} title={t("行情尚未同步", "Market data not synced")} detail={t("收到具有真实交易对身份的行情后才加载图表。", "The chart loads after a market with a real symbol identity arrives.")}/>
           }
         </div>
-        <div className="marketVolumeStrip"><span><small>{t("24h 成交量", "24h volume")}</small><b>{formatCompact(market?.baseVolume24h ?? market?.volume24h ?? market?.volume)}</b></span><span><small>{t("24h 成交额", "24h turnover")}</small><b>{formatCompact(market?.quoteTurnover24h ?? market?.turnover24h ?? market?.quoteVolume)}</b></span><em>{t("逐 K 线成交量图层默认关闭", "Per-candle volume layer is off by default")}</em></div>
+        <div className="marketVolumeStrip"><span><small>{t("24h 成交量", "24h volume")}</small><b>{formatCompact(market?.baseVolume24h ?? market?.volume24h ?? market?.volume)}</b></span><span><small>{t("24h 成交额", "24h turnover")}</small><b>{formatCompact(market?.quoteTurnover24h ?? market?.turnover24h ?? market?.quoteVolume)}</b></span><em>{t("逐 K 线成交量随主图显示", "Per-candle volume follows the chart")}</em></div>
       </CockpitPanel>
       <aside className="marketRail" aria-label={t("市场状态与自选", "Market state and watchlist")}>
         <MarketState market={market} regime={regime} medium={medium}/>

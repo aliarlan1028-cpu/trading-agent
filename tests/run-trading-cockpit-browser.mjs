@@ -305,7 +305,7 @@ try {
       if (!emptyMode && (regularChartMode || chartStatusByMode.has(stateMode)) && ["overview", "market"].includes(view)) {
         const readyExpression = chartStatusByMode.has(stateMode)
           ? `(() => { const chart = document.querySelector(${JSON.stringify(`${chartSelector} .tvChart`)}); return chart?.dataset.chartStatus === ${JSON.stringify(chartStatusByMode.get(stateMode))}; })()`
-          : `(() => { const region = document.querySelector(${JSON.stringify(chartSelector)}); const kline = window.__cockpitKlineFixture; const chart = region?.querySelector(".tvChart"); const expectedVolume = ${JSON.stringify(view === "overview" ? "ready" : "disabled")}; return Boolean(region && kline?.requests > 0 && kline.symbols.includes("BTC/USDT") && chart?.querySelector("canvas") && chart.dataset.volumeSeries === expectedVolume); })()`;
+          : `(() => { const region = document.querySelector(${JSON.stringify(chartSelector)}); const kline = window.__cockpitKlineFixture; const chart = region?.querySelector(".tvChart"); return Boolean(region && kline?.requests > 0 && kline.symbols.includes("BTC/USDT") && chart?.querySelector("canvas") && chart.dataset.volumeSeries === "ready"); })()`;
         await waitForExpression(cdp, readyExpression, `${width}x${height} ${view} fixture-backed chart state`);
       }
       if (view === "market" && !emptyMode && regularChartMode) {
@@ -519,6 +519,20 @@ try {
           smallestTarget: targetFacts.sort((a, b) => a.size - b.size)[0] || null
         };
       })()`) : null;
+      if (view === "execution" && await evaluate(cdp, `Boolean(document.querySelector('[data-review-id]'))`)) {
+        const focusPrep = await evaluate(cdp, `(() => {
+          const target = document.querySelector('[data-review-id]');
+          const focusable = [...document.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), summary, [tabindex]:not([tabindex="-1"])')].filter((node) => getComputedStyle(node).display !== 'none' && getComputedStyle(node).visibility !== 'hidden');
+          const index = focusable.indexOf(target);
+          const previous = index > 0 ? focusable[index - 1] : null;
+          previous?.focus();
+          return { index, previousFocused: document.activeElement === previous };
+        })()`);
+        assert.ok(focusPrep.index > 0 && focusPrep.previousFocused, `${width}x${height} execution fixture exposes a keyboard predecessor for the first review row: ${JSON.stringify(focusPrep)}`);
+        await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
+        await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
+        await waitForExpression(cdp, `document.activeElement?.matches('[data-review-id]')`, `${width}x${height} keyboard Tab enters a review row`);
+      }
       const reviewStateFacts = view === "execution" ? await evaluate(cdp, `(() => {
         const page = document.querySelector('[data-cockpit-page="execution"]');
         const workspace = page?.querySelector('.reviewWorkbench');
@@ -526,7 +540,7 @@ try {
         const totalWidth = columns.reduce((sum, value) => sum + value, 0);
         const targets = page ? [...page.querySelectorAll('button, a[href], input, select, [tabindex]:not([tabindex="-1"])')].filter((node) => !node.disabled && getComputedStyle(node).display !== 'none') : [];
         const targetFacts = targets.map((node) => { const rect = node.getBoundingClientRect(); return { label: node.getAttribute('aria-label') || node.textContent?.trim() || node.className, size: Math.min(rect.width, rect.height) }; }).filter((row) => Number.isFinite(row.size));
-        const focused = page?.querySelector('[data-review-id]'); focused?.focus(); const focusStyle = focused ? getComputedStyle(focused) : null;
+        const focused = document.activeElement?.matches('[data-review-id]') ? document.activeElement : null; const focusStyle = focused ? getComputedStyle(focused) : null;
         const detail = page?.querySelector('.reviewTradeDetail');
         return {
           state: page?.dataset.resourceState || null,
@@ -538,7 +552,13 @@ try {
           columnPct: totalWidth ? columns.map((value) => value / totalWidth * 100) : [],
           minTargetPx: targetFacts.length ? Math.min(...targetFacts.map((row) => row.size)) : null,
           focusActive: document.activeElement === focused,
-          focusOutline: focusStyle ? focusStyle.outlineStyle + ' ' + focusStyle.outlineWidth : null
+          focusMatches: Boolean(focused?.matches(':focus')),
+          focusVisibleMatches: Boolean(focused?.matches(':focus-visible')),
+          focusOutline: focusStyle ? focusStyle.outlineStyle + ' ' + focusStyle.outlineWidth : null,
+          focusOutlineStyle: focusStyle?.outlineStyle || null,
+          focusOutlineWidth: focusStyle ? Number.parseFloat(focusStyle.outlineWidth) : 0,
+          focusOutlineColor: focusStyle?.outlineColor || null,
+          focusShadow: focusStyle?.boxShadow || null
         };
       })()`) : null;
       if (view === "ledger" && await evaluate(cdp, `Boolean(document.querySelector('[data-order-select]'))`)) {
@@ -602,11 +622,11 @@ try {
         const columns = selectors.map((selector) => page?.querySelector(selector)).filter(Boolean);
         const widths = columns.map((node) => node.getBoundingClientRect().width);
         const totalWidth = widths.reduce((sum, value) => sum + value, 0);
-        const operationalSelector = 'small, p, time, em, th, td, dt, dd, label, button, summary, .inlineEmpty';
+        const operationalSelector = 'small, p, time, em, th, td, dt, dd, label, button, summary, .inlineEmpty, .cockpitTone';
         const operational = [...(page?.querySelectorAll(operationalSelector) || [])].filter((node) => {
           const style = getComputedStyle(node);
           if (style.display === 'none' || style.visibility === 'hidden') return false;
-          if (node.matches('.cockpitTone, .cockpitTone *, [aria-hidden="true"], [aria-hidden="true"] *')) return false;
+          if (node.matches('[aria-hidden="true"], [aria-hidden="true"] *')) return false;
           if (!node.textContent?.trim()) return false;
           return true;
         }).map((node) => ({
@@ -615,6 +635,37 @@ try {
           size: Number.parseFloat(getComputedStyle(node).fontSize)
         })).filter((row) => Number.isFinite(row.size));
         const smallestOperational = operational.sort((a, b) => a.size - b.size)[0] || null;
+        const parseColor = (value) => {
+          const values = String(value || '').match(/[\\d.]+/g)?.map(Number) || [];
+          return values.length >= 3 ? { r: values[0], g: values[1], b: values[2], a: values[3] ?? 1 } : null;
+        };
+        const luminance = ({ r, g, b }) => [r, g, b].map((value) => {
+          const channel = value / 255;
+          return channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4;
+        }).reduce((sum, value, index) => sum + value * [.2126, .7152, .0722][index], 0);
+        const contrast = (foreground, background) => {
+          const lighter = Math.max(luminance(foreground), luminance(background));
+          const darker = Math.min(luminance(foreground), luminance(background));
+          return (lighter + .05) / (darker + .05);
+        };
+        const effectiveBackground = (node) => {
+          for (let current = node; current; current = current.parentElement) {
+            const color = parseColor(getComputedStyle(current).backgroundColor);
+            if (color && color.a >= .99) return color;
+          }
+          return { r: 255, g: 255, b: 255, a: 1 };
+        };
+        const contrastSelector = '.cockpitPanelHead span, .cockpitMetric small, .cockpitMetric span, th, dt, .cockpitTone';
+        const contrastFacts = [...(page?.querySelectorAll(contrastSelector) || [])].filter((node) => {
+          const style = getComputedStyle(node);
+          return style.display !== 'none' && style.visibility !== 'hidden' && Boolean(node.textContent?.trim());
+        }).map((node) => {
+          const style = getComputedStyle(node);
+          const foreground = parseColor(style.color);
+          const background = effectiveBackground(node);
+          return { label: node.textContent.trim().slice(0, 80), selector: node.className || node.tagName, ratio: foreground ? contrast(foreground, background) : 0, color: style.color, background: 'rgb(' + background.r + ', ' + background.g + ', ' + background.b + ')' };
+        });
+        const smallestContrast = contrastFacts.sort((a, b) => a.ratio - b.ratio)[0] || null;
         const interactive = [...(page?.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), summary, [tabindex]:not([tabindex="-1"])') || [])].filter((node) => {
           const style = getComputedStyle(node);
           return style.display !== 'none' && style.visibility !== 'hidden';
@@ -633,6 +684,8 @@ try {
           columnTops: columns.map((node) => node.getBoundingClientRect().top),
           minOperationalTextPx: smallestOperational?.size ?? null,
           smallestOperational,
+          minOperationalContrast: smallestContrast?.ratio ?? null,
+          smallestContrast,
           minTargetHeightPx: smallestTarget?.height ?? null,
           smallestTarget,
           chartCanvasCount: page?.querySelectorAll('[data-cockpit-region="market-chart"] canvas').length || 0,
@@ -647,7 +700,9 @@ try {
       if (!emptyMode && !stateMode && !marketCase && !positionCase && !reviewCase && !ledgerCase) {
         process.stdout.write(`trading cockpit convergence geometry ${JSON.stringify({ width, height, view, ...layoutFacts })}\n`);
       }
-      if (!measureOnly) {
+      // Lifecycle fault injection mounts the production TradingViewChart alone so failures cannot
+      // be masked by the shell. Shell geometry remains mandatory for every mounted shell scenario.
+      if (!measureOnly && !chartLifecycleFailureModes.has(stateMode)) {
         assert.ok(layoutFacts.headerHeight >= 56 && layoutFacts.headerHeight <= 64, `${width}x${height} ${view} header height ${layoutFacts.headerHeight}px stays within 56–64px`);
         assert.ok(layoutFacts.pageLeft >= 16 && layoutFacts.pageRightGap >= 16, `${width}x${height} ${view} keeps at least 16px canvas margins: ${JSON.stringify({ left: layoutFacts.pageLeft, right: layoutFacts.pageRightGap })}`);
         assert.equal(layoutFacts.activeTabs, 1, `${width}x${height} ${view} has exactly one active cockpit tab`);
@@ -655,6 +710,7 @@ try {
       if (!emptyMode && !stateMode && !marketCase && !positionCase && !reviewCase && !ledgerCase) {
         if (!measureOnly) {
           assert.ok(layoutFacts.minOperationalTextPx >= 11, `${width}x${height} ${view} operational copy ${layoutFacts.minOperationalTextPx}px is at least 11px: ${JSON.stringify(layoutFacts.smallestOperational)}`);
+          assert.ok(layoutFacts.minOperationalContrast >= 4.5, `${width}x${height} ${view} operational contrast ${layoutFacts.minOperationalContrast} is at least 4.5: ${JSON.stringify(layoutFacts.smallestContrast)}`);
           assert.ok(layoutFacts.minTargetHeightPx >= 36, `${width}x${height} ${view} interactive target ${layoutFacts.minTargetHeightPx}px is at least 36px: ${JSON.stringify(layoutFacts.smallestTarget)}`);
           if (["overview", "market"].includes(view)) {
             assert.ok(layoutFacts.chartCanvasCount >= 1 && layoutFacts.chartArea > 10_000, `${width}x${height} ${view} has a present, nonblank chart canvas: ${JSON.stringify({ count: layoutFacts.chartCanvasCount, area: layoutFacts.chartArea })}`);
@@ -664,6 +720,7 @@ try {
             assert.equal(layoutFacts.columnPct.length, targets[view].length, `1440 ${view} exposes ${targets[view].length} named grid columns`);
             layoutFacts.columnPct.forEach((value, index) => assert.ok(Math.abs(value - targets[view][index]) <= 8, `1440 ${view} column ${index + 1} is ${value.toFixed(2)}%, near ${targets[view][index]}%`));
             assert.ok(layoutFacts.lastMeaningfulBottom <= height, `1440 ${view} last meaningful region fits fully inside the primary frame: ${JSON.stringify(layoutFacts)}`);
+            if (view === "positions") assert.ok(layoutFacts.lastMeaningfulBottom >= 1000 && layoutFacts.lastMeaningfulBottom <= 1070, `1440 positions uses the available canvas without crop or a material blank tail: ${JSON.stringify(layoutFacts)}`);
           } else {
             const allowedScroll = width === 1280 ? 520 : 2300;
             assert.ok(layoutFacts.lastMeaningfulBottom <= height + allowedScroll, `${width}x${height} ${view} last meaningful region stays within its purposeful scroll budget: ${JSON.stringify(layoutFacts)}`);
@@ -679,7 +736,7 @@ try {
         assert.ok(facts.klineSymbols.includes("BTC/USDT"), `${width}x${height} ${view} intercepted its BTC/USDT fixture candles`);
         assert.ok(facts.regionCharts >= 1, `${width}x${height} ${view} renders fixture candles in its market-chart region`);
         assert.equal(facts.chartVisible, true, `${width}x${height} ${view} chart canvas is visible`);
-        assert.equal(facts.volumeSeries, view === "overview" ? "ready" : "disabled", `${width}x${height} ${view} exposes its ${view === "overview" ? "opt-in" : "default-off"} volume contract`);
+        assert.equal(facts.volumeSeries, "ready", `${width}x${height} ${view} exposes its per-candle volume contract`);
       }
       if (resourceStateModes.has(stateMode) && view === "overview") {
         assert.equal(facts.resourceState, expectedResourceState, `${width}x${height} overview normalizes ${stateMode} to ${expectedResourceState}`);
@@ -719,7 +776,7 @@ try {
       }
       if (chartStatusByMode.has(stateMode) && view === "market") {
         assert.equal(facts.chartStatus, chartStatusByMode.get(stateMode), `${width}x${height} market exposes honest ${stateMode} status`);
-        assert.equal(facts.volumeSeries, "disabled", `${width}x${height} market preserves the default-off volume contract during ${stateMode}`);
+        assert.equal(facts.volumeSeries, chartStatusByMode.get(stateMode), `${width}x${height} market propagates ${stateMode} to its volume layer`);
         assert.equal(marketStateFacts.hasChartLoadingText, false, `${width}x${height} market ${stateMode} settles without permanent loading text`);
       }
       if (view === "overview" && !chartLifecycleFailureModes.has(stateMode) && width === 1440 && (!resourceStateModes.has(stateMode) || ["loaded", "ready"].includes(stateMode))) {
@@ -821,7 +878,7 @@ try {
           assert.ok(reviewInteractionFacts, `${width}x${height} review completes page-two/deep-link interaction`);
           assert.ok(reviewStateFacts.minTargetPx >= 36, `${width}x${height} review control target ${reviewStateFacts.minTargetPx}px is at least 36px`);
           assert.equal(reviewStateFacts.focusActive, true, `${width}x${height} review row receives keyboard focus`);
-          assert.notEqual(reviewStateFacts.focusOutline, "none 0px", `${width}x${height} review rows have a visible focus ring: ${JSON.stringify(reviewStateFacts)}`);
+          assert.ok(reviewStateFacts.focusOutlineStyle !== "none" && reviewStateFacts.focusOutlineWidth >= 2, `${width}x${height} review rows have a visible focus outline: ${JSON.stringify(reviewStateFacts)}`);
           if (width === 1440) {
             const expected = [36, 64];
             reviewStateFacts.columnPct.forEach((value, index) => assert.ok(Math.abs(value - expected[index]) <= 8, `1440 review column ${index + 1} is ${value.toFixed(2)}%, near ${expected[index]}%`));
@@ -903,7 +960,7 @@ try {
       if (outputDir && view === "positions") await evaluate(cdp, `(() => { const scroller = document.querySelector('.positionTableScroll'); if (!scroller) return false; scroller.scrollLeft = 0; return true; })()`);
       if (outputDir) {
         const shot = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false, fromSurface: true });
-        const suffix = emptyMode ? "-empty" : stateMode ? `-${stateMode}` : enrichedMode ? "-enriched" : "";
+        const suffix = emptyMode ? "-empty" : stateMode ? `-${stateMode}` : enrichedMode && !finalCapture ? "-enriched" : "";
         const includeFinalEvidence = width === 1440 || (view === "market" && width === 1280) || (view === "ledger" && width === 1024);
         if (!finalCapture || includeFinalEvidence) {
           const filename = finalCapture ? `trading-cockpit-v2-${view}${suffix}-${width}.png` : `${view}-${width}x${height}${suffix}.png`;

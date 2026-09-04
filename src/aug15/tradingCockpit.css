@@ -3,7 +3,7 @@
   --cockpit-surface: #fff;
   --cockpit-text: #24211e;
   --cockpit-text-2: #69635c;
-  --cockpit-text-3: #989087;
+  --cockpit-text-3: #6f675f;
   --cockpit-brand: #ee7026;
   --cockpit-positive: #21875a;
   --cockpit-negative: #df554d;
@@ -121,7 +121,7 @@
 .cockpitMetric.negative b, .negativeText { color: var(--cockpit-negative); }
 .cockpitMetric.warning b { color: var(--cockpit-warning); }
 
-.cockpitTone { display: inline-flex; align-items: center; justify-content: center; min-height: 20px; padding: 2px 7px; border-radius: 10px; color: #756e66; background: #f2efeb; font-size: 9.5px; font-weight: 650; line-height: 1; white-space: nowrap; }
+.cockpitTone { display: inline-flex; align-items: center; justify-content: center; min-height: 20px; padding: 2px 7px; border-radius: 10px; color: var(--cockpit-text-2); background: #f2efeb; font-size: 11px; font-weight: 650; line-height: 1; white-space: nowrap; }
 .cockpitTone.positive { color: #08724a; background: var(--cockpit-positive-soft); }
 .cockpitTone.negative { color: #b23a34; background: var(--cockpit-negative-soft); }
 .cockpitTone.warning { color: #986017; background: var(--cockpit-warning-soft); }
@@ -367,14 +367,14 @@
 
 .overviewAgentActivity { min-height: 166px; }
 .overviewActivityRows { display: grid; }
-.overviewActivityRows article { min-width: 0; min-height: 30px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 3px 10px; border-bottom: 1px solid var(--cockpit-hairline); }
+.overviewActivityRows article { min-width: 0; min-height: 30px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 1px 10px; border-bottom: 1px solid var(--cockpit-hairline); }
 .overviewActivityRows article:last-child { border-bottom: 0; }
 .overviewActivityDot { width: 7px; height: 7px; border-radius: 50%; background: var(--cockpit-text-3); }
 .overviewActivityDot.positive { background: var(--cockpit-positive); }
 .overviewActivityDot.warning { background: var(--cockpit-warning); }
 .overviewActivityDot.negative { background: var(--cockpit-negative); }
 .overviewActivityRows article > div { min-width: 0; display: grid; }
-.overviewActivityRows b, .overviewActivityRows small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.overviewActivityRows b, .overviewActivityRows small { overflow: hidden; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
 .overviewActivityRows b { font-size: 11px; }
 .overviewActivityRows small, .overviewActivityRows time { color: var(--cockpit-text-3); font-size: 11px; }
 
@@ -549,7 +549,7 @@
 .cockpitPositionsV2 .positionWorkspace { display: grid; grid-template-columns: minmax(220px, 24fr) minmax(520px, 52fr) minmax(220px, 24fr); gap: var(--position-gap); margin-top: var(--position-gap); }
 .positionAnalytics, .cockpitPositionsV2 .positionCore, .cockpitPositionsV2 .positionRisk { min-width: 0; display: grid; align-content: start; gap: var(--position-gap); }
 .cockpitPositionsV2 .positionCore > .cockpitPanel:first-child, .cockpitPositionsV2 .positionCore > .cockpitPanel:last-child { min-height: 0; }
-.positionAllocationBody { min-height: 202px; display: grid; grid-template-columns: 102px minmax(0, 1fr); align-items: center; gap: 12px; padding: 13px; }
+.positionAllocationBody { min-height: 222px; display: grid; grid-template-columns: 102px minmax(0, 1fr); align-items: center; gap: 12px; padding: 13px; }
 .positionAllocationBody > .cockpitDonut { width: 98px; }
 .positionAllocationRows { min-width: 0; display: grid; align-content: center; }
 .positionAllocationRows span { min-width: 0; min-height: 34px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px; border-bottom: 1px solid var(--cockpit-hairline); }
@@ -559,7 +559,7 @@
 .positionAllocationRows em { color: var(--cockpit-text-2); }
 .positionAllocationRows small { grid-column: 2 / -1; display: none; color: var(--cockpit-text-3); }
 
-.positionLongShortBody { min-height: 104px; display: grid; align-content: center; gap: 13px; padding: 14px; }
+.positionLongShortBody { min-height: 124px; display: grid; align-content: center; gap: 13px; padding: 14px; }
 .positionLongShortBody > div { height: 10px; display: flex; gap: 3px; overflow: hidden; border-radius: 5px; background: #eeeae5; }
 .positionLongShortBody > div span { background: var(--cockpit-positive); }
 .positionLongShortBody > div i { background: var(--cockpit-negative); }
@@ -569,7 +569,7 @@
 .positionLongShortBody small { color: var(--cockpit-text-3); font-size: 11px; }
 .positionLongShortBody b { font-size: 16px; }
 
-.positionPnlDistribution { min-height: 186px; }
+.positionPnlDistribution { min-height: 206px; }
 .positionPnlDistribution .cockpitDistribution { height: 95px; padding: 9px 13px 2px; }
 .positionPnlLegend { display: grid; grid-template-columns: repeat(3, 1fr); padding: 0 13px 12px; }
 .positionPnlLegend span { display: grid; gap: 2px; text-align: center; }
@@ -596,10 +596,10 @@
 .positionExitButton:hover { color: #fff; background: var(--cockpit-accent); }
 .positionNoAction { color: var(--cockpit-text-3); font-size: 11px; }
 
-.positionTrendPanel { min-height: 250px; }
-.cockpitPositionsV2 .positionCore > .positionTrendPanel { min-height: 250px; }
-.positionTrendPanel .cockpitAreaTrend { width: 100%; height: 200px; padding: 12px 14px 14px; }
-.positionRiskHealthBody { min-height: 194px; display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 10px; padding: 13px; }
+.positionTrendPanel { min-height: 310px; }
+.cockpitPositionsV2 .positionCore > .positionTrendPanel { min-height: 310px; }
+.positionTrendPanel .cockpitAreaTrend { width: 100%; height: 260px; padding: 12px 14px 14px; }
+.positionRiskHealthBody { min-height: 214px; display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 10px; padding: 13px; }
 .positionRiskHealthBody > .cockpitGauge { width: 92px; }
 .positionRiskHealthBody > div { min-width: 0; display: grid; }
 .positionRiskHealthBody > div span { min-height: 43px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 2px 6px; border-bottom: 1px solid var(--cockpit-hairline); }
@@ -608,7 +608,7 @@
 .positionRiskHealthBody small { color: var(--cockpit-text-3); font-size: 11px; }
 .positionRiskHealthBody b { font-size: 11px; }
 
-.positionMarginSafetyBody { min-height: 154px; display: grid; align-content: center; gap: 11px; padding: 14px; }
+.positionMarginSafetyBody { min-height: 174px; display: grid; align-content: center; gap: 11px; padding: 14px; }
 .positionMarginSafetyBody > strong { font-size: 24px; letter-spacing: -.025em; }
 .positionMarginSafetyBody > span { height: 8px; overflow: hidden; border-radius: 4px; background: #ece8e2; }
 .positionMarginSafetyBody > span i { height: 100%; display: block; border-radius: inherit; background: var(--cockpit-positive); }
@@ -618,7 +618,7 @@
 .positionMarginSafetyBody dt { color: var(--cockpit-text-3); font-size: 11px; }
 .positionMarginSafetyBody dd { margin: 0; font-size: 11px; font-weight: 650; }
 
-.positionConcentrationBody { min-height: 154px; display: grid; align-content: center; padding: 6px 13px; }
+.positionConcentrationBody { min-height: 174px; display: grid; align-content: center; padding: 6px 13px; }
 .positionConcentrationBody > span { min-height: 45px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 8px; border-bottom: 1px solid var(--cockpit-hairline); }
 .positionConcentrationBody > span:last-child { border-bottom: 0; }
 .positionConcentrationBody small { grid-column: 1 / -1; color: var(--cockpit-text-3); font-size: 11px; }
@@ -894,7 +894,7 @@
 .reviewTradeTable tbody tr:hover { background: #fffaf5; }
 .reviewTradeTable tbody tr.selected { background: var(--cockpit-accent-soft); box-shadow: inset 2px 0 var(--cockpit-brand); }
 .reviewRowSelect { width: 100%; min-width: 0; display: flex; align-items: center; padding: 0 8px; border: 0; color: inherit; background: transparent; cursor: pointer; text-align: left; }
-.reviewRowSelect:focus { outline: 3px solid rgba(238, 112, 38, .32); outline-offset: -3px; }
+.tradingCockpit button.reviewRowSelect[data-review-id]:is(:focus, :focus-visible) { outline-color: rgba(238, 112, 38, .72); outline-style: solid; outline-width: 3px; outline-offset: -3px; box-shadow: inset 0 0 0 1px #fff; }
 .reviewTradeTable time, .reviewTradeTable b, .reviewTradeTable strong { font-size: 11px; }
 .reviewTradeTable .cockpitTone { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .reviewPagination { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 9px 4px 13px; border-top: 1px solid var(--cockpit-hairline); }
