@@ -36,7 +36,7 @@ assert.ok(!stateMode || resourceStateModes.has(stateMode) || chartStatusByMode.h
 assert.ok(!marketCase || ["malformed", "mismatched"].includes(marketCase), `Unsupported KORDYN_COCKPIT_MARKET_CASE: ${marketCase}`);
 assert.ok(!positionCase || ["malformed", "partial"].includes(positionCase), `Unsupported KORDYN_COCKPIT_POSITION_CASE: ${positionCase}`);
 assert.ok(!reviewCase || ["malformed"].includes(reviewCase), `Unsupported KORDYN_COCKPIT_REVIEW_CASE: ${reviewCase}`);
-assert.ok(!ledgerCase || ["adversarial", "malformed", "long", "identity", "risk-counterexamples", "collections-missing", "collections-malformed"].includes(ledgerCase), `Unsupported KORDYN_COCKPIT_LEDGER_CASE: ${ledgerCase}`);
+assert.ok(!ledgerCase || ["adversarial", "malformed", "long", "identity", "risk-counterexamples", "status-counterexamples", "collections-missing", "collections-malformed"].includes(ledgerCase), `Unsupported KORDYN_COCKPIT_LEDGER_CASE: ${ledgerCase}`);
 assert.ok(views.length, "KORDYN_COCKPIT_VIEWS must name at least one canonical cockpit view");
 
 function withCdpCommandTimeout(promise, method) {
@@ -404,7 +404,7 @@ try {
         reviewInteractionFacts = { before, after, filterTarget, filteredFacts, restored, invalid };
       }
       let ledgerInteractionFacts = null;
-      if (view === "ledger" && !emptyMode && !["adversarial", "malformed", "identity", "risk-counterexamples", "collections-missing", "collections-malformed"].includes(ledgerCase) && (!resourceStateModes.has(stateMode) || ["loaded", "ready"].includes(stateMode))) {
+      if (view === "ledger" && !emptyMode && !["adversarial", "malformed", "identity", "risk-counterexamples", "status-counterexamples", "collections-missing", "collections-malformed"].includes(ledgerCase) && (!resourceStateModes.has(stateMode) || ["loaded", "ready"].includes(stateMode))) {
         await evaluate(cdp, `document.querySelector('[data-order-select="ord-01"]')?.click()`);
         await waitForExpression(cdp, `document.querySelector('[data-order-detail-id="ord-01"]') && document.querySelector('[data-order-exit="close_position"]')`, `${width}x${height} ledger selects its exact actionable canonical order`);
         await waitForExpression(cdp, `document.querySelector('[data-execution-stage="protection"]')?.dataset.stageState === 'complete'`, `${width}x${height} ledger verifies persisted selected-order protection`);
@@ -454,6 +454,19 @@ try {
         await evaluate(cdp, `(() => { const side = document.querySelector('[data-fill-filter="side"]'); side.value = 'all'; side.dispatchEvent(new Event('change', { bubbles: true })); const row = document.querySelector('[data-order-select]'); row?.click(); return row?.dataset.orderSelect || ''; })()`);
         await waitForExpression(cdp, `Boolean(document.querySelector('[data-order-detail-id]'))`, `${width}x${height} ledger detail restoration`);
         ledgerInteractionFacts = { pageTwoOrderId, selectedSymbol, symbolTarget, canceledFamilies, blockedFamilies, exitAction };
+      }
+      if (view === "ledger" && ledgerCase === "status-counterexamples") {
+        const heroCounts = await evaluate(cdp, `[...document.querySelectorAll('[data-cockpit-region="execution-hero"] .cockpitMetric')].slice(0, 4).map((node) => Number(node.querySelector('b')?.textContent || NaN))`);
+        const familyCounts = {};
+        for (const family of ["working", "filled", "canceled", "blocked", "other"]) {
+          await evaluate(cdp, `(() => { const select = document.querySelector('[data-order-filter="status"]'); select.value = ${JSON.stringify(family)}; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+          await waitForExpression(cdp, `document.querySelectorAll('[data-order-id]').length > 0 && [...document.querySelectorAll('[data-order-id]')].every((node) => node.dataset.orderStatusFamily === ${JSON.stringify(family)})`, `${width}x${height} ledger ${family} counterexample filter`);
+          familyCounts[family] = await evaluate(cdp, `document.querySelectorAll('[data-order-id]').length`);
+        }
+        assert.deepEqual(familyCounts, { working: 2, filled: 2, canceled: 2, blocked: 2, other: 3 }, `${width}x${height} exact status families reject substring counterexamples`);
+        assert.deepEqual(heroCounts, [11, familyCounts.working, familyCounts.filled, familyCounts.blocked], `${width}x${height} Hero and mounted family filters use one status classifier`);
+        assert.equal(heroCounts[0], Object.values(familyCounts).reduce((sum, value) => sum + value, 0), `${width}x${height} all five filter families reconcile to Hero total`);
+        ledgerInteractionFacts = { heroCounts, familyCounts };
       }
       if (view === "ledger" && ledgerCase === "identity") {
         const identityRows = await evaluate(cdp, `[...document.querySelectorAll('[data-order-select]')].map((node) => node.dataset.orderSelect)`);

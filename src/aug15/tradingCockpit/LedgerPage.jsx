@@ -12,7 +12,7 @@ import {
 import { displayMoney, formatDateTime, humanize, localizeText } from "../lib.jsx";
 import { t } from "../i18n.js";
 import { executionExitAction, requestExecutionExit } from "../executionExit.js";
-import { buildLedgerPresentation, buildSelectedExecutionStages } from "./model.js";
+import { buildLedgerPresentation, buildSelectedExecutionStages, executionOrderStatusFamily } from "./model.js";
 import { CockpitEmpty, CockpitMetric, CockpitPanel, Tone } from "./shared.jsx";
 
 const RESOURCE_STATES = new Set(["not_loaded", "loading", "loaded", "stale", "degraded", "error", "failed", "forbidden", "disabled"]);
@@ -31,19 +31,6 @@ const money = (value, digits = 2) => finite(value) ? displayMoney(Number(value),
 const quantity = (value) => finite(value) ? Number(value).toLocaleString("en-US", { maximumFractionDigits: 8 }) : unavailable();
 const sideTone = (value) => /short|sell|空|卖/i.test(String(value || "")) ? "negative" : /long|buy|多|买/i.test(String(value || "")) ? "positive" : "neutral";
 const statusTone = (value) => /fail|error|reject|cancel|blocked|risk|异常|失败|拒绝|取消|阻断/i.test(String(value || "")) ? "negative" : /pending|open|working|partial|wait|待|进行/i.test(String(value || "")) ? "warning" : /fill|complete|active|success|approved|protect|已|运行/i.test(String(value || "")) ? "positive" : "neutral";
-const normalizedStatus = (value) => String(value ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
-const WORKING_ORDER_STATUSES = new Set(["open", "pending", "working", "partial", "partially_filled", "entry_pending", "entry_submitted", "protecting", "protecting_degraded"]);
-const FILLED_ORDER_STATUSES = new Set(["filled", "complete", "completed", "entry_filled"]);
-const CANCELED_ORDER_STATUSES = new Set(["canceled", "cancelled"]);
-const BLOCKED_ORDER_STATUSES = new Set(["rejected", "blocked", "risk_blocked", "risk_rejected", "rejected_by_risk"]);
-const orderStatusFamily = (value) => {
-  const status = normalizedStatus(value);
-  if (WORKING_ORDER_STATUSES.has(status)) return "working";
-  if (FILLED_ORDER_STATUSES.has(status)) return "filled";
-  if (CANCELED_ORDER_STATUSES.has(status)) return "canceled";
-  if (BLOCKED_ORDER_STATUSES.has(status)) return "blocked";
-  return "other";
-};
 const fillIntent = (row) => row?.reduceOnly === true || /close|reduce|exit/i.test(String(row?.kind ?? row?.intent ?? row?.purpose ?? "")) ? "reduce" : row?.reduceOnly === false || /entry|open/i.test(String(row?.kind ?? row?.intent ?? row?.purpose ?? "")) ? "open" : "unknown";
 const fillLiquidity = (row) => /taker/i.test(String(row?.liquidity ?? row?.execType ?? "")) ? "taker" : /maker/i.test(String(row?.liquidity ?? row?.execType ?? "")) ? "maker" : "unknown";
 
@@ -116,7 +103,7 @@ function OrderList({ rows, selectedId, page, pages, available, onPage, onSelect 
     {rows.length ? <div className="ledgerTableScroll" data-order-page={page}><table className="ledgerOrderTable" aria-label={t("委托列表", "Order list")}><thead><tr><th>{t("时间 / 委托", "Time / order")}</th><th>{t("交易对", "Pair")}</th><th>{t("方向", "Side")}</th><th>{t("数量", "Quantity")}</th><th>{t("价格", "Price")}</th><th>{t("状态", "Status")}</th></tr></thead><tbody>{rows.map((row) => {
       const id = orderIdentity(row);
       const selected = id === selectedId;
-      const family = orderStatusFamily(row.status);
+      const family = executionOrderStatusFamily(row.status);
       return <tr key={id} className={selected ? "selected" : ""} data-order-id={id} data-order-status-family={family}>
         <td><button type="button" className={`ledgerOrderSelect ${focusedId === id ? "focusVisible" : ""}`.trim()} data-order-select={id} aria-pressed={selected} onFocus={() => setFocusedId(id)} onBlur={() => setFocusedId("")} onClick={() => onSelect(row)} onKeyDown={(event) => { setFocusedId(id); if (["Enter", " "].includes(event.key)) { event.preventDefault(); onSelect(row); } }}><time>{formatDateTime(row.createdAt ?? row.updatedAt)}</time><small>{id}</small></button></td>
         <td><b>{identity(row.symbol) ?? unavailable()}</b></td>
@@ -217,7 +204,7 @@ export function LedgerPage({ data = {}, action, ui = {} }) {
   const [selectedId, setSelectedId] = useState(orders[0] ? orderIdentity(orders[0]) : "");
   const orderSymbols = useMemo(() => [...new Set(orders.map((row) => identity(row.symbol)).filter(Boolean))].sort(), [orders]);
   const fillSymbols = useMemo(() => [...new Set(fills.map((row) => identity(row.symbol)).filter(Boolean))].sort(), [fills]);
-  const filteredOrders = useMemo(() => orders.filter((row) => (orderFilters.status === "all" || orderStatusFamily(row.status) === orderFilters.status) && (orderFilters.symbol === "all" || identity(row.symbol) === orderFilters.symbol)), [orders, orderFilters]);
+  const filteredOrders = useMemo(() => orders.filter((row) => (orderFilters.status === "all" || executionOrderStatusFamily(row.status) === orderFilters.status) && (orderFilters.symbol === "all" || identity(row.symbol) === orderFilters.symbol)), [orders, orderFilters]);
   const filteredFills = useMemo(() => fills.filter((row) => {
     const side = /sell|short|空|卖/i.test(String(row.side ?? row.direction ?? "")) ? "sell" : /buy|long|多|买/i.test(String(row.side ?? row.direction ?? "")) ? "buy" : "unknown";
     return (fillFilters.symbol === "all" || identity(row.symbol) === fillFilters.symbol)

@@ -275,6 +275,33 @@ test("ledger separates canceled orders from rejected and risk-blocked orders", (
   assert.equal((html.match(/data-order-status-family="blocked"/g) || []).length, 2);
 });
 
+test("ledger Hero and rendered rows share exact authoritative status families", () => {
+  const html = render(LedgerPage, {
+    data: {
+      resourceState: { cockpit: "loaded" },
+      executionOrders: [
+        { id: "open-entry-filled", status: "entry_filled" },
+        { id: "terminal-filled", status: "filled" },
+        { id: "canceled-order", status: "canceled" },
+        { id: "blocked-order", status: "risk_blocked" },
+        { id: "negative-unfilled", status: "unfilled" },
+        { id: "negative-not-working", status: "not_working" },
+        { id: "negative-risk-approved", status: "risk_approved" }
+      ],
+      fills: [], tradePlans: [], riskChecks: []
+    },
+    action() {}, ui: { setActive() {}, refresh() {} }
+  });
+  assert.equal((html.match(/data-order-status-family="working"/g) || []).length, 1, "entry_filled stays in the backend open family");
+  assert.equal((html.match(/data-order-status-family="filled"/g) || []).length, 1);
+  assert.equal((html.match(/data-order-status-family="canceled"/g) || []).length, 1);
+  assert.equal((html.match(/data-order-status-family="blocked"/g) || []).length, 1);
+  assert.equal((html.match(/data-order-status-family="other"/g) || []).length, 3, "negative substrings fail closed to Other");
+  assert.match(html, /aria-label="(?:进行中|Working): 1"/);
+  assert.match(html, /aria-label="(?:已成交|Filled): 1"/);
+  assert.match(html, /aria-label="(?:拒绝 \/ 风控阻断|Rejected \/ risk blocked): 1"/);
+});
+
 test("ledger keeps all eight regions and six incomplete stages without a canonical selection", () => {
   const cases = [
     { label: "explicit empty", data: { executionOrders: [], fills: [] } },

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { OPEN_EXECUTION_STATUS_LIST } from "../server/executionStates.mjs";
 import { projectOverviewSection } from "../server/overviewView.mjs";
+import * as cockpitModel from "../src/aug15/tradingCockpit/model.js";
 import {
   buildLedgerPresentation,
   buildOverviewPresentation,
@@ -527,7 +529,7 @@ test("review preserves explicit null metrics as unavailable", () => {
 
 test("ledger derives counts and fees from real rows", () => {
   const model = buildLedgerPresentation({
-    executionOrders: [{ id: "o-1", status: "filled" }, { id: "o-2", status: "open" }],
+    executionOrders: [{ id: "o-1", status: "filled" }, { id: "o-2", status: "entry_pending" }],
     fills: [{ id: "f-1", orderId: "o-1", feeUsdt: -0.5 }]
   });
   assert.deepEqual(model.metrics, { total: 2, working: 1, filled: 1, blocked: 0, fillRatePct: 50, feesUsdt: -0.5 });
@@ -544,6 +546,38 @@ test("ledger blocked metric excludes canceled orders", () => {
     fills: []
   });
   assert.equal(model.metrics.blocked, 2);
+});
+
+test("ledger status family follows every authoritative open state before terminal families", () => {
+  const classify = cockpitModel.executionOrderStatusFamily;
+  assert.equal(typeof classify, "function", "model exports the one status-family authority used by presentation and filters");
+  for (const status of OPEN_EXECUTION_STATUS_LIST) assert.equal(classify(status), "working", `${status} remains an authoritative open execution`);
+  for (const status of ["filled", "complete", "completed"]) assert.equal(classify(status), "filled", `${status} is filled`);
+  for (const status of ["canceled", "cancelled"]) assert.equal(classify(status), "canceled", `${status} is canceled`);
+  for (const status of ["rejected", "blocked", "risk_blocked", "risk_rejected", "rejected_by_risk"]) assert.equal(classify(status), "blocked", `${status} is rejected or risk blocked`);
+  for (const status of ["unfilled", "not_working", "risk_approved", "mystery_status", "", null]) assert.equal(classify(status), "other", `${String(status)} fails closed to Other`);
+});
+
+test("ledger Hero metrics use the same exact status families as filters", () => {
+  const statuses = [
+    ...OPEN_EXECUTION_STATUS_LIST,
+    "filled", "complete", "completed",
+    "canceled", "cancelled",
+    "rejected", "blocked", "risk_blocked", "risk_rejected", "rejected_by_risk",
+    "unfilled", "not_working", "risk_approved"
+  ];
+  const model = buildLedgerPresentation({
+    executionOrders: statuses.map((status, index) => ({ id: `family-${index}`, status })),
+    fills: []
+  });
+  assert.deepEqual(model.metrics, {
+    total: statuses.length,
+    working: OPEN_EXECUTION_STATUS_LIST.length,
+    filled: 3,
+    blocked: 5,
+    fillRatePct: Number((3 / statuses.length * 100).toFixed(1)),
+    feesUsdt: 0
+  });
 });
 
 test("ledger fails closed when only an unmodeled raw order list exists", () => {

@@ -1,4 +1,5 @@
 import { buildExecutionView, buildMarketRows, buildPositionView, findReviewTrade, netReviewResult } from "../../viewData.js";
+import { OPEN_EXECUTION_STATES } from "../../../server/executionStates.mjs";
 
 const rows = (value) => Array.isArray(value) ? value : [];
 const objectRows = (value) => rows(value).filter((row) => row && typeof row === "object" && !Array.isArray(row));
@@ -10,6 +11,18 @@ const timeOf = (row) => row && typeof row === "object" ? new Date(row.updatedAt 
 const byNewest = (a, b) => timeOf(b) - timeOf(a);
 const byOldest = (a, b) => timeOf(a) - timeOf(b);
 const cockpitResourceStates = new Set(["not_loaded", "loading", "loaded", "stale", "degraded", "error", "failed", "forbidden", "disabled"]);
+const FILLED_EXECUTION_STATES = new Set(["filled", "complete", "completed"]);
+const CANCELED_EXECUTION_STATES = new Set(["canceled", "cancelled"]);
+const BLOCKED_EXECUTION_STATES = new Set(["rejected", "blocked", "risk_blocked", "risk_rejected", "rejected_by_risk"]);
+
+export function executionOrderStatusFamily(value) {
+  const status = String(value ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (OPEN_EXECUTION_STATES.has(status)) return "working";
+  if (FILLED_EXECUTION_STATES.has(status)) return "filled";
+  if (CANCELED_EXECUTION_STATES.has(status)) return "canceled";
+  if (BLOCKED_EXECUTION_STATES.has(status)) return "blocked";
+  return "other";
+}
 
 function cockpitResourceState(value) {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -296,9 +309,9 @@ export function buildLedgerPresentation(data = {}) {
   const ordersAvailable = hasOwn(data, "executionOrders") && Array.isArray(data.executionOrders);
   const fillsAvailable = hasOwn(data, "fills") && Array.isArray(data.fills);
   const execution = buildExecutionView(data);
-  const working = ordersAvailable ? execution.orders.filter((row) => /open|pending|working|partial/i.test(String(row.status))).length : null;
-  const filled = ordersAvailable ? execution.orders.filter((row) => /filled|complete/i.test(String(row.status))).length : null;
-  const blocked = ordersAvailable ? execution.orders.filter((row) => /reject|blocked|risk/i.test(String(row.status))).length : null;
+  const working = ordersAvailable ? execution.orders.filter((row) => executionOrderStatusFamily(row.status) === "working").length : null;
+  const filled = ordersAvailable ? execution.orders.filter((row) => executionOrderStatusFamily(row.status) === "filled").length : null;
+  const blocked = ordersAvailable ? execution.orders.filter((row) => executionOrderStatusFamily(row.status) === "blocked").length : null;
   const feeValues = fillsAvailable ? execution.fills.map((row) => row.feeUsdt ?? row.fee) : [];
   const feesUsdt = fillsAvailable && feeValues.every(finiteNumber)
     ? Number(feeValues.reduce((sum, value) => sum + Number(value), 0).toFixed(8))
