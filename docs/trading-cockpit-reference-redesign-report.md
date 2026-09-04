@@ -1,7 +1,8 @@
 # 交易驾驶舱参考图重构报告
 
 日期：2026-09-04
-最终生产实现源提交：`30458a06996ae5c029361600f3d62bf07d3a1dc6`
+最终生产实现源提交：`193c301098121e2c3ec03400c7afb2a13b877464`
+原 Task 9 收敛实现：`30458a06996ae5c029361600f3d62bf07d3a1dc6`
 
 ## 交付范围与边界
 
@@ -46,21 +47,32 @@ Round 2 打开五张 1440 图并检查 1280/1024。最终批次同时处理：
 
 没有继续进行第三轮视觉改造；两次 Round 2 内部捕获被新硬门禁拦截后，仅完成同一批次的尺寸校准与全量重抓。
 
+### 独立审查修复：可访问性、真实图层与证据密度
+
+独立审查在现已被取代的原证据提交 `dd58cde9aae1fa0a2d5cdbf40616e300df1ee93f` 上发现 Critical 0 / Important 6 / Minor 1。本次按测试先行逐项修复六项 Important，不将审查修复冒充第三个视觉方向：
+
+- Market 使用既有 `TradingViewChart` 的真实逐 K 线成交量图层；主图、成交量和错误状态来自同一条现有 K 线数据链，没有新增 API 或伪造数据。
+- Execution 复盘行通过真实键盘 `Tab` 获得 `:focus-visible`，实测为 `solid 3px` 高对比轮廓；浏览器合同不再以 `none 3px` 误判为可见。
+- 驾驶舱弱文本 token 调整为在实际浅色背景上至少 4.5:1，并对代表性 operational copy 计算 computed color 与有效背景对比度。
+- `.cockpitTone` 纳入正文扫描，字号从 9.5px 提升到 11px，neutral tone 对比度 5.176:1。
+- Positions 只重新平衡现有配置、趋势和风险内容高度；1440 最末真实区域从 941px 延伸到 1001px，没有新增 footer 或虚构能力。
+- 最终主证据改用既有 test-only enriched production-shaped fixture，使 Event、Agent run、Risk rule、Strategy 等现有能力形状实际出现在五页证据中；该 fixture 从未被生产代码导入，空态/异常态仍单独验证。
+
 ## 最终几何与可读性
 
 1440×1080 实测：
 
-| 页面 | Header | Canvas L/R | Active | Grid | 最小正文 | 最小目标 | 最末区域 bottom | Overflow |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| 总览 | 60px | 26 / 26 | 1 | 58 / 42 | 11px | 36px | 1078.875 | 0 |
-| 行情 | 60px | 26 / 26 | 1 | 74 / 26 | 11px | 36px | 1078.016 | 0 |
-| 持仓 | 60px | 26 / 26 | 1 | 24 / 52 / 24 | 11px | 36px | 941.000 | 0 |
-| 执行与复盘 | 60px | 26 / 26 | 1 | 36 / 64 | 11px | 36px | 1070.375 | 0 |
-| 委托与成交 | 60px | 26 / 26 | 1 | 53 / 47 | 11px | 36px | 1068.750 | 0 |
+| 页面 | Header | Canvas L/R | Active | Grid | 最小正文 | 最小对比 | 最小目标 | 最末区域 bottom | Overflow |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 总览 | 60px | 26 / 26 | 1 | 58 / 42 | 11px | 4.905:1 | 36px | 1076.875 | 0 |
+| 行情 | 60px | 26 / 26 | 1 | 74 / 26 | 11px | 4.905:1 | 36px | 1078.016 | 0 |
+| 持仓 | 60px | 26 / 26 | 1 | 24 / 52 / 24 | 11px | 5.324:1 | 36px | 1001.000 | 0 |
+| 执行与复盘 | 60px | 26 / 26 | 1 | 36 / 64 | 11px | 4.905:1 | 36px | 1070.375 | 0 |
+| 委托与成交 | 60px | 26 / 26 | 1 | 53 / 47 | 11px | 5.342:1 | 36px | 1068.750 | 0 |
 
 五页在 1280×960 与 1024×768 也均为 `overflow=0`、Header 60px、唯一 active、最小正文 11px、最小目标 36px。画布边距分别为 18px 与 16px。1024 使用有意的纵向重排和页面滚动，不把桌面三列强行缩窄；Market 主报价、Positions Hero、Execution 详情均通过内容 containment 合同。
 
-Overview 与 Market 的真实图表组件均已呈现非空 canvas；Market 最终状态为 `chartStatus=ok`。默认 fixture 的五条 Market 自选全部渲染且每一行均位于自选列表可视边界内。
+Overview 与 Market 的真实图表组件均已呈现非空 canvas，逐 K 线成交量均为 `volumeSeries=ready`；Market 最终状态为 `chartStatus=ok`。默认 fixture 的五条 Market 自选全部渲染且每一行均位于自选列表可视边界内。
 
 ## 功能、权限与状态验证
 
@@ -70,7 +82,8 @@ Overview 与 Market 的真实图表组件均已呈现非空 canvas；Market 最�
 - fresh Chrome 状态矩阵通过：Loading、Empty / No result、Stale、Degraded / retained partial truth、Failed、Forbidden、Disabled；Market、Positions、Execution、Ledger 的 malformed fail-closed；Positions partial composition；Ledger long / large list。
 - Market malformed 首次运行的退出 1 来自新增 runner 合同错误地把「默认 fixture 必须有 5 条自选」套到已过滤 malformed fixture 的 2 条合法行，并非产品回归。合同修正为默认数据精确 5 条、所有场景的 accepted rows 均需完整可见后，该生产组件场景 fresh 复跑退出 0。
 - 默认 Execution fixture 含 Processing 对象；Position/Ledger 浏览器流程覆盖 Approval required / Danger confirmation。空仓截图与 loaded-empty 事实不伪造持仓、订单、成交或权限。
-- chart empty/error/partial-init/refetch/update 生命周期、position partial composition、ledger adversarial/identity/status/risk counterexamples 等更细状态由专项与全量自动测试继续守护；本任务未改变这些语义。
+- chart empty/error/partial-init/refetch/update 共 9 个生命周期状态、position partial composition、ledger adversarial/identity/status/risk counterexamples 等更细状态由专项与全量自动测试继续守护；隔离 chart lifecycle fixture 只豁免其没有挂载的 shell header/nav 几何，chart status、cleanup、volume/error 语义仍为硬断言；本任务未改变这些语义。
+- exact 验证中第一次把隔离 chart lifecycle fixture 错误地同时请求了不存在的 Market shell，因等待 Market 页面而退出 1；改用其文档化的 Overview production-chart scope 后 6/6 隔离故障均退出 0，另 3 个真实 Overview/Market shell 图表状态也均退出 0。该次失败是 runner 调用范围错误，不是产品回归，也未通过放宽图表状态合同绕过。
 
 ## 最终视觉证据
 
@@ -88,26 +101,28 @@ Overview 与 Market 的真实图表组件均已呈现非空 canvas；Market 最�
 - `.impeccable/review/trading-cockpit-v2-ledger-1024.png`
 - `.impeccable/review/trading-cockpit-v2-positions-empty-1440.png`
 
-八张 PNG 均已逐图打开：文件名与页面/viewport 匹配，Overview footer、Market 5 条自选与 ticker、Execution 底部三块、Ledger 分页均完整；图表非空，无半加载、错误页面、横向裁切或误标文件。
+八张 PNG 均已逐图打开：文件名与页面/viewport 匹配，Overview footer、Market 5 条自选与 ticker、Execution 底部三块、Ledger 分页均完整；Market K 线与逐 K 线成交量均非空，无半加载、错误页面、横向裁切或误标文件。七张主证据来自 enriched test-only fixture；Positions empty 保持独立 loaded-empty 证据。
 
 ## 视觉残余与诚实声明
 
 不声明像素级复刻。参考图是视觉权威，但其静态示例数值、文本长度、图形轨迹和部分事件/系统事实并非生产真相；最终图使用 production-shaped fixture，并对缺失的风险、Agent、事件或路径事实显示「不可用 / 未提供 / 暂无记录」，不为追图编造能力或数据。因此以下差异被有意保留：
 
 - 数值、列表内容、K 线轨迹与参考图示例不同；
-- 没有真实来源的 `4H`、风险规则、事件或路径事实不会出现在最终页面；
+- 没有真实来源的固定 `4H` 不会出现在生产页面；最终图中的风险规则、事件、Agent run 与策略来自明确标注的 test-only production-shaped fixture，而不是生产凭据或运行数据；
 - 1024 采用可读的纵向重排与滚动，而不是按参考图比例继续压缩；
 - 悬浮 AI 客服维持生产入口与安全区，不作为截图装饰重新定位到可能遮挡核心操作的位置。
 
 这些残余不改变视觉语法、信息层级或交互模型，也不扩大产品能力。
 
+审查中的 Minor 仍诚实保留：`tradingCockpit.css` 含早期 cockpit-local selector 组，但在共享样式入口下无法证明每个 selector 都已无生产 JSX 使用，因此未进行高风险的宽泛删除。机械 detector 对本次 UI 目标返回 `[]`，该残余是局部样式债务，不是当前五页的视觉或功能阻断。
+
 ## Fresh verification
 
 - Impeccable detector（UI 收敛后仅运行一次）：`[]`。
-- 共享工作树诊断：Focused `112/112`、Full `2368/2368`、ESLint PASS、Vite build PASS（1826 modules，1.70s）。这组数字包含未提交的用户/其他任务文件，仅用于确认 Task 9 与并行工作兼容，不作为提交态计数。
-- exact detached clone（生产实现 `30458a0` 及其 8 张最终 evidence assets；最终 evidence hash 由交付回报记录，避免报告自引用）：Focused `108/108`、Full `2357/2357`、ESLint PASS、Vite build PASS（1825 modules，fresh 重跑 1.43s）。
-- 默认五页 Chrome 在共享工作树与 exact detached clone 均为 15 个 viewport/page 组合 PASS；全部进程与临时 profile 清理成功。exact clone 的 1440 几何与表中最终值一致。
-- 状态矩阵 Chrome：上述 13 个资源/数据场景 PASS；Market malformed 的 runner-scope RED 已单独纠正并复跑 PASS。
+- 共享工作树诊断：Focused `112/112`、Full `2368/2368`、ESLint PASS、Vite build PASS（1826 modules，1.63s）。这组数字包含未提交的用户/其他任务文件，仅用于确认 Task 9 与并行工作兼容，不作为提交态计数。
+- exact detached clone（生产实现 `193c301` 及其 8 张最终 evidence assets；最终 evidence hash 由交付回报记录，避免报告自引用）：Focused `108/108`、Full `2357/2357`、ESLint PASS、Vite build PASS（1825 modules，1.55s）。
+- 默认与 enriched 五页 Chrome 在 shared 与 exact detached clone 均各为 15 个 viewport/page 组合 PASS；全部进程与临时 profile 清理成功。exact clone 的 enriched 1440 几何与表中最终值一致。
+- 状态矩阵 Chrome：Loading、Empty、Stale、Degraded、Failed、Forbidden、Disabled 全五页 PASS；Market / Positions / Execution malformed、Market mismatched、Positions partial、Ledger 8 组 malformed / long / identity / risk / status / collection counterexamples 全部 PASS；9 个 chart lifecycle 状态全部在正确挂载范围内 PASS。Market malformed 的早期 runner-scope RED 已单独纠正并复跑 PASS。
 - `git diff --check`：PASS。
 
 独立只读审查结论在 Task 9 交付回报中记录。本任务没有部署，也没有修改或删除共享工作树中的用户/其他任务文件。
