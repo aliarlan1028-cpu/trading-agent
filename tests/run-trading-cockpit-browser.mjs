@@ -675,8 +675,14 @@ try {
           const style = getComputedStyle(node);
           const background = effectiveBackground(node);
           const rawForeground = parseColor(style.color);
-          const foreground = rawForeground ? compositeColor(rawForeground, background) : null;
-          return { label: (node.textContent?.trim() || node.getAttribute('aria-label') || node.getAttribute('placeholder') || '').slice(0, 80), selector: node.className || node.tagName, ratio: foreground ? contrast(foreground, background) : 0, color: style.color, background: 'rgb(' + background.r.toFixed(2) + ', ' + background.g.toFixed(2) + ', ' + background.b.toFixed(2) + ')', size: Number.parseFloat(style.fontSize) };
+          let cumulativeOpacity = 1;
+          for (let current = node; current; current = current.parentElement) {
+            const opacity = Number.parseFloat(getComputedStyle(current).opacity);
+            cumulativeOpacity *= Number.isFinite(opacity) ? opacity : 1;
+          }
+          const renderedForeground = rawForeground ? { ...rawForeground, a: rawForeground.a * cumulativeOpacity } : null;
+          const foreground = renderedForeground ? compositeColor(renderedForeground, background) : null;
+          return { label: (node.textContent?.trim() || node.getAttribute('aria-label') || node.getAttribute('placeholder') || '').slice(0, 80), selector: node.className || node.tagName, ratio: foreground ? contrast(foreground, background) : 0, color: style.color, background: 'rgb(' + background.r.toFixed(2) + ', ' + background.g.toFixed(2) + ', ' + background.b.toFixed(2) + ')', cumulativeOpacity, size: Number.parseFloat(style.fontSize) };
         };
         const contrastFacts = operationalNodes.map(contrastFact);
         const smallestContrast = contrastFacts.sort((a, b) => a.ratio - b.ratio)[0] || null;
@@ -686,7 +692,8 @@ try {
           ['overview-active-interval', '.overviewMarketToolbar button.active'],
           ['market-active-interval', '.marketIntervals button.active'],
           ['semantic-negative-text', '.negativeText'],
-          ['semantic-positive-text', '.positiveText']
+          ['semantic-positive-text', '.positiveText'],
+          ['position-resource-copy', '.positionResourceState span']
         ].map(([name, selector]) => {
           const nodes = [...(page?.querySelectorAll(selector) || [])].filter((node) => {
             const style = getComputedStyle(node);
@@ -695,6 +702,12 @@ try {
           });
           const facts = nodes.map(contrastFact).sort((a, b) => a.ratio - b.ratio);
           return [name, facts[0] || null];
+        }));
+        const disabledControls = [...(page?.querySelectorAll('button:disabled, input:disabled, select:disabled, textarea:disabled') || [])].map((node) => ({
+          ...contrastFact(node),
+          disabled: node.disabled,
+          ariaDisabled: node.getAttribute('aria-disabled'),
+          cursor: getComputedStyle(node).cursor
         }));
         const interactive = [...(page?.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), summary, [tabindex]:not([tabindex="-1"])') || [])].filter((node) => {
           const style = getComputedStyle(node);
@@ -717,6 +730,7 @@ try {
           minOperationalContrast: smallestContrast?.ratio ?? null,
           smallestContrast,
           contrastCounterexamples,
+          disabledControls,
           minTargetHeightPx: smallestTarget?.height ?? null,
           smallestTarget,
           chartCanvasCount: page?.querySelectorAll('[data-cockpit-region="market-chart"] canvas').length || 0,
@@ -739,6 +753,11 @@ try {
         assert.equal(layoutFacts.activeTabs, 1, `${width}x${height} ${view} has exactly one active cockpit tab`);
         assert.ok(layoutFacts.minOperationalTextPx >= 11, `${width}x${height} ${view} operational copy ${layoutFacts.minOperationalTextPx}px is at least 11px: ${JSON.stringify(layoutFacts.smallestOperational)}`);
         assert.ok(layoutFacts.minOperationalContrast >= 4.5, `${width}x${height} ${view} operational contrast ${layoutFacts.minOperationalContrast} is at least 4.5: ${JSON.stringify(layoutFacts.smallestContrast)}`);
+        for (const control of layoutFacts.disabledControls) {
+          assert.equal(control.disabled, true, `${width}x${height} ${view} disabled control keeps its native disabled contract: ${JSON.stringify(control)}`);
+          assert.ok(["not-allowed", "default"].includes(control.cursor), `${width}x${height} ${view} disabled control keeps a non-action cursor: ${JSON.stringify(control)}`);
+          assert.ok(control.ratio >= 4.5, `${width}x${height} ${view} disabled control remains readable without opacity dimming: ${JSON.stringify(control)}`);
+        }
       }
       if (!emptyMode && !stateMode && !marketCase && !positionCase && !reviewCase && !ledgerCase) {
         if (!measureOnly) {
@@ -860,6 +879,8 @@ try {
         if (resourceStateModes.has(stateMode) && !["loaded", "ready"].includes(stateMode)) {
           assert.equal(positionStateFacts.state, expectedResourceState, `${width}x${height} positions normalizes ${stateMode} to ${expectedResourceState}`);
           assert.equal(positionStateFacts.statePanel, expectedResourceState, `${width}x${height} positions renders its ${stateMode} state boundary`);
+          const positionResourceCopy = layoutFacts.contrastCounterexamples["position-resource-copy"];
+          assert.ok(positionResourceCopy && positionResourceCopy.ratio >= 4.5, `${width}x${height} ${stateMode} positions resource copy contrast is at least 4.5 after cumulative opacity: ${JSON.stringify(positionResourceCopy)}`);
           assert.equal(positionStateFacts.exitCount, 0, `${width}x${height} ${stateMode} positions exposes no action against non-current facts`);
           const retains = retainedBodyModes.has(stateMode);
           assert.equal(positionStateFacts.regions.includes("position-hero"), retains, `${width}x${height} ${stateMode} positions ${retains ? "retains" : "blocks"} last-valid facts`);
