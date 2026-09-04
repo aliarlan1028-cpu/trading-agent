@@ -3,6 +3,8 @@
 Date: 2026-09-04
 Base commit: `ad0f220`
 Implementation commit: `e9e53f92035250ce29c0db40f3d3b8394ce187da`
+Fix-round base/report commit: `d8839191ff41b6e7355b587647e0541f9daf5d85`
+Fix-round implementation commit: `614e328f1e4fe53416b82b248c6550102b31a3de`
 Scope: Task 8 only
 Status: implementation complete; awaiting independent review
 
@@ -33,13 +35,13 @@ The implemented region contract preserves the authority's title/date line, six-p
 
 At 1440 and 1280 the order workbench measured `53.00/47.00`. At 1024 it deliberately reflows into vertically stacked full-width order and detail surfaces. The document had zero horizontal overflow at all three widths. The smallest enabled Ledger control measured 36px and the real keyboard-selected order target exposed a solid 3px focus outline plus inset focus ring.
 
-Final temporary captures were generated and inspected at original resolution:
+Fix-round final temporary captures were generated and inspected at original resolution:
 
-- `/private/tmp/task8-ledger-visual/ledger-1440x1080.png`
-- `/private/tmp/task8-ledger-visual/ledger-1280x960.png`
-- `/private/tmp/task8-ledger-visual/ledger-1024x768.png`
+- `/private/tmp/task8-fix-final/ledger-1440x1080.png`
+- `/private/tmp/task8-fix-final/ledger-1280x960.png`
+- `/private/tmp/task8-fix-final/ledger-1024x768.png`
 
-The 1440 capture preserves the reference hierarchy and dense first-screen reconciliation flow. The 1280 capture retains the same two-column workbench with internally contained tables. The 1024 capture intentionally stacks the workbench and continues vertically rather than compressing facts into unreadable columns.
+The 1440 capture preserves the reference hierarchy and dense first-screen reconciliation flow. Its complete fill ledger ends at `1068.75px` and its pagination at `1067.75px`, leaving approximately `11px` of visible viewport clearance at 1080px; neither is clipped. The 1280 capture retains the same two-column workbench with internally contained tables. The 1024 capture intentionally stacks the workbench and continues vertically rather than compressing facts into unreadable columns. Earlier pre-fix captures are historical and are not the visual evidence for this round.
 
 ## Truthful execution metrics and separation
 
@@ -48,7 +50,7 @@ The hero reports exactly six existing facts:
 1. total orders;
 2. working orders;
 3. filled orders;
-4. rejected, canceled, or risk-blocked orders;
+4. rejected or risk-blocked orders (canceled orders are excluded);
 5. fill rate;
 6. exchange fill fees.
 
@@ -72,7 +74,7 @@ The six timeline stages are bound as follows:
 - Routing: venue/exchange on the exact selected order.
 - Order: the uniquely resolved selected order itself.
 - Fill: one or more fills with an exact nonblank `orderId` or `executionOrderId` equal to the selected order.
-- Protection: protection type/kind on the exact selected order only.
+- Protection: persisted protection evidence on the exact selected authoritative execution only. `protecting`, or a confirmed protection state with canonical stop/take-profit identifiers, can complete the stage; degraded/stop-only evidence is partial and failed/unconfirmed evidence is not complete. Order type/kind alone never proves protection.
 
 Symbol matching and global-existence fallbacks are forbidden. The adversarial browser fixture selects `ledger-selected` while a same-symbol sibling owns the only plan, risk, venue, fill, and protection evidence. Signal, Risk, Routing, Fill, and Protection remain incomplete and sibling-only text is absent from both detail and timeline.
 
@@ -81,15 +83,15 @@ The detail renders only the selected order's identity, symbol, direction, type, 
 ## Action boundaries
 
 - “交给 AI 处理” only calls the existing `ui.setActive("chat")` navigation action.
-- Cancel/exit controls are present only when the selected row is canonical, resource state is loaded, and the existing `executionExitAction` allows the action.
-- The action continues through the existing `requestExecutionExit(action, selected, "manual_ui")` confirmation/request path. Task 8 does not bypass or replace protected confirmation semantics.
+- Cancel/exit controls are present only when the selected row resolves uniquely and retains a nonblank original canonical `id`, the resource state is loaded, and the existing `executionExitAction` allows the action. Derived `executionOrderId`/`orderId` aliases never replace that authoritative row identity.
+- The action continues through the existing `requestExecutionExit(action, selected, "manual_ui")` confirmation/request path with the original authoritative row. Task 8 does not bypass or replace protected confirmation semantics.
 - Loading, stale, and degraded last-valid views suppress execution actions. Terminal no-fact states expose neither stale rows nor exit actions.
 
 ## Resource, malformed, and scale behavior
 
 - `loaded` renders current facts and eligible actions.
 - `loading`, `stale`, and `degraded` retain last-valid facts, expose the resource boundary, and suppress actions.
-- initial loading, `not_loaded`, `error`, `failed`, `forbidden`, and `disabled` block the facts body.
+- initial loading, `not_loaded`, `error`, `failed`, `forbidden`, and `disabled` block the facts body and emit no selected-object identity.
 - loaded empty data renders no order, fill, detail identity, or action. Workbench heights were 190px at 1440/1280 and 320px at stacked 1024, avoiding a tall empty void.
 - malformed identity-less and duplicate rows are removed before selection; the mounted malformed fixture retains exactly one canonical order and one canonical fill.
 - the long-content fixture remains contained at 1440/1280/1024 without document overflow.
@@ -146,6 +148,57 @@ PASS: every state at all three viewports; cleanup PASS
 Loading/stale/degraded retained all eight regions and suppressed exits. Failed/forbidden/disabled rendered the boundary only, with no rows, detail, or action.
 
 ## Regression and exact-commit gates
+
+### Fix round 1 — identity, availability, protection, and first-frame convergence
+
+The review-fix cycle added failing contracts before production changes for alias-only, blank, and duplicate execution identities; mounted exit clicks; absent and malformed collections; canceled-order classification; and persisted protection evidence. The RED runs failed at the intended assertions: five model failures and three reference/mounted contract failures. After the fix, the focused suite passed `99/99`.
+
+The mounted action gate selects the real production Ledger row, invokes the real click handler and confirmation path, and verifies the exact authoritative request payload. Alias-only, blank-canonical, and duplicate identities expose no exit control and make no request. Removing the production `onClick` wiring would therefore fail the mounted browser contract.
+
+The fix-round browser matrix passed loaded normal, identity-adversarial, sibling-adversarial, malformed, long, explicit-empty, missing-collection, and malformed-collection cases, plus `loading`, `stale`, `degraded`, `failed`, `forbidden`, `disabled`, `error`, and `not_loaded`. Every case ran at 1440×1080, 1280×960, and 1024×768 with zero document horizontal overflow. Operational text measured at least 11px, enabled controls at least 36px, and resource retry controls 38px under the real cascade.
+
+The final 1440 loaded measurements were:
+
+```text
+order/detail columns: 53.00% / 47.00%
+workbench height: 368.5px
+fill ledger height: 361px
+fill ledger bottom: 1068.75px
+fill pagination bottom: 1067.75px
+viewport bottom clearance: approximately 11px
+document horizontal overflow: 0
+minimum operational text: 11px
+minimum enabled target: 36px
+```
+
+The history-preserving exact checkout of fix commit `614e328f1e4fe53416b82b248c6550102b31a3de` is `/private/tmp/task8-ledger-fix-clone.GhT5w6`. It produced:
+
+```text
+node scripts/run-tests-isolated.mjs tests/trading-cockpit-model.test.mjs tests/trading-cockpit-reference.test.mjs
+PASS: 99/99
+
+npm test
+PASS: 2348/2348, 0 failures
+
+node tests/run-trading-cockpit-browser.mjs
+PASS: 15/15 view/viewport results; cleanup PASS
+
+npm run lint
+PASS
+
+npm run build
+PASS: 1824 modules transformed; 1.65s
+
+node /Users/ely/.codex/skills/impeccable/scripts/detect.mjs --json src/aug15/tradingCockpit/LedgerPage.jsx src/aug15/tradingCockpit.css
+[]
+
+git diff --check
+PASS (no output)
+```
+
+The shared checkout also passed `2359/2359`; that larger count includes unrelated user-owned tests and is not used as the exact-commit authority.
+
+### Original Task 8 verification — historical baseline
 
 Full five-view desktop cockpit regression on the shared checkout:
 
@@ -208,6 +261,7 @@ PASS (no output)
 ## Scope and repository hygiene
 
 - Implementation commit `e9e53f9` contains exactly the eight authorized source/test files, including the explicitly approved model scope extension.
+- Fix-round implementation commit `614e328` contains exactly seven authorized Task 8 source/test files and no report, progress ledger, screenshot, or unrelated shared-worktree change.
 - This report is committed separately from production implementation.
 - Pre-existing App/mobile/route/style/test changes, captures, artifacts, the reference-image directory, and all other user-owned untracked files remain untouched and unstaged.
 - Temporary screenshots and exact-checkout directories remain outside the repository; no unauthorized evidence asset was committed.
